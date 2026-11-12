@@ -195,7 +195,11 @@ class _SearchFilterPageState extends State<SearchFilterPage> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<T>(
-          value: value,
+          // `value` is deprecated since Flutter 3.33; `initialValue`
+          // is the replacement and stays in sync: the page rebuilds
+          // with the new staged value on every pick (FormField resets
+          // when initialValue changes).
+          initialValue: value,
           isExpanded: true,
           decoration: InputDecoration(
             hintText: l10n.noSelection,

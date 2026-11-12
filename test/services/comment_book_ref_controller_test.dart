@@ -35,6 +35,9 @@ class _FakeZLibraryApi implements ZLibraryApi {
     String? order,
     int? page,
     int? limit,
+    // Kept in sync with ZLibraryApiBase.search (exact-match flag,
+    // added by the search filter page); the fake ignores it.
+    bool? exact,
   }) async {
     searchCalls++;
     if (delay != null) await Future<void>.delayed(delay!);

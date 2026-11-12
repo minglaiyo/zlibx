@@ -1,4 +1,5 @@
 import 'package:olib_api_plugin/olib_api_plugin.dart';
+import 'package:zlibx/utils/diagnostics.dart';
 
 import 'booklist_solver.dart';
 import 'wall_cookie_bridge.dart';
@@ -72,7 +73,47 @@ class DownloadStatsRepository {
         BooklistSolver.isChallengeHtml(html)) {
       return null;
     }
-    await bridgeWallCookies(_api, url);
+    await _bridgeWallCookies(url);
     return html;
+  }
+
+  /// Same as [fetchViaSolver] but through the visible solver page only
+  /// (no headless attempt). The caller uses it when the first solve
+  /// returned HTML that is not the wanted page at all — a bare error
+  /// page, or a wall page the headless check mistook for solved. The
+  /// visible page lets the wall's JS finish where the user can watch
+  /// it, instead of failing outright on a page that was never real.
+  Future<String?> fetchViaVisibleSolver(
+    String url, {
+    String? userId,
+    String? userKey,
+  }) async {
+    if (userId != null && userKey != null && userKey.isNotEmpty) {
+      await installSessionCookies(
+        userId: userId,
+        userKey: userKey,
+        pageUrl: url,
+      );
+    }
+    final html = await WebviewChallengeSolver.fetchHtmlVisibleOnly(url);
+    if (html == null ||
+        html.isEmpty ||
+        BooklistSolver.isChallengeHtml(html)) {
+      return null;
+    }
+    await _bridgeWallCookies(url);
+    return html;
+  }
+
+  /// Best-effort only: a solved page stays solved even when the cookie
+  /// copy fails (the next page just solves again). Never let a
+  /// CookieManager failure throw away good HTML — on a test host there
+  /// is no WebView platform implementation at all.
+  Future<void> _bridgeWallCookies(String url) async {
+    try {
+      await bridgeWallCookies(_api, url);
+    } catch (error) {
+      logIgnored('download_stats_repository', error);
+    }
   }
 }

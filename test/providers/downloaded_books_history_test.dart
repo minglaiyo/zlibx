@@ -104,6 +104,36 @@ Book _meta(int id, String author) => Book(
       filesizeString: '1.2 KB',
     );
 
+/// 无头 solver 误判为"已过墙"的空 503 页：没有 dstats 标记，也没有
+/// 验证墙关键字——标题和正文都认不出它是墙页。
+const _bare503Html = '''
+<html><head><title>503 Service Temporarily Unavailable</title></head>
+<body><h1>503</h1></body></html>
+''';
+
+/// 一条记录的真 dstats 页（结构同 parsers 夹具）。
+const _dstatsPageHtml = '''
+<html><body><table><tbody>
+<tr class="dstats-row" data-item_id="23787383">
+  <td class="lg-w-120" style="white-space: nowrap;">
+    <span class="hidden-xs">11.11.2026</span>
+    <p style="color: var(--gray-7); padding: 0;">21:02</p>
+  </td>
+  <td class="lg-w-530" style="max-width: 530px;">
+    <div class="book-title">
+      <a href="/book/abc123def/书甲.html">书甲</a>
+    </div>
+  </td>
+</tr>
+</tbody></table></body></html>
+''';
+
+/// 真 dstats 页但 0 行（空页）：有 dstats 标记，解析出空列表。
+const _dstatsEmptyHtml = '''
+<html><body><div class="dstats-content">
+<form class="dstats-form"></form></div></body></html>
+''';
+
 /// 测试容器里不碰 secure storage：solver 路径会读 authProvider。
 class _SignedOutAuth extends AuthNotifier {
   @override
@@ -293,5 +323,87 @@ void main() {
       (state as AsyncError).error.toString(),
       contains('browser check page'),
     );
+  });
+
+  test('墙页被无头误判为已过墙：解析失败后走可见 solver，拿到真页即加载', () async {
+    // 2026-11-12 真机复现：无头 WebView 抓到空 503 页就当自己过关
+    // （标题里没有验证墙关键字），可见回退被跳过，解析守卫把原始
+    // 503 错抛出来。修法：解析失败不再直接报错，改走一次可见 solver。
+    WebviewChallengeSolver.overrideIsSupported = true;
+    WebviewChallengeSolver.overrideIsMobile = true;
+    WebviewChallengeSolver.guiEnabled = false;
+    addTearDown(() {
+      WebviewChallengeSolver.overrideIsSupported = null;
+      WebviewChallengeSolver.overrideIsMobile = null;
+      WebviewChallengeSolver.guiEnabled = true;
+      WebviewChallengeSolver.visibleSolverFallback = null;
+    });
+
+    // 第 1 次回退（无头路径）：空 503 页；第 2 次（可见升级）：真页；
+    // 第 3 次（第 2 页 Dio 照样撞墙）：空的真 dstats 页，翻页到头。
+    var fallbackCalls = 0;
+    WebviewChallengeSolver.visibleSolverFallback = (url) async {
+      fallbackCalls++;
+      if (fallbackCalls == 1) return _bare503Html;
+      if (fallbackCalls == 2) return _dstatsPageHtml;
+      return _dstatsEmptyHtml;
+    };
+
+    final api = _FakeZLibraryApi(
+      metaPages: {1: []},
+      metaTotalPages: 1,
+    )..failDstatsWithWall = true;
+    final container = _container(api);
+    addTearDown(container.dispose);
+
+    container.read(downloadedBooksProvider);
+    await _settle();
+
+    final books = container.read(downloadedBooksProvider).valueOrNull!;
+    expect(books.length, 1);
+    expect(books.first.id, 23787383);
+    expect(books.first.title, '书甲');
+    expect(
+      books.first.downloadedAt,
+      DateTime(2026, 11, 11, 21, 2),
+    );
+    expect(fallbackCalls, 3);
+  });
+
+  test('可见 solver 也拿不到真页：仍抛原始墙错误', () async {
+    WebviewChallengeSolver.overrideIsSupported = true;
+    WebviewChallengeSolver.overrideIsMobile = true;
+    WebviewChallengeSolver.guiEnabled = false;
+    addTearDown(() {
+      WebviewChallengeSolver.overrideIsSupported = null;
+      WebviewChallengeSolver.overrideIsMobile = null;
+      WebviewChallengeSolver.guiEnabled = true;
+      WebviewChallengeSolver.visibleSolverFallback = null;
+    });
+
+    // 两次都只拿到空 503 页：无头一次，可见升级一次。
+    var fallbackCalls = 0;
+    WebviewChallengeSolver.visibleSolverFallback = (url) async {
+      fallbackCalls++;
+      return _bare503Html;
+    };
+
+    final api = _FakeZLibraryApi(
+      metaPages: {1: []},
+      metaTotalPages: 1,
+    )..failDstatsWithWall = true;
+    final container = _container(api);
+    addTearDown(container.dispose);
+
+    container.read(downloadedBooksProvider);
+    await _settle();
+
+    final state = container.read(downloadedBooksProvider);
+    expect(state, isA<AsyncError>());
+    expect(
+      (state as AsyncError).error.toString(),
+      contains('browser check page'),
+    );
+    expect(fallbackCalls, 2);
   });
 }

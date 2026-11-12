@@ -771,7 +771,10 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
   /// 一页 dstats 的 solver 回退：装会话 → WebView 过墙取渲染后的
   /// HTML → wall cookies 回灌 Dio → 解析。HTML 不是 dstats 页（落在
   /// 登录页等）或过墙失败时抛原始墙错误——wrong-page 守卫保证绝不满
-  /// 足于一个"看似成功"的错误页。
+  /// 足于一个"看似成功"的错误页。解析失败时再走一次可见 solver：无
+  /// 头抓到的可能是空 503 页，或标题里没有验证墙关键字、墙的 JS 还
+  /// 没跑完的墙页；可见页让墙在看得见的 WebView 里跑完，两次都解
+  /// 析失败才抛原始墙错误。
   Future<List<Book>> _fetchStatsPageViaSolver(
     DownloadStatsRepository repository,
     int page, {
@@ -785,8 +788,21 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
       userKey: user?.remixUserkey,
     );
     if (html == null) throw StateError(originalError);
-    final parsed = repository.parsePage(html);
-    if (parsed == null) throw StateError(originalError);
+    var parsed = repository.parsePage(html);
+    if (parsed == null) {
+      // solver 回来了 HTML，但它根本不是下载历史页：无头 WebView 抓
+      // 到的可能是一个空的 503 报错页，或者标题里没有验证墙关键字、
+      // 墙的 JS 在慢网速下还没跑完的墙页。不要直接按这页报错——再走
+      // 一次可见 solver，让墙在看得见的 WebView 里跑完，解析那份 HTML。
+      final visibleHtml = await repository.fetchViaVisibleSolver(
+        url,
+        userId: user?.id,
+        userKey: user?.remixUserkey,
+      );
+      if (visibleHtml == null) throw StateError(originalError);
+      parsed = repository.parsePage(visibleHtml);
+      if (parsed == null) throw StateError(originalError);
+    }
     return parsed;
   }
 

@@ -47,10 +47,16 @@ class WebviewChallengeSolver {
 
   static final AppLogger _logger = AppLogger();
 
+  /// Test seam for the platform check: when set, overrides the real
+  /// platform check. Production never sets it.
+  @visibleForTesting
+  static bool? overrideIsSupported;
+
   /// Android/iOS use flutter_inappwebview. zlibx is Android-only, so
   /// there is no desktop branch here (upstream's desktop window import
   /// was deleted).
-  static bool get isSupported => Platform.isAndroid || Platform.isIOS;
+  static bool get isSupported =>
+      overrideIsSupported ?? (Platform.isAndroid || Platform.isIOS);
 
   /// Escape hatch for tests and headless environments: when false, no real
   /// webview is opened (headless or desktop window) and the solve returns
@@ -185,6 +191,23 @@ class WebviewChallengeSolver {
     return html;
   }
 
+  /// Visible-only solve: skips the headless webview entirely and runs
+  /// [visibleSolverFallback] directly, returning the captured HTML or
+  /// null when there is no fallback or the user backs out. Callers use
+  /// this when the headless solve already returned HTML that turned out
+  /// not to be the wanted page (a bare error page, or a wall page the
+  /// headless check mistook for solved): the visible page lets the
+  /// wall's JS finish where the user can watch it, instead of failing
+  /// outright. The result is also stored in ChallengeHtmlCache.
+  static Future<String?> fetchHtmlVisibleOnly(String url) async {
+    if (!_isMobile || visibleSolverFallback == null) return null;
+    final html = await visibleSolverFallback!(url);
+    if (html != null) {
+      ChallengeHtmlCache.store(url, html);
+    }
+    return html;
+  }
+
   /// Same check as [isChallengePage] but on a full HTML document:
   /// the title is pulled out of the document first. A cached page
   /// can be a stale challenge page — callers use this to reject one
@@ -271,8 +294,14 @@ class WebviewChallengeSolver {
           controller ??= await _waitForController(controllerHolder);
           if (controller != null) {
             final title = (await controller.getTitle()) ?? '';
+            // Same check as onLoadStop: a wall page whose title carries
+            // no challenge marker must not complete the solve — check
+            // the body too, not the title alone.
+            final bodySnippet = (await _js(controller,
+                    "document.body ? document.body.innerHTML.slice(0, 3000) : ''")) ??
+                '';
             if (title.isNotEmpty &&
-                !isChallengePage(title: title, bodySnippet: '')) {
+                !isChallengePage(title: title, bodySnippet: bodySnippet)) {
               final html = await _captureHtml(controller);
               if (html != null && html.isNotEmpty && !completer.isCompleted) {
                 completer.complete(html);
@@ -335,6 +364,11 @@ class WebviewChallengeSolver {
     }
     final html =
         await _js(controller, "document.documentElement.outerHTML");
+    // The poll loop used to check only the title before capturing: a
+    // wall page whose title carries no challenge marker would be
+    // captured here as solved. Reject a captured challenge page
+    // outright so the solve keeps waiting for the real page instead.
+    if (html != null && isChallengeHtml(html)) return null;
     return html;
   }
 

@@ -122,8 +122,9 @@ Future<ProviderContainer> _loadedDetailContainer(
     ],
   );
   addTearDown(container.dispose);
-  container.listen(booklistDetailControllerProvider(_args), (_, _) {});
-  await Future<void>.delayed(const Duration(milliseconds: 100));
+  final provider = booklistDetailControllerProvider(_args);
+  container.listen(provider, (_, _) {});
+  await container.read(provider.notifier).initialLoadDone;
   return container;
 }
 
@@ -194,6 +195,34 @@ ZLibraryApi _apiWith(_FakeCreateAdapter adapter) {
   return ZLibraryApi(dio: Dio()..httpClientAdapter = adapter);
 }
 
+
+/// Waits for an async load/retry to paint [expected] instead of asserting
+/// immediately after an await: the detail controller intentionally retries a
+/// fetch that lost a race with a write, and that retry can be scheduled a
+/// microtask later than the awaited call.
+Future<void> _waitForIds(
+  ProviderContainer container,
+  BooklistDetailArgs args,
+  List<int> expected,
+) async {
+  final provider = booklistDetailControllerProvider(args);
+  final deadline = DateTime.now().add(const Duration(seconds: 3));
+  while (DateTime.now().isBefore(deadline)) {
+    final ids = container.read(provider).books.map((book) => book.id).toList();
+    if (ids.length == expected.length) {
+      var same = true;
+      for (var i = 0; i < ids.length; i++) {
+        if (ids[i] != expected[i]) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
 void main() {
   late Directory tempDir;
 
@@ -241,7 +270,11 @@ void main() {
     expect(ids(), [1, 2, 4, 5]);
     // Refresh reloads page 1 (the remove invalidated the caches) and
     // the structures are rebuilt from it.
+    // Let the remove's cache invalidation settle; Hive deletes are
+    // fire-and-forget, so loadFirst can otherwise race the tombstone.
+    await Future<void>.delayed(const Duration(milliseconds: 50));
     await notifier.loadFirst();
+    await _waitForIds(container, _args, [1, 2]);
     expect(invariants(), isTrue);
     expect(ids(), [1, 2]);
     // A merge after refresh (re-fetch page 2) keeps them in sync.

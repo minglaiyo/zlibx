@@ -1,9 +1,11 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../routes/app_routes.dart';
+import '../../../utils/cover_cache.dart';
 import '../../../widgets/book_card.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/entrance.dart';
@@ -62,6 +64,40 @@ class HomeBookGrid extends ConsumerWidget {
                 ((gridWidth - columnSpacing * (columnCount - 1)) / columnCount)
                     .clamp(0.0, double.infinity);
 
+            // 四列模式 = 官方 App 风格的纯封面密排网格：无边框卡片、
+            // 无徽标、封面铺满、小间距。
+            if (fourColumns) {
+              final cellWidth = ((gridWidth - 8 * 3) / 4)
+                  .clamp(0.0, double.infinity);
+              return RefreshIndicator(
+                onRefresh: onRefresh,
+                edgeOffset: topPadding,
+                child: GridView.builder(
+                  controller: scrollController,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(12, topPadding, 12, 96),
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                    childAspectRatio: 2 / 3,
+                  ),
+                  itemCount: itemCount,
+                  itemBuilder: (context, index) {
+                    final book = books[index];
+                    return _CoverTile(
+                      book: book,
+                      cellWidth: cellWidth,
+                      onTap: () {
+                        AppRoutes.openBookDetailForDisplayBook(context, book);
+                      },
+                    );
+                  },
+                ),
+              );
+            }
+
             return RefreshIndicator(
               onRefresh: onRefresh,
               // The spinner must appear below the floating glass header,
@@ -109,6 +145,47 @@ class HomeBookGrid extends ConsumerWidget {
           icon: Icons.error_outline,
           title: AppLocalizations.of(context)!.couldNotLoadBooks,
           message: AppLocalizations.of(context)!.checkYourConnection,
+        ),
+      ),
+    );
+  }
+}
+
+/// 四列模式的一个纯封面格（官方 App 风格）：无边框、无徽标、封面
+/// 铺满 2:3 格子，点按进详情。封面按格宽解码（[coverCacheWidth]），
+/// 长列表滑动不掉帧。
+class _CoverTile extends StatelessWidget {
+  const _CoverTile({
+    required this.book,
+    required this.cellWidth,
+    required this.onTap,
+  });
+
+  final DisplayBook book;
+  final double cellWidth;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: AspectRatio(
+          aspectRatio: 2 / 3,
+          child: CachedNetworkImage(
+            imageUrl: book.cover ?? '',
+            fit: BoxFit.cover,
+            memCacheWidth: coverCacheWidth(cellWidth, context),
+            placeholder: (context, url) =>
+                ColoredBox(color: cs.surfaceContainerHighest),
+            errorWidget: (context, url, error) => ColoredBox(
+              color: cs.surfaceContainerHighest,
+              child: Icon(Icons.menu_book_outlined, color: cs.outline),
+            ),
+          ),
         ),
       ),
     );

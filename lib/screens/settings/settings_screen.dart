@@ -11,6 +11,7 @@ import 'widgets/about_section.dart';
 import 'widgets/language_section.dart';
 import 'widgets/theme_section.dart';
 import 'widgets/network_section.dart';
+import 'widgets/recommendation_section.dart';
 import 'widgets/section_header.dart';
 import 'widgets/settings_card.dart';
 
@@ -76,6 +77,9 @@ class SettingsScreen extends ConsumerWidget {
 
           // ── Theme ────────────────────────────────────────────────
           const ThemeSection(),
+
+          // ── Recommendations ──────────────────────────────────────
+          const RecommendationSection(),
 
           const SizedBox(height: 20),
 

@@ -457,6 +457,7 @@
   "recentAccount": "最近使用",
   "recommendationFourColumns": "推薦頁四列版面",
   "recommendationPseudoRandom": "推薦頁偽隨機排序",
+  "recommendationPseudoRandomDesc": "每天隨機打亂推薦順序，同一天內保持不變",
   "recommended": "推薦",
   "recommendedBooklists": "推薦書單",
   "refreshFailed": "刷新失敗",

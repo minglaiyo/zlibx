@@ -457,6 +457,7 @@
   "recentAccount": "Recent account",
   "recommendationFourColumns": "Four-column recommendations",
   "recommendationPseudoRandom": "Pseudo-random recommendations",
+  "recommendationPseudoRandomDesc": "Shuffles the recommendation order with a daily seed — stable within the same day.",
   "recommended": "Recommended",
   "recommendedBooklists": "Recommended booklists",
   "refreshFailed": "Failed to refresh",

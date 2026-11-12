@@ -457,6 +457,7 @@
   "recentAccount": "最近使用したアカウント",
   "recommendationFourColumns": "おすすめを4列で表示",
   "recommendationPseudoRandom": "おすすめをランダムに表示",
+  "recommendationPseudoRandomDesc": "おすすめの順序を毎日ランダムに並べ替えます（同日は固定）",
   "recommended": "おすすめ",
   "recommendedBooklists": "おすすめのブックリスト",
   "refreshFailed": "更新に失敗しました",

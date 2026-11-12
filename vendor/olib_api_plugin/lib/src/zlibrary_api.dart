@@ -567,19 +567,27 @@ abstract class ZLibraryApiBase {
     return _Raw(status: lastStatus, error: 'too many redirects');
   }
 
-  /// Form encoding with repeated keys for list values, matching how the
-  /// Python eapi clients send the same parameters.
+  /// Form encoding: scalars as `key=value`, lists as repeated
+  /// `key[]=value` — the PHP-style bracket convention the eapi server
+  /// actually parses (`languages[]=german&extensions[]=epub`, as the
+  /// official Android client and the working Python eapi clients send
+  /// it). A bare repeated key (`extensions=epub`) is silently dropped
+  /// by the search endpoint's array parser, so the search screen's
+  /// format / language filter did nothing and other formats stayed in
+  /// the results (device-reported 2026-11-12). The GET paths already
+  /// emit the same bracket form via `ListFormat.multiCompatible` (see
+  /// [_get] and the category search's `_encodeQuery`). The other
+  /// [_postForm] callers (login / rpc / send_code / verify_code) send
+  /// only scalar fields, so this changes nothing for them.
   static String _encodeForm(Map<String, dynamic> fields) {
     final parts = <String>[];
     for (final entry in fields.entries) {
       final value = entry.value;
       if (value == null) continue;
       if (value is Iterable) {
+        final key = Uri.encodeQueryComponent('${entry.key}[]');
         for (final item in value) {
-          parts.add(
-            '${Uri.encodeQueryComponent(entry.key)}='
-            '${Uri.encodeQueryComponent(item.toString())}',
-          );
+          parts.add('$key=${Uri.encodeQueryComponent(item.toString())}');
         }
       } else {
         parts.add(

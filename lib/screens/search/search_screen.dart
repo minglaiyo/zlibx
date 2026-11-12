@@ -27,6 +27,7 @@ import '../../constants/search_filters.dart';
 import '../../services/google_suggest_api.dart';
 import '../../providers/update_provider.dart';
 import '../../services/hive_service.dart';
+import '../../theme/app_metrics.dart';
 
 import '../../utils/app_log.dart';
 import '../../utils/app_snack.dart';
@@ -126,6 +127,22 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   bool _isListView = false;
   bool _isQueryEmpty = true;
   List<String> _recentSearches = [];
+
+  /// Pixels of accumulated scroll in one direction before the
+  /// header folds away (down) or back in (up).
+  static const double _scrollHideThreshold = 12;
+
+  /// Whether the source / mode / filter-chip header is shown. It
+  /// folds away (animated) while the user scrolls down through the
+  /// results and folds back in when scrolling back up; a fresh
+  /// search always brings it back (see [_runSearch]).
+  bool _headerVisible = true;
+
+  /// Accumulated scroll delta in the current direction, for the
+  /// fold threshold above. A single pixel's delta is noise
+  /// (overscroll, fling settle), so the direction must persist —
+  /// a slow drag still folds the header once it has moved this far.
+  double _scrollAccum = 0;
 
   // Debounced Google suggestions while typing.
   final _suggestApi = GoogleSuggestApi();
@@ -501,6 +518,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       return false;
     }
 
+    // A fresh search reloads the results from the top, so a
+    // scroll-folded header comes back with them (and the
+    // accumulated scroll direction starts over).
+    _scrollAccum = 0;
+    if (!_headerVisible) {
+      setState(() => _headerVisible = true);
+    }
+
     final query = _searchController.text.trim();
     if (_source != BookSource.zlibrary) {
       ref.read(externalSearchProvider.notifier).search(query, _source);
@@ -651,9 +676,39 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   /// 切换的 AnimatedSwitcher 过渡期间新旧两个列表才能同时在树上。
   /// 阈值与原 controller 监听一致；重复触发由各 provider 的
   /// isLoadingMore / totalPages 守卫兜底。
+  ///
+  /// 同时管搜索栏下方那组标题（来源 / 模式 / 筛选 chips）的收起：
+  /// 往下翻结果时收起来、往回翻时展开、回到顶部时一定展开。
+  /// 只认 ScrollUpdateNotification 的 delta（正 = 往下翻 = 收起，
+  /// 负 = 往回翻 = 展开），按方向累计到阈值才动，避免抖动；
+  /// 只有可见性真的变了才 setState，不在每个像素上重建。
   bool _onScrollNotification(ScrollNotification n) {
     if (n.metrics.pixels >= n.metrics.maxScrollExtent - 200) {
       _loadMore();
+    }
+    if (n.metrics.pixels <= 0) {
+      // Back at the top: the header always comes back.
+      _scrollAccum = 0;
+      if (!_headerVisible) {
+        setState(() => _headerVisible = true);
+      }
+      return false;
+    }
+    final delta = n is ScrollUpdateNotification ? n.scrollDelta : null;
+    if (delta != null && delta != 0) {
+      if (_scrollAccum == 0 || delta.sign == _scrollAccum.sign) {
+        _scrollAccum += delta;
+      } else {
+        _scrollAccum = delta;
+      }
+      if (_scrollAccum > _scrollHideThreshold && _headerVisible) {
+        _scrollAccum = 0;
+        setState(() => _headerVisible = false);
+      } else if (_scrollAccum < -_scrollHideThreshold &&
+          !_headerVisible) {
+        _scrollAccum = 0;
+        setState(() => _headerVisible = true);
+      }
     }
     return false;
   }
@@ -777,6 +832,20 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         ? '…'
         : '${searchState.totalPages}';
 
+    // Whether the results list is the branch on screen (the same
+    // condition as the Expanded child's final branch below): the
+    // header only folds away while results are shown. On the empty /
+    // suggestions / skeleton / error branches there is nothing to
+    // scroll, so the header is forced visible there instead of
+    // getting stuck folded away.
+    final showResults = !(_isQueryEmpty && _selectedCategoryId == null) &&
+        !_showSuggestions &&
+        hasSearched &&
+        !isLoading &&
+        !loginRequired &&
+        !(error != null && resultCount == 0) &&
+        resultCount != 0;
+
     return Scaffold(
       appBar: GradientAppBar(title: l10n.searchBooks),
       body: Column(
@@ -794,47 +863,76 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             onFilterTap: _openFilterDialogForCurrentLocale,
             onClear: _clearSearch,
           ),
-          SearchSourceSelector(
-            l10n: l10n,
-            selected: _source,
-            onSwitch: _switchSource,
+          // The source / mode / filter-chip header folds away
+          // (animated) while the user scrolls down through the
+          // results, and folds back in when scrolling back up —
+          // the search bar above stays put. The height animates
+          // (SizeTransition, top-anchored) plus a fade, on the
+          // standard 200 ms — the same AnimatedSwitcher idiom as
+          // the filter dialog's content-type row. The chips row is
+          // conditional, so the height is never hard-coded.
+          AnimatedSwitcher(
+            duration: AppMotion.standard,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: SizeTransition(
+                sizeFactor: animation,
+                axisAlignment: -1.0,
+                child: child,
+              ),
+            ),
+            child: _headerVisible || !showResults
+                ? Column(
+                    key: const ValueKey('search-header'),
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SearchSourceSelector(
+                        l10n: l10n,
+                        selected: _source,
+                        onSwitch: _switchSource,
+                      ),
+                      if (!isExternal)
+                        SearchModeSelector(
+                          l10n: l10n,
+                          mode: _mode,
+                          onSwitch: _switchMode,
+                        ),
+                      if (!isExternal && _activeFilterCount > 0)
+                        SearchActiveFilterChips(
+                          l10n: l10n,
+                          mode: _mode,
+                          languageNames: languageNames,
+                          orderNames: orderNames,
+                          extensionNames: extensionNames,
+                          contentTypeNames: {
+                            'book': l10n.contentTypeBook,
+                            'article': l10n.contentTypeArticle,
+                          },
+                          selectedLanguage: _selectedLanguage,
+                          selectedOrder: _selectedOrder,
+                          selectedExtension: _selectedExtension,
+                          selectedYearFrom: _selectedYearFrom,
+                          selectedYearTo: _selectedYearTo,
+                          exact: _mode == SearchMode.fulltext
+                              ? _fullTextExact
+                              : _generalExact,
+                          selectedCategoryName: _selectedCategoryName,
+                          selectedContentType: _selectedContentType,
+                          onResetLanguage: _resetLanguageFilter,
+                          onResetOrder: _resetOrderFilter,
+                          onResetExtension: _resetExtensionFilter,
+                          onResetYearFrom: _resetYearFromFilter,
+                          onResetYearTo: _resetYearToFilter,
+                          onResetExact: _resetExactFilter,
+                          onResetCategory: _resetCategoryFilter,
+                          onResetContentType: _resetContentTypeFilter,
+                        ),
+                    ],
+                  )
+                : const SizedBox.shrink(
+                    key: ValueKey('search-header-hidden'),
+                  ),
           ),
-          if (!isExternal)
-            SearchModeSelector(
-              l10n: l10n,
-              mode: _mode,
-              onSwitch: _switchMode,
-            ),
-          if (!isExternal && _activeFilterCount > 0)
-            SearchActiveFilterChips(
-              l10n: l10n,
-              mode: _mode,
-              languageNames: languageNames,
-              orderNames: orderNames,
-              extensionNames: extensionNames,
-              contentTypeNames: {
-                'book': l10n.contentTypeBook,
-                'article': l10n.contentTypeArticle,
-              },
-              selectedLanguage: _selectedLanguage,
-              selectedOrder: _selectedOrder,
-              selectedExtension: _selectedExtension,
-              selectedYearFrom: _selectedYearFrom,
-              selectedYearTo: _selectedYearTo,
-              exact: _mode == SearchMode.fulltext
-                  ? _fullTextExact
-                  : _generalExact,
-              selectedCategoryName: _selectedCategoryName,
-              selectedContentType: _selectedContentType,
-              onResetLanguage: _resetLanguageFilter,
-              onResetOrder: _resetOrderFilter,
-              onResetExtension: _resetExtensionFilter,
-              onResetYearFrom: _resetYearFromFilter,
-              onResetYearTo: _resetYearToFilter,
-              onResetExact: _resetExactFilter,
-              onResetCategory: _resetCategoryFilter,
-              onResetContentType: _resetContentTypeFilter,
-            ),
           Expanded(
             child: _isQueryEmpty && _selectedCategoryId == null
                 ? SearchEmptyQueryView(

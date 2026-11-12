@@ -456,6 +456,7 @@
   "readerSessionWriteFailed": "リーダーセッションの書き込みに失敗しました。再度ログインしてお試しください。",
   "recentAccount": "最近使用したアカウント",
   "recommendationFourColumns": "おすすめを4列で表示",
+  "recommendationPseudoRandom": "おすすめをランダムに表示",
   "recommended": "おすすめ",
   "recommendedBooklists": "おすすめのブックリスト",
   "refreshFailed": "更新に失敗しました",

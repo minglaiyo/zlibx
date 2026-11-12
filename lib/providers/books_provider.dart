@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/utils/diagnostics.dart';
+import 'package:zlibx/utils/seeded_shuffle.dart';
 import '../models/display_book.dart';
 import '../services/annas_archieve.dart';
 import '../services/book_detail_page_repository.dart';
@@ -13,6 +14,7 @@ import '../services/libgen_service.dart';
 import '../services/network_error.dart';
 import '../services/storage_service.dart';
 import 'auth_provider.dart';
+import 'settings_provider.dart';
 import 'zlibrary_provider.dart';
 
 // ── Search ──────────────────────────────────────────────────────────
@@ -846,13 +848,23 @@ final recommendedBooksProvider = FutureProvider<List<Book>>((ref) async {
 });
 
 /// 首页推荐：z站推荐，转为 DisplayBook 列表。
+///
+/// "推荐页伪随机排序"开启（pseudoRandomRecommendProvider，默认开）时，
+/// 用当天日期做种子的确定性洗牌打散站点固定排序：同一天内顺序稳定，
+/// 隔天换一副"牌"（见 seededShuffle/daySeed）。关闭时保持站点原序。
+/// 洗牌只作用于个性化推荐列表；HomeTab 翻页加载的 most-popular 分页
+/// （_pagedBooks）不在此列——那是按页取的榜单，重排会破坏页序。
 final homeRecommendedProvider = Provider<AsyncValue<List<DisplayBook>>>((ref) {
   final zlibAsync = ref.watch(recommendedBooksProvider);
+  final pseudoRandom = ref.watch(pseudoRandomRecommendProvider);
   // whenData keeps loading/error states as-is: the home screen keeps its
   // error/retry entry and keeps showing the previous data while a
   // revalidation after an account switch is in flight.
-  return zlibAsync
-      .whenData((books) => books.map((b) => b.toDisplay()).toList());
+  return zlibAsync.whenData((books) {
+    final display = books.map((b) => b.toDisplay()).toList();
+    if (!pseudoRandom) return display;
+    return seededShuffle(display, daySeed(DateTime.now()));
+  });
 });
 
 final recentBooksProvider = FutureProvider<List<Book>>((ref) async {

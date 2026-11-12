@@ -456,6 +456,7 @@
   "readerSessionWriteFailed": "리더 세션을 기록하지 못했습니다. 다시 로그인한 후 시도하세요.",
   "recentAccount": "최근 사용한 계정",
   "recommendationFourColumns": "추천 4열 레이아웃",
+  "recommendationPseudoRandom": "추천 의사 랜덤 정렬",
   "recommended": "추천",
   "recommendedBooklists": "추천 북리스트",
   "refreshFailed": "새로고침에 실패했습니다",

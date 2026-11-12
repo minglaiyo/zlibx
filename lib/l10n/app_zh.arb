@@ -456,6 +456,7 @@
   "readerSessionWriteFailed": "阅读器会话写入失败，请重新登录再试",
   "recentAccount": "最近使用",
   "recommendationFourColumns": "推荐页四列布局",
+  "recommendationPseudoRandom": "推荐页伪随机排序",
   "recommended": "推荐",
   "recommendedBooklists": "推荐书单",
   "refreshFailed": "刷新失败",

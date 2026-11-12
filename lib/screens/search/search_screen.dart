@@ -14,7 +14,6 @@ import 'widgets/search_bar_field.dart';
 import 'widgets/search_filter_dialog.dart';
 import 'widgets/search_results_view.dart';
 import 'widgets/search_skeleton_grid.dart';
-import 'widgets/search_suggestions_view.dart';
 import 'widgets/source_selector.dart';
 import '../reader/reader_screen.dart';
 import '../../widgets/empty_state.dart';
@@ -23,7 +22,6 @@ import '../../models/display_book.dart';
 import '../../routes/app_routes.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../constants/search_filters.dart';
-import '../../services/google_suggest_api.dart';
 import '../../providers/update_provider.dart';
 import '../../services/hive_service.dart';
 import '../../theme/app_metrics.dart';
@@ -67,9 +65,12 @@ class SearchScreen extends ConsumerStatefulWidget {
   ConsumerState<SearchScreen> createState() => _SearchScreenState();
 }
 
-/// Orchestrator only: owns the query state (controller, debounce,
-/// suggestions), the applied filters and the recent-searches store, and
-/// wires the zero-state presentation widgets from `widgets/` together.
+/// Orchestrator only: owns the query state (controller), the applied
+/// filters and the recent-searches store, and wires the zero-state
+/// presentation widgets from `widgets/` together. 搜索只在用户按下搜
+/// 索键时发起（[SearchBarField.onSubmitted]）；输入过程不发任何网络
+/// 请求（曾经的实时 Google 搜索建议已于 2026-11-13 移除——按键即联
+/// 网的行为与"按搜索键才搜"的预期冲突，慢链路上尤其打扰）。
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _searchController = TextEditingController();
 
@@ -143,12 +144,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   /// a slow drag still folds the header once it has moved this far.
   double _scrollAccum = 0;
 
-  // Debounced Google suggestions while typing.
-  final _suggestApi = GoogleSuggestApi();
-  Timer? _suggestDebounce;
-  List<String> _suggestions = [];
-  bool _suggestionsLoading = false;
-  bool _showSuggestions = false;
   String _lastSubmittedQuery = '';
 
   late BookSource _source;
@@ -217,57 +212,20 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   @override
   void dispose() {
-    _suggestDebounce?.cancel();
     _searchController.removeListener(_onQueryChanged);
     _searchController.dispose();
     super.dispose();
   }
 
-  // ── Suggestions ──────────────────────────────────────────────
+  // ── Query state ──────────────────────────────────────────────
 
   void _onQueryChanged() {
-    final text = _searchController.text.trim();
-    final isEmpty = text.isEmpty;
-    final showSuggestions = !isEmpty && text != _lastSubmittedQuery;
-    if (isEmpty != _isQueryEmpty || showSuggestions != _showSuggestions) {
-      setState(() {
-        _isQueryEmpty = isEmpty;
-        _showSuggestions = showSuggestions;
-      });
+    // 只跟踪空/非空（决定空态视图与建议/历史区）；搜索本身只在按
+    // 下搜索键时发起——输入过程不发任何网络请求。
+    final isEmpty = _searchController.text.trim().isEmpty;
+    if (isEmpty != _isQueryEmpty) {
+      setState(() => _isQueryEmpty = isEmpty);
     }
-    _scheduleSuggestions(text);
-  }
-
-  void _scheduleSuggestions(String query) {
-    _suggestDebounce?.cancel();
-    if (query.isEmpty || query == _lastSubmittedQuery) {
-      if (_suggestions.isNotEmpty || _suggestionsLoading) {
-        setState(() {
-          _suggestions = [];
-          _suggestionsLoading = false;
-        });
-      }
-      return;
-    }
-    _suggestDebounce = Timer(const Duration(milliseconds: 350), () {
-      _fetchSuggestions(query);
-    });
-  }
-
-  Future<void> _fetchSuggestions(String query) async {
-    if (!mounted) return;
-    if (query == _lastSubmittedQuery) return;
-    setState(() => _suggestionsLoading = true);
-    final results = await _suggestApi.fetchSuggestions(query);
-    if (!mounted) return;
-    if (_searchController.text.trim() != query ||
-        query == _lastSubmittedQuery) {
-      return;
-    }
-    setState(() {
-      _suggestions = results;
-      _suggestionsLoading = false;
-    });
   }
 
   // ── Recent searches ──────────────────────────────────────────
@@ -317,15 +275,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   void _clearRecentSearches() {
     unawaited(_saveRecentSearches([]));
-  }
-
-  /// Fill the field with a suggestion without searching (the trailing
-  /// arrow in the suggestions view).
-  void _insertSuggestion(String suggestion) {
-    _searchController.text = suggestion;
-    _searchController.selection = TextSelection.collapsed(
-      offset: suggestion.length,
-    );
   }
 
   void _clearSearch() {
@@ -504,9 +453,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     if (query.isEmpty && !canBrowseCategory) return;
     setState(() {
       _lastSubmittedQuery = query;
-      _suggestions = [];
-      _suggestionsLoading = false;
-      _showSuggestions = false;
     });
     if (_runSearch() && query.isNotEmpty) _rememberSearch(query);
   }
@@ -612,9 +558,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     if (source == _source) return;
     setState(() {
       _source = source;
-      _suggestions = [];
-      _suggestionsLoading = false;
-      _showSuggestions = false;
       _lastSubmittedQuery = '';
     });
     ref.read(searchProvider.notifier).reset();
@@ -645,9 +588,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       _selectedCategoryId = null;
       _selectedCategoryName = null;
       _selectedContentType = null;
-      _suggestions = [];
-      _suggestionsLoading = false;
-      _showSuggestions = false;
       _lastSubmittedQuery = '';
     });
     ref.read(searchProvider.notifier).reset();
@@ -834,11 +774,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     // Whether the results list is the branch on screen (the same
     // condition as the Expanded child's final branch below): the
     // header only folds away while results are shown. On the empty /
-    // suggestions / skeleton / error branches there is nothing to
-    // scroll, so the header is forced visible there instead of
-    // getting stuck folded away.
+    // skeleton / error branches there is nothing to scroll, so the
+    // header is forced visible there instead of getting stuck folded
+    // away.
     final showResults = !(_isQueryEmpty && _selectedCategoryId == null) &&
-        !_showSuggestions &&
         hasSearched &&
         !isLoading &&
         !loginRequired &&
@@ -942,15 +881,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       onSearch: _searchAgain,
                       onRemoveSearch: _removeRecentSearch,
                       onClearHistory: _clearRecentSearches,
-                    )
-                  : _showSuggestions
-                  ? SearchSuggestionsView(
-                      l10n: l10n,
-                      suggestions: _suggestions,
-                      isLoading: _suggestionsLoading,
-                      query: _searchController.text.trim(),
-                      onSearch: _searchAgain,
-                      onInsert: _insertSuggestion,
                     )
                   : !hasSearched
                   ? EmptyState(

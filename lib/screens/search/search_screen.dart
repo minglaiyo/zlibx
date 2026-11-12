@@ -11,7 +11,7 @@ import 'widgets/active_filter_chips.dart';
 import 'widgets/empty_query_view.dart';
 import 'widgets/search_mode_selector.dart';
 import 'widgets/search_bar_field.dart';
-import 'widgets/search_filter_page.dart';
+import 'widgets/search_filter_dialog.dart';
 import 'widgets/search_results_view.dart';
 import 'widgets/search_skeleton_grid.dart';
 import 'widgets/search_suggestions_view.dart';
@@ -33,10 +33,35 @@ import '../../utils/app_snack.dart';
 const _recentSearchesKey = 'recent_search_keywords';
 const _recentSearchesLimit = 12;
 
+/// Arguments for opening the search screen scoped to one category:
+/// the screen browses that category immediately (empty query). The
+/// category pages are gone — category lives only inside search now,
+/// so this is also what the book-detail category chips navigate to.
+class SearchScreenArgs {
+  final int categoryId;
+  final String categoryName;
+
+  const SearchScreenArgs({
+    required this.categoryId,
+    required this.categoryName,
+  });
+}
+
 class SearchScreen extends ConsumerStatefulWidget {
   final BookSource? initialSource;
 
-  const SearchScreen({super.key, this.initialSource});
+  /// Category to browse on open (empty query): set when the screen
+  /// is opened from a book-detail category chip or the category
+  /// picker. Null means a plain search screen.
+  final int? initialCategoryId;
+  final String? initialCategoryName;
+
+  const SearchScreen({
+    super.key,
+    this.initialSource,
+    this.initialCategoryId,
+    this.initialCategoryName,
+  });
 
   @override
   ConsumerState<SearchScreen> createState() => _SearchScreenState();
@@ -74,6 +99,19 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   /// General-search exact match (`e=1`); full-text has its own
   /// [_fullTextExact] below.
   bool _generalExact = false;
+
+  /// Category scope (general mode only): the picked category's id and
+  /// localized display name. Set from the filter dialog, the category
+  /// picker, or the constructor (detail-page chips). Null means the
+  /// search is unscoped. Cleared on mode switch — a category belongs
+  /// to the general search the way its sort default does.
+  int? _selectedCategoryId;
+  String? _selectedCategoryName;
+
+  /// Content-type filter inside a category (`book` / `article`);
+  /// null means any content type. Only meaningful while a category
+  /// is picked — clearing the category clears this too.
+  String? _selectedContentType;
 
   // ── z站 search mode: 通用 / 文章 / 全文检索. The full-text-only
   // extras (words/phrase match + exact flag) live below; their
@@ -126,7 +164,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             (_selectedExtension != 'all' ? 1 : 0) +
             (_selectedYearFrom != null ? 1 : 0) +
             (_selectedYearTo != null ? 1 : 0) +
-            (_generalExact ? 1 : 0);
+            (_generalExact ? 1 : 0) +
+            (_selectedCategoryId != null ? 1 : 0) +
+            (_selectedContentType != null ? 1 : 0);
     }
   }
 
@@ -134,6 +174,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   void initState() {
     super.initState();
     _source = widget.initialSource ?? BookSource.zlibrary;
+    _selectedCategoryId = widget.initialCategoryId;
+    _selectedCategoryName = widget.initialCategoryName;
     final savedSearches = HiveService.settingsBox.get(_recentSearchesKey);
     if (savedSearches is List) {
       final seen = <String>{};
@@ -147,6 +189,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           .toList();
     }
     _searchController.addListener(_onQueryChanged);
+    // Opened with a category (detail-page chip): browse it
+    // immediately — an empty query plus a category is a browse, not
+    // an empty page.
+    if (_selectedCategoryId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _runSearch();
+      });
+    }
   }
 
   @override
@@ -269,18 +319,30 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     ref.read(fulltextSearchProvider.notifier).reset();
     ref.read(articleSearchProvider.notifier).reset();
     ref.read(externalSearchProvider.notifier).reset();
+    // A picked category survives clearing the query: empty query
+    // plus a category is a browse, so go back to browsing it (the
+    // old category screen's clear-search did the same) — but only
+    // in the z站 general search, where a category means anything.
+    if (_selectedCategoryId != null &&
+        _source == BookSource.zlibrary &&
+        _mode == SearchMode.general) {
+      _runSearch();
+    }
   }
 
   // ── Filter handling ──────────────────────────────────────────
 
   /// A filter change re-runs the current query immediately so the
-  /// result set always reflects the visible filter chips.
+  /// result set always reflects the visible filter chips. Re-runs
+  /// only when there is something to run: a submitted query, or a
+  /// picked category (empty query plus a category is a browse).
   void _applyFilterChange() {
     setState(() {});
     final query = _searchController.text.trim();
-    if (query.isNotEmpty && query == _lastSubmittedQuery) {
-      _performSearch();
-    }
+    final canRun = query.isEmpty
+        ? _selectedCategoryId != null
+        : query == _lastSubmittedQuery;
+    if (canRun) _performSearch();
   }
 
   void _resetLanguageFilter() {
@@ -317,17 +379,36 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     _applyFilterChange();
   }
 
-  /// The filter button in the search bar: opens the full-screen
-  /// filter page with the current locale's display names (same maps
-  /// the chips mirror). Article mode passes empty language /
-  /// extension maps — their sections hide (the request carries none
-  /// of those filters). The page stages edits and only returns them
-  /// when 使用 is tapped; closing discards.
-  void _openFilterPageForCurrentLocale() {
+  /// Clear the category scope (and the content type, which only
+  /// exists inside a category). With an empty query the stale
+  /// category results are dropped too, so the empty-query view shows
+  /// again; with a submitted query the search re-runs unscoped.
+  void _resetCategoryFilter() {
+    _selectedCategoryId = null;
+    _selectedCategoryName = null;
+    _selectedContentType = null;
+    if (_searchController.text.trim().isEmpty) {
+      ref.read(searchProvider.notifier).reset();
+    }
+    _applyFilterChange();
+  }
+
+  void _resetContentTypeFilter() {
+    _selectedContentType = null;
+    _applyFilterChange();
+  }
+
+  /// The filter button in the search bar: opens the filter dialog
+  /// with the current locale's display names (same maps the chips
+  /// mirror). Article mode passes empty language / extension maps —
+  /// their rows hide (the request carries none of those filters).
+  /// The dialog stages edits and only returns them when 使用 is
+  /// tapped; closing discards.
+  void _openFilterDialogForCurrentLocale() {
     final locale = Localizations.localeOf(context).languageCode;
     final isArticle = _mode == SearchMode.article;
     unawaited(
-      _openFilterPage(
+      _openFilterDialog(
         isArticle
             ? const <String, String>{}
             : getLanguageDisplayNames(locale),
@@ -341,37 +422,38 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     );
   }
 
-  Future<void> _openFilterPage(
+  Future<void> _openFilterDialog(
     Map<String, String> languageNames,
     Map<String, String> orderNames,
     Map<String, String> extensionNames,
   ) async {
-    final result = await Navigator.of(context).push<SearchFilterResult>(
-      MaterialPageRoute<SearchFilterResult>(
-        builder: (context) => SearchFilterPage(
-          language: _selectedLanguage,
-          order: _selectedOrder,
-          extension: _selectedExtension,
-          yearFrom: _selectedYearFrom,
-          yearTo: _selectedYearTo,
-          exact: _mode == SearchMode.fulltext
-              ? _fullTextExact
-              : _generalExact,
-          matchType: _fullTextMatchType,
-          contentType: null,
-          languageNames: languageNames,
-          orderNames: orderNames,
-          extensionNames: extensionNames,
-          contentTypeNames: const <String, String>{},
-          defaultOrder: _mode == SearchMode.fulltext ? 'popular' : 'default',
-          showExact: _mode != SearchMode.article,
-          showMatchType: _mode == SearchMode.fulltext,
-          showYears: _mode != SearchMode.article,
-          showLanguage: _mode != SearchMode.article,
-          showSort: true,
-          showExtension: _mode != SearchMode.article,
-          showContentType: false,
-        ),
+    final l10n = AppLocalizations.of(context)!;
+    final result = await showDialog<SearchFilterResult>(
+      context: context,
+      builder: (context) => SearchFilterDialog(
+        mode: _mode,
+        language: _selectedLanguage,
+        order: _selectedOrder,
+        extension: _selectedExtension,
+        yearFrom: _selectedYearFrom,
+        yearTo: _selectedYearTo,
+        exact: _mode == SearchMode.fulltext
+            ? _fullTextExact
+            : _generalExact,
+        matchType: _fullTextMatchType,
+        contentType: _selectedContentType,
+        categoryId: _selectedCategoryId,
+        categoryName: _selectedCategoryName,
+        languageNames: languageNames,
+        orderNames: orderNames,
+        extensionNames: extensionNames,
+        contentTypeNames: {
+          'book': l10n.contentTypeBook,
+          'article': l10n.contentTypeArticle,
+        },
+        defaultOrder: _mode == SearchMode.fulltext ? 'popular' : 'default',
+        showCategory:
+            _source == BookSource.zlibrary && _mode == SearchMode.general,
       ),
     );
     if (result == null || !mounted) return;
@@ -386,21 +468,60 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     } else {
       _generalExact = result.exact;
     }
+    _selectedCategoryId = result.categoryId;
+    _selectedCategoryName = result.categoryName;
+    _selectedContentType = result.contentType;
     _applyFilterChange();
+  }
+
+  /// The "Browse Categories" row of the empty-query view: the
+  /// searchable category picker. Picking one scopes the search to
+  /// it and browses it immediately (empty query plus a category is
+  /// a browse); dismissing picks nothing. A category only exists in
+  /// the z站 general search, so picking one comes back to it first
+  /// (both switches reset their providers; the category is set
+  /// after them because a mode switch clears it).
+  Future<void> _openCategoryPicker() async {
+    final picked = await showDialog<PickedCategory?>(
+      context: context,
+      builder: (context) => CategoryPickerDialog(
+        currentId: _selectedCategoryId,
+        showAllOption: false,
+      ),
+    );
+    if (picked == null || picked.id == null || !mounted) return;
+    if (_source != BookSource.zlibrary) {
+      _switchSource(BookSource.zlibrary);
+    }
+    if (_mode != SearchMode.general) _switchMode(SearchMode.general);
+    setState(() {
+      _selectedCategoryId = picked.id;
+      _selectedCategoryName = picked.name;
+      // A newly picked category starts unfiltered.
+      _selectedContentType = null;
+    });
+    _runSearch();
   }
 
   // ── Search execution ─────────────────────────────────────────
 
   void _performSearch() {
     final query = _searchController.text.trim();
-    if (query.isEmpty) return;
+    // An empty query is a browse, not a no-op, when a category is
+    // picked — but it is never remembered as a recent search, and it
+    // only browses in the z站 general search (a category means
+    // nothing on another source or mode).
+    final canBrowseCategory = _selectedCategoryId != null &&
+        _source == BookSource.zlibrary &&
+        _mode == SearchMode.general;
+    if (query.isEmpty && !canBrowseCategory) return;
     setState(() {
       _lastSubmittedQuery = query;
       _suggestions = [];
       _suggestionsLoading = false;
       _showSuggestions = false;
     });
-    if (_runSearch()) _rememberSearch(query);
+    if (_runSearch() && query.isNotEmpty) _rememberSearch(query);
   }
 
   bool _runSearch() {
@@ -445,6 +566,33 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       return true;
     }
 
+    // A picked category scopes the general search to the category
+    // HTML routes (browse when the query is empty, in-category
+    // search otherwise) with the same filters the old category
+    // screen passed; without one it is the plain eapi search.
+    if (_selectedCategoryId != null) {
+      ref.read(searchProvider.notifier).search(
+        SearchParams(
+          query: query,
+          yearFrom: _selectedYearFrom,
+          yearTo: _selectedYearTo,
+          languages: searchLanguages[_selectedLanguage] != null
+              ? [searchLanguages[_selectedLanguage]!]
+              : null,
+          extensions: searchExtensions[_selectedExtension] != null
+              ? [searchExtensions[_selectedExtension]!]
+              : null,
+          order: searchOrders[_selectedOrder],
+          exact: _generalExact,
+          categoryId: _selectedCategoryId,
+          contentTypes: _selectedContentType == null
+              ? null
+              : [_selectedContentType!],
+        ),
+      );
+      return true;
+    }
+
     ref
         .read(searchProvider.notifier)
         .search(
@@ -478,18 +626,30 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     ref.read(fulltextSearchProvider.notifier).reset();
     ref.read(articleSearchProvider.notifier).reset();
     ref.read(externalSearchProvider.notifier).reset();
-    if (_searchController.text.trim().isNotEmpty) _performSearch();
+    if (_searchController.text.trim().isNotEmpty) {
+      _performSearch();
+    } else if (_selectedCategoryId != null &&
+        source == BookSource.zlibrary) {
+      // Back to z站 with a category picked: browse it again (the
+      // reset above dropped the results).
+      _runSearch();
+    }
   }
 
   /// Switch between the z站 search modes (通用 / 文章 / 全文检索). The
   /// sort selection resets to the new mode's default ('popular' for
   /// full-text, 'default' for general and article) so a sort value
   /// from one mode can never leak into the other endpoint's request.
+  /// The category scope clears with it — a category belongs to the
+  /// general search, the way its sort default does.
   void _switchMode(SearchMode mode) {
     if (mode == _mode) return;
     setState(() {
       _mode = mode;
       _selectedOrder = mode == SearchMode.fulltext ? 'popular' : 'default';
+      _selectedCategoryId = null;
+      _selectedCategoryName = null;
+      _selectedContentType = null;
       _suggestions = [];
       _suggestionsLoading = false;
       _showSuggestions = false;
@@ -528,7 +688,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   void _openBook(DisplayBook book) {
-    AppRoutes.openBookDetailForDisplayBook(context, book);
+    // A removed book from a category list keeps its download blocked
+    // on the detail page (the category pages carry the per-card
+    // unavailability; plain search results have none).
+    final zBook = book.asZLibBook;
+    final unavailableReason = zBook == null
+        ? null
+        : ref.read(searchProvider).unavailableReasons[zBook.id];
+    AppRoutes.openBookDetailForDisplayBook(
+      context,
+      book,
+      unavailableReason: unavailableReason,
+    );
   }
 
   void _openFullTextHit(FullTextHit hit) {
@@ -631,6 +802,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         ? '${fulltextState.totalPages}'
         : isArticleMode
         ? '${articleState.totalPages}'
+        : searchState.totalPagesUnknown
+        ? '…'
         : '${searchState.totalPages}';
 
     return Scaffold(
@@ -647,7 +820,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 ? l10n.fullTextSearchHint
                 : null,
             onSubmitted: _performSearch,
-            onFilterTap: _openFilterPageForCurrentLocale,
+            onFilterTap: _openFilterDialogForCurrentLocale,
             onClear: _clearSearch,
           ),
           SearchSourceSelector(
@@ -668,6 +841,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               languageNames: languageNames,
               orderNames: orderNames,
               extensionNames: extensionNames,
+              contentTypeNames: {
+                'book': l10n.contentTypeBook,
+                'article': l10n.contentTypeArticle,
+              },
               selectedLanguage: _selectedLanguage,
               selectedOrder: _selectedOrder,
               selectedExtension: _selectedExtension,
@@ -676,23 +853,26 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               exact: _mode == SearchMode.fulltext
                   ? _fullTextExact
                   : _generalExact,
+              selectedCategoryName: _selectedCategoryName,
+              selectedContentType: _selectedContentType,
               onResetLanguage: _resetLanguageFilter,
               onResetOrder: _resetOrderFilter,
               onResetExtension: _resetExtensionFilter,
               onResetYearFrom: _resetYearFromFilter,
               onResetYearTo: _resetYearToFilter,
               onResetExact: _resetExactFilter,
+              onResetCategory: _resetCategoryFilter,
+              onResetContentType: _resetContentTypeFilter,
             ),
           Expanded(
-            child: _isQueryEmpty
+            child: _isQueryEmpty && _selectedCategoryId == null
                 ? SearchEmptyQueryView(
                     l10n: l10n,
                     recentSearches: _recentSearches,
                     onSearch: _searchAgain,
                     onRemoveSearch: _removeRecentSearch,
                     onClearHistory: _clearRecentSearches,
-                    onBrowseCategories: () =>
-                        AppRoutes.openCategories(context),
+                    onBrowseCategories: _openCategoryPicker,
                   )
                 : _showSuggestions
                 ? SearchSuggestionsView(

@@ -11,7 +11,6 @@ import 'package:zlibx/screens/book_detail/book_detail_args.dart';
 const _routesWithArgs = <String>[
   AppRoutes.bookDetail,
   AppRoutes.booklistDetail,
-  AppRoutes.categoryBooks,
   AppRoutes.bookComments,
   AppRoutes.userProfile,
   AppRoutes.similarBooks,

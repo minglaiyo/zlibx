@@ -18,18 +18,23 @@ class SearchActiveFilterChips extends StatelessWidget {
     required this.languageNames,
     required this.orderNames,
     required this.extensionNames,
+    required this.contentTypeNames,
     required this.selectedLanguage,
     required this.selectedOrder,
     required this.selectedExtension,
     required this.selectedYearFrom,
     required this.selectedYearTo,
     required this.exact,
+    required this.selectedCategoryName,
+    required this.selectedContentType,
     required this.onResetLanguage,
     required this.onResetOrder,
     required this.onResetExtension,
     required this.onResetYearFrom,
     required this.onResetYearTo,
     required this.onResetExact,
+    required this.onResetCategory,
+    required this.onResetContentType,
   });
 
   final AppLocalizations l10n;
@@ -37,6 +42,7 @@ class SearchActiveFilterChips extends StatelessWidget {
   final Map<String, String> languageNames;
   final Map<String, String> orderNames;
   final Map<String, String> extensionNames;
+  final Map<String, String> contentTypeNames;
   final String selectedLanguage;
   final String selectedOrder;
   final String selectedExtension;
@@ -46,12 +52,22 @@ class SearchActiveFilterChips extends StatelessWidget {
   /// Exact-match flag of the current mode (general `e=1` or the
   /// full-text exact flag).
   final bool exact;
+
+  /// Picked category's localized display name; null means no
+  /// category filter (general mode only).
+  final String? selectedCategoryName;
+
+  /// Content-type filter inside a category (`book` / `article`);
+  /// null means any content type.
+  final String? selectedContentType;
   final VoidCallback onResetLanguage;
   final VoidCallback onResetOrder;
   final VoidCallback onResetExtension;
   final VoidCallback onResetYearFrom;
   final VoidCallback onResetYearTo;
   final VoidCallback onResetExact;
+  final VoidCallback onResetCategory;
+  final VoidCallback onResetContentType;
 
   /// The sort key that means "no sort filter" in the current mode —
   /// same default the badge in the search screen counts against.
@@ -94,6 +110,18 @@ class SearchActiveFilterChips extends StatelessWidget {
     // Article search sends only the query and sort, so only the sort
     // chip can appear there — the other filters are never applied.
     if (mode != SearchMode.article) {
+      if (selectedCategoryName != null) {
+        addChip(
+          '${l10n.category}: $selectedCategoryName',
+          onResetCategory,
+        );
+      }
+      if (selectedContentType != null) {
+        addChip(
+          '${l10n.contentType}: ${contentTypeNames[selectedContentType]}',
+          onResetContentType,
+        );
+      }
       if (selectedLanguage != 'all') {
         addChip(
           '${l10n.language}: ${languageNames[selectedLanguage]}',

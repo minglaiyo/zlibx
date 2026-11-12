@@ -10,8 +10,6 @@ import '../screens/account/user_profile_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/book_detail/book_detail_args.dart';
 import '../screens/book_detail/book_detail_screen.dart';
-import '../screens/categories/category_books_screen.dart';
-import '../screens/categories/category_tree_screen.dart';
 import '../screens/comments/book_comments_screen.dart';
 import '../screens/favorites/favorites_screen.dart';
 import '../screens/home/home_screen.dart';
@@ -27,8 +25,6 @@ class AppRoutes {
   static const String login = '/login';
   static const String home = '/home';
   static const String search = '/search';
-  static const String categories = '/categories';
-  static const String categoryBooks = '/category-books';
   static const String bookDetail = '/book-detail';
   static const String favorites = '/favorites';
   static const String history = '/history';
@@ -91,12 +87,6 @@ class AppRoutes {
     BooklistDetailArgs args,
   ) => Navigator.of(context).pushNamed<T>(booklistDetail, arguments: args);
 
-  /// One category's books page.
-  static Future<T?> openCategoryBooks<T extends Object?>(
-    BuildContext context,
-    CategoryBooksArgs args,
-  ) => Navigator.of(context).pushNamed<T>(categoryBooks, arguments: args);
-
   /// A book's comments page.
   static Future<T?> openBookComments<T extends Object?>(
     BuildContext context,
@@ -140,11 +130,14 @@ class AppRoutes {
   static Future<T?> openSearch<T extends Object?>(BuildContext context) =>
       Navigator.of(context).pushNamed<T>(search);
 
-  /// The category tree page.
-  static Future<T?> openCategories<T extends Object?>(
+  /// The search page, scoped to one category: it opens browsing that
+  /// category immediately. The category pages are gone — category
+  /// lives only inside search now, so this is what the book-detail
+  /// category chips navigate to.
+  static Future<T?> openSearchWithCategory<T extends Object?>(
     BuildContext context,
-  ) =>
-      Navigator.of(context).pushNamed<T>(categories);
+    SearchScreenArgs args,
+  ) => Navigator.of(context).pushNamed<T>(search, arguments: args);
 
   /// The favorites page.
   static Future<T?> openFavorites<T extends Object?>(BuildContext context) =>
@@ -215,14 +208,15 @@ Map<String, WidgetBuilder> buildAppRoutes() {
     AppRoutes.splash: (context) => const SplashScreen(),
     AppRoutes.login: (context) => const LoginScreen(),
     AppRoutes.home: (context) => const HomeScreen(),
-    AppRoutes.search: (context) => const SearchScreen(),
-    AppRoutes.categories: (context) => const CategoryTreeScreen(),
-    AppRoutes.categoryBooks: (context) {
+    AppRoutes.search: (context) {
       final args = ModalRoute.of(context)!.settings.arguments;
-      if (args is CategoryBooksArgs) {
-        return CategoryBooksScreen(args: args);
+      if (args is SearchScreenArgs) {
+        return SearchScreen(
+          initialCategoryId: args.categoryId,
+          initialCategoryName: args.categoryName,
+        );
       }
-      return const _MissingRouteArgsScreen();
+      return const SearchScreen();
     },
     AppRoutes.bookDetail: (context) {
       final raw = ModalRoute.of(context)!.settings.arguments;

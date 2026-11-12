@@ -5,8 +5,8 @@ import '../../../core/book_description.dart';
 import '../../../models/display_book.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../l10n/book_categories.dart';
-import '../../../providers/category_books_provider.dart';
 import '../../../routes/app_routes.dart';
+import '../../search/search_screen.dart';
 import '../../similar/similar_books_screen.dart';
 import '../../comments/book_comments_screen.dart';
 import 'add_to_booklist_dialog.dart';
@@ -44,8 +44,8 @@ class BookInfoSection extends StatelessWidget {
       // World history}`): one chip per category, localized to the app
       // language (zh / zh_Hant via the category table; other locales show
       // the English name from the API). A chip with a parsed id opens
-      // that category's book list; a plain name without an id stays
-      // display-only.
+      // the search scoped to that category; a plain name without an id
+      // stays display-only.
       ...parseBookCategories(book.categories).map((c) {
         final locale = Localizations.localeOf(context);
         final tag = BookDetailTag(
@@ -56,9 +56,9 @@ class BookInfoSection extends StatelessWidget {
         if (id == null) return tag;
         return InkWell(
           borderRadius: BorderRadius.circular(6),
-          onTap: () => AppRoutes.openCategoryBooks(
+          onTap: () => AppRoutes.openSearchWithCategory(
             context,
-            CategoryBooksArgs(
+            SearchScreenArgs(
               categoryId: id,
               categoryName: localizedBookCategoryName(c, locale),
             ),

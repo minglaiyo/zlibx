@@ -168,50 +168,6 @@ Map<String, String> getFulltextOrderDisplayNames(String locale) {
   };
 }
 
-/// Sort order options for category browsing ONLY. The site's
-/// category pages share the full-text sort's 8 values — same set as
-/// [fulltextSearchOrders], kept as its own constant so the two
-/// screens never couple: the general-search UI only ever offers
-/// [searchOrders]. Site semantics, do not swap: `titleA` is A–Z,
-/// `title` is Z–A.
-const categorySearchOrders = {
-  'popular': 'popular',
-  'bestmatch': 'bestmatch',
-  'date': 'date',
-  'titleA': 'titleA',
-  'title': 'title',
-  'year': 'year',
-  'filesize': 'filesize',
-  'filesizeA': 'filesizeA',
-};
-
-/// Localized category sort order names (same labels as the full-text
-/// sort — same 8 site values).
-Map<String, String> getCategoryOrderDisplayNames(String locale) {
-  if (locale.startsWith('zh')) {
-    return {
-      'popular': '最受欢迎',
-      'bestmatch': '最佳吻合',
-      'date': '最近添加',
-      'titleA': '按名称 (A-Z)',
-      'title': '按名称 (Z-A)',
-      'year': '按年份',
-      'filesize': '文件大小↓',
-      'filesizeA': '文件大小↑',
-    };
-  }
-  return {
-    'popular': 'Most Popular',
-    'bestmatch': 'Best Match',
-    'date': 'Recently Added',
-    'titleA': 'Title (A-Z)',
-    'title': 'Title (Z-A)',
-    'year': 'Year',
-    'filesize': 'File Size ↓',
-    'filesizeA': 'File Size ↑',
-  };
-}
-
 /// Localized sort order names
 Map<String, String> getOrderDisplayNames(String locale) {
   if (locale.startsWith('zh')) {

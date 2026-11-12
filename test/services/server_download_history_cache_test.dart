@@ -6,9 +6,8 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/services/hive_service.dart';
 import 'package:zlibx/services/storage_service.dart';
 
-/// The server download-history cache (`server_download_history_
-/// <accountId>`) is what makes the second open of the download
-/// history paint instantly: the notifier shows the last known list
+/// The server download-history cache (`server_download_history_<accountId>`)
+/// is what makes the second open of the download history paint instantly: the notifier shows the last known list
 /// first, then refreshes silently. These tests drive the
 /// explicit-account entry points so they do not need a signed-in
 /// account (secure storage is unavailable in tests); the no-account

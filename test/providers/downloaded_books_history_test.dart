@@ -217,10 +217,11 @@ void main() {
     expect(books[2].author, isNull);
     expect(books[2].title, '书乙');
     // dstats 翻到空页才停；eapi 按 total_pages 停。
-    // （2026-11-13 窗口化预取：page 1 之后第 2/3 页并行发出，第 3 页
-    // 空页终止后再把在途的第 4/5 页丢弃——抓取日志因此多两页，
-    // 上屏内容与旧串行版完全一致。）
-    expect(api.dstatsSeenPages, [1, 2, 3, 4, 5]);
+    // （2026-11-13 窗口化预取：topUp 按"在途数 < 窗口"补满——消费
+    // 第 1 页后一次发 2/3/4，消费第 2 页后补发 5/6；第 3 页空页终止
+    // 后把在途的 4/5/6 丢弃。抓取日志因此多三页，上屏内容与旧串行
+    // 版完全一致，3 页历史的墙时间从 3×RTT 降到 2×RTT。）
+    expect(api.dstatsSeenPages, [1, 2, 3, 4, 5, 6]);
     expect(api.metaSeenPages, [1]);
   });
 
@@ -242,9 +243,9 @@ void main() {
 
     final books = container.read(downloadedBooksProvider).valueOrNull!;
     expect(books.length, 2);
-    // 第 2 页整页都是已见记录 → 终止。窗口化预取会顺手把还在窗口里
-    // 的第 3 页 speculative 抓掉（结果丢弃），但不会消费它之后的页。
-    expect(api.dstatsSeenPages, [1, 2, 3]);
+    // 第 2 页整页都是已见记录 → 终止。窗口化预取会把窗口内的第 3/4
+    // 页 speculative 抓掉（结果丢弃），但不消费它们之后的页。
+    expect(api.dstatsSeenPages, [1, 2, 3, 4]);
   });
 
   test('eapi 元数据失败容忍：dstats 记录照常显示（无作者/封面）', () async {
@@ -294,14 +295,15 @@ void main() {
     expect(container.read(downloadedBooksProvider).valueOrNull?.length, 1);
 
     // 另一台设备刚下了一本书：服务端 dstats 变长，页面打开 / 下拉触发
-    // 的 silent 对账把它补进来（新记录在前）。
+    // 的 silent 对账把它补进来（新记录在前）。force: true——两次对账
+    // 背靠背，不 force 会被静默 TTL 正确拦下（那正是 TTL 的本职）。
     api.dstatsPages![1] = [
       _record(2, '书二', DateTime(2026, 11, 11, 20, 0)),
       _record(1, '书一', DateTime(2026, 11, 10, 10, 0)),
     ];
     await container
         .read(downloadedBooksProvider.notifier)
-        .loadDownloadedBooks(silent: true);
+        .loadDownloadedBooks(silent: true, force: true);
     expect(
       container.read(downloadedBooksProvider).valueOrNull!.map((b) => b.id),
       [2, 1],
@@ -311,7 +313,7 @@ void main() {
     api.failDstats = true;
     await container
         .read(downloadedBooksProvider.notifier)
-        .loadDownloadedBooks(silent: true);
+        .loadDownloadedBooks(silent: true, force: true);
     final state = container.read(downloadedBooksProvider);
     expect(state.valueOrNull!.map((b) => b.id), [2, 1]);
   });
@@ -545,10 +547,11 @@ void main() {
 
     container.read(downloadedBooksProvider);
     await _settle();
-    // 首次完整拉取：page 1 之后窗口 2→3，speculative 第 2/3 页并行
-    // 发出（第 3 页在终点后丢弃）。3 页 = 一个单页历史的全部抓取。
+    // 首次完整拉取：消费第 1 页后 topUp 按"在途数 < 窗口(3)"一次发
+    // 出 2/3/4（第 2 页空页终止后在途的 3/4 丢弃）。4 页 = 一个单页
+    // 历史的全部抓取。
     final callsAfterFirstLoad = api.dstatsCalls;
-    expect(callsAfterFirstLoad, 3);
+    expect(callsAfterFirstLoad, 4);
 
     // TTL 之内：静默对账直接跳过，一页都不抓。
     await container
@@ -595,9 +598,6 @@ void main() {
     // 10 行全来要封面：只有 4 个在途，其余排队。
     expect(maxInFlight, 4);
 
-    for (final gate in List.of(gates.values)) {
-      gate.complete();
-    }
     // 放行一批，下一批排队顶上并建新 gate：循环放行直到队列消化完。
     while (gates.isNotEmpty) {
       final current = List.of(gates.values);

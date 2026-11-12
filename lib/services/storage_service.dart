@@ -493,16 +493,22 @@ class StorageService {
     if (pagePath.isEmpty || fields.isEmpty) return;
     try {
       final merged = <String, dynamic>{};
-      final raw = HiveService.settingsBox.get(_keyBookDetailExtras);
-      if (raw is String && raw.isNotEmpty) {
-        final decoded = jsonDecode(raw);
-        if (decoded is Map) {
-          decoded.forEach((key, value) {
-            if (value is Map) {
-              merged['$key'] = Map<String, dynamic>.from(value);
-            }
-          });
+      // 已有 blob 的解码单独容错：损坏时丢掉旧内容、用本条重建（修
+      // 复性写入），而不是让整次保存失败。
+      try {
+        final raw = HiveService.settingsBox.get(_keyBookDetailExtras);
+        if (raw is String && raw.isNotEmpty) {
+          final decoded = jsonDecode(raw);
+          if (decoded is Map) {
+            decoded.forEach((key, value) {
+              if (value is Map) {
+                merged['$key'] = Map<String, dynamic>.from(value);
+              }
+            });
+          }
         }
+      } catch (_) {
+        // fall through to the repair write below.
       }
       merged[pagePath] = {
         ...fields,

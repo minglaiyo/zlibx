@@ -443,8 +443,18 @@ final searchProvider =
 /// （TTL 惯例同 BooklistHtmlCache）。
 const _bookDetailExtrasTtl = Duration(days: 7);
 
-/// 缓存键：详情页的 PATH（每版本稳定；去掉 query）。
-String _detailExtrasKey(String href) => Uri.tryParse(href)?.path ?? href;
+/// 缓存键：详情页的 PATH（每版本稳定）。手动剥掉 query/fragment，
+/// 不走 Uri.parse——它会把这个未编码的中文路径百分号编码，同一个
+/// href 的键就因写法不同而漂移（CI 2026-11-13：测试夹具的中文 slug
+/// 被编码成 %E5%90%88…，缓存全 miss）。
+String _detailExtrasKey(String href) {
+  final query = href.indexOf('?');
+  final fragment = href.indexOf('#');
+  var end = href.length;
+  if (query >= 0 && query < end) end = query;
+  if (fragment >= 0 && fragment < end) end = fragment;
+  return href.substring(0, end);
+}
 
 bool _extrasFresh(Map<String, dynamic> extras) {
   final fetchedAt = extras['fetchedAt'];

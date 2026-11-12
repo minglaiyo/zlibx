@@ -10,13 +10,14 @@ import 'package:zlibx/services/storage_service.dart';
 /// 几百 KB 的 HTML 附加抓取；未命中/过期时 HTML 与 eapi 并行发起；
 /// HTML 失败回退过期缓存。全部合成数据，无网络。
 class _FakeDetailApi implements ZLibraryApi {
-  _FakeDetailApi({this.extras, this.extrasError});
-
   /// fetchBookDetailExtras 的返回（null 时失败）。
   BookDetailExtras? extras;
 
   /// 置为非空后 fetchBookDetailExtras 返回该错误。
   String? extrasError;
+
+  /// 置为 true 后 getBookInfo 返回失败（eapi 失败传播用）。
+  bool failDetail = false;
 
   int detailCalls = 0;
   int extrasCalls = 0;
@@ -36,6 +37,7 @@ class _FakeDetailApi implements ZLibraryApi {
   }) async {
     detailCalls++;
     extrasCallsWhenDetailStarted = extrasCalls;
+    if (failDetail) return ApiResponse.fail('detail boom');
     return ApiResponse.ok(_detailBook());
   }
 
@@ -229,7 +231,7 @@ void main() {
   });
 
   test('eapi 失败：照旧抛出（页面显示错误 + 重试）', () async {
-    final api = _FakeDetailApi()..detailBook = null;
+    final api = _FakeDetailApi()..failDetail = true;
     final storage = _FakeStorage();
     final container = _container(api, storage);
 

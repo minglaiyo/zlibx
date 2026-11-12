@@ -91,6 +91,11 @@ class _FakeAdapter implements HttpClientAdapter {
   /// the requested query.
   bool echoWrongQueryOnce = false;
 
+  /// Which search call [echoWrongQueryOnce] applies to (1-based).
+  /// Tests that need the echo to break on a LATER call (e.g. a
+  /// reused token going stale on the second search) point it there.
+  int wrongQueryOnCall = 1;
+
   /// The search always answers with a page whose form echoes an
   /// empty query (a default page carrying no query at all).
   bool echoEmptyQuery = false;
@@ -159,7 +164,7 @@ class _FakeAdapter implements HttpClientAdapter {
     final String echoed;
     if (echoEmptyQuery) {
       echoed = '';
-    } else if (echoWrongQueryOnce && searchCalls == 1) {
+    } else if (echoWrongQueryOnce && searchCalls == wrongQueryOnCall) {
       echoed = 'a different query';
     } else {
       echoed = requested;
@@ -182,6 +187,15 @@ class _FakeAdapter implements HttpClientAdapter {
 
 ZLibraryApi _apiWith(_FakeAdapter adapter) {
   return ZLibraryApi(dio: Dio()..httpClientAdapter = adapter);
+}
+
+/// A test API whose token reuse window is zero: every search must
+/// refetch the token, whatever the real clock says.
+class _ZeroWindowApi extends ZLibraryApi {
+  _ZeroWindowApi({required super.dio});
+
+  @override
+  Duration get fulltextTokenMaxAge => Duration.zero;
 }
 
 Uri _searchUri(_FakeAdapter adapter) {
@@ -259,17 +273,50 @@ void main() {
       expect(uri.queryParameters['q'], 'x' * 200);
     });
 
-    // INTENDED BEHAVIOR CHANGE (2026-11-11 full-text "fixed set"
-    // fix): every search fetches a fresh token — a token cached
-    // from an earlier search can go stale without the server saying
-    // so, and the app then paints the server's default listing.
-    test('fetches a fresh token for every search', () async {
+    // INTENDED BEHAVIOR CHANGE (2026-11-13 token reuse window): a
+    // token fetched within `fulltextTokenMaxAge` (5 minutes) is
+    // REUSED across searches — back-to-back searches cost one token
+    // page total, not one per search. Beyond the window the token is
+    // refetched; the stale-token retry still nulls it and refetches.
+    // The old rule (fresh token for EVERY search) doubled the round
+    // trips of every paged browse.
+    test('reuses a fresh cached token across back-to-back searches',
+        () async {
       final adapter = _FakeAdapter();
       final api = _apiWith(adapter);
       await api.searchFullText(query: 'first');
       await api.searchFullText(query: 'second');
+      expect(adapter.tokenCalls, 1);
+      expect(adapter.searchCalls, 2);
+    });
+
+    test('refetches the token beyond the reuse window', () async {
+      final adapter = _FakeAdapter();
+      final api = _ZeroWindowApi(dio: Dio()..httpClientAdapter = adapter);
+      await api.searchFullText(query: 'first');
+      await api.searchFullText(query: 'second');
+      // Zero window: every search pays its own token fetch.
       expect(adapter.tokenCalls, 2);
       expect(adapter.searchCalls, 2);
+    });
+
+    test('a reused token that went stale retries with a fresh one',
+        () async {
+      final adapter = _FakeAdapter()
+        ..echoWrongQueryOnce = true
+        // The SECOND search's results page echoes the wrong query —
+        // the stale-token default listing — while the first search
+        // (which fetched the token) echoed correctly.
+        ..wrongQueryOnCall = 2;
+      final api = _apiWith(adapter);
+      final first = await api.searchFullText(query: 'first');
+      expect(first.success, isTrue);
+      final second = await api.searchFullText(query: 'second');
+      expect(second.success, isTrue);
+      // search 1: token fetch + search (echo wrong) → stale failure
+      // → retry: fresh token fetch + search.
+      expect(adapter.tokenCalls, 2);
+      expect(adapter.searchCalls, 3);
     });
 
     test('fails with the token error when the page carries none', () async {

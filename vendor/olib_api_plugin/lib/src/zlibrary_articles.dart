@@ -85,7 +85,13 @@ mixin ZLibraryArticles on ZLibraryApiBase {
       return ApiResponse.fail('article search answered a different query',
           statusCode: status);
     }
-    final pageResult = parseArticleSearchPage(html, baseUrl: _base);
+    // Parse on a background isolate: the results page is a large
+    // HTML document and the parse is pure work on a string; the
+    // result is plain data (sendable), so the main isolate never
+    // blocks on it.
+    final pageResult = await Isolate.run(
+      () => parseArticleSearchPage(html, baseUrl: _base),
+    );
     return ApiResponse.ok(pageResult);
   }
 

@@ -25,6 +25,18 @@ class _FakeZLibraryApi implements ZLibraryApi {
   String? lastOrder;
   int? lastPage;
 
+  /// Every (query, page) pair the fake served — prefetch makes the
+  /// notifier fetch one page ahead, so call-count assertions read
+  /// this instead of the single lastPage.
+  final Set<String> fetched = <String>{};
+
+  void _record(String query, int page) {
+    calls++;
+    lastQuery = query;
+    lastPage = page;
+    fetched.add('$query#$page');
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw UnsupportedError('unexpected: ${invocation.memberName}');
@@ -35,10 +47,8 @@ class _FakeZLibraryApi implements ZLibraryApi {
     String? order,
     int page = 1,
   }) async {
-    calls++;
-    lastQuery = query;
     lastOrder = order;
-    lastPage = page;
+    _record(query, page);
     if (error != null) return ApiResponse.fail(error!);
     return ApiResponse.ok(
       pages[page] ??
@@ -94,7 +104,8 @@ void main() {
     expect(state.isLoading, isFalse);
     expect(state.isLoadingMore, isFalse);
     expect(state.error, isNull);
-    expect(api.calls, 1);
+    // Page 1 + the page-2 prefetch it seeds when more pages may exist.
+    expect(api.calls, 2);
     expect(api.lastQuery, 'synthetic');
   });
 
@@ -172,7 +183,9 @@ void main() {
         .search(const ArticleSearchParams(query: 'synthetic', order: 'date'));
 
     expect(api.lastOrder, 'date');
-    expect(api.lastPage, 1);
+    // One page (total 1) → no prefetch; only page 1 was fetched.
+    expect(api.calls, 1);
+    expect(api.fetched, {'synthetic#1'});
   });
 
   test('reset returns the state to its initial value', () async {

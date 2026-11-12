@@ -23,12 +23,33 @@ mixin ZLibraryFullText on ZLibraryApiBase {
   /// no user (logout) invalidates it without any explicit clearing.
   String? _fulltextTokenUserId;
 
+  /// When the cached token was FETCHED — never slid forward on use,
+  /// so the reuse window in [searchFullText] always counts from the
+  /// fetch itself and a token sitting unused past the window is
+  /// refetched even though nothing rotated it (the conservative side
+  /// of an unknown server TTL).
+  DateTime? _fulltextTokenAt;
+
   /// The cached full-text token for the current session, or null
   /// when no token has been fetched (yet) for the signed-in user.
   /// The solver fallback reads it to build a results URL; it never
   /// triggers a network fetch.
   String? get fulltextToken =>
       _fulltextTokenUserId == _userId ? _fulltextToken : null;
+
+  /// How long a fetched token is trusted for reuse in
+  /// [searchFullText]. A getter rather than a constant so tests can
+  /// shrink it to zero and exercise the refetch path without a fake
+  /// clock. Five minutes, deliberately conservative: the site's own
+  /// flow loads `/fulltext` once and submits the search from that
+  /// page — often minutes later — so the server's token TTL cannot
+  /// plausibly be shorter; inside the window the token is
+  /// demonstrably still valid, beyond it reuse is refused and the
+  /// token refetched, because a stale token answers HTTP 200 with
+  /// the default listing, which the wrong-page echo guard cannot
+  /// catch (a tokenless default listing echoes the query too —
+  /// device-proven 2026-11-11).
+  Duration get fulltextTokenMaxAge => const Duration(minutes: 5);
 
   /// Fetch the session's full-text token from the `/fulltext` page
   /// (or return the cached one). The token is required on every
@@ -77,6 +98,7 @@ mixin ZLibraryFullText on ZLibraryApiBase {
     }
     _fulltextToken = token;
     _fulltextTokenUserId = _userId;
+    _fulltextTokenAt = DateTime.now();
     return ApiResponse.ok(token);
   }
 
@@ -104,14 +126,22 @@ mixin ZLibraryFullText on ZLibraryApiBase {
   /// 401, or the token fetch itself failing), the cached token is
   /// dropped and the search is tried once more with a fresh one.
   ///
-  /// A fresh token is fetched for EVERY search: a token cached from
-  /// an earlier search can go stale without the server saying so —
-  /// it answers HTTP 200 with the default listing instead of an
-  /// error, and the app would paint the wrong books (device-proven
-  /// 2026-11-11: the same 50 books for any query). The cache is
-  /// still populated by this search's fetch, so the solver URL's
-  /// [fulltextToken] getter can read the token fetched for THIS
-  /// search.
+  /// Token reuse: a token fetched within [fulltextTokenMaxAge] is
+  /// reused as-is — paging one search via loadMore, the next-page
+  /// prefetch, a re-search seconds later — one round trip per page
+  /// instead of two. Beyond the window it is refetched. The old rule
+  /// fetched a fresh token for EVERY search and page after a stale
+  /// one painted the wrong books (device-proven 2026-11-11: a stale
+  /// token answers HTTP 200 with the default listing — the same 50
+  /// books for any query — and the wrong-page echo guard cannot
+  /// catch it, because a tokenless default listing echoes the query
+  /// too). Bounding the REUSE by a short window keeps that failure
+  /// mode out while dropping the extra round trip where it actually
+  /// recurred: every page. When the server does reject a reused
+  /// token, [_isStaleTokenFailure] still drops it and retries fresh.
+  /// The cache is populated by this search's fetch either way, so
+  /// the solver URL's [fulltextToken] getter reads the token fetched
+  /// for THIS search.
   Future<ApiResponse<FullTextSearchPage>> searchFullText({
     required String query,
     String type = 'words',
@@ -123,8 +153,15 @@ mixin ZLibraryFullText on ZLibraryApiBase {
     String? order,
     int page = 1,
   }) async {
-    _fulltextToken = null;
-    _fulltextTokenUserId = null;
+    final fetchedAt = _fulltextTokenAt;
+    final tokenUsable = fulltextToken != null &&
+        fetchedAt != null &&
+        DateTime.now().difference(fetchedAt) < fulltextTokenMaxAge;
+    if (!tokenUsable) {
+      _fulltextToken = null;
+      _fulltextTokenUserId = null;
+      _fulltextTokenAt = null;
+    }
     final capped = _capFulltextQuery(query);
     if (capped.trim().isEmpty) {
       return ApiResponse.fail('empty query');
@@ -143,6 +180,7 @@ mixin ZLibraryFullText on ZLibraryApiBase {
     if (first.success || !_isStaleTokenFailure(first)) return first;
     _fulltextToken = null;
     _fulltextTokenUserId = null;
+    _fulltextTokenAt = null;
     return _searchFullTextOnce(
       query: capped,
       type: type,
@@ -237,7 +275,12 @@ mixin ZLibraryFullText on ZLibraryApiBase {
         statusCode: status,
       );
     }
-    final pageResult = parseFullTextSearchPage(html, baseUrl: _base);
+    // Parse on a background isolate: a 50-hit page is a large HTML
+    // document and the parse is pure work on a string; the result is
+    // plain data (sendable), so the main isolate never blocks on it.
+    final pageResult = await Isolate.run(
+      () => parseFullTextSearchPage(html, baseUrl: _base),
+    );
     return ApiResponse.ok(pageResult);
   }
 

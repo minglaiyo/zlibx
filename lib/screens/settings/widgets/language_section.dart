@@ -1,8 +1,8 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../providers/settings_provider.dart';
+
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../providers/settings_provider.dart';
 import '../../../utils/locale_utils.dart' as locale_utils;
 import 'section_header.dart';
 import 'settings_card.dart';
@@ -10,156 +10,127 @@ import 'settings_card.dart';
 class LanguageSection extends ConsumerWidget {
   const LanguageSection({super.key});
 
-  /// All supported languages with metadata
+  /// Native names only: legado's language menu has no flags or English gloss.
   static const allLanguages = {
-    'en': {'flag': '🇺🇸', 'native': 'English', 'english': 'English'},
-    'zh': {'flag': '🇨🇳', 'native': '简体中文', 'english': 'Simplified Chinese'},
-    'zh_Hant': {'flag': '🇹🇼', 'native': '繁體中文', 'english': 'Traditional Chinese'},
-    'ja': {'flag': '🇯🇵', 'native': '日本語', 'english': 'Japanese'},
-    'ko': {'flag': '🇰🇷', 'native': '한국어', 'english': 'Korean'},
+    'en': 'English',
+    'zh': '简体中文',
+    'zh_Hant': '繁體中文',
+    'ja': '日本語',
+    'ko': '한국어',
   };
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context)!;
+    final locale = ref.watch(localeProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SectionHeader(
-          icon: Icons.translate_rounded,
-          title: AppLocalizations.of(context)!.languageSetting,
-        ),
+        SectionHeader(icon: Icons.translate_rounded, title: t.languageSetting),
         SettingsCard(
-          child: ListTile(
-            leading: const Icon(Icons.language_rounded),
-            title: Text(
-                AppLocalizations.of(context)!.languageSetting),
-            subtitle: Text(
-                _getLanguageDisplayName(ref.watch(localeProvider))),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showLanguageDialog(context, ref),
+          child: Builder(
+            builder: (rowContext) => ListTile(
+              leading: const Icon(Icons.language_rounded),
+              title: Text(t.languageSetting),
+              subtitle: Text(_displayName(t, locale)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showLanguageMenu(rowContext, ref),
+            ),
           ),
         ),
       ],
     );
   }
 
-  String _getLanguageDisplayName(Locale? locale) {
-    if (locale == null) return 'System';
+  String _displayName(AppLocalizations t, Locale? locale) {
+    if (locale == null) return t.system;
     final key = locale_utils.getLocaleKey(locale);
     if (key == null) return '';
-    return allLanguages[key]?['native'] ?? key;
+    return allLanguages[key] ?? key;
   }
 
-  void _showLanguageDialog(BuildContext context, WidgetRef ref) {
+  Future<void> _showLanguageMenu(BuildContext context, WidgetRef ref) async {
+    final box = context.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null) return;
+
     final currentLocale = ref.read(localeProvider);
     final currentKey = currentLocale != null
         ? locale_utils.getLocaleKey(currentLocale)
         : null;
+    final t = AppLocalizations.of(context)!;
 
-    unawaited(showModalBottomSheet(
+    final anchor = Rect.fromLTWH(
+      (box.size.width - 216).clamp(0.0, box.size.width),
+      0,
+      box.size.width.clamp(0.0, 216.0),
+      box.size.height,
+    );
+    final global = MatrixUtils.transformRect(
+      box.getTransformTo(overlay),
+      anchor,
+    );
+
+    final selected = await showMenu<String>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      position: RelativeRect.fromRect(global, Offset.zero & overlay.size),
+      color: Theme.of(context).colorScheme.surfaceContainer,
+      elevation: 6,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      constraints: const BoxConstraints(minWidth: 180, maxWidth: 220),
+      popUpAnimationStyle: const AnimationStyle(
+        duration: Duration(milliseconds: 150),
+        reverseDuration: Duration(milliseconds: 100),
       ),
-      builder: (context) =>
-          DraggableScrollableSheet(
-            initialChildSize: 0.6,
-            minChildSize: 0.4,
-            maxChildSize: 0.9,
-            expand: false,
-            builder: (context, scrollController) =>
-                Column(
-                  children: [
-                    // Handle bar
-                    Container(
-                      margin: const EdgeInsets.only(top: 12),
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.outlineVariant,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        AppLocalizations.of(context)!.languageSetting,
-                        style: Theme
-                            .of(context)
-                            .textTheme
-                            .titleLarge
-                            ?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const Divider(height: 1),
-                    Expanded(
-                      child: ListView(
-                        controller: scrollController,
-                        children: [
-                          // System option
-                          _buildLanguageOption(
-                            context: context,
-                            ref: ref,
-                            key: null,
-                            flag: '🌐',
-                            native: 'System',
-                            english: AppLocalizations.of(context)!.followDevice,
-                            isSelected: currentKey == null,
-                          ),
-                          const Divider(height: 1),
-                          // All languages
-                          ...allLanguages.entries.map((entry) =>
-                              _buildLanguageOption(
-                                context: context,
-                                ref: ref,
-                                key: entry.key,
-                                flag: entry.value['flag']!,
-                                native: entry.value['native']!,
-                                english: entry.value['english']!,
-                                isSelected: currentKey == entry.key,
-                              )),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+      items: <PopupMenuEntry<String>>[
+        _languageItem(context, 'system', t.system, currentKey == null),
+        for (final entry in allLanguages.entries)
+          _languageItem(
+            context,
+            entry.key,
+            entry.value,
+            currentKey == entry.key,
           ),
-    ));
+      ],
+    );
+
+    if (!context.mounted || selected == null) return;
+    if (selected == 'system') {
+      await ref.read(localeProvider.notifier).setLocale(null);
+    } else {
+      await ref
+          .read(localeProvider.notifier)
+          .setLocale(locale_utils.parseLocaleKey(selected));
+    }
   }
 
-  Widget _buildLanguageOption({
-    required BuildContext context,
-    required WidgetRef ref,
-    required String? key,
-    required String flag,
-    required String native,
-    required String english,
-    required bool isSelected,
-  }) {
-    return ListTile(
-      leading: Text(flag, style: const TextStyle(fontSize: 28)),
-      title: Text(native, style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: Text(
-        english,
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
+  PopupMenuItem<String> _languageItem(
+    BuildContext context,
+    String value,
+    String label,
+    bool selected,
+  ) {
+    final cs = Theme.of(context).colorScheme;
+    return PopupMenuItem<String>(
+      value: value,
+      height: 44,
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                color: selected ? cs.primary : cs.onSurface,
+              ),
+            ),
+          ),
+          if (selected) Icon(Icons.check_rounded, size: 18, color: cs.primary),
+        ],
       ),
-      trailing: isSelected
-          ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary)
-          : null,
-      onTap: () {
-        if (key == null) {
-          ref.read(localeProvider.notifier).setLocale(null);
-        } else {
-          ref.read(localeProvider.notifier).setLocale(
-              locale_utils.parseLocaleKey(key));
-        }
-        Navigator.pop(context);
-      },
     );
   }
 }

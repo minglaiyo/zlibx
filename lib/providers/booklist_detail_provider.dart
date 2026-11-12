@@ -144,6 +144,12 @@ class BooklistDetailController
 
   bool _alive = true;
   int _generation = 0;
+  Future<void>? _initialLoad;
+
+  /// Completes when the microtask-started initial load settles. Tests use
+  /// this instead of an arbitrary delay so they start from a stable state.
+  @visibleForTesting
+  Future<void> get initialLoadDone => _initialLoad ?? Future<void>.value();
 
   /// Data layer: fetching, parsing, the page cache and invalidation
   /// (see [BooklistRepository]). Holds no state of its own; rebuilt on
@@ -159,7 +165,7 @@ class BooklistDetailController
     _repository = BooklistRepository(ref.read(zlibraryApiProvider));
     _alive = true;
     ref.onDispose(() => _alive = false);
-    Future<void>.microtask(loadFirst);
+    _initialLoad = Future<void>.microtask(loadFirst);
     return const BooklistDetailState();
   }
 

@@ -121,10 +121,14 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
                                 ? Icons.favorite
                                 : Icons.favorite_border,
                             key: ValueKey(
-                              widget.isFavorited ? 'favorited' : 'not-favorited',
+                              widget.isFavorited
+                                  ? 'favorited'
+                                  : 'not-favorited',
                             ),
                             color: collapsed
-                                ? (widget.isFavorited ? cs.primary : cs.onSurface)
+                                ? (widget.isFavorited
+                                      ? cs.primary
+                                      : cs.onSurface)
                                 : (widget.isFavorited
                                       ? const Color(0xFFFFA6B7)
                                       : Colors.white),
@@ -194,25 +198,17 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
               bottom: 16,
             ),
             child: Center(
-              // 共享元素转场：来源卡片的封面（同 tag `cover-<id>`，
-              // 见 BookCard.heroEnabled / ShelfGridItem）飞入这里。
-              // 无封面的 3D 文字书也参与 Hero——来源侧无封面时不包
-              // Hero，匹配不上就退化为普通转场，无害。
-              child: Hero(
-                tag: 'cover-${widget.book.id}',
-                child: Book3DCover(
-                  cover: image,
-                  title: widget.book.title,
-                  loading: loading,
-                  animate:
-                      animate && !MediaQuery.of(context).disableAnimations,
-                  height:
-                      (height -
-                              MediaQuery.paddingOf(context).top -
-                              kToolbarHeight -
-                              58)
-                          .clamp(170.0, 295.0),
-                ),
+              child: Book3DCover(
+                cover: image,
+                title: widget.book.title,
+                loading: loading,
+                animate: animate && !MediaQuery.of(context).disableAnimations,
+                height:
+                    (height -
+                            MediaQuery.paddingOf(context).top -
+                            kToolbarHeight -
+                            58)
+                        .clamp(170.0, 295.0),
               ),
             ),
           ),
@@ -221,18 +217,29 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
     }
 
     final cover = widget.book.cover;
-    if (cover == null || cover.isEmpty) return content();
-    return CachedNetworkImage(
-      imageUrl: cover,
-      memCacheWidth:
-          ((height - kToolbarHeight) *
-                  0.7 *
-                  MediaQuery.devicePixelRatioOf(context))
-              .ceil()
-              .clamp(400, 900),
-      imageBuilder: (context, image) => content(image: image),
-      placeholder: (context, url) => content(loading: true),
-      errorWidget: (context, url, error) => content(),
-    );
+    final Widget child;
+    if (cover == null || cover.isEmpty) {
+      child = content();
+    } else {
+      child = CachedNetworkImage(
+        imageUrl: cover,
+        memCacheWidth:
+            ((height - kToolbarHeight) *
+                    0.7 *
+                    MediaQuery.devicePixelRatioOf(context))
+                .ceil()
+                .clamp(400, 900),
+        imageBuilder: (context, image) => content(image: image),
+        placeholder: (context, url) => content(loading: true),
+        errorWidget: (context, url, error) => content(),
+      );
+    }
+
+    // The Hero must wrap the placeholder too: wrapping only the loaded
+    // CachedNetworkImage created the destination Hero after the route
+    // transition had already finished, so the cover arrived late. With the
+    // placeholder in the Hero, the flight starts on the first frame and the
+    // real image crossfades inside it.
+    return Hero(tag: 'cover-${widget.book.id}', child: child);
   }
 }

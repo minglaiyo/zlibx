@@ -79,7 +79,7 @@ class CommentComposer extends StatelessWidget {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(color: cs.primary, width: 1.2),
+                      borderSide: BorderSide.none,
                     ),
                     filled: true,
                     fillColor: cs.surfaceContainerHighest,
@@ -141,9 +141,9 @@ class _ReplyBanner extends StatelessWidget {
             child: Text(
               text,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: cs.primary,
-                    fontWeight: FontWeight.w500,
-                  ),
+                color: cs.primary,
+                fontWeight: FontWeight.w500,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'theme/app_theme.dart';
 import 'providers/auth_provider.dart';
 import 'providers/settings_provider.dart';
@@ -22,6 +23,9 @@ final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Pre-compile the graduated header blur shader so the first home frame
+  // does not fall back to a flat blur. Never throws.
+  await ProgressiveBlur.preload();
   await HiveService.init();
   // Existing installs keep their current line without a trust prompt.
   await MirrorTrust.grandfatherCurrent();
@@ -52,17 +56,12 @@ void main() async {
     final context = rootNavigatorKey.currentContext;
     if (context == null) return null;
     final solved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-          builder: (_) => ChallengeSolverScreen(url: url)),
+      MaterialPageRoute(builder: (_) => ChallengeSolverScreen(url: url)),
     );
     return solved == true ? ChallengeHtmlCache.get(url) : null;
   };
 
-  runApp(
-    const ProviderScope(
-      child: MyApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends ConsumerStatefulWidget {
@@ -83,8 +82,9 @@ class _MyAppState extends ConsumerState<MyApp> {
     // Account-scoped pages (own lists, detail pages) are stored
     // under the current account's partition, matching the keys the
     // screens read; public pages keep the plain URL key.
-    ref.read(zlibraryApiProvider).onBooklistHtmlLoaded =
-        (url, html, fetchedAt) {
+    ref
+        .read(zlibraryApiProvider)
+        .onBooklistHtmlLoaded = (url, html, fetchedAt) {
       final accountId = BooklistHtmlCache.isPrivateUrl(url)
           ? (ref.read(authProvider).user?.id ?? 'signed-out')
           : null;

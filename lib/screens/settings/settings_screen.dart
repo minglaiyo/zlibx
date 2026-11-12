@@ -11,6 +11,8 @@ import 'widgets/about_section.dart';
 import 'widgets/language_section.dart';
 import 'widgets/theme_section.dart';
 import 'widgets/network_section.dart';
+import 'widgets/navigation_section.dart';
+import 'widgets/home_layout_section.dart';
 import 'widgets/section_header.dart';
 import 'widgets/settings_card.dart';
 
@@ -45,72 +47,82 @@ class SettingsScreen extends ConsumerWidget {
           // behind the pill instead of stopping at a blank band.
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 128),
           children: [
-          // Signed in: the profile card lives on the account page now.
-          // Signed out (e.g. skipped login): offer the login screen
-          // here — otherwise there is no in-app way back to login.
-          if (user == null)
-            SettingsCard(
-              child: ListTile(
-                leading: const Icon(Icons.login),
-                title: Text(t.login),
-                subtitle: Text(t.loginToContinue),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push<bool>(
-                  MaterialPageRoute(
-                    builder: (_) => const LoginScreen(),
+            // Signed in: the profile card lives on the account page now.
+            // Signed out (e.g. skipped login): offer the login screen
+            // here — otherwise there is no in-app way back to login.
+            if (user == null)
+              SettingsCard(
+                child: ListTile(
+                  leading: const Icon(Icons.login),
+                  title: Text(t.login),
+                  subtitle: Text(t.loginToContinue),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push<bool>(
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
                   ),
                 ),
               ),
+            if (user == null) const SizedBox(height: 24),
+
+            const DownloadPathSection(),
+            const DonationKeySection(),
+
+            const SizedBox(height: 20),
+
+            // ── Network ─────────────────────────────────────────────
+            const NetworkSection(),
+
+            const SizedBox(height: 20),
+
+            // ── Theme ────────────────────────────────────────────────
+            const ThemeSection(),
+
+            const SizedBox(height: 20),
+
+            // ── Home layout ──────────────────────────────────────────
+            const HomeLayoutSection(),
+
+            const SizedBox(height: 20),
+
+            // ── Navigation ───────────────────────────────────────────
+            const NavigationSection(),
+
+            const SizedBox(height: 20),
+
+            // ── Update ───────────────────────────────────────────────
+            SectionHeader(
+              icon: Icons.system_update_rounded,
+              title: AppLocalizations.of(context)!.update,
             ),
-          if (user == null) const SizedBox(height: 24),
-
-          const DownloadPathSection(),
-          const DonationKeySection(),
-
-          const SizedBox(height: 20),
-
-          // ── Network ─────────────────────────────────────────────
-          const NetworkSection(),
-
-          const SizedBox(height: 20),
-
-          // ── Theme ────────────────────────────────────────────────
-          const ThemeSection(),
-
-          const SizedBox(height: 20),
-
-          // ── Update ───────────────────────────────────────────────
-          SectionHeader(
-            icon: Icons.system_update_rounded,
-            title: AppLocalizations.of(context)!.update,
-          ),
-          SettingsCard(
-            child: ListTile(
-              leading: const Icon(Icons.system_update),
-              title: Text(AppLocalizations.of(context)!.checkForUpdates),
-              subtitle: FutureBuilder<PackageInfo>(
-                future: PackageInfo.fromPlatform(),
-                builder: (context, snapshot) {
-                  final version = snapshot.data?.version ?? '...';
-                  return Text(
-                    AppLocalizations.of(context)!.currentVersionLabel(version),
-                  );
-                },
+            SettingsCard(
+              child: ListTile(
+                leading: const Icon(Icons.system_update),
+                title: Text(AppLocalizations.of(context)!.checkForUpdates),
+                subtitle: FutureBuilder<PackageInfo>(
+                  future: PackageInfo.fromPlatform(),
+                  builder: (context, snapshot) {
+                    final version = snapshot.data?.version ?? '...';
+                    return Text(
+                      AppLocalizations.of(
+                        context,
+                      )!.currentVersionLabel(version),
+                    );
+                  },
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => showManualUpdateCheck(context),
               ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => showManualUpdateCheck(context),
             ),
-          ),
 
-          const SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-          // ── Language ─────────────────────────────────────────────
-          const LanguageSection(),
+            // ── Language ─────────────────────────────────────────────
+            const LanguageSection(),
 
-          const SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-          // ── About ────────────────────────────────────────────────
-          const AboutSection(),
+            // ── About ────────────────────────────────────────────────
+            const AboutSection(),
           ],
         ),
       ),

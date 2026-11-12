@@ -196,7 +196,7 @@ void main() {
           status: DownloadStatus.downloading), isDownloading: true, isCompleted: false)));
     await tester.pumpAndSettle();
     expect(find.text('42%'), findsOneWidget);
-    expect(tester.widget<OutlinedButton>(find.byType(OutlinedButton)).onPressed, isNull);
+    expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNull);
     expect(tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed, isNotNull);
     expect(tester.takeException(), isNull);
   });

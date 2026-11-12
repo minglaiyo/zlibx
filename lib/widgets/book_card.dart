@@ -76,7 +76,9 @@ class _BookCardState extends State<BookCard> {
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(
-                alpha: widget.compact ? (isDark ? 0.08 : 0.025) : (isDark ? 0.2 : 0.05),
+                alpha: widget.compact
+                    ? (isDark ? 0.08 : 0.025)
+                    : (isDark ? 0.2 : 0.05),
               ),
               blurRadius: widget.compact ? 4 : 10,
               offset: Offset(0, widget.compact ? 2 : 4),
@@ -94,59 +96,69 @@ class _BookCardState extends State<BookCard> {
               child: InkWell(
                 onTap: widget.onTap,
                 onLongPress: widget.onLongPress,
-                child: widget.compact ? _buildCoverBackdrop() : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 1. Cover Image (Expanded)
-                    Expanded(flex: 3, child: _buildFullCover()),
+                child: widget.compact
+                    ? _buildCoverBackdrop()
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 1. Cover Image (Expanded)
+                          Expanded(flex: 3, child: _buildFullCover()),
 
-                    // 2. Info Content
-                    Expanded(
-                      flex: 2,
-                      child: widget.searchResult ? _buildSearchInfo() : Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Level 2: Category/Tag (Orange, Small) - ABOVE Title
-                            _buildMetaRow(),
+                          // 2. Info Content
+                          Expanded(
+                            flex: 2,
+                            child: widget.searchResult
+                                ? _buildSearchInfo()
+                                : Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        // Level 2: Category/Tag (Orange, Small) - ABOVE Title
+                                        _buildMetaRow(),
 
-                            const SizedBox(height: 4),
+                                        const SizedBox(height: 4),
 
-                            // Level 1: Title (Black, Bold, Large)
-                            Expanded(
-                              child: Text(
-                                widget.book.title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  height: 1.2,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
+                                        // Level 1: Title (Black, Bold, Large)
+                                        Expanded(
+                                          child: Text(
+                                            widget.book.title,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleMedium
+                                                ?.copyWith(
+                                                  height: 1.2,
+                                                  fontSize: 14,
+                                                ),
+                                          ),
+                                        ),
 
-                            // Level 3: Author (Grey, Secondary)
-                            if (widget.book.author != null && widget.book.author!.isNotEmpty)
-                              Text(
-                                widget.book.author!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  fontSize: 11,
-                                ),
-                              ),
+                                        // Level 3: Author (Grey, Secondary)
+                                        if (widget.book.author != null &&
+                                            widget.book.author!.isNotEmpty)
+                                          Text(
+                                            widget.book.author!,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(fontSize: 11),
+                                          ),
 
-                            const SizedBox(height: 8),
+                                        const SizedBox(height: 8),
 
-                            // Level 3: Bottom row (Stars/Size)
-                            _buildBottomRow(),
-                          ],
-                        ),
+                                        // Level 3: Bottom row (Stars/Size)
+                                        _buildBottomRow(),
+                                      ],
+                                    ),
+                                  ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                ),
               ),
             ),
           ),
@@ -176,15 +188,13 @@ class _BookCardState extends State<BookCard> {
         children: [
           cover,
           Positioned(
-            top: 8,
-            left: 8,
-            right: 8,
+            top: 6,
+            left: 6,
+            right: 6,
             child: Align(
               alignment: Alignment.topRight,
               child: IgnorePointer(
-                child: ExcludeSemantics(
-                  child: _buildSourceBadge(sourceLabel),
-                ),
+                child: ExcludeSemantics(child: _buildSourceBadge(sourceLabel)),
               ),
             ),
           ),
@@ -292,7 +302,11 @@ class _BookCardState extends State<BookCard> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (rating) ...[
-              const Icon(Icons.star_rounded, size: 14, color: Color(0xFFFFD76A)),
+              const Icon(
+                Icons.star_rounded,
+                size: 14,
+                color: Color(0xFFFFD76A),
+              ),
               const SizedBox(width: 3),
             ],
             Text(
@@ -321,10 +335,9 @@ class _BookCardState extends State<BookCard> {
             widget.book.title,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              height: 1.2,
-              fontSize: 14,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(height: 1.2, fontSize: 14),
           ),
           if (widget.book.author != null && widget.book.author!.isNotEmpty) ...[
             const SizedBox(height: 3),
@@ -332,7 +345,9 @@ class _BookCardState extends State<BookCard> {
               widget.book.author!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontSize: 11),
             ),
           ],
         ],
@@ -341,21 +356,24 @@ class _BookCardState extends State<BookCard> {
   }
 
   Widget _buildSourceBadge(String label) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
       decoration: BoxDecoration(
-        color: const Color(0xFF2B6685),
-        borderRadius: BorderRadius.circular(6),
+        // Quiet translucent charcoal instead of the saturated blue: white
+        // text stays legible on any cover and the badge stops shouting.
+        color: Colors.black.withValues(alpha: isDark ? 0.42 : 0.52),
+        borderRadius: BorderRadius.circular(5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             Icons.library_books_rounded,
-            size: 14,
-            color: Colors.white,
+            size: 11,
+            color: Colors.white.withValues(alpha: 0.9),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 3),
           Flexible(
             child: Text(
               label,
@@ -363,8 +381,9 @@ class _BookCardState extends State<BookCard> {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 11,
+                fontSize: 9.5,
                 fontWeight: FontWeight.w600,
+                letterSpacing: 0.1,
               ),
             ),
           ),
@@ -376,7 +395,8 @@ class _BookCardState extends State<BookCard> {
   /// Build the top meta row (tag + tagExtra)
   Widget _buildMetaRow() {
     final hasTag = widget.book.tag != null && widget.book.tag!.isNotEmpty;
-    final hasTagExtra = widget.book.tagExtra != null && widget.book.tagExtra!.isNotEmpty;
+    final hasTagExtra =
+        widget.book.tagExtra != null && widget.book.tagExtra!.isNotEmpty;
 
     if (!hasTag && !hasTagExtra) {
       // Return a minimal spacer if no meta info available
@@ -400,15 +420,11 @@ class _BookCardState extends State<BookCard> {
               ),
             ),
           ),
-        if (hasTag && hasTagExtra)
-          const SizedBox(width: 4),
+        if (hasTag && hasTagExtra) const SizedBox(width: 4),
         if (hasTagExtra)
           Text(
             hasTag ? '• ${widget.book.tagExtra}' : widget.book.tagExtra!,
-            style: TextStyle(
-              color: cs.onSurfaceVariant,
-              fontSize: 10,
-            ),
+            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 10),
           ),
       ],
     );
@@ -443,10 +459,7 @@ class _BookCardState extends State<BookCard> {
         if (hasMeta)
           Text(
             widget.book.meta!,
-            style: TextStyle(
-              fontSize: 10,
-              color: cs.onSurfaceVariant,
-            ),
+            style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
           ),
       ],
     );

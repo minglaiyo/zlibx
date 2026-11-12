@@ -201,6 +201,7 @@ const _args = BooklistDetailArgs(
 Future<ProviderContainer> _loadedDetailContainer(
   _FakeZLibraryApi api, {
   BooklistDetailArgs args = _args,
+  bool waitInitialLoad = true,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -209,8 +210,15 @@ Future<ProviderContainer> _loadedDetailContainer(
     ],
   );
   addTearDown(container.dispose);
-  container.listen(booklistDetailControllerProvider(args), (_, _) {});
-  await Future<void>.delayed(const Duration(milliseconds: 100));
+  final provider = booklistDetailControllerProvider(args);
+  container.listen(provider, (_, _) {});
+  if (waitInitialLoad) {
+    await container.read(provider.notifier).initialLoadDone;
+  } else {
+    // The caller intentionally gates the initial revalidation; let the
+    // cached snapshot paint without waiting for that held fetch.
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
   return container;
 }
 
@@ -229,6 +237,34 @@ Future<ProviderContainer> _loadedListsContainer(
   container.listen(booklistsControllerProvider, (_, _) {});
   await Future<void>.delayed(const Duration(milliseconds: 100));
   return container;
+}
+
+
+/// Waits for an async load/retry to paint [expected] instead of asserting
+/// immediately after an await: the detail controller intentionally retries a
+/// fetch that lost a race with a write, and that retry can be scheduled a
+/// microtask later than the awaited call.
+Future<void> _waitForIds(
+  ProviderContainer container,
+  BooklistDetailArgs args,
+  List<int> expected,
+) async {
+  final provider = booklistDetailControllerProvider(args);
+  final deadline = DateTime.now().add(const Duration(seconds: 3));
+  while (DateTime.now().isBefore(deadline)) {
+    final ids = container.read(provider).books.map((book) => book.id).toList();
+    if (ids.length == expected.length) {
+      var same = true;
+      for (var i = 0; i < ids.length; i++) {
+        if (ids[i] != expected[i]) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
 }
 
 void main() {
@@ -376,7 +412,11 @@ void main() {
       accountId: _user.id,
     );
     api.detailGate = Completer<ApiResponse<List<Book>>>();
-    final container = await _loadedDetailContainer(api, args: args);
+    final container = await _loadedDetailContainer(
+      api,
+      args: args,
+      waitInitialLoad: false,
+    );
     final provider = booklistDetailControllerProvider(args);
     expect(
       container.read(provider).books.map((book) => book.id).toList(),
@@ -456,11 +496,13 @@ void main() {
     // stale and is dropped, so loadFirst retries with a fresh fetch.
     api.removeGate!.complete(ApiResponse.ok(true));
     await removeFuture;
+    // Let the invalidation tombstone land before releasing the held fetch.
+    await Future<void>.delayed(const Duration(milliseconds: 20));
     api.detailGate!.complete(ApiResponse.ok(api.detailPage1));
     api.detailGate = null;
     api.detailPage1 = const [Book(id: 2, title: 'Two')];
     await refreshFuture;
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    await _waitForIds(container, args, [2]);
     expect(
       container.read(provider).books.map((book) => book.id).toList(),
       [2],

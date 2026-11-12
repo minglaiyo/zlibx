@@ -181,33 +181,6 @@ class _Book3DCoverState extends State<Book3DCover>
               ),
             ),
           ),
-          // A slim paper rim remains visible when the cover faces the reader.
-          Positioned(
-            left: width - 1,
-            top: 8,
-            width: depth * 0.42,
-            height: height - 16,
-            child: CustomPaint(
-              painter: _BookPagesPainter(
-                pageColor: pageColor,
-                lineColor: pageLineColor,
-                verticalLines: true,
-              ),
-            ),
-          ),
-          Positioned(
-            left: 7,
-            top: height - 1,
-            width: width - 14,
-            height: depth * 0.30,
-            child: CustomPaint(
-              painter: _BookPagesPainter(
-                pageColor: pageColor,
-                lineColor: pageLineColor,
-                verticalLines: false,
-              ),
-            ),
-          ),
           Positioned(
             left: -depth / 2,
             top: 2,
@@ -287,14 +260,14 @@ class _Book3DCoverState extends State<Book3DCover>
                               semanticLabel: widget.title,
                             )
                           : widget.loading
-                              ? const CoverPlaceholder.shimmer()
-                              : const Center(
-                                  child: Icon(
-                                    Icons.menu_book_rounded,
-                                    size: 42,
-                                    color: Colors.white70,
-                                  ),
-                                ),
+                          ? const CoverPlaceholder.shimmer()
+                          : const Center(
+                              child: Icon(
+                                Icons.menu_book_rounded,
+                                size: 42,
+                                color: Colors.white70,
+                              ),
+                            ),
                     ),
                     const IgnorePointer(
                       child: DecoratedBox(

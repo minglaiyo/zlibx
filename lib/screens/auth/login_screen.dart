@@ -52,11 +52,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _checkForUpdates() async {
-    final hasUpdate =
-        await ref.read(updateProvider.notifier).checkForUpdate(force: true);
+    final hasUpdate = await ref
+        .read(updateProvider.notifier)
+        .checkForUpdate(force: true);
 
     if (!hasUpdate || !mounted) return;
-
 
     if (ref.read(updateProvider).forceUpdate) {
       // Force update - non-dismissable dialog with download channels
@@ -68,9 +68,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         context,
         SnackBar(
           content: Text(
-            AppLocalizations.of(context)!.newVersionFound(
-              ref.read(updateProvider).latestVersion ?? '',
-            ),
+            AppLocalizations.of(
+              context,
+            )!.newVersionFound(ref.read(updateProvider).latestVersion ?? ''),
           ),
           action: SnackBarAction(
             label: AppLocalizations.of(context)!.update,
@@ -138,44 +138,58 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _navigateAfterAuthentication();
     } else {
       final error = ref.read(authProvider).error;
-      final occurredAt = DateTime.now().toLocal().toIso8601String().split('.').first;
+      final occurredAt = DateTime.now()
+          .toLocal()
+          .toIso8601String()
+          .split('.')
+          .first;
 
       final failureKind = classifyLoginFailure(error);
       if (failureKind == LoginFailureKind.line) {
         // 线路被拦截 / 连接失败 —— 不是账号密码问题，提示切换线路。
         final cf = error == 'cf_blocked';
-        unawaited(AwesomeDialog(
-          context: context,
-          dialogType: DialogType.warning,
-          animType: AnimType.bottomSlide,
-          title: AppLocalizations.of(context)!.lineUnavailable,
-          desc: cf
-              ? AppLocalizations.of(context)!.loginLineBlockedCf
-              : AppLocalizations.of(context)!.loginLineConnectFailed,
-          btnCancelText: AppLocalizations.of(context)!.close,
-          btnCancelOnPress: () {},
-          btnOkText: AppLocalizations.of(context)!.switchLine,
-          btnOkColor: Theme.of(context).colorScheme.primary,
-          btnOkOnPress: () {
-            unawaited(showDialog(
-              context: context,
-              builder: (_) => const DomainSelectionDialog(),
-            ));
-          },
-        ).show());
+        unawaited(
+          AwesomeDialog(
+            context: context,
+            dialogType: DialogType.warning,
+            animType: AnimType.bottomSlide,
+            title: AppLocalizations.of(context)!.lineUnavailable,
+            desc: cf
+                ? AppLocalizations.of(context)!.loginLineBlockedCf
+                : AppLocalizations.of(context)!.loginLineConnectFailed,
+            btnCancelText: AppLocalizations.of(context)!.close,
+            btnCancelOnPress: () {},
+            btnOkText: AppLocalizations.of(context)!.switchLine,
+            btnOkColor: Theme.of(context).colorScheme.primary,
+            btnOkOnPress: () {
+              unawaited(
+                showDialog(
+                  context: context,
+                  builder: (_) => const DomainSelectionDialog(),
+                ),
+              );
+            },
+          ).show(),
+        );
       } else {
-        unawaited(AwesomeDialog(
-          context: context,
-          dialogType: DialogType.error,
-          animType: AnimType.bottomSlide,
-          title: AppLocalizations.of(context)!.loginFailed,
-          desc: failureKind == LoginFailureKind.credentials
-              ? (AppLocalizations.of(context)!.loginBadCredentials)
-              : (AppLocalizations.of(context)!.loginUnknownFailure(lineName, occurredAt, safeLoginErrorDetail(error, email, password))),
-          btnOkText: AppLocalizations.of(context)!.confirmOk,
-          btnOkColor: Theme.of(context).colorScheme.primary,
-          btnOkOnPress: () {},
-        ).show());
+        unawaited(
+          AwesomeDialog(
+            context: context,
+            dialogType: DialogType.error,
+            animType: AnimType.bottomSlide,
+            title: AppLocalizations.of(context)!.loginFailed,
+            desc: failureKind == LoginFailureKind.credentials
+                ? (AppLocalizations.of(context)!.loginBadCredentials)
+                : (AppLocalizations.of(context)!.loginUnknownFailure(
+                    lineName,
+                    occurredAt,
+                    safeLoginErrorDetail(error, email, password),
+                  )),
+            btnOkText: AppLocalizations.of(context)!.confirmOk,
+            btnOkColor: Theme.of(context).colorScheme.primary,
+            btnOkOnPress: () {},
+          ).show(),
+        );
       }
     }
   }
@@ -330,19 +344,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             focusNode: _emailFocusNode,
                             keyboardType: TextInputType.emailAddress,
                             decoration: InputDecoration(
-                              labelText: AppLocalizations.of(
-                                context,
-                              )!.email,
+                              labelText: AppLocalizations.of(context)!.email,
                               prefixIcon: const Icon(Icons.email_outlined),
                             ),
                             validator: (value) {
                               if (value == null || value.isEmpty) {
-                                return AppLocalizations.of(context)!
-                                    .enterEmail;
+                                return AppLocalizations.of(context)!.enterEmail;
                               }
                               if (!value.contains('@')) {
-                                return AppLocalizations.of(context)!
-                                    .validEmail;
+                                return AppLocalizations.of(context)!.validEmail;
                               }
                               return null;
                             },
@@ -354,9 +364,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             controller: _passwordController,
                             obscureText: _obscurePassword,
                             decoration: InputDecoration(
-                              labelText: AppLocalizations.of(
-                                context,
-                              )!.password,
+                              labelText: AppLocalizations.of(context)!.password,
                               prefixIcon: const Icon(Icons.lock_outlined),
                               suffixIcon: IconButton(
                                 icon: Icon(
@@ -373,12 +381,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                             validator: (value) {
                               if (value == null || value.isEmpty) {
-                                return AppLocalizations.of(context)!
-                                    .enterPassword;
+                                return AppLocalizations.of(
+                                  context,
+                                )!.enterPassword;
                               }
                               if (value.length < 6) {
-                                return AppLocalizations.of(context)!
-                                    .passwordMinLength;
+                                return AppLocalizations.of(
+                                  context,
+                                )!.passwordMinLength;
                               }
                               return null;
                             },
@@ -391,7 +401,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             child: ElevatedButton(
                               onPressed: _isLoading ? null : _handleLogin,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Theme.of(context).colorScheme.primary,
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.primary,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 16,
@@ -401,9 +413,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   ? const LoadingWidget.inline(
                                       color: Colors.white,
                                     )
-                                  : Text(
-                                      AppLocalizations.of(context)!.login,
-                                    ),
+                                  : Text(AppLocalizations.of(context)!.login),
                             ),
                           ),
                           if (_savedAccounts.isNotEmpty) ...[
@@ -412,9 +422,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               onPressed: _isLoading ? null : _showSavedAccounts,
                               icon: const Icon(Icons.manage_accounts_outlined),
                               label: Text(
-                                AppLocalizations.of(
-                                  context,
-                                )!.manageAccounts,
+                                AppLocalizations.of(context)!.manageAccounts,
                               ),
                             ),
                           ],
@@ -447,9 +455,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final cs = Theme.of(context).colorScheme;
     final name = account['name']?.toString().trim();
     final email = account['email']?.toString().trim();
-    final displayName = name == null || name.isEmpty
-        ? l10n.unknown
-        : name;
+    final displayName = name == null || name.isEmpty ? l10n.unknown : name;
 
     return Material(
       color: cs.primaryContainer.withValues(alpha: 0.45),
@@ -503,16 +509,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Widget _buildAccountHint(BuildContext context) {
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.2),
-          width: 1,
-        ),
       ),
       child: Column(
         children: [
@@ -552,7 +553,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Widget _buildSkipLogin(BuildContext context) {
-
     return TextButton(
       onPressed: () {
         AppRoutes.goHomeAfterLogin(context);
@@ -568,7 +568,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Widget _buildBadges(BuildContext context) {
-
     return Wrap(
       alignment: WrapAlignment.center,
       spacing: 8,
@@ -603,7 +602,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.5), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

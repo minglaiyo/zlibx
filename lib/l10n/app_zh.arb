@@ -623,5 +623,17 @@
   "welcomeBack": "欢迎回来",
   "writeComment": "写评论",
   "year": "年份",
-  "yourOpenLibrary": "你的开放图书馆"
+  "yourOpenLibrary": "你的开放图书馆",
+  "navigation": "导航栏",
+  "navLabelMode": "导航栏文字",
+  "navLabelAlways": "始终显示",
+  "navLabelAuto": "自动",
+  "navLabelNever": "不显示",
+  "glassRefraction": "液态玻璃折射",
+  "glassRefractionDesc": "底栏额外透镜层，关闭可减少渲染开销",
+  "noMoreBooks": "没有更多书籍了",
+  "homeLayout": "首页布局",
+  "gridColumns": "网格列数",
+  "twoColumns": "2 列",
+  "threeColumns": "3 列"
 }

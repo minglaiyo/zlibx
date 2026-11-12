@@ -34,13 +34,9 @@ class ShelfChip extends StatelessWidget {
       color: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.selected)
             ? cs.primaryContainer
-            : dense
-            ? Colors.transparent
-            : cs.surface,
+            : cs.surfaceContainerHigh,
       ),
-      side: BorderSide(
-        color: selected ? cs.primary.withValues(alpha: 0.5) : cs.outlineVariant,
-      ),
+      side: BorderSide.none,
     );
   }
 }

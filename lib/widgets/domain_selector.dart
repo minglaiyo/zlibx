@@ -10,6 +10,7 @@ import '../theme/app_metrics.dart';
 import 'loading_widget.dart';
 
 import '../utils/app_snack.dart';
+
 class DomainSelector extends ConsumerWidget {
   final bool compact;
   final Color? color;
@@ -43,20 +44,13 @@ class DomainSelector extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: effectiveColor.withValues(alpha: 0.1),
+          color: effectiveColor.withValues(alpha: 0.14),
           borderRadius: BorderRadius.circular(30),
-          border: Border.all(
-            color: effectiveColor.withValues(alpha: 0.3),
-          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.dns_outlined,
-              size: 18,
-              color: effectiveColor,
-            ),
+            Icon(Icons.dns_outlined, size: 18, color: effectiveColor),
             const SizedBox(width: 8),
             Text(
               label,
@@ -75,10 +69,12 @@ class DomainSelector extends ConsumerWidget {
   }
 
   void _showDialog(BuildContext context) {
-    unawaited(showDialog(
-      context: context,
-      builder: (context) => const DomainSelectionDialog(),
-    ));
+    unawaited(
+      showDialog(
+        context: context,
+        builder: (context) => const DomainSelectionDialog(),
+      ),
+    );
   }
 }
 
@@ -162,8 +158,7 @@ class DomainSelectionDialog extends ConsumerWidget {
                   ? AppLocalizations.of(context)!.lineNumber(lineIndex + 1)
                   : result.domain;
               // SLUM-reported down: greyed out, not tappable (still shown).
-              final isDown =
-                  downHosts.contains(result.domain.toLowerCase());
+              final isDown = downHosts.contains(result.domain.toLowerCase());
               return _buildDomainTile(
                 context,
                 ref,
@@ -221,7 +216,11 @@ class DomainSelectionDialog extends ConsumerWidget {
     if (status == DomainLatencyStatus.untested) {
       trailing = const LoadingWidget.inline();
     } else if (status == DomainLatencyStatus.unavailable) {
-      trailing = Icon(Icons.close, size: 16, color: Theme.of(context).colorScheme.error);
+      trailing = Icon(
+        Icons.close,
+        size: 16,
+        color: Theme.of(context).colorScheme.error,
+      );
     } else {
       final latColor = status == DomainLatencyStatus.normal
           ? AppColors.success
@@ -248,7 +247,11 @@ class DomainSelectionDialog extends ConsumerWidget {
         dense: true,
         visualDensity: const VisualDensity(vertical: -2),
         leading: isSelected
-            ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary, size: 20)
+            ? Icon(
+                Icons.check_circle,
+                color: Theme.of(context).colorScheme.primary,
+                size: 20,
+              )
             : const Icon(Icons.circle_outlined, size: 20, color: Colors.grey),
         title: Text(
           label,
@@ -288,7 +291,11 @@ class DomainSelectionDialog extends ConsumerWidget {
       dense: true,
       visualDensity: const VisualDensity(vertical: -2),
       leading: isCustom
-          ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary, size: 20)
+          ? Icon(
+              Icons.check_circle,
+              color: Theme.of(context).colorScheme.primary,
+              size: 20,
+            )
           : const Icon(Icons.edit_outlined, size: 20, color: Colors.grey),
       title: Text(
         isCustom
@@ -326,9 +333,7 @@ class DomainSelectionDialog extends ConsumerWidget {
           ),
           ElevatedButton(
             onPressed: () {
-              final raw = DomainNotifier.normalizeCustomDomain(
-                controller.text,
-              );
+              final raw = DomainNotifier.normalizeCustomDomain(controller.text);
               if (raw.isEmpty) return;
               final l = AppLocalizations.of(context)!;
               if (!DomainNotifier.isValidCustomDomain(raw)) {
@@ -342,32 +347,32 @@ class DomainSelectionDialog extends ConsumerWidget {
               }
               // Non-built-in domain: warn first. The saved session is
               // NOT auto-sent there; the user logs in again afterwards.
-              unawaited(showDialog(
-                context: context,
-                builder: (warnCtx) => AlertDialog(
-                  title: Text(l.customDomainWarningTitle),
-                  content: Text(l.customDomainWarningBody),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(warnCtx),
-                      child: Text(AppLocalizations.of(context)!.cancel),
-                    ),
-                    FilledButton(
-                      onPressed: () {
-                        ref
-                            .read(domainProvider.notifier)
-                            .setCustomDomain(raw);
-                        Navigator.pop(warnCtx);
-                        Navigator.pop(context);
-                        showAppSnack(context,
-                              l.customDomainReloginHint,
-                            );
-                      },
-                      child: Text(l.customDomainSwitchAnyway),
-                    ),
-                  ],
+              unawaited(
+                showDialog(
+                  context: context,
+                  builder: (warnCtx) => AlertDialog(
+                    title: Text(l.customDomainWarningTitle),
+                    content: Text(l.customDomainWarningBody),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(warnCtx),
+                        child: Text(AppLocalizations.of(context)!.cancel),
+                      ),
+                      FilledButton(
+                        onPressed: () {
+                          ref
+                              .read(domainProvider.notifier)
+                              .setCustomDomain(raw);
+                          Navigator.pop(warnCtx);
+                          Navigator.pop(context);
+                          showAppSnack(context, l.customDomainReloginHint);
+                        },
+                        child: Text(l.customDomainSwitchAnyway),
+                      ),
+                    ],
+                  ),
                 ),
-              ));
+              );
             },
             child: Text(AppLocalizations.of(context)!.save),
           ),

@@ -55,6 +55,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final blurEnabled = ref.watch(blurEnabledProvider);
+    final floatingNav = ref.watch(floatingNavProvider);
+    final hideNavOnScroll = ref.watch(hideNavOnScrollProvider);
+    final navVisible = ref.watch(navBarVisibleProvider);
     // Coolapk-style persistent tabs: all four destinations live in one
     // PageView under the same bottom nav (search is still opened from
     // the home search box, no nav tab). The first destination is
@@ -78,50 +82,50 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         body: NotificationListener<ScrollNotification>(
           onNotification: _onTabScroll,
           child: PageView.builder(
-            controller: _pageController,
-            onPageChanged: (index) {
-              // Switching tabs resets the nav to visible: a home tab
-              // scrolled down must not leave the bar hidden on Settings.
-              if (ref.read(navBarVisibleProvider) != true) {
-                ref.read(navBarVisibleProvider.notifier).setVisible(true);
-              }
-              setState(() => _selectedIndex = index);
-              if (index == 0) {
-                _homeTabKey.currentState?.onBecameVisible();
-              }
-            },
-            itemCount: 4,
-            itemBuilder: (context, index) {
-              // The builder only runs for the visible page and the
-              // adjacent pages PageView prebuilds, so tabs the user has
-              // not visited yet are not constructed at first frame.
-              // Once built, each page stays alive via KeepAlivePage.
-              if (index == 0) {
-                return KeepAlivePage(
-                  // No extra bottom padding here: the home grid already
-                  // reserves 96 below its last row for the floating nav.
-                  child: HomeTab(key: _homeTabKey),
-                );
-              }
-              // No outer bottom padding on these tabs: like the home
-              // grid, each tab reserves the floating nav's 96dp inside
-              // its own scrollable content, so items scroll behind the
-              // pill (and show through the blur) instead of stopping
-              // at a fixed blank band above it.
-              if (index == 1) {
-                return const KeepAlivePage(child: LocalDownloadsScreen());
-              }
-              if (index == 2) {
-                return const KeepAlivePage(child: AccountScreen());
-              }
-              return const KeepAlivePage(child: SettingsScreen());
-            },
+          controller: _pageController,
+          onPageChanged: (index) {
+            // Switching tabs resets the nav to visible: a home tab
+            // scrolled down must not leave the bar hidden on Settings.
+            if (ref.read(navBarVisibleProvider) != true) {
+              ref.read(navBarVisibleProvider.notifier).setVisible(true);
+            }
+            setState(() => _selectedIndex = index);
+          },
+          itemCount: 4,
+          itemBuilder: (context, index) {
+            // The builder only runs for the visible page and the
+            // adjacent pages PageView prebuilds, so tabs the user has
+            // not visited yet are not constructed at first frame.
+            // Once built, each page stays alive via KeepAlivePage.
+            if (index == 0) {
+              return KeepAlivePage(
+                // No extra bottom padding here: the home grid already
+                // reserves 96 below its last row for the floating nav.
+                child: HomeTab(key: _homeTabKey),
+              );
+            }
+            // No outer bottom padding on these tabs: like the home
+            // grid, each tab reserves the floating nav's 96dp inside
+            // its own scrollable content, so items scroll behind the
+            // pill (and show through the blur) instead of stopping
+            // at a fixed blank band above it.
+            if (index == 1) {
+              return const KeepAlivePage(child: LocalDownloadsScreen());
+            }
+            if (index == 2) {
+              return const KeepAlivePage(child: AccountScreen());
+            }
+            return const KeepAlivePage(child: SettingsScreen());
+          },
           ),
         ),
         bottomNavigationBar: HomeNavBar(
           selectedIndex: _selectedIndex,
           onDestinationSelected: _onDestinationSelected,
-          pageController: _pageController,
+          blurEnabled: blurEnabled,
+          floatingNav: floatingNav,
+          hideNavOnScroll: hideNavOnScroll,
+          navVisible: navVisible,
         ),
       ),
     );

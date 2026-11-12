@@ -623,17 +623,5 @@
   "welcomeBack": "おかえりなさい",
   "writeComment": "コメントを書く",
   "year": "出版年",
-  "yourOpenLibrary": "あなたのオープンライブラリ",
-  "navigation": "ナビゲーションバー",
-  "navLabelMode": "ナビゲーションバーのラベル",
-  "navLabelAlways": "常に表示",
-  "navLabelAuto": "自動",
-  "navLabelNever": "表示しない",
-  "glassRefraction": "リキッドグラス屈折",
-  "glassRefractionDesc": "ボトムバーにレンズ層を追加します。オフにすると描画負荷が下がります",
-  "noMoreBooks": "これ以上本はありません",
-  "homeLayout": "ホームレイアウト",
-  "gridColumns": "グリッド列数",
-  "twoColumns": "2列",
-  "threeColumns": "3列"
+  "yourOpenLibrary": "あなたのオープンライブラリ"
 }

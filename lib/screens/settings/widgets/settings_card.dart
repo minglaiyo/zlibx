@@ -1,20 +1,36 @@
 import 'package:flutter/material.dart';
 
-/// Filled Material 3 container for settings groups: no border, 16dp corners.
+/// Flat, bordered card used as the visual container for every settings group.
+/// Overrides the app's default Card style (elevation + horizontal margin) so
+/// the settings page can control its own spacing and look uniformly flat.
 class SettingsCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
 
-  const SettingsCard({super.key, required this.child, this.padding});
+  const SettingsCard({
+    super.key,
+    required this.child,
+    this.padding,
+  });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+
     return Material(
-      color: cs.surfaceContainer,
+      color: cs.surface,
       borderRadius: BorderRadius.circular(16),
-      clipBehavior: Clip.antiAlias,
-      child: padding == null ? child : Padding(padding: padding!, child: child),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cs.outlineVariant, width: 1),
+        ),
+        padding: padding,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: child,
+        ),
+      ),
     );
   }
 }

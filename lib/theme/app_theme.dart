@@ -165,7 +165,7 @@ class AppTheme {
 
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: cs.surfaceContainerHigh,
+        fillColor: cs.surface,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(30),
           borderSide: BorderSide.none,
@@ -176,7 +176,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(30),
-          borderSide: BorderSide.none,
+          borderSide: BorderSide(color: cs.primary, width: 1.5),
         ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -199,27 +199,6 @@ class AppTheme {
         ),
       ),
 
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          backgroundColor: cs.surfaceContainerHigh,
-          foregroundColor: cs.primary,
-          side: BorderSide.none,
-          elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(30),
-          ),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-      ),
-      chipTheme: ChipThemeData(
-        side: BorderSide.none,
-        backgroundColor: cs.surfaceContainerHigh,
-        selectedColor: cs.primaryContainer,
-        labelStyle: TextStyle(color: cs.onSurface),
-        secondaryLabelStyle: TextStyle(color: cs.onPrimaryContainer),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      ),
       dividerTheme: DividerThemeData(
         color: cs.outlineVariant,
         thickness: 1,
@@ -276,8 +255,9 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: cs.surface,
         elevation: 0,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(20)),
+        shape: RoundedRectangleBorder(
+          side: BorderSide(color: cs.outlineVariant),
+          borderRadius: const BorderRadius.all(Radius.circular(20)),
         ),
       ),
 
@@ -317,7 +297,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(30),
-          borderSide: BorderSide.none,
+          borderSide: BorderSide(color: cs.primary, width: 1.5),
         ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -334,27 +314,6 @@ class AppTheme {
         ),
       ),
 
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          backgroundColor: cs.surfaceContainerHigh,
-          foregroundColor: cs.primary,
-          side: BorderSide.none,
-          elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(30),
-          ),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-      ),
-      chipTheme: ChipThemeData(
-        side: BorderSide.none,
-        backgroundColor: cs.surfaceContainerHigh,
-        selectedColor: cs.primaryContainer,
-        labelStyle: TextStyle(color: cs.onSurface),
-        secondaryLabelStyle: TextStyle(color: cs.onPrimaryContainer),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      ),
       dividerTheme: DividerThemeData(
         color: cs.outlineVariant,
         thickness: 1,

@@ -134,6 +134,11 @@ class SearchNotifier extends Notifier<SearchState> {
   /// category controller's rule). Reset on every new search.
   int? _categoryPageSize;
 
+  /// Search-form slugs per category id, for the in-category search
+  /// URL (see `_resolveCategorySlug`). The slug comes from the
+  /// category page's search form, never hand-built.
+  final Map<int, String> _categorySearchSlugs = {};
+
   @override
   SearchState build() {
     return const SearchState();
@@ -156,6 +161,46 @@ class SearchNotifier extends Notifier<SearchState> {
       limit: params.limit,
       exact: params.exact,
     );
+  }
+
+  /// The slug for [categoryId]'s search URL, from the browse page's
+  /// search form (cached). Resolves by browsing (fast Dio first,
+  /// the WebView solver on the wall) when nothing is cached yet;
+  /// null when the browse fails, in which case the caller falls
+  /// back to the bare search URL. Never throws.
+  Future<String?> _resolveCategorySlug(int categoryId) async {
+    final cached = _categorySearchSlugs[categoryId];
+    if (cached != null && cached.isNotEmpty) return cached;
+    try {
+      final repo = CategoryRepository(_api);
+      var response = await repo.fetchBooks(categoryId: categoryId, page: 1);
+      if (!response.success && repo.isChallengeError(response.error)) {
+        final user = ref.read(authProvider).user;
+        final browseUrl =
+            repo.categoryPageUrl(categoryId: categoryId, page: 1);
+        final html = await repo.fetchViaSolver(
+          browseUrl,
+          userId: user?.id,
+          userKey: user?.remixUserkey,
+        );
+        if (html != null) {
+          final parsed = repo.parseBooks(
+            html,
+            baseUrl: Uri.parse(browseUrl).origin,
+          );
+          if (parsed != null) {
+            response = ApiResponse.ok(parsed);
+          }
+        }
+      }
+      final slug = response.data?.searchSlug;
+      if (slug != null && slug.isNotEmpty) {
+        _categorySearchSlugs[categoryId] = slug;
+      }
+      return slug;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// One page of a category browse/search, mapped onto the search
@@ -184,9 +229,25 @@ class SearchNotifier extends Notifier<SearchState> {
     final query = params.query?.trim() ?? '';
     final inSearch = query.isNotEmpty;
     final repo = CategoryRepository(_api);
+    // The in-category search only works at the slugged URL
+    // (`/category/{id}/{slug}/s/`); the bare `/category/{id}/s/`
+    // answers an empty page (device-proven 2026-11-12: the solver
+    // loaded the bare URL and parsed 0 cards). Resolve the slug
+    // from the browse page's search form (cached per category);
+    // null falls back to the bare URL.
+    final slug = inSearch ? await _resolveCategorySlug(categoryId) : null;
+    // Temporary diagnostic (category search, 2026-11-12): whether
+    // the slug resolved. Release-safe: a public category slug only.
+    if (inSearch) {
+      AppLog.report(
+        'category slug cat=$categoryId slug=${slug ?? 'none'}',
+        tag: 'category-search',
+      );
+    }
     final url = inSearch
         ? repo.categorySearchUrl(
             categoryId: categoryId,
+            slug: slug,
             query: query,
             exact: params.exact,
             yearFrom: params.yearFrom,
@@ -207,6 +268,7 @@ class SearchNotifier extends Notifier<SearchState> {
       response = inSearch
           ? await repo.searchInCategory(
               categoryId: categoryId,
+              slug: slug,
               query: query,
               exact: params.exact,
               yearFrom: params.yearFrom,
@@ -269,6 +331,12 @@ class SearchNotifier extends Notifier<SearchState> {
     final data = response.data;
     if (!response.success || data == null) {
       return ApiResponse.fail(response.error ?? 'Failed to load category');
+    }
+    // Keep the page's search-form slug for later searches in this
+    // category (a browse result carries it too).
+    final pageSlug = data.searchSlug;
+    if (pageSlug != null && pageSlug.isNotEmpty) {
+      _categorySearchSlugs[categoryId] = pageSlug;
     }
     final books = <Book>[];
     final unavailable = <int, String>{};

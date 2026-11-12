@@ -17,9 +17,10 @@ part of 'zlibrary_api.dart';
 /// `/category/{id}/{slug}/s/` (search, from the page's own search
 /// form). A bare `/category/{id}` URL 301/302s to its slugged form,
 /// so the fetch goes through [_getWithRedirects] and the slugged
-/// form is never hand-built. The slug for a search URL comes from
-/// the category tree's href when the caller has it; when it does not,
-/// the bare id is used and the server redirects.
+/// form is never hand-built. The bare search URL does NOT redirect
+/// (device-proven 2026-11-12: the bare `/category/{id}/s/` answers
+/// an empty page), so a search MUST carry the slug from the page's
+/// search form ([CategoryPage.searchSlug]).
 ///
 /// Multi-value filters (`languages`, `extensions`,
 /// `selected_content_types`) are passed as BARE keys with a List
@@ -58,6 +59,11 @@ mixin ZLibraryCategories on ZLibraryApiBase {
   /// [query] is capped at 200 characters (the form's `maxlength`);
   /// an empty query fails without a request. [exact] sends `e=1`.
   /// No token is involved (unlike full-text search).
+  ///
+  /// [slug] must be the slug from the category page's search form
+  /// ([CategoryPage.searchSlug]): the bare `/category/{id}/s/`
+  /// answers an empty page (device-proven 2026-11-12), it does not
+  /// redirect to the slugged form.
   Future<ApiResponse<CategoryPage>> searchInCategory({
     required int categoryId,
     String? slug,

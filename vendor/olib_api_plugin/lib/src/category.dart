@@ -39,7 +39,17 @@ class CategoryPage {
   final List<CategoryBook> books;
   final int? totalPages;
 
-  const CategoryPage({required this.books, this.totalPages});
+  /// The slug of the page's search form action
+  /// (`/category/{id}/{slug}/s/`). The server only serves the
+  /// in-category search at the slugged URL — the bare
+  /// `/category/{id}/s/` answers an empty page (device-proven
+  /// 2026-11-12: the WebView solver loaded the bare URL and parsed
+  /// 0 cards while the browse parsed 50) — so a search must pass
+  /// this slug (see `searchInCategory`). Null when the page
+  /// carries no search form.
+  final String? searchSlug;
+
+  const CategoryPage({required this.books, this.totalPages, this.searchSlug});
 }
 
 /// Parse a `/category/{id}` (or `/category/{id}/{slug}/s/`) document
@@ -125,9 +135,31 @@ CategoryPage parseCategoryBooksPage(String html, {String? baseUrl}) {
       ),
     );
   }
+  // The search form's action carries the slugged search URL. Read
+  // the slug off it (decoded, so the path builder re-encodes it
+  // exactly once): the server only serves the in-category search
+  // at the slugged URL, and the bare `/category/{id}/s/` answers
+  // an empty page (device-proven 2026-11-12). Any form whose action
+  // matches the search pattern counts; the form id is not relied
+  // on.
+  String? searchSlug;
+  for (final form in doc.querySelectorAll('form')) {
+    final action = form.attributes['action'] ?? '';
+    final slugMatch =
+        RegExp(r'/category/\d+/([^/]+)/s/').firstMatch(action);
+    if (slugMatch != null) {
+      try {
+        searchSlug = Uri.decodeComponent(slugMatch.group(1)!);
+      } catch (_) {
+        searchSlug = slugMatch.group(1);
+      }
+      break;
+    }
+  }
   return CategoryPage(
     books: books,
     totalPages: _parseCategoryTotalPages(html),
+    searchSlug: searchSlug,
   );
 }
 

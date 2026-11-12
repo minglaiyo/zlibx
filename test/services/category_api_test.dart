@@ -26,9 +26,15 @@ String _card(int n) {
 
 /// A synthetic category page: [cardCount] cards in
 /// `#searchResultBox` plus an inline `pagerOptions` definition when
-/// [totalPages] is given.
-String _page({required int cardCount, int? totalPages}) {
+/// [totalPages] is given, and a search form with [formAction] when
+/// given.
+String _page({required int cardCount, int? totalPages, String? formAction}) {
   final buffer = StringBuffer('<html><body>');
+  if (formAction != null) {
+    buffer.write(
+      '<form id="searchForm" method="get" action="$formAction"></form>',
+    );
+  }
   if (totalPages != null) {
     buffer.write(
       '<script>var pagerOptions = {pagesTotal: $totalPages, currentPage: 1};</script>',
@@ -265,6 +271,30 @@ void main() {
       expect(response.success, isFalse);
       expect(response.error, 'empty query');
       expect(adapter.requestedUris, isEmpty);
+    });
+  });
+
+  group('search slug from the page', () {
+    test('reads the slug from the search form action', () {
+      final page = parseCategoryBooksPage(
+        _page(
+          cardCount: 1,
+          formAction:
+              '/category/528/Psychology-Theory-History--Research/s/',
+        ),
+      );
+      expect(page.searchSlug, 'Psychology-Theory-History--Research');
+    });
+
+    test('decodes a percent-encoded slug so it is encoded once', () {
+      final page = parseCategoryBooksPage(
+        _page(cardCount: 1, formAction: '/category/528/Some%20Slug/s/'),
+      );
+      expect(page.searchSlug, 'Some Slug');
+    });
+
+    test('null when the page has no search form', () {
+      expect(parseCategoryBooksPage(_page(cardCount: 1)).searchSlug, isNull);
     });
   });
 

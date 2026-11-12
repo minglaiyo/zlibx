@@ -45,7 +45,6 @@
     "cancel": "Cancel",
     "cannot_open_folder": "Could not open folder",
     "categories": "Categories",
-    "category_search_hint": "Search in this category",
     "check_for_updates": "Check for Updates",
     "check_your_connection": "Please check your connection",
     "checking_network": "Checking network...",
@@ -242,7 +241,6 @@
     "no_booklist_books": "No books in this booklist yet",
     "no_booklists": "No booklists yet",
     "no_books_found": "No books found",
-    "no_category_books": "No books in this category",
     "no_comments": "No comments yet",
     "no_completed_downloads": "No completed downloads",
     "no_history": "No history",
@@ -348,7 +346,6 @@
     "shelf_uncategorized": "Uncategorized",
     "shelf_view": "Bookshelf view",
     "shelf_view_details": "View details",
-    "show_all": "Show all",
     "show_less": "Show Less",
     "show_more": "Read More",
     "similar_books": "Similar Books",
@@ -430,7 +427,9 @@
     "booklist_color_failed": "Could not change color: {error}",
     "booklist_visibility_failed": "Could not change visibility: {error}",
     "booklist_favorite_failed": "Could not update favorite: {error}",
-    "booklist_note_failed": "Could not save note: {error}"
+    "booklist_note_failed": "Could not save note: {error}",
+    "all_categories": "All categories",
+    "category": "Category"
   },
   "ja": {
     "about": "このアプリについて",
@@ -478,7 +477,6 @@
     "cancel": "キャンセル",
     "cannot_open_folder": "フォルダを開けません",
     "categories": "カテゴリ",
-    "category_search_hint": "このカテゴリ内で検索",
     "check_for_updates": "アップデートを確認",
     "check_your_connection": "接続を確認してください",
     "checking_network": "ネットワークを確認しています...",
@@ -675,7 +673,6 @@
     "no_booklist_books": "このブックリストにはまだ本がありません",
     "no_booklists": "ブックリストがありません",
     "no_books_found": "本が見つかりませんでした",
-    "no_category_books": "このカテゴリには本がありません",
     "no_comments": "コメントはまだありません",
     "no_completed_downloads": "完了したダウンロードはありません",
     "no_history": "履歴がありません",
@@ -781,7 +778,6 @@
     "shelf_uncategorized": "未分類",
     "shelf_view": "本棚表示",
     "shelf_view_details": "詳細を見る",
-    "show_all": "すべて表示",
     "show_less": "閉じる",
     "show_more": "もっと見る",
     "similar_books": "似た本",
@@ -863,7 +859,9 @@
     "booklist_color_failed": "色の変更に失敗しました：{error}",
     "booklist_visibility_failed": "公開設定の変更に失敗しました：{error}",
     "booklist_favorite_failed": "お気に入りの更新に失敗しました：{error}",
-    "booklist_note_failed": "メモの保存に失敗しました：{error}"
+    "booklist_note_failed": "メモの保存に失敗しました：{error}",
+    "all_categories": "すべてのカテゴリ",
+    "category": "カテゴリ"
   },
   "ko": {
     "about": "정보",
@@ -911,7 +909,6 @@
     "cancel": "취소",
     "cannot_open_folder": "폴더를 열 수 없습니다",
     "categories": "카테고리",
-    "category_search_hint": "이 카테고리 내에서 검색",
     "check_for_updates": "업데이트 확인",
     "check_your_connection": "연결 상태를 확인해 주세요",
     "checking_network": "네트워크 확인 중...",
@@ -1108,7 +1105,6 @@
     "no_booklist_books": "이 책 목록에는 아직 책이 없습니다",
     "no_booklists": "책 목록이 없습니다",
     "no_books_found": "책을 찾을 수 없습니다",
-    "no_category_books": "이 카테고리에 책이 없습니다",
     "no_comments": "댓글이 아직 없습니다",
     "no_completed_downloads": "완료된 다운로드가 없습니다",
     "no_history": "기록이 없습니다",
@@ -1214,7 +1210,6 @@
     "shelf_uncategorized": "미분류",
     "shelf_view": "책장 보기",
     "shelf_view_details": "상세 정보 보기",
-    "show_all": "모두 보기",
     "show_less": "접기",
     "show_more": "더 보기",
     "similar_books": "비슷한 책",
@@ -1296,7 +1291,9 @@
     "booklist_color_failed": "색상을 변경하지 못했습니다: {error}",
     "booklist_visibility_failed": "공개 설정을 변경하지 못했습니다: {error}",
     "booklist_favorite_failed": "즐겨찾기를 업데이트하지 못했습니다: {error}",
-    "booklist_note_failed": "메모를 저장하지 못했습니다: {error}"
+    "booklist_note_failed": "메모를 저장하지 못했습니다: {error}",
+    "all_categories": "모든 카테고리",
+    "category": "카테고리"
   },
   "zh": {
     "about": "关于",
@@ -1344,7 +1341,6 @@
     "cancel": "取消",
     "cannot_open_folder": "无法打开文件夹",
     "categories": "分类",
-    "category_search_hint": "在该分类中搜索",
     "check_for_updates": "检查更新",
     "check_your_connection": "请检查网络连接",
     "checking_network": "正在检查网络...",
@@ -1541,7 +1537,6 @@
     "no_booklist_books": "这个书单里还没有书",
     "no_booklists": "暂无书单",
     "no_books_found": "未找到书籍",
-    "no_category_books": "这个分类下没有书",
     "no_comments": "暂无评论",
     "no_completed_downloads": "没有已完成的下载",
     "no_history": "暂无历史",
@@ -1647,7 +1642,6 @@
     "shelf_uncategorized": "未分类",
     "shelf_view": "书架模式",
     "shelf_view_details": "查看详情",
-    "show_all": "全部",
     "show_less": "收起简介",
     "show_more": "展开简介",
     "similar_books": "相似书籍",
@@ -1729,7 +1723,9 @@
     "booklist_color_failed": "更改颜色失败：{error}",
     "booklist_visibility_failed": "更改可见性失败：{error}",
     "booklist_favorite_failed": "收藏失败：{error}",
-    "booklist_note_failed": "保存备注失败：{error}"
+    "booklist_note_failed": "保存备注失败：{error}",
+    "all_categories": "所有分类",
+    "category": "分类"
   },
   "zh_hant": {
     "about": "關於",
@@ -1777,7 +1773,6 @@
     "cancel": "取消",
     "cannot_open_folder": "無法開啟資料夾",
     "categories": "分類",
-    "category_search_hint": "在該分類中搜尋",
     "check_for_updates": "檢查更新",
     "check_your_connection": "請檢查網路連線",
     "checking_network": "正在檢查網路...",
@@ -1974,7 +1969,6 @@
     "no_booklist_books": "這個書單裡還沒有書",
     "no_booklists": "暫無書單",
     "no_books_found": "未找到書籍",
-    "no_category_books": "這個分類下沒有書",
     "no_comments": "暫無評論",
     "no_completed_downloads": "沒有已完成的下載",
     "no_history": "尚無紀錄",
@@ -2080,7 +2074,6 @@
     "shelf_uncategorized": "未分類",
     "shelf_view": "書架模式",
     "shelf_view_details": "查看詳情",
-    "show_all": "全部",
     "show_less": "收合簡介",
     "show_more": "展開簡介",
     "similar_books": "相似書籍",
@@ -2162,6 +2155,8 @@
     "booklist_color_failed": "更改顏色失敗：{error}",
     "booklist_visibility_failed": "更改可見性失敗：{error}",
     "booklist_favorite_failed": "收藏失敗：{error}",
-    "booklist_note_failed": "儲存備註失敗：{error}"
+    "booklist_note_failed": "儲存備註失敗：{error}",
+    "all_categories": "所有分類",
+    "category": "分類"
   }
 }

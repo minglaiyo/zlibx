@@ -227,6 +227,57 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  /// Adopt a session the user created on the site INSIDE the reader
+  /// WebView (the login wall) — reported by ReaderScreen via
+  /// [ReaderArgs.onSessionChanged] once the WebView cookie store holds
+  /// a `remix_userid` / `remix_userkey` pair different from the one the
+  /// app installed.
+  ///
+  /// Without this, a WebView-side login stays invisible to the app: the
+  /// server rotates the userkey, so the stored pair goes stale, the next
+  /// 预览 re-installs the stale pair and the site bounces the user back
+  /// to its login wall, and a later boot's loginWithToken treats the
+  /// stale pair as a real auth failure and WIPES the credentials. No
+  /// network call here — the site itself just proved the pair — only
+  /// adoption, persistence and state.
+  Future<void> adoptWebViewSession(String userId, String userKey) async {
+    // Cancel any in-flight auth flow (slow _init / refreshProfile built
+    // around the old pair must not overwrite the adopted session).
+    final epoch = ++_epoch;
+    final previous = state.user;
+    final sameAccount = previous?.id == userId;
+
+    _api.adoptSession(userId, userKey);
+    await _storage.saveCredentials(
+      userId: userId,
+      userKey: userKey,
+      // Same account: keep the stored email/name. A different account
+      // logged in inside the WebView: its identity is unknown until the
+      // profile refresh below, so clear the stale fields instead of
+      // leaving the previous account's name on the new session.
+      email: sameAccount ? previous?.email : '',
+      name: sameAccount ? previous?.name : '',
+    );
+    if (!_isCurrent(epoch)) return;
+
+    state = AuthState(
+      user: User(
+        id: userId,
+        email: sameAccount ? (previous?.email ?? '') : '',
+        name: sameAccount ? (previous?.name ?? 'User') : 'User',
+        remixUserkey: userKey,
+        downloadsLeft: sameAccount ? previous?.downloadsLeft : null,
+      ),
+    );
+    if (!sameAccount) {
+      invalidateAccountScopedProviders(ref);
+    }
+    // Best effort: fill email/name/downloadsLeft from the live profile.
+    // refreshProfile keeps state untouched on error, so a challenge wall
+    // between us and /eapi/user/profile costs nothing.
+    await refreshProfile();
+  }
+
   Future<void> logout() async {
     // Kill every in-flight auth flow first: a slow _init/profile fetch
     // must not resurrect the user right after logout.

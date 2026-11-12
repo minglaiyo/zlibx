@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../models/display_book.dart';
+import '../providers/auth_provider.dart';
 import '../screens/account/booklist_detail_screen.dart';
 import '../screens/account/booklists_screen.dart';
 import '../screens/account/my_comments_screen.dart';
@@ -280,11 +284,22 @@ Map<String, WidgetBuilder> buildAppRoutes() {
     AppRoutes.reader: (context) {
       final args = ModalRoute.of(context)!.settings.arguments;
       if (args is ReaderArgs) {
-        return ReaderScreen(
-          url: args.url,
-          title: args.title,
-          remixUserId: args.remixUserId,
-          remixUserKey: args.remixUserKey,
+        // 会话回同步：WebView 里的站内登录/密钥轮换要被 app 采纳，
+        // 否则下次预览会把旧会话盖回去，站点反复弹登录墙。
+        return Consumer(
+          builder: (context, ref, _) => ReaderScreen(
+            url: args.url,
+            title: args.title,
+            remixUserId: args.remixUserId,
+            remixUserKey: args.remixUserKey,
+            onSessionChanged: (userId, userKey) {
+              unawaited(
+                ref
+                    .read(authProvider.notifier)
+                    .adoptWebViewSession(userId, userKey),
+              );
+            },
+          ),
         );
       }
       return const _MissingRouteArgsScreen();

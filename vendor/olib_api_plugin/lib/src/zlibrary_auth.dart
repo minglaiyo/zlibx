@@ -29,6 +29,19 @@ mixin ZLibraryAuth on ZLibraryApiBase {
     _wallCookies.clear();
   }
 
+  /// Adopt a session pair learned outside this API layer — e.g. the user
+  /// signed in on the site inside the reader WebView, and the app copied
+  /// the fresh `remix_userid` / `remix_userkey` back from the WebView's
+  /// cookie store (see `ReaderScreen`). Unlike [loginWithToken] this
+  /// performs no network call: the site itself just proved the pair
+  /// against the live session, so validating it again would only add a
+  /// round trip (and could even fail behind a challenge wall). Wall
+  /// cookies are kept — they describe the mirror, not the account.
+  void adoptSession(String userId, String userKey) {
+    _userId = userId;
+    _userKey = userKey;
+  }
+
   /// Remember wall-clearance cookies the WebView earned by passing a
   /// browser check (see `wall_cookie_bridge.dart` in the app). They
   /// are appended to the `Cookie` header on every request to our own

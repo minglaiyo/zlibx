@@ -23,12 +23,20 @@ class ReaderScreen extends StatefulWidget {
   final String? remixUserId;
   final String? remixUserKey;
 
+  /// Fired when the WebView's own cookie store holds a session pair
+  /// that differs from the one the app installed — i.e. the user signed
+  /// in (or the site rotated the key) inside this WebView. The app
+  /// adopts the fresh pair; without this the next 预览 re-installs the
+  /// stale pair and the site bounces the user back to its login wall.
+  final void Function(String userId, String userKey)? onSessionChanged;
+
   const ReaderScreen({
     super.key,
     required this.url,
     required this.title,
     this.remixUserId,
     this.remixUserKey,
+    this.onSessionChanged,
   });
 
   @override
@@ -45,8 +53,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final List<Map<String, dynamic>> _probeLog = [];
   final DateTime _probeStart = DateTime.now();
 
-  // 临时诊断是否已提示过，只提示一次。
-  bool _sessionCheckShown = false;
+  // 本次进入阅读器时写入 WebView 的会话对（与 widget 上的入参一致，
+  // 但以实际写入为准），用于判断 WebView 里的会话是否被站内操作改掉。
+  String? _installedUserId;
+  String? _installedUserKey;
+
+  // 最近一次已上报 onSessionChanged 的会话对，避免同一对重复触发。
+  String? _syncedUserId;
+  String? _syncedUserKey;
 
   // True while the route is popping: the WebView is hidden so the pop
   // transition animates pure Flutter instead of re-compositing the
@@ -88,10 +102,52 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final uri = Uri.tryParse(widget.url);
     // Secure cookies are meaningless (and a leak risk) off https.
     if (uri == null || uri.host.isEmpty || uri.scheme != 'https') return;
-    final hosts = <String>{uri.host};
-    if (uri.host.startsWith('reader.')) {
-      hosts.add(uri.host.substring('reader.'.length));
+    await _installSessionCookiesOnce();
+    _installedUserId = userId;
+    _installedUserKey = userKey;
+    await _verifyInstalledCookies(uri.host);
+  }
+
+  /// Android 的 CookieManager 偶发吞掉 WebView 创建初期的一次写入
+  /// （这正是以前那条"会话写入失败"诊断 toast 抓到的现象）。这里
+  /// 静默读回校验，缺失就重试一次；再失败只记诊断日志——页面上
+  /// 站点自己的登录墙就是兜底信号，不再向用户弹"请重新登录"。
+  Future<void> _verifyInstalledCookies(String host) async {
+    for (var attempt = 0; attempt < 3; attempt++) {
+      if (await _hasSessionCookies(host)) return;
+      if (attempt < 2) await _installSessionCookiesOnce();
     }
+    logIgnored(
+      'reader_screen',
+      StateError('session cookies missing after retry'),
+    );
+  }
+
+  Future<bool> _hasSessionCookies(String host) async {
+    try {
+      final cookies = await CookieManager.instance().getCookies(
+        url: WebUri('https://$host/'),
+      );
+      final names = cookies.map((c) => c.name).toSet();
+      return names.contains('remix_userid') && names.contains('remix_userkey');
+    } catch (error) {
+      logIgnored('reader_screen', error);
+      return false;
+    }
+  }
+
+  /// 只写一次 Cookie（`_installSessionCookies` 的无副作用版本，供
+  /// 校验重试用：不重复更新 _installed* 标记）。
+  Future<void> _installSessionCookiesOnce() async {
+    final userId = widget.remixUserId;
+    final userKey = widget.remixUserKey;
+    if (userId == null || userKey == null) return;
+    final uri = Uri.tryParse(widget.url);
+    if (uri == null || uri.host.isEmpty || uri.scheme != 'https') return;
+    final hosts = <String>{
+      uri.host,
+      if (uri.host.startsWith('reader.')) uri.host.substring('reader.'.length),
+    };
     final manager = CookieManager.instance();
     for (final host in hosts) {
       final url = WebUri('https://$host/');
@@ -112,26 +168,33 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
-  /// 临时诊断：确认会话 Cookie 是否真的落进了 WebView。
-  /// 只在缺失时提示一次；写进去了就不打扰。核实后删除。
-  Future<void> _checkSessionCookies() async {
+  /// WebView → app 的会话回同步：站内登录（登录墙）或站点轮换密钥
+  /// 都会把 WebView CookieStore 里的 remix 对改掉。读回后发现与本次
+  /// 安装进来的对不一致，就上报 [ReaderArgs.onSessionChanged]，让
+  /// app 层采纳新会话——否则下次打开预览会把旧会话盖回去，站点再
+  /// 次弹登录墙，循环往复；下次冷启动还会因登录态失效被清掉凭据。
+  Future<void> _syncSessionFromWebView(Uri pageUri) async {
+    if (widget.onSessionChanged == null) return;
+    if (pageUri.scheme != 'https' || pageUri.host.isEmpty) return;
     try {
-      final uri = Uri.tryParse(widget.url);
-      if (uri == null || uri.host.isEmpty) return;
       final cookies = await CookieManager.instance().getCookies(
-        url: WebUri('https://${uri.host}/'),
+        url: WebUri('https://${pageUri.host}/'),
       );
-      final names = cookies.map((c) => c.name).toSet();
-      if (!mounted) return;
-      if (!names.contains('remix_userid') ||
-          !names.contains('remix_userkey')) {
-        showAppSnack(context,
-              AppLocalizations.of(context)!.readerSessionWriteFailed,
-            );
+      String? userId;
+      String? userKey;
+      for (final cookie in cookies) {
+        if (cookie.value.isEmpty) continue;
+        if (cookie.name == 'remix_userid') userId = cookie.value;
+        if (cookie.name == 'remix_userkey') userKey = cookie.value;
       }
+      if (userId == null || userKey == null) return;
+      if (userId == _installedUserId && userKey == _installedUserKey) return;
+      if (userId == _syncedUserId && userKey == _syncedUserKey) return;
+      _syncedUserId = userId;
+      _syncedUserKey = userKey;
+      widget.onSessionChanged!(userId, userKey);
     } catch (error) {
       logIgnored('reader_screen', error);
-      // 诊断本身失败不打扰阅读。
     }
   }
 
@@ -374,11 +437,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     'url': _probeUrl(url),
                   });
                 }
-                if (!_sessionCheckShown &&
-                    widget.remixUserId != null &&
-                    widget.remixUserKey != null) {
-                  _sessionCheckShown = true;
-                  _checkSessionCookies();
+                // 每次页面加载完成都回读一次会话：站内登录/密钥轮换
+                // 只发生在 WebView 侧，发现新会话就上报 app 采纳。
+                if (url != null) {
+                  unawaited(_syncSessionFromWebView(url));
                 }
               },
               onProgressChanged: (controller, progress) {
@@ -439,10 +501,17 @@ class ReaderArgs {
   final String? remixUserId;
   final String? remixUserKey;
 
+  /// Fired when the WebView's cookie store ends up with a session pair
+  /// different from the one installed here (the user signed in on the
+  /// site's login wall inside the reader, or the site rotated the key).
+  /// The route layer wires this to [AuthNotifier.adoptWebViewSession].
+  final void Function(String userId, String userKey)? onSessionChanged;
+
   const ReaderArgs({
     required this.url,
     required this.title,
     this.remixUserId,
     this.remixUserKey,
+    this.onSessionChanged,
   });
 }

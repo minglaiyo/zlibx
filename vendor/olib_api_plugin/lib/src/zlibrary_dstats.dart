@@ -11,14 +11,14 @@
 // download-history page shows — records made on other devices and
 // through the website are absent from the eapi list, so any client
 // reading only the eapi can never show the full history. The site's
-// page (`/users/dstats`) is the real per-download log: server-rendered
+// page (`/users/downloads`) is the real per-download log: server-rendered
 // HTML, one `tr.dstats-row` per download event, 50 rows per page,
 // navigated with `?page=N`; its own JS does no AJAX.
 part of 'zlibrary_api.dart';
 
 /// Download-history methods for [ZLibraryApi].
 mixin ZLibraryDownloadHistory on ZLibraryApiBase {
-  /// One page of the site's download history (`/users/dstats?page=N`),
+  /// One page of the site's download history (`/users/downloads?page=N`),
   /// parsed into [Book]s (id, title, `/book/{hash}/…` href and
   /// `downloadedAt`; no author/cover/extension/size — the page does not
   /// render them, overlay those from the eapi downloaded list).
@@ -32,7 +32,7 @@ mixin ZLibraryDownloadHistory on ZLibraryApiBase {
     int? page,
   }) async {
     final raw = await _getWithRedirects(
-      '/users/dstats',
+      '/users/downloads',
       queryParameters: {if (page != null && page > 1) 'page': page},
     );
     if (raw.error == 'cf_blocked') {
@@ -77,6 +77,6 @@ mixin ZLibraryDownloadHistory on ZLibraryApiBase {
   /// directly). Same role as `articlePageUrl`.
   String downloadStatsPageUrl({int page = 1}) {
     final query = page > 1 ? '?page=$page' : '';
-    return '$_base/users/dstats$query';
+    return '$_base/users/downloads$query';
   }
 }

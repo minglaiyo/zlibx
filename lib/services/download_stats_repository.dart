@@ -5,7 +5,7 @@ import 'booklist_solver.dart';
 import 'wall_cookie_bridge.dart';
 import 'webview_challenge_solver.dart';
 
-/// Data layer for the cloud download history: the site's `/users/dstats`
+/// Data layer for the cloud download history: the site's `/users/downloads`
 /// page (fast Dio first, the WebView solver on the browser-check wall)
 /// and its parsing.
 ///

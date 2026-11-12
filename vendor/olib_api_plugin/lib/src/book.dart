@@ -63,7 +63,7 @@ class Book {
   final String? ratingQuality;
 
   /// When this download happened (per-download record from the site's
-  /// `/users/dstats` history page — see `parseDownloadStatsPage`). The
+  /// `/users/downloads` history page — see `parseDownloadStatsPage`). The
   /// eapi book object carries no download timestamp, so this stays
   /// null for books coming from search / saved / the eapi downloaded
   /// list; the cloud-history screen shows it when present.

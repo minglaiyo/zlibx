@@ -28,7 +28,7 @@ Exports only what the app imports: `ZLibraryApi`, `Book`, `User`,
   `Invalid hash` failure resolves the real eapi hash via a title
   search matched by id and retries once), `getMostPopular()`,
   `getUserRecommended()`, `getRecently()`, `getUserSaved({page, limit})`,
-  `getUserDownloaded({page, limit})`, `getUserDownloadHistoryPage({page})` (site `/users/dstats` HTML),
+  `getUserDownloaded({page, limit})`, `getUserDownloadHistoryPage({page})` (site `/users/downloads` HTML),
   `saveBook(bookId)`, `unsaveUserBook(bookId)`,
   `similar(bookId, hashId)`.
 - Download: `downloadBook(bookId, hash, savePath, {onProgress, cancelToken, title})`
@@ -49,7 +49,7 @@ Exports only what the app imports: `ZLibraryApi`, `Book`, `User`,
 | getUserSaved | GET `/eapi/user/book/saved` | Confirmed |
 | unsaveUserBook | GET `/eapi/user/book/{id}/unsave` | Confirmed |
 | getUserDownloaded | GET `/eapi/user/book/downloaded` (`page`, `limit`) | Confirmed; `page`/`limit` pagination verified against the working heartleo/zlib client. NOT the site's download history: records from other devices / the website are absent from this list (2026-11-12 user report) — used only as a metadata overlay (author/cover/extension/size) for the history screen |
-| getUserDownloadHistoryPage | GET `/users/dstats?page=N` (site-frontend HTML, logged-in session) — one `tr.dstats-row` per download event (`data-item_id` = book id, `/book/{shortHash}/…` link, `dd.mm.yyyy`+`HH:MM` stamp), 50 rows/page | Shape confirmed from a saved `下载历史` page (zh.z-library.sk, 2026-11-12, 50 rows on page 1); the page's own JS does no AJAX. This is the account-wide per-download log the website shows |
+| getUserDownloadHistoryPage | GET `/users/downloads?page=N` (site-frontend HTML, logged-in session) — one `tr.dstats-row` per download event (`data-item_id` = book id, `/book/{shortHash}/…` link, `dd.mm.yyyy`+`HH:MM` stamp), 50 rows/page | Shape confirmed from a saved `下载历史` page (zh.z-library.sk, 2026-11-12, 50 rows on page 1); the page's own JS does no AJAX. This is the account-wide per-download log the website shows |
 | saveBook | GET `/eapi/user/book/{id}/save` | Inferred by symmetry with unsave |
 | getMostPopular | GET `/eapi/book/most_popular`, fallback search `order=popular` on 404 | Inferred, fallback included |
 | getUserRecommended | GET `/eapi/user/recommended`, fallback most-popular on 404 | Inferred, fallback included |

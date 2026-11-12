@@ -13,7 +13,7 @@ import 'package:zlibx/services/webview_challenge_solver.dart';
 ///    拉一次且无刷新入口；
 /// 2. 2026-11-12 用户报告 + 保存的 zh.z-library.sk 下载历史页证实：
 ///    eapi 列表根本不含其他设备 / 网页端的下载——真正的全账号逐次
-///    日志是网站 `/users/dstats`（HTML，50 行/页）。
+///    日志是网站 `/users/downloads`（HTML，50 行/页）。
 ///
 /// 现在的行为：dstats 为权威列表（全量翻页），eapi 列表只补元数据
 /// （作者/封面/格式/大小，失败容忍）。这里锁住这套合并与终止逻辑。
@@ -50,7 +50,7 @@ class _FakeZLibraryApi implements ZLibraryApi {
 
   @override
   String downloadStatsPageUrl({int page = 1}) =>
-      'https://fake.test/users/dstats?page=$page';
+      'https://fake.test/users/downloads?page=$page';
 
   @override
   Future<ApiResponse<List<Book>>> getUserDownloadHistoryPage({

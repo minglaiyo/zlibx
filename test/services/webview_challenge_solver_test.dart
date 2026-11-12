@@ -73,7 +73,7 @@ void main() {
       WebviewChallengeSolver.visibleSolverFallback =
           (url) async => '<html><body>real page</body></html>';
       final html = await WebviewChallengeSolver.fetchHtmlVisibleOnly(
-        'https://fake.test/users/dstats',
+        'https://fake.test/users/downloads',
       );
       expect(html, contains('real page'));
     });
@@ -81,7 +81,7 @@ void main() {
     test('没有注册回退时返回 null', () async {
       WebviewChallengeSolver.overrideIsMobile = true;
       final html = await WebviewChallengeSolver.fetchHtmlVisibleOnly(
-        'https://fake.test/users/dstats',
+        'https://fake.test/users/downloads',
       );
       expect(html, isNull);
     });
@@ -91,7 +91,7 @@ void main() {
       WebviewChallengeSolver.visibleSolverFallback =
           (url) async => '<html><body>real page</body></html>';
       final html = await WebviewChallengeSolver.fetchHtmlVisibleOnly(
-        'https://fake.test/users/dstats',
+        'https://fake.test/users/downloads',
       );
       expect(html, isNull);
     });

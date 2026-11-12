@@ -2,7 +2,7 @@ import 'package:html/parser.dart' as html_parser;
 
 import 'book.dart';
 
-/// The site's own "download history" (`下载历史`, `/users/dstats`),
+/// The site's own "download history" (`下载历史`, `/users/downloads`),
 /// parsed from the server-rendered document.
 ///
 /// This is the ACCOUNT-WIDE per-download log the website shows — every

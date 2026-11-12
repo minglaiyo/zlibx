@@ -14,7 +14,7 @@ import '../../utils/cover_cache.dart';
 
 /// Sort order for the cloud download history list. The default
 /// ([dateDesc]) is the server's own order (newest download first —
-/// the `/users/dstats` per-download log is already sorted that way).
+/// the `/users/downloads` per-download log is already sorted that way).
 enum _HistorySort {
   dateDesc,
   dateAsc,

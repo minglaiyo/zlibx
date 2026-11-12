@@ -651,7 +651,7 @@ final savedBooksProvider =
 /// 云端下载历史（账号维度的逐次下载记录，包含其他设备 / 网页端产生
 /// 的下载）。
 ///
-/// 数据源是网站的「下载历史」页 `/users/dstats`（服务端渲染 HTML，
+/// 数据源是网站的「下载历史」页 `/users/downloads`（服务端渲染 HTML，
 /// 每次下载一行、50 行/页、?page=N 翻页）——这是全账号的下载日志。
 /// eapi 的 `/eapi/user/book/downloaded` 不是这份数据：其他设备 /
 /// 网页端的记录不在里面（2026-11-12 用户报告），只拿它来补元数据
@@ -724,7 +724,7 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
     }
   }
 
-  /// `/users/dstats` 全量翻页（每页 50 行，上限 30 页 = 1500 条记录）。
+  /// `/users/downloads` 全量翻页（每页 50 行，上限 30 页 = 1500 条记录）。
   /// 终止：空页，或整页都是已见过的记录（服务端忽略 page 参数时每页
   /// 回同一批，靠这个不空转）。
   ///

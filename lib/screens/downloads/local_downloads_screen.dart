@@ -14,7 +14,6 @@ import '../../widgets/empty_state.dart';
 
 import '../../utils/app_snack.dart';
 import '../../utils/date_text.dart';
-
 class LocalDownloadsScreen extends ConsumerWidget {
   const LocalDownloadsScreen({super.key});
 
@@ -53,24 +52,8 @@ class LocalDownloadsScreen extends ConsumerWidget {
         ),
       ],
       bottom: TabBar(
-        dividerColor: Colors.transparent,
-        indicatorSize: TabBarIndicatorSize.tab,
-        indicatorPadding: const EdgeInsets.symmetric(
-          horizontal: 6,
-          vertical: 5,
-        ),
-        indicator: BoxDecoration(
-          color: Theme.of(context).colorScheme.primaryContainer,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        splashBorderRadius: BorderRadius.circular(20),
-        labelColor: Theme.of(context).colorScheme.onPrimaryContainer,
-        unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
-        labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-        unselectedLabelStyle: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-        ),
+        indicatorColor: Theme.of(context).colorScheme.primary,
+        labelColor: Theme.of(context).colorScheme.primary,
         tabs: [
           Tab(text: '${l.ongoing} (${ongoingIds.length})'),
           Tab(text: '${l.completed} (${completedIds.length})'),
@@ -86,8 +69,7 @@ class LocalDownloadsScreen extends ConsumerWidget {
           children: [
             SizedBox(
               height:
-                  appBar.preferredSize.height +
-                  MediaQuery.paddingOf(context).top,
+                  appBar.preferredSize.height + MediaQuery.paddingOf(context).top,
               child: appBar,
             ),
             Expanded(
@@ -320,7 +302,10 @@ class _DownloadItem extends ConsumerWidget {
                         value: 'details',
                         child: Text(l.fileDetails),
                       ),
-                      PopupMenuItem(value: 'share', child: Text(l.share)),
+                      PopupMenuItem(
+                        value: 'share',
+                        child: Text(l.share),
+                      ),
                       const PopupMenuDivider(),
                     ],
                     PopupMenuItem(
@@ -357,10 +342,7 @@ class _DownloadItem extends ConsumerWidget {
         l.downloadPreparing,
         Theme.of(context).colorScheme.primary,
       ),
-      DownloadStatus.downloading => (
-        l.downloading,
-        Theme.of(context).colorScheme.primary,
-      ),
+      DownloadStatus.downloading => (l.downloading, Theme.of(context).colorScheme.primary),
       DownloadStatus.completed => (l.completed, AppColors.success),
       DownloadStatus.error => (
         l.downloadFailed,
@@ -404,7 +386,9 @@ class _DownloadItem extends ConsumerWidget {
     if (path != null && await MediaStoreFiles.exists(path)) return true;
     ref.read(downloadProvider.notifier).markMissingFile(task.id);
     if (context.mounted) {
-      showAppSnack(context, AppLocalizations.of(context)!.downloadFileMissing);
+      showAppSnack(context,
+            AppLocalizations.of(context)!.downloadFileMissing,
+          );
     }
     return false;
   }
@@ -421,7 +405,9 @@ class _DownloadItem extends ConsumerWidget {
       if (MediaStoreFiles.isContentUri(task.filePath!)) {
         final opened = await MediaStoreFiles.open(task.filePath!);
         if (!opened && context.mounted) {
-          showAppSnack(context, AppLocalizations.of(context)!.openFileFailed);
+          showAppSnack(context,
+                AppLocalizations.of(context)!.openFileFailed,
+              );
         }
         return;
       }
@@ -477,7 +463,9 @@ class _DownloadItem extends ConsumerWidget {
         // MediaStore-published downloads live at a content:// URI,
         // which share_plus cannot share as a file path — those are
         // copied to a temp file in the app cache dir first.
-        final sharePath = await MediaStoreFiles.shareablePath(task.filePath!);
+        final sharePath = await MediaStoreFiles.shareablePath(
+          task.filePath!,
+        );
         if (sharePath == null) {
           if (context.mounted) {
             showAppSnack(context, l.shareFailed);
@@ -540,4 +528,5 @@ class _DownloadItem extends ConsumerWidget {
       }
     }
   }
+
 }

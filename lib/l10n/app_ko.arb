@@ -623,17 +623,5 @@
   "welcomeBack": "다시 오신 것을 환영합니다",
   "writeComment": "댓글 쓰기",
   "year": "출판 연도",
-  "yourOpenLibrary": "당신의 오픈 라이브러리",
-  "navigation": "탐색 모음",
-  "navLabelMode": "탐색 모음 라벨",
-  "navLabelAlways": "항상 표시",
-  "navLabelAuto": "자동",
-  "navLabelNever": "표시 안 함",
-  "glassRefraction": "리퀴드 글라스 굴절",
-  "glassRefractionDesc": "하단 바에 렌즈 레이어를 추가합니다. 끄면 렌더링 부하가 줄어듭니다",
-  "noMoreBooks": "더 이상 책이 없습니다",
-  "homeLayout": "홈 레이아웃",
-  "gridColumns": "그리드 열 수",
-  "twoColumns": "2열",
-  "threeColumns": "3열"
+  "yourOpenLibrary": "당신의 오픈 라이브러리"
 }

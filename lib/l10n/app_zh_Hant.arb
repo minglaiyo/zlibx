@@ -623,17 +623,5 @@
   "welcomeBack": "歡迎回來",
   "writeComment": "寫評論",
   "year": "年份",
-  "yourOpenLibrary": "你的開放圖書館",
-  "navigation": "導覽列",
-  "navLabelMode": "導覽列文字",
-  "navLabelAlways": "始終顯示",
-  "navLabelAuto": "自動",
-  "navLabelNever": "不顯示",
-  "glassRefraction": "液態玻璃折射",
-  "glassRefractionDesc": "底欄額外透鏡層，關閉可減少渲染開銷",
-  "noMoreBooks": "沒有更多書籍了",
-  "homeLayout": "首頁版面",
-  "gridColumns": "網格欄數",
-  "twoColumns": "2 欄",
-  "threeColumns": "3 欄"
+  "yourOpenLibrary": "你的開放圖書館"
 }

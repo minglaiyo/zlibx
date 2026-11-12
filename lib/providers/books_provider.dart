@@ -165,9 +165,8 @@ class SearchNotifier extends Notifier<SearchState> {
   }
 }
 
-final searchProvider = NotifierProvider<SearchNotifier, SearchState>(
-  SearchNotifier.new,
-);
+final searchProvider =
+    NotifierProvider<SearchNotifier, SearchState>(SearchNotifier.new);
 
 // ── Book Details ────────────────────────────────────────────────────
 
@@ -180,68 +179,70 @@ final searchProvider = NotifierProvider<SearchNotifier, SearchState>(
 /// 区块解析出的书单列表。两者来自同一次 HTML 抓取
 /// （[ZLibraryApi.fetchBookDetailExtras]），不再为书单单独发请求。
 final bookDetailsProvider = FutureProvider.autoDispose
-    .family<({Book book, List<Booklist> relatedBooklists}), BookIdentifier>((
-      ref,
-      identifier,
-    ) async {
-      final api = ref.watch(zlibraryApiProvider);
-      final response = await api.getBookInfo(
-        identifier.bookId,
-        identifier.hashId,
-        title: identifier.title,
+    .family<({Book book, List<Booklist> relatedBooklists}), BookIdentifier>(
+  (ref, identifier) async {
+  final api = ref.watch(zlibraryApiProvider);
+  final response = await api.getBookInfo(
+    identifier.bookId,
+    identifier.hashId,
+    title: identifier.title,
+  );
+  if (!response.success) {
+    throw StateError(response.error ?? 'Failed to load book details');
+  }
+  final book = response.data;
+  if (book == null) {
+    throw StateError('Book details response did not contain a book');
+  }
+  // Best-effort detail-page extras (volume / ISBN / IPFS / rating +
+  // the related-booklists block): the eapi book does not carry them.
+  // The HTML fetch runs AFTER the eapi detail loaded, so a slow or
+  // walled page only delays the extra rows — the screen keeps showing
+  // the eapi book meanwhile. The page sits behind the DiamWall: when
+  // Dio answers the browser-check challenge, the repository
+  // escalates to the WebView solver (same escalation as the
+  // booklists / full-text / category HTML routes). Any failure
+  // returns the eapi book unchanged with no booklists.
+  final href = identifier.href ?? book.href;
+  if (href == null || href.isEmpty) {
+    return (book: book, relatedBooklists: const <Booklist>[]);
+  }
+  try {
+    final user = ref.read(authProvider).user;
+    final pageRepo = BookDetailPageRepository(api);
+    final result = await pageRepo.fetch(
+      href: href,
+      userId: user?.id,
+      userKey: user?.remixUserkey,
+    );
+    if (!result.success || result.data == null) {
+      logIgnored(
+        'book_details_metadata',
+        StateError(result.error ?? 'book detail page failed'),
       );
-      if (!response.success) {
-        throw StateError(response.error ?? 'Failed to load book details');
-      }
-      final book = response.data;
-      if (book == null) {
-        throw StateError('Book details response did not contain a book');
-      }
-      // Best-effort detail-page extras (volume / ISBN / IPFS / rating +
-      // the related-booklists block): the eapi book does not carry them.
-      // The HTML fetch runs AFTER the eapi detail loaded, so a slow or
-      // walled page only delays the extra rows — the screen keeps showing
-      // the eapi book meanwhile. The page sits behind the DiamWall: when
-      // Dio answers the browser-check challenge, the repository
-      // escalates to the WebView solver (same escalation as the
-      // booklists / full-text / category HTML routes). Any failure
-      // returns the eapi book unchanged with no booklists.
-      final href = identifier.href ?? book.href;
-      if (href == null || href.isEmpty) {
-        return (book: book, relatedBooklists: const <Booklist>[]);
-      }
-      try {
-        final user = ref.read(authProvider).user;
-        final pageRepo = BookDetailPageRepository(api);
-        final result = await pageRepo.fetch(
-          href: href,
-          userId: user?.id,
-          userKey: user?.remixUserkey,
-        );
-        if (!result.success || result.data == null) {
-          logIgnored(
-            'book_details_metadata',
-            StateError(result.error ?? 'book detail page failed'),
-          );
-          return (book: book, relatedBooklists: const <Booklist>[]);
-        }
-        final metadata = result.data!.metadata;
-        final merged = book.copyWith(
-          href: href,
-          volume: metadata.volume,
-          isbn10: metadata.isbn10,
-          isbn13: metadata.isbn13,
-          ipfsCid: metadata.ipfsCid,
-          ipfsCidBlake2b: metadata.ipfsCidBlake2b,
-          ratingInterest: metadata.ratingInterest,
-          ratingQuality: metadata.ratingQuality,
-        );
-        return (book: merged, relatedBooklists: result.data!.relatedBooklists);
-      } catch (error) {
-        logIgnored('book_details_metadata', error);
-        return (book: book, relatedBooklists: const <Booklist>[]);
-      }
-    });
+      return (book: book, relatedBooklists: const <Booklist>[]);
+    }
+    final metadata = result.data!.metadata;
+    final merged = book.copyWith(
+      href: href,
+      volume: metadata.volume,
+      isbn10: metadata.isbn10,
+      isbn13: metadata.isbn13,
+      ipfsCid: metadata.ipfsCid,
+      ipfsCidBlake2b: metadata.ipfsCidBlake2b,
+      ratingInterest: metadata.ratingInterest,
+      ratingQuality: metadata.ratingQuality,
+    );
+    return (
+      book: merged,
+      relatedBooklists: result.data!.relatedBooklists,
+    );
+  } catch (error) {
+    logIgnored('book_details_metadata', error);
+    return (book: book, relatedBooklists: const <Booklist>[]);
+  }
+  },
+);
 
 // ── External Search (Anna's Archive + LibGen) ────────────────────────
 //
@@ -333,12 +334,17 @@ class ExternalSearchNotifier extends Notifier<ExternalSearchState> {
       );
     } catch (e) {
       if (requestId != _requestId) return;
-      state = ExternalSearchState(hasSearched: true, error: _errorMessage(e));
+      state = ExternalSearchState(
+        hasSearched: true,
+        error: _errorMessage(e),
+      );
     }
   }
 
   Future<void> loadMore() async {
-    if (_lastQuery == null || state.isLoadingMore || !state.hasMore) {
+    if (_lastQuery == null ||
+        state.isLoadingMore ||
+        !state.hasMore) {
       return;
     }
 
@@ -352,14 +358,20 @@ class ExternalSearchNotifier extends Notifier<ExternalSearchState> {
       );
       if (requestId != _requestId) return;
       state = state.copyWith(
-        books: [...state.books, ...books.map<DisplayBook>(_toDisplay)],
+        books: [
+          ...state.books,
+          ...books.map<DisplayBook>(_toDisplay),
+        ],
         currentPage: nextPage,
         isLoadingMore: false,
         hasMore: books.isNotEmpty,
       );
     } catch (e) {
       if (requestId != _requestId) return;
-      state = state.copyWith(isLoadingMore: false, error: _errorMessage(e));
+      state = state.copyWith(
+        isLoadingMore: false,
+        error: _errorMessage(e),
+      );
     }
   }
 
@@ -386,7 +398,8 @@ final externalSearchProvider =
 /// reused across detail and search requests instead of being rebuilt
 /// per call. The service holds no per-request mutable state (its headers
 /// map is only read), so sharing one instance is safe.
-final annasArchieveProvider = Provider<AnnasArchieve>((ref) => AnnasArchieve());
+final annasArchieveProvider =
+    Provider<AnnasArchieve>((ref) => AnnasArchieve());
 
 // ── Anna's Archive Book Details ──────────────────────────────────────
 //
@@ -395,8 +408,8 @@ final annasArchieveProvider = Provider<AnnasArchieve>((ref) => AnnasArchieve());
 // mirror, parse failure), so the provider surfaces the error as-is.
 /// autoDispose：详情页关掉后无人 watch 即释放缓存；每条 link 各占一
 /// 个缓存项，重度浏览否则无界增长。
-final annasBookDetailsProvider = FutureProvider.autoDispose
-    .family<BookInfoData, String>((ref, link) async {
+final annasBookDetailsProvider =
+    FutureProvider.autoDispose.family<BookInfoData, String>((ref, link) async {
       final archive = ref.watch(annasArchieveProvider);
       return archive.bookInfo(url: link);
     });
@@ -405,7 +418,8 @@ final annasBookDetailsProvider = FutureProvider.autoDispose
 /// a fresh Dio (and a fresh keep-alive HttpClient pool) every time the
 /// user opened a LibGen book — the same leak pattern the search side
 /// already fixed with [annasArchieveProvider].
-final libgenServiceProvider = Provider<LibgenService>((ref) => LibgenService());
+final libgenServiceProvider =
+    Provider<LibgenService>((ref) => LibgenService());
 
 // ── LibGen Book Details ──────────────────────────────────────────────
 //
@@ -414,8 +428,8 @@ final libgenServiceProvider = Provider<LibgenService>((ref) => LibgenService());
 // (no mirror, non-200, parse failure), so the provider turns that into
 // a StateError for the detail page's error UI.
 /// autoDispose：与 [annasBookDetailsProvider] 同理，详情页关掉即释放。
-final libgenBookDetailsProvider = FutureProvider.autoDispose
-    .family<BookInfoData, String>((ref, link) async {
+final libgenBookDetailsProvider =
+    FutureProvider.autoDispose.family<BookInfoData, String>((ref, link) async {
       final info = await ref.watch(libgenServiceProvider).bookInfo(link);
       if (info == null) throw StateError('Failed to load book details');
       return info;
@@ -464,6 +478,25 @@ final mostPopularBooksProvider = FutureProvider<List<Book>>((ref) async {
     throw StateError(response.error ?? 'Failed to load popular books');
   }
   return response.data ?? [];
+});
+
+final recommendedBooksProvider = FutureProvider<List<Book>>((ref) async {
+  final api = ref.watch(zlibraryApiProvider);
+  final response = await api.getUserRecommended();
+  if (!response.success) {
+    throw StateError(response.error ?? 'Failed to load recommendations');
+  }
+  return response.data ?? [];
+});
+
+/// 首页推荐：z站推荐，转为 DisplayBook 列表。
+final homeRecommendedProvider = Provider<AsyncValue<List<DisplayBook>>>((ref) {
+  final zlibAsync = ref.watch(recommendedBooksProvider);
+  // whenData keeps loading/error states as-is: the home screen keeps its
+  // error/retry entry and keeps showing the previous data while a
+  // revalidation after an account switch is in flight.
+  return zlibAsync
+      .whenData((books) => books.map((b) => b.toDisplay()).toList());
 });
 
 final recentBooksProvider = FutureProvider<List<Book>>((ref) async {
@@ -716,7 +749,9 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
           originalError: response.error ?? 'download history failed',
         );
       } else {
-        throw StateError(response.error ?? 'Could not load download history');
+        throw StateError(
+          response.error ?? 'Could not load download history',
+        );
       }
       final before = seen.length;
       for (final book in batch) {
@@ -782,7 +817,9 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
         limit: pageSize,
       );
       if (!response.success) {
-        throw StateError(response.error ?? 'Could not load download metadata');
+        throw StateError(
+          response.error ?? 'Could not load download metadata',
+        );
       }
       final batch = response.data ?? const <Book>[];
       final before = byId.length;
@@ -796,7 +833,8 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
       // 压到比 100 小，那只说明本页比请求的短，不代表没有下一页。
       // "到达 total_pages"或"整页都是重复（没有新增）"才可靠——
       // 后者同时兜住了服务端忽略 page 参数的情况（每页回同一批）。
-      if ((totalPages != null && page >= totalPages) || byId.length == before) {
+      if ((totalPages != null && page >= totalPages) ||
+          byId.length == before) {
         break;
       }
     }
@@ -825,9 +863,11 @@ class HistoryCoverNotifier extends Notifier<Map<String, String>> {
     if (book.id == 0 || _attempted.contains(id)) return;
     _attempted.add(id);
     try {
-      final response = await ref
-          .read(zlibraryApiProvider)
-          .getBookInfo(id, book.hash ?? '', title: book.title);
+      final response = await ref.read(zlibraryApiProvider).getBookInfo(
+            id,
+            book.hash ?? '',
+            title: book.title,
+          );
       final cover = response.data?.cover;
       if (response.success && cover != null && cover.isNotEmpty) {
         state = {...state, id: cover};
@@ -849,9 +889,10 @@ final historyCoverProvider =
 
 /// autoDispose：每本书一个缓存项；详情页关掉即释放，切换账号时
 /// [invalidateAccountScopedProviders] 本来就会整体失效它。
-final isBookFavoritedProvider = FutureProvider.autoDispose.family<bool, String>(
-  (ref, bookId) async {
-    final storage = ref.watch(storageServiceProvider);
-    return await storage.isFavorite(bookId);
-  },
-);
+final isBookFavoritedProvider = FutureProvider.autoDispose.family<bool, String>((
+  ref,
+  bookId,
+) async {
+  final storage = ref.watch(storageServiceProvider);
+  return await storage.isFavorite(bookId);
+});

@@ -221,7 +221,11 @@ mixin ZLibrarySearch on ZLibraryApiBase {
   /// silently fell back to most-popular — so the app can log which
   /// source the home screen actually showed.
   Future<ApiResponse<List<Book>>> getUserRecommended() async {
-    final raw = await _get('/eapi/user/recommended');
+    // Path verified against heartleo/zlib's eapi_feed.go (2026-11-12):
+    // the personalised feed lives under /eapi/user/book/recommended.
+    // The earlier /eapi/user/recommended (no /book/) 404s — that is
+    // what issue #3's diagnostic proved on device (http-404 fallback).
+    final raw = await _get('/eapi/user/book/recommended');
     // Same cf_blocked short-circuit as [getMostPopular].
     if (raw.error == 'cf_blocked') {
       return ApiResponse.fail('cf_blocked', statusCode: raw.status);

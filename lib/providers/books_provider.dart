@@ -1013,6 +1013,14 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
     final generation = ++_generation;
     bool isCurrent() => generation == _generation;
     if (!silent) state = const AsyncValue.loading();
+    // Temporary diagnostic (download history speed, 2026-11-12):
+    // time the load end to end and per page, so the next log shows
+    // whether the first page, the solver, or the page-by-page tail
+    // is the slow part. Release-safe: timings and counts only; no
+    // query, URL or cookie.
+    final stopwatch = Stopwatch()..start();
+    var pagesFetched = 0;
+    var firstPaintLogged = false;
 
     final repository = DownloadStatsRepository(_api);
     final records = <Book>[];
@@ -1052,6 +1060,10 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
       _fetchDownloadedMetadata().then<void>((m) {
         if (!isCurrent()) return;
         meta = m;
+        AppLog.report(
+          'dhistory meta ms=${stopwatch.elapsedMilliseconds} books=${m.length}',
+          tag: 'download-history',
+        );
         paint();
       }, onError: (Object e) {
         logIgnored('downloaded_meta', e);
@@ -1061,6 +1073,7 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
     try {
       const maxPages = 30;
       for (var page = 1; page <= maxPages; page++) {
+        pagesFetched = page;
         final batch = await _fetchStatsPage(repository, page);
         if (!isCurrent()) return;
         final before = seen.length;
@@ -1077,9 +1090,20 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
         // 每页回同一批，靠这个不空转）。
         final done = batch.isEmpty || seen.length == before;
         paint();
+        if (!firstPaintLogged && records.isNotEmpty) {
+          firstPaintLogged = true;
+          AppLog.report(
+            'dhistory first-paint ms=${stopwatch.elapsedMilliseconds} books=${records.length}',
+            tag: 'download-history',
+          );
+        }
         if (done) break;
       }
       if (!isCurrent()) return;
+      AppLog.report(
+        'dhistory done ms=${stopwatch.elapsedMilliseconds} pages=$pagesFetched books=${records.length}',
+        tag: 'download-history',
+      );
       // 最终上屏：不受 paint 的缩短守卫限制，服务端已删的记录照
       // 常消失；元数据还在路上时它到了还会再叠加一次。
       state = AsyncValue.data(overlay());
@@ -1087,6 +1111,10 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
       // 静默对账失败：已有列表是最后已知的好数据，别用 error 覆盖它。
       if (silent && hadData) return;
       if (!isCurrent()) return;
+      AppLog.report(
+        'dhistory error ms=${stopwatch.elapsedMilliseconds} type=${e.runtimeType}',
+        tag: 'download-history',
+      );
       state = AsyncValue.error(e, stack);
     }
   }
@@ -1101,8 +1129,18 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
     DownloadStatsRepository repository,
     int page,
   ) async {
+    // Temporary diagnostic (download history speed, 2026-11-12):
+    // per-page fetch time and path. Release-safe: timings and
+    // counts only.
+    final pageStopwatch = Stopwatch()..start();
     final response = await repository.fetchPage(page: page);
-    if (response.success) return response.data ?? const <Book>[];
+    if (response.success) {
+      AppLog.report(
+        'dhistory page=$page ms=${pageStopwatch.elapsedMilliseconds} via=direct books=${response.data?.length ?? 0}',
+        tag: 'download-history',
+      );
+      return response.data ?? const <Book>[];
+    }
     if (repository.isChallengeError(response.error)) {
       return _fetchStatsPageViaSolver(
         repository,
@@ -1127,6 +1165,10 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
     int page, {
     required String originalError,
   }) async {
+    // Temporary diagnostic (download history speed, 2026-11-12): see
+    // _fetchStatsPage.
+    final pageStopwatch = Stopwatch()..start();
+    var via = 'solver';
     final user = ref.read(authProvider).user;
     final url = repository.pageUrl(page: page);
     final html = await repository.fetchViaSolver(
@@ -1141,6 +1183,7 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
       // 到的可能是一个空的 503 报错页，或者标题里没有验证墙关键字、
       // 墙的 JS 在慢网速下还没跑完的墙页。不要直接按这页报错——再走
       // 一次可见 solver，让墙在看得见的 WebView 里跑完，解析那份 HTML。
+      via = 'visible-solver';
       final visibleHtml = await repository.fetchViaVisibleSolver(
         url,
         userId: user?.id,
@@ -1150,6 +1193,10 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
       parsed = repository.parsePage(visibleHtml);
       if (parsed == null) throw StateError(originalError);
     }
+    AppLog.report(
+      'dhistory page=$page ms=${pageStopwatch.elapsedMilliseconds} via=$via books=${parsed.length}',
+      tag: 'download-history',
+    );
     return parsed;
   }
 

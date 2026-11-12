@@ -79,6 +79,9 @@ class _FakeFullTextApi implements ZLibraryApi {
   }
 
   @override
+  String? get fulltextToken => null;
+
+  @override
   String fulltextPageUrl({
     required String query,
     String type = 'words',

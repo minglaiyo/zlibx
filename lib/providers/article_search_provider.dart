@@ -293,7 +293,12 @@ class ArticleSearchNotifier extends Notifier<ArticleSearchState> {
       }
       final error = response.error ?? 'article search failed';
       if (_repository.isChallengeError(response.error)) {
-        return _loadPageViaSolver(
+        // `return await`, not `return`: without the await the
+        // try/catch never sees the solver path's failures (an async
+        // throw becomes a failed future that flies straight past the
+        // catch) — CI-proven 2026-11-13 by the prefetch tests, which
+        // were the first to exercise this path in a unit test.
+        return await _loadPageViaSolver(
           params,
           page,
           originalError: error,

@@ -155,16 +155,11 @@ mixin ZLibraryCategories on ZLibraryApiBase {
       // detail-extras paths. (Diagnosed 2026-11-12: the in-category
       // search 503'd twice while browse and eapi search worked.)
       if (status == 503 || status == 513) {
-        _noteCategoryFetch(status, null, 0, challenge: true);
         return ApiResponse.fail(
           'HTTP $status: browser check page',
           statusCode: status,
         );
       }
-      final errorLower = (raw.error ?? '').toLowerCase();
-      final challenge = errorLower.contains('browser check') ||
-          errorLower.contains('cf_blocked');
-      _noteCategoryFetch(status, null, 0, challenge: challenge);
       return ApiResponse.fail(
         raw.error ?? 'category failed (HTTP $status)',
         statusCode: status,
@@ -172,52 +167,19 @@ mixin ZLibraryCategories on ZLibraryApiBase {
     }
     final html = raw.body;
     if (html == null || html.isEmpty) {
-      _noteCategoryFetch(status, html, 0);
       return ApiResponse.fail(
         raw.error ?? 'category failed',
         statusCode: status,
       );
     }
     if (ZLibraryApiBase._looksLikeChallengePage(html)) {
-      _noteCategoryFetch(status, html, 0, challenge: true);
       return ApiResponse.fail(
         'HTTP $status: browser check page',
         statusCode: status,
       );
     }
     final parsed = parseCategoryBooksPage(html, baseUrl: _base);
-    _noteCategoryFetch(status, html, parsed.books.length);
     return ApiResponse.ok(parsed);
-  }
-
-  /// Temporary diagnostic (category search, 2026-11-12): summarize what
-  /// a category page fetch actually returned, so the app can log it.
-  /// Release-safe: HTTP status, whether the error is a challenge error,
-  /// page title and element counts only — never a query, URL, cookie or
-  /// body preview. Remove with the diagnostic.
-  void _noteCategoryFetch(
-    int? status,
-    String? html,
-    int parsed, {
-    bool challenge = false,
-  }) {
-    if (html == null || html.isEmpty) {
-      ZLibraryApiBase.lastCategoryFetchDebug =
-          'status=$status challenge=$challenge html=empty parsed=$parsed';
-      return;
-    }
-    final titleMatch = RegExp(
-      r'<title[^>]*>(.*?)</title>',
-      caseSensitive: false,
-      dotAll: true,
-    ).firstMatch(html);
-    var title = titleMatch?.group(1) ?? '';
-    title = title.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (title.length > 60) title = '${title.substring(0, 60)}…';
-    final hasBox = html.contains('searchResultBox');
-    final rawCards = '<z-bookcard'.allMatches(html).length;
-    ZLibraryApiBase.lastCategoryFetchDebug =
-        'status=$status challenge=$challenge title=$title hasBox=$hasBox rawCards=$rawCards parsed=$parsed';
   }
 
   /// `/category/{id}`, `/category/{id}/{slug}`, or

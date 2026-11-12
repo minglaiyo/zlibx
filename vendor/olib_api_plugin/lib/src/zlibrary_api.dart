@@ -70,14 +70,6 @@ class DownloadHtmlException implements Exception {
 abstract class ZLibraryApiBase {
   static const String _defaultDomain = 'bookroom.lifestyle';
 
-  /// Temporary diagnostic (category search, 2026-11-12): summary of the
-  /// last category page fetch — status, page title, whether the results
-  /// box is present, raw card count, parsed count. Set by
-  /// `_fetchCategoryPage`; read and logged by the app's search provider.
-  /// Never holds a query, URL, cookie or body preview. Remove with the
-  /// diagnostic.
-  static String? lastCategoryFetchDebug;
-
   final Dio _dio;
   String _domain;
   String? _userId;

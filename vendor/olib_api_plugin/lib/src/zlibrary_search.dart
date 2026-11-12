@@ -208,12 +208,6 @@ mixin ZLibrarySearch on ZLibraryApiBase {
   /// the personalised endpoint 404s, fails, or returns an empty list:
   /// a wrong guess here must not blank the home screen (a fresh account
   /// has no history, so the endpoint legitimately returns nothing).
-  ///
-  /// DIAGNOSTIC (issue #3, temporary): the returned [ApiResponse.meta]
-  /// carries `recommendedSource` — `direct` when the personalised
-  /// endpoint answered, or `popular-fallback:REASON` when the home list
-  /// silently fell back to most-popular — so the app can log which
-  /// source the home screen actually showed.
   Future<ApiResponse<List<Book>>> getUserRecommended() async {
     // Path verified against heartleo/zlib's eapi_feed.go (2026-11-12):
     // the personalised feed lives under /eapi/user/book/recommended.
@@ -235,13 +229,11 @@ mixin ZLibrarySearch on ZLibraryApiBase {
       books,
       meta: <String, dynamic>{
         ...?ZLibraryApiBase._metaOf(raw.json!),
-        'recommendedSource': 'direct',
       },
     );
   }
 
-  /// Wraps the most-popular fallback for [getUserRecommended] with the
-  /// diagnostic `recommendedSource` marker (see above). A failed
+  /// Wraps the most-popular fallback for [getUserRecommended]. A failed
   /// fallback is returned unchanged — the error itself is the signal.
   Future<ApiResponse<List<Book>>> _recommendedFallback(String reason) async {
     final fallback = await getMostPopular();
@@ -250,7 +242,6 @@ mixin ZLibrarySearch on ZLibraryApiBase {
       fallback.data ?? <Book>[],
       meta: <String, dynamic>{
         ...?fallback.meta,
-        'recommendedSource': 'popular-fallback:$reason',
       },
     );
   }

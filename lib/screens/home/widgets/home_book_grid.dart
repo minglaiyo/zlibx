@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
+import '../../../providers/settings_provider.dart';
 import '../../../routes/app_routes.dart';
 import '../../../widgets/book_card.dart';
 import '../../../widgets/empty_state.dart';
@@ -9,7 +10,7 @@ import '../../../widgets/entrance.dart';
 import '../../../widgets/loading_widget.dart';
 
 /// The recommendation grid plus its empty / loading / error states.
-class HomeBookGrid extends StatelessWidget {
+class HomeBookGrid extends ConsumerWidget {
   const HomeBookGrid({
     super.key,
     required this.booksAsync,
@@ -24,7 +25,10 @@ class HomeBookGrid extends StatelessWidget {
   final Future<void> Function() onRefresh;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 外观设置里的"推荐页四列布局"：开 = 固定 4 列；关（默认）= 按
+    // 卡片最大宽度自适应列数。
+    final fourColumns = ref.watch(homeGridFourColumnsProvider);
     // topPadding reserves the floating glass header's height inside the
     // scrollable, so the grid scrolls underneath the header (blurred)
     // instead of starting below it.
@@ -49,9 +53,11 @@ class HomeBookGrid extends StatelessWidget {
             const horizontalPadding = 20.0;
             final gridWidth = (constraints.maxWidth - horizontalPadding * 2)
                 .clamp(0.0, double.infinity);
-            final columnCount = (gridWidth / (maxCardWidth + columnSpacing))
-                .ceil()
-                .clamp(1, double.infinity);
+            final columnCount = fourColumns
+                ? 4
+                : (gridWidth / (maxCardWidth + columnSpacing))
+                    .ceil()
+                    .clamp(1, double.infinity);
             final cardWidth =
                 ((gridWidth - columnSpacing * (columnCount - 1)) / columnCount)
                     .clamp(0.0, double.infinity);

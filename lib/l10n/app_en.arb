@@ -455,6 +455,7 @@
   },
   "readerSessionWriteFailed": "Failed to write reader session. Please log in again and retry.",
   "recentAccount": "Recent account",
+  "recommendationFourColumns": "Four-column recommendations",
   "recommended": "Recommended",
   "recommendedBooklists": "Recommended booklists",
   "refreshFailed": "Failed to refresh",

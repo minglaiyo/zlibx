@@ -182,6 +182,33 @@ final hideNavOnScrollProvider =
       HideNavOnScrollNotifier.new,
     );
 
+/// 推荐页四列布局 — whether the home recommendation grid renders a
+/// fixed four-column layout (on) or the width-adaptive layout (off,
+/// default). Appearance setting; lives in the appearance sheet.
+class HomeGridFourColumnsNotifier extends Notifier<bool> {
+  @override
+  bool build() => _load();
+
+  /// Sync Hive read; returns the persisted value as the initial state
+  /// instead of assigning it (see LocaleNotifier).
+  bool _load() {
+    final v = HiveService.settingsBox.get('homeGridFourColumns');
+    if (v is bool) return v;
+    return false;
+  }
+
+  Future<void> setFourColumns(bool value) async {
+    state = value;
+    await HiveService.settingsBox.put('homeGridFourColumns', value);
+  }
+}
+
+/// 推荐页四列布局 provider
+final homeGridFourColumnsProvider =
+    NotifierProvider<HomeGridFourColumnsNotifier, bool>(
+      HomeGridFourColumnsNotifier.new,
+    );
+
 /// Whether the bottom nav bar is currently visible. Driven by the home
 /// grid's scroll direction (transient UI state, not persisted).
 class NavBarVisibleNotifier extends Notifier<bool> {

@@ -72,6 +72,7 @@ class AppearanceSheet extends ConsumerWidget {
     final blurEnabled = ref.watch(blurEnabledProvider);
     final floatingNav = ref.watch(floatingNavProvider);
     final hideNavOnScroll = ref.watch(hideNavOnScrollProvider);
+    final homeGridFourColumns = ref.watch(homeGridFourColumnsProvider);
     final t = AppLocalizations.of(context)!;
     final cs = Theme.of(context).colorScheme;
     final followingSystem = themeMode == AppThemeMode.system;
@@ -153,6 +154,17 @@ class AppearanceSheet extends ConsumerWidget {
                       .setHideNavOnScroll(value);
                 }
               : null,
+        ),
+        SwitchListTile(
+          title: Text(t.recommendationFourColumns),
+          value: homeGridFourColumns,
+          activeThumbColor: cs.primary,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          onChanged: (value) {
+            ref
+                .read(homeGridFourColumnsProvider.notifier)
+                .setFourColumns(value);
+          },
         ),
         const SizedBox(height: 16),
       ],

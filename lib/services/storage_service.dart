@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:olib_api_plugin/olib_api_plugin.dart';
 import '../utils/app_log.dart';
 import 'auth_storage.dart';
 import 'hive_service.dart';
@@ -21,6 +22,20 @@ class StorageService {
   static const String _keyThemeMode = 'theme_mode';
   static const String _keyDownloadPath = 'download_path';
   static const String _keyDownloadHistory = 'download_history';
+
+  /// Per-account server download-history cache key:
+  /// `server_download_history_<accountId>`. Deliberately NOT
+  /// [_keyDownloadHistory] above — that key is the LOCAL file-download
+  /// map ({bookId: {title, author, filePath, ...}}), a different thing.
+  /// Same account-scoping rule as [favoritesKeyFor]: the account id is
+  /// the Z-Library user id, so each account reads only its own cached
+  /// history and a different account starts with no cache.
+  static const String _keyServerDownloadHistory =
+      'server_download_history';
+
+  /// Per-account server download-history cache key (see above).
+  static String serverDownloadHistoryKeyFor(String accountId) =>
+      '${_keyServerDownloadHistory}_$accountId';
 
   /// Per-account favorites key: `favorite_books_<accountId>`.
   /// The account id is the Z-Library user id (a String — see User.id),
@@ -241,5 +256,106 @@ class StorageService {
     history.remove(bookId);
     
     await HiveService.settingsBox.put(_keyDownloadHistory, jsonEncode(history));
+  }
+
+  // ===== Server Download History Cache =====
+  //
+  // The `/users/downloads` list is slow to load from the network (every
+  // page goes through the WebView solver while the mirror walls HTML
+  // routes — first paint 5–8 s, full load 16–19 s, 2026-11-12). The
+  // cache makes the second open paint instantly: the notifier shows
+  // the last known list first, then refreshes silently in the
+  // background and overwrites the cache with the fresh full list.
+  // The cache is at most one open stale; there is no TTL or expiry.
+  // All methods are best-effort and never throw: a storage failure
+  // must not fail a background refresh, and a corrupt entry reads as
+  // empty instead of crashing the caller.
+
+  /// Save the final server download-history list for an explicit
+  /// account. Public (instead of private) so tests can drive it
+  /// without a signed-in account. Only non-empty lists are stored:
+  /// an empty result must never wipe a good cache — a failed or
+  /// partial load ends with an empty list too, and the stored list is
+  /// the last known good one. (A genuinely emptied server history
+  /// keeps showing its cached list until a non-empty load replaces
+  /// it; that is the accepted trade-off.)
+  Future<void> saveServerDownloadHistoryForAccount(
+    String accountId,
+    List<Book> books,
+  ) async {
+    if (accountId.isEmpty || books.isEmpty) return;
+    try {
+      final booksJson = jsonEncode([for (final book in books) book.toJson()]);
+      await HiveService.settingsBox.put(
+        serverDownloadHistoryKeyFor(accountId),
+        booksJson,
+      );
+    } catch (error) {
+      AppLog.report(
+        '[storage] server history cache save failed',
+        tag: 'storage_service',
+      );
+    }
+  }
+
+  /// Save the final server download-history list for the signed-in
+  /// account. No-op when signed out (the cache is best-effort; a
+  /// missing account must not throw out of a background refresh).
+  Future<void> saveServerDownloadHistory(List<Book> books) async {
+    final accountId = await _currentAccountId();
+    if (accountId == null) return;
+    await saveServerDownloadHistoryForAccount(accountId, books);
+  }
+
+  /// Synchronous read of one account's cached server download
+  /// history, for callers that already know the account id (e.g. the
+  /// notifier's build(), which must paint synchronously). A missing or
+  /// corrupt entry reads as empty, never throws. The stored list is in
+  /// display order (downloadedAt desc); re-sorted defensively on read
+  /// so a hand-edited or older entry still paints in order.
+  List<Book> getServerDownloadHistorySyncForAccount(String accountId) {
+    if (accountId.isEmpty) return const <Book>[];
+    final raw = HiveService.settingsBox.get(
+      serverDownloadHistoryKeyFor(accountId),
+    );
+    if (raw is! String || raw.isEmpty) return const <Book>[];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const <Book>[];
+      final books = <Book>[];
+      for (final entry in decoded) {
+        if (entry is Map) {
+          books.add(Book.fromJson(Map<String, dynamic>.from(entry)));
+        }
+      }
+      books.sort(_downloadedAtDesc);
+      return books;
+    } catch (error) {
+      AppLog.report(
+        '[storage] ignoring corrupt server history cache',
+        tag: 'storage_service',
+      );
+      return const <Book>[];
+    }
+  }
+
+  /// Async read of the signed-in account's cached server download
+  /// history ([] when signed out — a signed-out user has no account
+  /// cache to show).
+  Future<List<Book>> getServerDownloadHistory() async {
+    final accountId = await _currentAccountId();
+    if (accountId == null) return const <Book>[];
+    return getServerDownloadHistorySyncForAccount(accountId);
+  }
+
+  /// downloadedAt descending, nulls last (a record without a stamp
+  /// sorts after every stamped one).
+  static int _downloadedAtDesc(Book a, Book b) {
+    final aTime = a.downloadedAt;
+    final bTime = b.downloadedAt;
+    if (aTime == null && bTime == null) return 0;
+    if (aTime == null) return 1;
+    if (bTime == null) return -1;
+    return bTime.compareTo(aTime);
   }
 }

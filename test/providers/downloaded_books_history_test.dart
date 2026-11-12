@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
@@ -44,6 +46,10 @@ class _FakeZLibraryApi implements ZLibraryApi {
   /// 置为 true 后 eapi 元数据请求全部失败。
   bool failMeta = false;
 
+  /// 置为非空后，每次 dstats 请求都会等它完成才返回：用来在测试里
+  /// 把一次拉取卡在半途，制造两个静默对账重叠的场景。
+  Completer<void>? dstatsGate;
+
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw UnsupportedError('unexpected: ${invocation.memberName}');
@@ -58,6 +64,7 @@ class _FakeZLibraryApi implements ZLibraryApi {
   }) async {
     dstatsCalls++;
     dstatsSeenPages.add(page);
+    if (dstatsGate != null) await dstatsGate!.future;
     if (failDstats) {
       return ApiResponse.fail('dstats boom', statusCode: 500);
     }
@@ -286,6 +293,37 @@ void main() {
         .loadDownloadedBooks(silent: true);
     final state = container.read(downloadedBooksProvider);
     expect(state.valueOrNull!.map((b) => b.id), [2, 1]);
+  });
+
+  test('静默对账进行中时，第二次静默调用直接返回，不重复拉页', () async {
+    // build() 从缓存上屏后立刻起一个静默刷新，历史页 initState 的
+    // microtask 随后又会调一次：两次都是静默对账，后一次只会重复
+    // 拉第 1 页，所以直接省掉（去重标记见 _silentRefreshInFlight）。
+    final api = _FakeZLibraryApi(
+      dstatsPages: {
+        1: [_record(1, '书一', DateTime(2026, 11, 10, 10, 0))],
+      },
+      metaPages: {1: []},
+      metaTotalPages: 1,
+    );
+    api.dstatsGate = Completer<void>();
+    final container = _container(api);
+    addTearDown(container.dispose);
+
+    container.read(downloadedBooksProvider);
+    // build() 的首次拉取卡在第 1 页的门上；此时再起两次静默对账：
+    // 第一次正常拉页，第二次应被去重——同步断言就够（async 方法体
+    // 在首个 await 前同步执行，去重失败时计数立刻变成 3）。
+    final notifier = container.read(downloadedBooksProvider.notifier);
+    final first = notifier.loadDownloadedBooks(silent: true);
+    final second = notifier.loadDownloadedBooks(silent: true);
+    expect(api.dstatsCalls, 2);
+
+    api.dstatsGate!.complete();
+    await first;
+    await second;
+    await _settle();
+    expect(container.read(downloadedBooksProvider).valueOrNull?.length, 1);
   });
 
   test('首次拉取失败：报 error（可重试），不假装成空历史', () async {

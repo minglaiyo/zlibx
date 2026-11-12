@@ -980,10 +980,37 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
   /// 能用自己的旧页覆盖新一代已上屏的列表。
   int _generation = 0;
 
+  /// 静默对账是否正在跑：build() 从缓存上屏后立刻起一个静默刷新，
+  /// 历史页 initState 的 microtask 随后又会调一次——两次都是静默
+  /// 对账，后一次只会重复拉第 1 页（代际守卫本就会丢弃旧的那次），
+  /// 所以直接省掉。非静默调用不受影响，照常接管。
+  bool _silentRefreshInFlight = false;
+
   @override
   AsyncValue<List<Book>> build() {
+    final cached = _readCachedHistory();
+    if (cached.isNotEmpty) {
+      // Cache-first: paint the last known list immediately (first
+      // paint ~0 s from cache), then refresh silently in the
+      // background — the silent path never shrinks the visible list
+      // and never replaces it with an error, so the cache stays up
+      // until the fresh list catches up.
+      unawaited(loadDownloadedBooks(silent: true));
+      return AsyncValue.data(cached);
+    }
     loadDownloadedBooks();
     return const AsyncValue.loading();
+  }
+
+  /// The cached server history for the signed-in account, in display
+  /// order, or empty when signed out / nothing cached. Read
+  /// synchronously so build() can paint it without awaiting.
+  List<Book> _readCachedHistory() {
+    final userId = ref.read(authProvider).user?.id;
+    if (userId == null || userId.isEmpty) return const <Book>[];
+    return ref
+        .read(storageServiceProvider)
+        .getServerDownloadHistorySyncForAccount(userId);
   }
 
   /// 全量拉取云端下载历史。dstats 是权威列表；eapi 列表只用来补
@@ -1005,6 +1032,9 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
   /// 打开页面、下拉刷新、账号切换可能让多次拉取重叠，慢的那次不
   /// 能用自己的旧页覆盖新一代已上屏的列表。
   Future<void> loadDownloadedBooks({bool silent = false}) async {
+    // 静默对账已在跑时不再重开一次（见 _silentRefreshInFlight）。
+    if (silent && _silentRefreshInFlight) return;
+    if (silent) _silentRefreshInFlight = true;
     // build() 直接调这里，而首次 build 时 state 还不存在：读 `state`
     // 会抛 StateError（见 SavedBooksNotifier 上的注释），`stateOrNull`
     // 在未初始化时返回 null 而不抛，正是 Riverpod 给 build 期读 state
@@ -1106,16 +1136,30 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
       );
       // 最终上屏：不受 paint 的缩短守卫限制，服务端已删的记录照
       // 常消失；元数据还在路上时它到了还会再叠加一次。
-      state = AsyncValue.data(overlay());
+      final finalList = overlay();
+      state = AsyncValue.data(finalList);
+      // 缓存最后的上屏列表：下次打开先从缓存秒出，再静默刷新。
+      // 只存非空的完整列表——空结果（失败/中途返回）绝不覆盖好缓存。
+      if (finalList.isNotEmpty) {
+        unawaited(
+          ref
+              .read(storageServiceProvider)
+              .saveServerDownloadHistory(finalList),
+        );
+      }
     } catch (e, stack) {
       // 静默对账失败：已有列表是最后已知的好数据，别用 error 覆盖它。
-      if (silent && hadData) return;
+      // build() 刚把缓存上屏时 state 尚未初始化，调用时算的 hadData
+      // 是 false——这里按报错时的 state 再判一次，缓存列表同样受保护。
+      if (silent && (hadData || stateOrNull?.valueOrNull != null)) return;
       if (!isCurrent()) return;
       AppLog.report(
         'dhistory error ms=${stopwatch.elapsedMilliseconds} type=${e.runtimeType}',
         tag: 'download-history',
       );
       state = AsyncValue.error(e, stack);
+    } finally {
+      if (silent) _silentRefreshInFlight = false;
     }
   }
 

@@ -1,6 +1,8 @@
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
+import '../utils/app_log.dart';
+
 /// After the WebView challenge solver passes a browser check, copy
 /// the wall-clearance cookies it earned (`__diamwall`, `cf_clearance`,
 /// ...) from the WebView's CookieManager into the API layer's Dio
@@ -28,6 +30,16 @@ Future<void> bridgeWallCookies(ZLibraryApi api, String pageUrl) async {
     }
     wall[cookie.name] = cookie.value;
   }
+  // Temporary diagnostic (wall-cookie bridge, 2026-11-12): log what the
+  // bridge found after each solve — the next device log proves whether
+  // the bridge copies anything at all (page 2 re-solves seconds after
+  // page 1 solved and bridged, so either it finds nothing or the
+  // mirror re-walls anyway). Release-safe: cookie COUNT and NAMES
+  // only, never values.
+  AppLog.report(
+    'wall-bridge cookies=${cookies.length} wall=${wall.length} names=${wall.keys.join(',')}',
+    tag: 'wall-bridge',
+  );
   if (wall.isNotEmpty) api.setWallCookies(wall);
 }
 

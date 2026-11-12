@@ -214,18 +214,47 @@ mixin ZLibrarySearch on ZLibraryApiBase {
   /// the personalised endpoint 404s, fails, or returns an empty list:
   /// a wrong guess here must not blank the home screen (a fresh account
   /// has no history, so the endpoint legitimately returns nothing).
+  ///
+  /// DIAGNOSTIC (issue #3, temporary): the returned [ApiResponse.meta]
+  /// carries `recommendedSource` — `direct` when the personalised
+  /// endpoint answered, or `popular-fallback:REASON` when the home list
+  /// silently fell back to most-popular — so the app can log which
+  /// source the home screen actually showed.
   Future<ApiResponse<List<Book>>> getUserRecommended() async {
     final raw = await _get('/eapi/user/recommended');
     // Same cf_blocked short-circuit as [getMostPopular].
     if (raw.error == 'cf_blocked') {
       return ApiResponse.fail('cf_blocked', statusCode: raw.status);
     }
-    if (raw.status == 404) return getMostPopular();
-    if (raw.json == null) return getMostPopular();
-    if (!ZLibraryApiBase._isSuccess(raw.json!)) return getMostPopular();
+    if (raw.status == 404) return _recommendedFallback('http-404');
+    if (raw.json == null) return _recommendedFallback('null-body');
+    if (!ZLibraryApiBase._isSuccess(raw.json!)) {
+      return _recommendedFallback('success-false');
+    }
     final books = ZLibraryApiBase._booksOf(raw.json!);
-    if (books.isEmpty) return getMostPopular();
-    return ApiResponse.ok(books, meta: ZLibraryApiBase._metaOf(raw.json!));
+    if (books.isEmpty) return _recommendedFallback('empty');
+    return ApiResponse.ok(
+      books,
+      meta: <String, dynamic>{
+        ...?ZLibraryApiBase._metaOf(raw.json!),
+        'recommendedSource': 'direct',
+      },
+    );
+  }
+
+  /// Wraps the most-popular fallback for [getUserRecommended] with the
+  /// diagnostic `recommendedSource` marker (see above). A failed
+  /// fallback is returned unchanged — the error itself is the signal.
+  Future<ApiResponse<List<Book>>> _recommendedFallback(String reason) async {
+    final fallback = await getMostPopular();
+    if (!fallback.success) return fallback;
+    return ApiResponse.ok(
+      fallback.data ?? <Book>[],
+      meta: <String, dynamic>{
+        ...?fallback.meta,
+        'recommendedSource': 'popular-fallback:$reason',
+      },
+    );
   }
 
   /// Recently added books. Falls back to a newest-ordered search on 404.

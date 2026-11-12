@@ -11,6 +11,7 @@ import '../services/external_search.dart';
 import '../services/libgen_service.dart';
 import '../services/network_error.dart';
 import '../services/storage_service.dart';
+import '../utils/app_log.dart';
 import 'auth_provider.dart';
 import 'zlibrary_provider.dart';
 
@@ -485,6 +486,17 @@ final recommendedBooksProvider = FutureProvider<List<Book>>((ref) async {
   final response = await api.getUserRecommended();
   if (!response.success) {
     throw StateError(response.error ?? 'Failed to load recommendations');
+  }
+  // Diagnostic for issue #3 (temporary): log which source the home
+  // recommendations actually came from. The popular fallback is silent,
+  // so without this the home list can look "fixed" with no visible
+  // cause. Release-safe: fixed reason literals plus a count only.
+  final source = response.meta?['recommendedSource']?.toString();
+  if (source != null) {
+    AppLog.report(
+      'home recommended source=$source books=${response.data?.length ?? 0}',
+      tag: 'recommended',
+    );
   }
   return response.data ?? [];
 });

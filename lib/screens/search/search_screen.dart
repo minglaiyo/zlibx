@@ -474,35 +474,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     _applyFilterChange();
   }
 
-  /// The "Browse Categories" row of the empty-query view: the
-  /// searchable category picker. Picking one scopes the search to
-  /// it and browses it immediately (empty query plus a category is
-  /// a browse); dismissing picks nothing. A category only exists in
-  /// the z站 general search, so picking one comes back to it first
-  /// (both switches reset their providers; the category is set
-  /// after them because a mode switch clears it).
-  Future<void> _openCategoryPicker() async {
-    final picked = await showDialog<PickedCategory?>(
-      context: context,
-      builder: (context) => CategoryPickerDialog(
-        currentId: _selectedCategoryId,
-        showAllOption: false,
-      ),
-    );
-    if (picked == null || picked.id == null || !mounted) return;
-    if (_source != BookSource.zlibrary) {
-      _switchSource(BookSource.zlibrary);
-    }
-    if (_mode != SearchMode.general) _switchMode(SearchMode.general);
-    setState(() {
-      _selectedCategoryId = picked.id;
-      _selectedCategoryName = picked.name;
-      // A newly picked category starts unfiltered.
-      _selectedContentType = null;
-    });
-    _runSearch();
-  }
-
   // ── Search execution ─────────────────────────────────────────
 
   void _performSearch() {
@@ -872,7 +843,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     onSearch: _searchAgain,
                     onRemoveSearch: _removeRecentSearch,
                     onClearHistory: _clearRecentSearches,
-                    onBrowseCategories: _openCategoryPicker,
                   )
                 : _showSuggestions
                 ? SearchSuggestionsView(

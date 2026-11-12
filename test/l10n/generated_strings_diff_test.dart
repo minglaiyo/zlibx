@@ -3,7 +3,7 @@
 //
 // Proves the generated gen-l10n output returns byte-identical strings
 // to the pre-migration hand-written tables (scripts/l10n_snapshot.json):
-// every one of the 430 getters/methods, in all 5 locales, plus the 27
+// every one of the 429 getters/methods, in all 5 locales, plus the 27
 // placeholder methods called with fixed sample arguments. If any
 // user-visible string differs, this test fails.
 //
@@ -95,7 +95,6 @@ void main() {
     expect(loc.booklistsSubtitle, 'Your booklists and public ones');
     expect(loc.booksDownloadedAnyDevice, 'Books downloaded on any device');
     expect(loc.booksFound, 'books');
-    expect(loc.browseCategories, 'Browse Categories');
     expect(loc.cancel, 'Cancel');
     expect(loc.cannotOpenFolder, 'Could not open folder');
     expect(loc.categories, 'Categories');
@@ -529,7 +528,6 @@ void main() {
     expect(loc.booklistsSubtitle, '自分のブックリストと公開リスト');
     expect(loc.booksDownloadedAnyDevice, 'どのデバイスでもダウンロードした本');
     expect(loc.booksFound, '冊');
-    expect(loc.browseCategories, 'カテゴリを閲覧');
     expect(loc.cancel, 'キャンセル');
     expect(loc.cannotOpenFolder, 'フォルダを開けません');
     expect(loc.categories, 'カテゴリ');
@@ -963,7 +961,6 @@ void main() {
     expect(loc.booklistsSubtitle, '내 책 목록과 공개 목록');
     expect(loc.booksDownloadedAnyDevice, '모든 기기에서 다운로드한 책');
     expect(loc.booksFound, '권');
-    expect(loc.browseCategories, '카테고리 찾아보기');
     expect(loc.cancel, '취소');
     expect(loc.cannotOpenFolder, '폴더를 열 수 없습니다');
     expect(loc.categories, '카테고리');
@@ -1397,7 +1394,6 @@ void main() {
     expect(loc.booklistsSubtitle, '你的书单和大家的书单');
     expect(loc.booksDownloadedAnyDevice, '在任何设备上下载的书籍');
     expect(loc.booksFound, '本书');
-    expect(loc.browseCategories, '浏览分类');
     expect(loc.cancel, '取消');
     expect(loc.cannotOpenFolder, '无法打开文件夹');
     expect(loc.categories, '分类');
@@ -1831,7 +1827,6 @@ void main() {
     expect(loc.booklistsSubtitle, '你的書單和大家的書單');
     expect(loc.booksDownloadedAnyDevice, '在任何裝置上下載的書籍');
     expect(loc.booksFound, '本書');
-    expect(loc.browseCategories, '瀏覽分類');
     expect(loc.cancel, '取消');
     expect(loc.cannotOpenFolder, '無法開啟資料夾');
     expect(loc.categories, '分類');

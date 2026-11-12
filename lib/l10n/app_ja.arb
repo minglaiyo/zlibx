@@ -25,6 +25,7 @@
   "annasDonationKey": "Anna's Archive 寄付キー",
   "annasDonationKeyHint": "寄付キーを入力すると高速ダウンロードが使えます。空欄の場合は低速ダウンロードになります。",
   "appearance": "外観",
+  "apply": "適用",
   "articleSearch": "論文",
   "author": "著者",
   "badgeAiBuilt": "AI製",
@@ -154,6 +155,7 @@
   "chooseCustomDownloadDir": "カスタムのダウンロード先を選択",
   "chooseDownloadSource": "ダウンロード元を選択",
   "clear": "クリア",
+  "clearFilters": "フィルターをクリア",
   "close": "閉じる",
   "commentDeleteConfirm": "このコメントを削除しますか？",
   "commentDeleteDesc": "削除すると元に戻せません。",
@@ -173,6 +175,7 @@
     }
   },
   "confirmRemoveTitle": "削除の確認",
+  "contentType": "コンテンツタイプ",
   "continueAnyway": "このまま続行",
   "copyrightRemoved": "著作権のため削除",
   "couldNotLoadBooks": "書籍を読み込めませんでした",
@@ -237,6 +240,7 @@
   "error": "エラー",
   "exactMatch": "完全一致",
   "exampleDomainHint": "例：example.com",
+  "extension": "拡張子",
   "favoriteBooklist": "お気に入りに追加",
   "favoriteFailed": "お気に入りを更新できませんでした。もう一度お試しください。",
   "favoriteRemoved": "お気に入りから削除しました",
@@ -409,6 +413,7 @@
   "noResults": "結果がありません",
   "noSavedAccounts": "保存されたアカウントがありません",
   "noSavedAccountsMessage": "ログインしたアカウントがここに表示されます。",
+  "noSelection": "未選択",
   "noSimilarBooks": "似た本が見つかりませんでした",
   "noSimilarBooksMessage": "この本に似た本は見つかりませんでした",
   "ongoing": "進行中",
@@ -623,5 +628,7 @@
   "welcomeBack": "おかえりなさい",
   "writeComment": "コメントを書く",
   "year": "出版年",
+  "yearFrom": "年（から）",
+  "yearTo": "年（まで）",
   "yourOpenLibrary": "あなたのオープンライブラリ"
 }

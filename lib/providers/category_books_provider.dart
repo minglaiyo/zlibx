@@ -55,6 +55,16 @@ class CategoryBooksState {
   /// extension filter.
   final String extension;
 
+  /// Year range bounds for the in-category search; null means that
+  /// bound is unset.
+  final int? yearFrom;
+  final int? yearTo;
+
+  /// Content-type filter for the in-category search: a one-element
+  /// list (single select) or null for no filter. The values are the
+  /// site's `selected_content_types` form values.
+  final List<String>? contentTypes;
+
   /// Total pages from the page's `pagerOptions`, when the page
   /// carries it (null = unknown — never invented).
   final int? totalPages;
@@ -76,6 +86,9 @@ class CategoryBooksState {
     this.exact = false,
     this.language = 'all',
     this.extension = 'all',
+    this.yearFrom,
+    this.yearTo,
+    this.contentTypes,
     this.totalPages,
     this.effectivePageSize,
   });
@@ -85,6 +98,9 @@ class CategoryBooksState {
     bool? isLoadingMore,
     String? error,
     bool clearError = false,
+    bool clearYearFrom = false,
+    bool clearYearTo = false,
+    bool clearContentTypes = false,
     List<CategoryBook>? books,
     bool? hasMore,
     int? nextPage,
@@ -93,6 +109,9 @@ class CategoryBooksState {
     bool? exact,
     String? language,
     String? extension,
+    int? yearFrom,
+    int? yearTo,
+    List<String>? contentTypes,
     int? totalPages,
     int? effectivePageSize,
   }) {
@@ -108,6 +127,10 @@ class CategoryBooksState {
       exact: exact ?? this.exact,
       language: language ?? this.language,
       extension: extension ?? this.extension,
+      yearFrom: clearYearFrom ? null : (yearFrom ?? this.yearFrom),
+      yearTo: clearYearTo ? null : (yearTo ?? this.yearTo),
+      contentTypes:
+          clearContentTypes ? null : (contentTypes ?? this.contentTypes),
       totalPages: totalPages ?? this.totalPages,
       effectivePageSize: effectivePageSize ?? this.effectivePageSize,
     );
@@ -195,15 +218,74 @@ class CategoryBooksController
     unawaited(loadFirst());
   }
 
-  /// Clear the language/extension/exact filters (the sort order and
-  /// the search query are kept) and reload page 1.
+  /// Change the year-from bound and reload page 1 (only applies in
+  /// search mode). Null clears the bound.
+  void setYearFrom(int? yearFrom) {
+    if (yearFrom == state.yearFrom) return;
+    state = state.copyWith(
+      yearFrom: yearFrom,
+      clearYearFrom: yearFrom == null,
+    );
+    unawaited(loadFirst());
+  }
+
+  /// Change the year-to bound and reload page 1 (only applies in
+  /// search mode). Null clears the bound.
+  void setYearTo(int? yearTo) {
+    if (yearTo == state.yearTo) return;
+    state = state.copyWith(
+      yearTo: yearTo,
+      clearYearTo: yearTo == null,
+    );
+    unawaited(loadFirst());
+  }
+
+  /// Change the content-type filter and reload page 1 (only applies
+  /// in search mode). A one-element list (single select); null or an
+  /// empty list clears the filter.
+  void setContentTypes(List<String>? contentTypes) {
+    final List<String>? normalized =
+        contentTypes == null || contentTypes.isEmpty
+            ? null
+            : List.of(contentTypes);
+    if (_sameStringLists(normalized, state.contentTypes)) return;
+    state = state.copyWith(
+      contentTypes: normalized,
+      clearContentTypes: normalized == null,
+    );
+    unawaited(loadFirst());
+  }
+
+  /// Element-wise equality for nullable string lists.
+  bool _sameStringLists(List<String>? a, List<String>? b) {
+    if (a == null || b == null) return a == null && b == null;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  /// Clear the language/extension/exact/year/content-type filters
+  /// (the sort order and the search query are kept) and reload
+  /// page 1.
   void resetFilters() {
     if (state.language == 'all' &&
         state.extension == 'all' &&
-        !state.exact) {
+        !state.exact &&
+        state.yearFrom == null &&
+        state.yearTo == null &&
+        state.contentTypes == null) {
       return;
     }
-    state = state.copyWith(language: 'all', extension: 'all', exact: false);
+    state = state.copyWith(
+      language: 'all',
+      extension: 'all',
+      exact: false,
+      clearYearFrom: true,
+      clearYearTo: true,
+      clearContentTypes: true,
+    );
     unawaited(loadFirst());
   }
 
@@ -220,6 +302,9 @@ class CategoryBooksController
       exact: state.exact,
       language: state.language,
       extension: state.extension,
+      yearFrom: state.yearFrom,
+      yearTo: state.yearTo,
+      contentTypes: state.contentTypes,
     );
     final result = await _loadPage(1, generation: generation);
     if (!_isCurrent(generation)) return;
@@ -316,8 +401,11 @@ class CategoryBooksController
             categoryId: _categoryId,
             query: s.query,
             exact: s.exact,
+            yearFrom: s.yearFrom,
+            yearTo: s.yearTo,
             languages: _languageParam(s.language),
             extensions: _extensionParam(s.extension),
+            contentTypes: s.contentTypes,
             order: s.order,
             page: page,
           )
@@ -332,8 +420,11 @@ class CategoryBooksController
               categoryId: _categoryId,
               query: s.query,
               exact: s.exact,
+              yearFrom: s.yearFrom,
+              yearTo: s.yearTo,
               languages: _languageParam(s.language),
               extensions: _extensionParam(s.extension),
+              contentTypes: s.contentTypes,
               order: s.order,
               page: page,
             )

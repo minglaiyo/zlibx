@@ -25,6 +25,7 @@
   "annasDonationKey": "Anna's Archive 捐赠 Key",
   "annasDonationKeyHint": "填入捐赠 Key 可用快速下载，留空则使用慢速下载。",
   "appearance": "外观",
+  "apply": "使用",
   "articleSearch": "文章",
   "author": "作者",
   "badgeAiBuilt": "AI构建",
@@ -154,6 +155,7 @@
   "chooseCustomDownloadDir": "选择自定义下载目录",
   "chooseDownloadSource": "选择下载渠道",
   "clear": "清除",
+  "clearFilters": "删除筛选",
   "close": "关闭",
   "commentDeleteConfirm": "删除这条评论？",
   "commentDeleteDesc": "删除后将无法恢复。",
@@ -173,6 +175,7 @@
     }
   },
   "confirmRemoveTitle": "确认移除",
+  "contentType": "内容类型",
   "continueAnyway": "仍然继续",
   "copyrightRemoved": "版权下架",
   "couldNotLoadBooks": "无法加载书籍",
@@ -237,6 +240,7 @@
   "error": "错误",
   "exactMatch": "精确对应",
   "exampleDomainHint": "例如 example.com",
+  "extension": "扩展",
   "favoriteBooklist": "收藏",
   "favoriteFailed": "收藏更新失败，请稍后重试。",
   "favoriteRemoved": "已取消收藏",
@@ -409,6 +413,7 @@
   "noResults": "没有结果",
   "noSavedAccounts": "暂无已保存账号",
   "noSavedAccountsMessage": "登录过的账号会显示在这里。",
+  "noSelection": "没有选择",
   "noSimilarBooks": "未找到相似书籍",
   "noSimilarBooksMessage": "我们没有找到相关的相似书籍推荐",
   "ongoing": "进行中",
@@ -623,5 +628,7 @@
   "welcomeBack": "欢迎回来",
   "writeComment": "写评论",
   "year": "年份",
+  "yearFrom": "年份（从）",
+  "yearTo": "年份（到）",
   "yourOpenLibrary": "你的开放图书馆"
 }

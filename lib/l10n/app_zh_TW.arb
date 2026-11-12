@@ -25,6 +25,7 @@
   "annasDonationKey": "Anna's Archive 捐贈 Key",
   "annasDonationKeyHint": "填入捐贈 Key 可用快速下載，留空則使用慢速下載。",
   "appearance": "外觀",
+  "apply": "使用",
   "articleSearch": "文章",
   "author": "作者",
   "badgeAiBuilt": "AI構建",
@@ -154,6 +155,7 @@
   "chooseCustomDownloadDir": "選擇自訂下載目錄",
   "chooseDownloadSource": "選擇下載渠道",
   "clear": "清除",
+  "clearFilters": "刪除篩選",
   "close": "關閉",
   "commentDeleteConfirm": "刪除這條評論？",
   "commentDeleteDesc": "刪除後將無法恢復。",
@@ -173,6 +175,7 @@
     }
   },
   "confirmRemoveTitle": "確認移除",
+  "contentType": "內容類型",
   "continueAnyway": "仍然繼續",
   "copyrightRemoved": "版權下架",
   "couldNotLoadBooks": "無法載入書籍",
@@ -237,6 +240,7 @@
   "error": "錯誤",
   "exactMatch": "精確對應",
   "exampleDomainHint": "例如 example.com",
+  "extension": "擴展",
   "favoriteBooklist": "收藏",
   "favoriteFailed": "收藏更新失敗，請稍後再試。",
   "favoriteRemoved": "已取消收藏",
@@ -409,6 +413,7 @@
   "noResults": "沒有結果",
   "noSavedAccounts": "尚無已儲存帳號",
   "noSavedAccountsMessage": "登入過的帳號會顯示在這裡。",
+  "noSelection": "沒有選擇",
   "noSimilarBooks": "未找到相似書籍",
   "noSimilarBooksMessage": "我們沒有找到相關的相似書籍推薦",
   "ongoing": "進行中",
@@ -623,5 +628,7 @@
   "welcomeBack": "歡迎回來",
   "writeComment": "寫評論",
   "year": "年份",
+  "yearFrom": "年份（從）",
+  "yearTo": "年份（到）",
   "yourOpenLibrary": "你的開放圖書館"
 }

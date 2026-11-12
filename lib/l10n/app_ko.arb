@@ -25,6 +25,7 @@
   "annasDonationKey": "Anna's Archive 기부 키",
   "annasDonationKeyHint": "기부 키를 입력하면 빠른 다운로드를 사용할 수 있습니다. 비워 두면 느린 다운로드를 사용합니다.",
   "appearance": "모양",
+  "apply": "적용",
   "articleSearch": "논문",
   "author": "저자",
   "badgeAiBuilt": "AI로 제작",
@@ -154,6 +155,7 @@
   "chooseCustomDownloadDir": "사용자 지정 다운로드 폴더 선택",
   "chooseDownloadSource": "다운로드 경로 선택",
   "clear": "지우기",
+  "clearFilters": "필터 지우기",
   "close": "닫기",
   "commentDeleteConfirm": "이 댓글을 삭제하시겠습니까?",
   "commentDeleteDesc": "삭제하면 복구할 수 없습니다.",
@@ -173,6 +175,7 @@
     }
   },
   "confirmRemoveTitle": "삭제 확인",
+  "contentType": "콘텐츠 유형",
   "continueAnyway": "그래도 계속",
   "copyrightRemoved": "저작권으로 삭제됨",
   "couldNotLoadBooks": "책을 불러올 수 없습니다",
@@ -237,6 +240,7 @@
   "error": "오류",
   "exactMatch": "정확히 일치",
   "exampleDomainHint": "예: example.com",
+  "extension": "확장자",
   "favoriteBooklist": "즐겨찾기 추가",
   "favoriteFailed": "즐겨찾기를 업데이트할 수 없습니다. 다시 시도해 주세요.",
   "favoriteRemoved": "즐겨찾기에서 삭제했습니다",
@@ -409,6 +413,7 @@
   "noResults": "결과가 없습니다",
   "noSavedAccounts": "저장된 계정이 없습니다",
   "noSavedAccountsMessage": "로그인한 계정이 여기에 표시됩니다.",
+  "noSelection": "선택 안 함",
   "noSimilarBooks": "비슷한 책을 찾을 수 없습니다",
   "noSimilarBooksMessage": "이 책과 비슷한 책을 찾을 수 없습니다",
   "ongoing": "진행 중",
@@ -623,5 +628,7 @@
   "welcomeBack": "다시 오신 것을 환영합니다",
   "writeComment": "댓글 쓰기",
   "year": "출판 연도",
+  "yearFrom": "연도(부터)",
+  "yearTo": "연도(까지)",
   "yourOpenLibrary": "당신의 오픈 라이브러리"
 }

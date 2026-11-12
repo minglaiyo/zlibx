@@ -11,6 +11,7 @@ import 'widgets/active_filter_chips.dart';
 import 'widgets/empty_query_view.dart';
 import 'widgets/search_mode_selector.dart';
 import 'widgets/search_bar_field.dart';
+import 'widgets/search_filter_page.dart';
 import 'widgets/search_results_view.dart';
 import 'widgets/search_skeleton_grid.dart';
 import 'widgets/search_suggestions_view.dart';
@@ -63,10 +64,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     return _displayBooks;
   }
 
-  // ── Filters (applied immediately, edited in a bottom sheet) ──
+  // ── Filters (edited on the filter page, applied on 使用) ──
   String _selectedLanguage = 'all';
   String _selectedOrder = 'default';
   String _selectedExtension = 'all';
+  int? _selectedYearFrom;
+  int? _selectedYearTo;
+
+  /// General-search exact match (`e=1`); full-text has its own
+  /// [_fullTextExact] below.
+  bool _generalExact = false;
 
   // ── z站 search mode: 通用 / 文章 / 全文检索. The full-text-only
   // extras (words/phrase match + exact flag) live below; their
@@ -98,23 +105,28 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         // The full-text request DOES carry language / extension
         // (`/fulltext/?…&languages[]=…&extensions[]=…`, verified
         // end-to-end: search_screen → FullTextSearchParams →
-        // ZLibraryFullText.searchFullText), and the sheet shows both
+        // ZLibraryFullText.searchFullText), and the page shows both
         // sections in this mode — so the badge counts them, same as
         // the general branch. Only article mode hides those filters.
         return (_selectedLanguage != 'all' ? 1 : 0) +
             (_selectedOrder != 'popular' ? 1 : 0) +
             (_selectedExtension != 'all' ? 1 : 0) +
             (_fullTextMatchType != 'words' ? 1 : 0) +
-            (_fullTextExact ? 1 : 0);
+            (_fullTextExact ? 1 : 0) +
+            (_selectedYearFrom != null ? 1 : 0) +
+            (_selectedYearTo != null ? 1 : 0);
       case SearchMode.article:
         // Article search sends only the query and sort (v1) — the
-        // sheet hides the language / extension sections so the UI
+        // page hides the language / extension sections so the UI
         // never promises a filter the request does not carry.
         return _selectedOrder != 'default' ? 1 : 0;
       case SearchMode.general:
         return (_selectedLanguage != 'all' ? 1 : 0) +
             (_selectedOrder != 'default' ? 1 : 0) +
-            (_selectedExtension != 'all' ? 1 : 0);
+            (_selectedExtension != 'all' ? 1 : 0) +
+            (_selectedYearFrom != null ? 1 : 0) +
+            (_selectedYearTo != null ? 1 : 0) +
+            (_generalExact ? 1 : 0);
     }
   }
 
@@ -286,17 +298,36 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     _applyFilterChange();
   }
 
-  /// The filter button in the search bar: opens the sheet with the
-  /// current locale's display names (same maps the chips mirror).
-  /// Article mode passes empty language / extension maps — their
-  /// sections hide (the request carries none of those filters).
-  void _openFilterSheetForCurrentLocale() {
-    final l10n = AppLocalizations.of(context)!;
+  void _resetYearFromFilter() {
+    _selectedYearFrom = null;
+    _applyFilterChange();
+  }
+
+  void _resetYearToFilter() {
+    _selectedYearTo = null;
+    _applyFilterChange();
+  }
+
+  void _resetExactFilter() {
+    if (_mode == SearchMode.fulltext) {
+      _fullTextExact = false;
+    } else {
+      _generalExact = false;
+    }
+    _applyFilterChange();
+  }
+
+  /// The filter button in the search bar: opens the full-screen
+  /// filter page with the current locale's display names (same maps
+  /// the chips mirror). Article mode passes empty language /
+  /// extension maps — their sections hide (the request carries none
+  /// of those filters). The page stages edits and only returns them
+  /// when 使用 is tapped; closing discards.
+  void _openFilterPageForCurrentLocale() {
     final locale = Localizations.localeOf(context).languageCode;
     final isArticle = _mode == SearchMode.article;
     unawaited(
-      _openFilterSheet(
-        l10n,
+      _openFilterPage(
         isArticle
             ? const <String, String>{}
             : getLanguageDisplayNames(locale),
@@ -310,167 +341,49 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     );
   }
 
-  Future<void> _openFilterSheet(
-    AppLocalizations l10n,
+  Future<void> _openFilterPage(
     Map<String, String> languageNames,
     Map<String, String> orderNames,
     Map<String, String> extensionNames,
   ) async {
-    await showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    final result = await Navigator.of(context).push<SearchFilterResult>(
+      MaterialPageRoute<SearchFilterResult>(
+        builder: (context) => SearchFilterPage(
+          language: _selectedLanguage,
+          order: _selectedOrder,
+          extension: _selectedExtension,
+          yearFrom: _selectedYearFrom,
+          yearTo: _selectedYearTo,
+          exact: _mode == SearchMode.fulltext
+              ? _fullTextExact
+              : _generalExact,
+          matchType: _fullTextMatchType,
+          languageNames: languageNames,
+          orderNames: orderNames,
+          extensionNames: extensionNames,
+          defaultOrder: _mode == SearchMode.fulltext ? 'popular' : 'default',
+          showExact: _mode != SearchMode.article,
+          showMatchType: _mode == SearchMode.fulltext,
+          showYears: _mode != SearchMode.article,
+          showLanguage: _mode != SearchMode.article,
+          showSort: true,
+          showExtension: _mode != SearchMode.article,
+        ),
       ),
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            final cs = Theme.of(context).colorScheme;
-            Widget section(
-              String? title,
-              Map<String, String> names,
-              String selected,
-              ValueChanged<String> onSelected,
-            ) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (title != null) ...[
-                    Text(
-                      title,
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: cs.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final entry in names.entries)
-                        ChoiceChip(
-                          label: Text(entry.value),
-                          selected: selected == entry.key,
-                          showCheckmark: false,
-                          selectedColor: cs.primaryContainer,
-                          side: BorderSide(
-                            color: selected == entry.key
-                                ? cs.primary
-                                : cs.outlineVariant,
-                          ),
-                          labelStyle: TextStyle(
-                            color: selected == entry.key
-                                ? cs.onPrimaryContainer
-                                : cs.onSurfaceVariant,
-                            fontWeight: selected == entry.key
-                                ? FontWeight.w600
-                                : FontWeight.normal,
-                          ),
-                          onSelected: (_) {
-                            onSelected(entry.key);
-                            setSheetState(() {});
-                            _applyFilterChange();
-                          },
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                ],
-              );
-            }
-
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                0,
-                20,
-                20 + MediaQuery.viewInsetsOf(context).bottom,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_mode == SearchMode.fulltext) ...[
-                      section(
-                        l10n.matchMode,
-                        {
-                          'phrase': l10n.matchByPhrase,
-                          'words': l10n.matchByWords,
-                        },
-                        _fullTextMatchType,
-                        (v) => _fullTextMatchType = v,
-                      ),
-                      SwitchListTile(
-                        title: Text(l10n.exactMatch),
-                        value: _fullTextExact,
-                        contentPadding: EdgeInsets.zero,
-                        onChanged: (value) {
-                          setSheetState(() => _fullTextExact = value);
-                          _applyFilterChange();
-                        },
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                    // Article mode sends only the query and sort, so
-                    // its language / extension sections stay hidden
-                    // (empty maps from the caller).
-                    if (languageNames.isNotEmpty)
-                      section(
-                        l10n.language,
-                        languageNames,
-                        _selectedLanguage,
-                        (v) => _selectedLanguage = v,
-                      ),
-                    section(
-                      l10n.sort,
-                      orderNames,
-                      _selectedOrder,
-                      (v) => _selectedOrder = v,
-                    ),
-                    if (extensionNames.isNotEmpty)
-                      section(
-                        null,
-                        extensionNames,
-                        _selectedExtension,
-                        (v) => _selectedExtension = v,
-                      ),
-                    Row(
-                      children: [
-                        TextButton.icon(
-                          onPressed: () {
-                            setSheetState(() {
-                              _selectedLanguage = 'all';
-                              _selectedOrder =
-                                  _mode == SearchMode.fulltext
-                                      ? 'popular'
-                                      : 'default';
-                              _selectedExtension = 'all';
-                              _fullTextMatchType = 'words';
-                              _fullTextExact = false;
-                            });
-                            _applyFilterChange();
-                          },
-                          icon: const Icon(Icons.restart_alt_rounded, size: 18),
-                          label: Text(l10n.searchHistoryClear),
-                        ),
-                        const Spacer(),
-                        FilledButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: Text(l10n.close),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
     );
+    if (result == null || !mounted) return;
+    _selectedLanguage = result.language;
+    _selectedOrder = result.order;
+    _selectedExtension = result.extension;
+    _selectedYearFrom = result.yearFrom;
+    _selectedYearTo = result.yearTo;
+    if (_mode == SearchMode.fulltext) {
+      _fullTextExact = result.exact;
+      _fullTextMatchType = result.matchType;
+    } else {
+      _generalExact = result.exact;
+    }
+    _applyFilterChange();
   }
 
   // ── Search execution ─────────────────────────────────────────
@@ -505,6 +418,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           query: query,
           type: _fullTextMatchType,
           exact: _fullTextExact,
+          yearFrom: _selectedYearFrom,
+          yearTo: _selectedYearTo,
           languages: searchLanguages[_selectedLanguage] != null
               ? [searchLanguages[_selectedLanguage]!]
               : null,
@@ -532,6 +447,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         .search(
           SearchParams(
             query: query,
+            yearFrom: _selectedYearFrom,
+            yearTo: _selectedYearTo,
             languages: searchLanguages[_selectedLanguage] != null
                 ? [searchLanguages[_selectedLanguage]!]
                 : null,
@@ -539,6 +456,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 ? [searchExtensions[_selectedExtension]!]
                 : null,
             order: searchOrders[_selectedOrder],
+            exact: _generalExact,
           ),
         );
     return true;
@@ -726,7 +644,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 ? l10n.fullTextSearchHint
                 : null,
             onSubmitted: _performSearch,
-            onFilterTap: _openFilterSheetForCurrentLocale,
+            onFilterTap: _openFilterPageForCurrentLocale,
             onClear: _clearSearch,
           ),
           SearchSourceSelector(
@@ -743,15 +661,24 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           if (!isExternal && _activeFilterCount > 0)
             SearchActiveFilterChips(
               l10n: l10n,
+              mode: _mode,
               languageNames: languageNames,
               orderNames: orderNames,
               extensionNames: extensionNames,
               selectedLanguage: _selectedLanguage,
               selectedOrder: _selectedOrder,
               selectedExtension: _selectedExtension,
+              selectedYearFrom: _selectedYearFrom,
+              selectedYearTo: _selectedYearTo,
+              exact: _mode == SearchMode.fulltext
+                  ? _fullTextExact
+                  : _generalExact,
               onResetLanguage: _resetLanguageFilter,
               onResetOrder: _resetOrderFilter,
               onResetExtension: _resetExtensionFilter,
+              onResetYearFrom: _resetYearFromFilter,
+              onResetYearTo: _resetYearToFilter,
+              onResetExact: _resetExactFilter,
             ),
           Expanded(
             child: _isQueryEmpty

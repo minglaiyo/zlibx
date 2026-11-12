@@ -25,6 +25,7 @@
   "annasDonationKey": "Anna's Archive donation key",
   "annasDonationKeyHint": "Enter your donation key to enable fast downloads. Leave empty to use slow downloads.",
   "appearance": "Appearance",
+  "apply": "Apply",
   "articleSearch": "Articles",
   "author": "Author",
   "badgeAiBuilt": "AI-Built",
@@ -154,6 +155,7 @@
   "chooseCustomDownloadDir": "Choose a custom download directory",
   "chooseDownloadSource": "Choose a download source",
   "clear": "Clear",
+  "clearFilters": "Clear filters",
   "close": "Close",
   "commentDeleteConfirm": "Delete this comment?",
   "commentDeleteDesc": "This cannot be undone.",
@@ -173,6 +175,7 @@
     }
   },
   "confirmRemoveTitle": "Confirm Remove",
+  "contentType": "Content type",
   "continueAnyway": "Continue anyway",
   "copyrightRemoved": "Removed for copyright",
   "couldNotLoadBooks": "Could not load books",
@@ -237,6 +240,7 @@
   "error": "Error",
   "exactMatch": "Exact match",
   "exampleDomainHint": "e.g., example.com",
+  "extension": "Extension",
   "favoriteBooklist": "Favorite",
   "favoriteFailed": "Could not update favorites. Please try again.",
   "favoriteRemoved": "Removed from Favorites",
@@ -409,6 +413,7 @@
   "noResults": "No Results",
   "noSavedAccounts": "No saved accounts",
   "noSavedAccountsMessage": "Accounts you log in to will appear here.",
+  "noSelection": "No selection",
   "noSimilarBooks": "No similar books found",
   "noSimilarBooksMessage": "We could not find any similar books for this title",
   "ongoing": "Ongoing",
@@ -623,5 +628,7 @@
   "welcomeBack": "Welcome Back",
   "writeComment": "Write a comment",
   "year": "Year",
+  "yearFrom": "Year (From)",
+  "yearTo": "Year (To)",
   "yourOpenLibrary": "Your Open Library"
 }

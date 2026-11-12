@@ -3,7 +3,7 @@
 //
 // Proves the generated gen-l10n output returns byte-identical strings
 // to the pre-migration hand-written tables (scripts/l10n_snapshot.json):
-// every one of the 423 getters/methods, in all 5 locales, plus the 27
+// every one of the 430 getters/methods, in all 5 locales, plus the 27
 // placeholder methods called with fixed sample arguments. If any
 // user-visible string differs, this test fails.
 //
@@ -39,6 +39,7 @@ void main() {
     expect(loc.annasDonationKey, 'Anna\'s Archive donation key');
     expect(loc.annasDonationKeyHint, 'Enter your donation key to enable fast downloads. Leave empty to use slow downloads.');
     expect(loc.appearance, 'Appearance');
+    expect(loc.apply, 'Apply');
     expect(loc.articleSearch, 'Articles');
     expect(loc.author, 'Author');
     expect(loc.badgeAiBuilt, 'AI-Built');
@@ -105,6 +106,7 @@ void main() {
     expect(loc.chooseCustomDownloadDir, 'Choose a custom download directory');
     expect(loc.chooseDownloadSource, 'Choose a download source');
     expect(loc.clear, 'Clear');
+    expect(loc.clearFilters, 'Clear filters');
     expect(loc.close, 'Close');
     expect(loc.commentDeleteConfirm, 'Delete this comment?');
     expect(loc.commentDeleteDesc, 'This cannot be undone.');
@@ -117,6 +119,7 @@ void main() {
     expect(loc.confirmOk, 'OK');
     expect(loc.confirmRemoveMsg(1), 'Remove 1 book(s) from favorites?');
     expect(loc.confirmRemoveTitle, 'Confirm Remove');
+    expect(loc.contentType, 'Content type');
     expect(loc.continueAnyway, 'Continue anyway');
     expect(loc.copyrightRemoved, 'Removed for copyright');
     expect(loc.couldNotLoadBooks, 'Could not load books');
@@ -174,6 +177,7 @@ void main() {
     expect(loc.error, 'Error');
     expect(loc.exactMatch, 'Exact match');
     expect(loc.exampleDomainHint, 'e.g., example.com');
+    expect(loc.extension, 'Extension');
     expect(loc.favoriteBooklist, 'Favorite');
     expect(loc.favoriteFailed, 'Could not update favorites. Please try again.');
     expect(loc.favoriteRemoved, 'Removed from Favorites');
@@ -298,6 +302,7 @@ void main() {
     expect(loc.noResults, 'No Results');
     expect(loc.noSavedAccounts, 'No saved accounts');
     expect(loc.noSavedAccountsMessage, 'Accounts you log in to will appear here.');
+    expect(loc.noSelection, 'No selection');
     expect(loc.noSimilarBooks, 'No similar books found');
     expect(loc.noSimilarBooksMessage, 'We could not find any similar books for this title');
     expect(loc.ongoing, 'Ongoing');
@@ -443,6 +448,8 @@ void main() {
     expect(loc.welcomeBack, 'Welcome Back');
     expect(loc.writeComment, 'Write a comment');
     expect(loc.year, 'Year');
+    expect(loc.yearFrom, 'Year (From)');
+    expect(loc.yearTo, 'Year (To)');
     expect(loc.yourOpenLibrary, 'Your Open Library');
   });
 
@@ -466,6 +473,7 @@ void main() {
     expect(loc.annasDonationKey, 'Anna\'s Archive 寄付キー');
     expect(loc.annasDonationKeyHint, '寄付キーを入力すると高速ダウンロードが使えます。空欄の場合は低速ダウンロードになります。');
     expect(loc.appearance, '外観');
+    expect(loc.apply, '適用');
     expect(loc.articleSearch, '論文');
     expect(loc.author, '著者');
     expect(loc.badgeAiBuilt, 'AI製');
@@ -532,6 +540,7 @@ void main() {
     expect(loc.chooseCustomDownloadDir, 'カスタムのダウンロード先を選択');
     expect(loc.chooseDownloadSource, 'ダウンロード元を選択');
     expect(loc.clear, 'クリア');
+    expect(loc.clearFilters, 'フィルターをクリア');
     expect(loc.close, '閉じる');
     expect(loc.commentDeleteConfirm, 'このコメントを削除しますか？');
     expect(loc.commentDeleteDesc, '削除すると元に戻せません。');
@@ -544,6 +553,7 @@ void main() {
     expect(loc.confirmOk, 'OK');
     expect(loc.confirmRemoveMsg(1), 'お気に入りから1冊を削除しますか？');
     expect(loc.confirmRemoveTitle, '削除の確認');
+    expect(loc.contentType, 'コンテンツタイプ');
     expect(loc.continueAnyway, 'このまま続行');
     expect(loc.copyrightRemoved, '著作権のため削除');
     expect(loc.couldNotLoadBooks, '書籍を読み込めませんでした');
@@ -601,6 +611,7 @@ void main() {
     expect(loc.error, 'エラー');
     expect(loc.exactMatch, '完全一致');
     expect(loc.exampleDomainHint, '例：example.com');
+    expect(loc.extension, '拡張子');
     expect(loc.favoriteBooklist, 'お気に入りに追加');
     expect(loc.favoriteFailed, 'お気に入りを更新できませんでした。もう一度お試しください。');
     expect(loc.favoriteRemoved, 'お気に入りから削除しました');
@@ -725,6 +736,7 @@ void main() {
     expect(loc.noResults, '結果がありません');
     expect(loc.noSavedAccounts, '保存されたアカウントがありません');
     expect(loc.noSavedAccountsMessage, 'ログインしたアカウントがここに表示されます。');
+    expect(loc.noSelection, '未選択');
     expect(loc.noSimilarBooks, '似た本が見つかりませんでした');
     expect(loc.noSimilarBooksMessage, 'この本に似た本は見つかりませんでした');
     expect(loc.ongoing, '進行中');
@@ -870,6 +882,8 @@ void main() {
     expect(loc.welcomeBack, 'おかえりなさい');
     expect(loc.writeComment, 'コメントを書く');
     expect(loc.year, '出版年');
+    expect(loc.yearFrom, '年（から）');
+    expect(loc.yearTo, '年（まで）');
     expect(loc.yourOpenLibrary, 'あなたのオープンライブラリ');
   });
 
@@ -893,6 +907,7 @@ void main() {
     expect(loc.annasDonationKey, 'Anna\'s Archive 기부 키');
     expect(loc.annasDonationKeyHint, '기부 키를 입력하면 빠른 다운로드를 사용할 수 있습니다. 비워 두면 느린 다운로드를 사용합니다.');
     expect(loc.appearance, '모양');
+    expect(loc.apply, '적용');
     expect(loc.articleSearch, '논문');
     expect(loc.author, '저자');
     expect(loc.badgeAiBuilt, 'AI로 제작');
@@ -959,6 +974,7 @@ void main() {
     expect(loc.chooseCustomDownloadDir, '사용자 지정 다운로드 폴더 선택');
     expect(loc.chooseDownloadSource, '다운로드 경로 선택');
     expect(loc.clear, '지우기');
+    expect(loc.clearFilters, '필터 지우기');
     expect(loc.close, '닫기');
     expect(loc.commentDeleteConfirm, '이 댓글을 삭제하시겠습니까?');
     expect(loc.commentDeleteDesc, '삭제하면 복구할 수 없습니다.');
@@ -971,6 +987,7 @@ void main() {
     expect(loc.confirmOk, '확인');
     expect(loc.confirmRemoveMsg(1), '즐겨찾기에서 1권을 삭제하시겠습니까?');
     expect(loc.confirmRemoveTitle, '삭제 확인');
+    expect(loc.contentType, '콘텐츠 유형');
     expect(loc.continueAnyway, '그래도 계속');
     expect(loc.copyrightRemoved, '저작권으로 삭제됨');
     expect(loc.couldNotLoadBooks, '책을 불러올 수 없습니다');
@@ -1028,6 +1045,7 @@ void main() {
     expect(loc.error, '오류');
     expect(loc.exactMatch, '정확히 일치');
     expect(loc.exampleDomainHint, '예: example.com');
+    expect(loc.extension, '확장자');
     expect(loc.favoriteBooklist, '즐겨찾기 추가');
     expect(loc.favoriteFailed, '즐겨찾기를 업데이트할 수 없습니다. 다시 시도해 주세요.');
     expect(loc.favoriteRemoved, '즐겨찾기에서 삭제했습니다');
@@ -1152,6 +1170,7 @@ void main() {
     expect(loc.noResults, '결과가 없습니다');
     expect(loc.noSavedAccounts, '저장된 계정이 없습니다');
     expect(loc.noSavedAccountsMessage, '로그인한 계정이 여기에 표시됩니다.');
+    expect(loc.noSelection, '선택 안 함');
     expect(loc.noSimilarBooks, '비슷한 책을 찾을 수 없습니다');
     expect(loc.noSimilarBooksMessage, '이 책과 비슷한 책을 찾을 수 없습니다');
     expect(loc.ongoing, '진행 중');
@@ -1297,6 +1316,8 @@ void main() {
     expect(loc.welcomeBack, '다시 오신 것을 환영합니다');
     expect(loc.writeComment, '댓글 쓰기');
     expect(loc.year, '출판 연도');
+    expect(loc.yearFrom, '연도(부터)');
+    expect(loc.yearTo, '연도(까지)');
     expect(loc.yourOpenLibrary, '당신의 오픈 라이브러리');
   });
 
@@ -1320,6 +1341,7 @@ void main() {
     expect(loc.annasDonationKey, 'Anna\'s Archive 捐赠 Key');
     expect(loc.annasDonationKeyHint, '填入捐赠 Key 可用快速下载，留空则使用慢速下载。');
     expect(loc.appearance, '外观');
+    expect(loc.apply, '使用');
     expect(loc.articleSearch, '文章');
     expect(loc.author, '作者');
     expect(loc.badgeAiBuilt, 'AI构建');
@@ -1386,6 +1408,7 @@ void main() {
     expect(loc.chooseCustomDownloadDir, '选择自定义下载目录');
     expect(loc.chooseDownloadSource, '选择下载渠道');
     expect(loc.clear, '清除');
+    expect(loc.clearFilters, '删除筛选');
     expect(loc.close, '关闭');
     expect(loc.commentDeleteConfirm, '删除这条评论？');
     expect(loc.commentDeleteDesc, '删除后将无法恢复。');
@@ -1398,6 +1421,7 @@ void main() {
     expect(loc.confirmOk, '确定');
     expect(loc.confirmRemoveMsg(1), '确定从收藏中移除 1 本书？');
     expect(loc.confirmRemoveTitle, '确认移除');
+    expect(loc.contentType, '内容类型');
     expect(loc.continueAnyway, '仍然继续');
     expect(loc.copyrightRemoved, '版权下架');
     expect(loc.couldNotLoadBooks, '无法加载书籍');
@@ -1455,6 +1479,7 @@ void main() {
     expect(loc.error, '错误');
     expect(loc.exactMatch, '精确对应');
     expect(loc.exampleDomainHint, '例如 example.com');
+    expect(loc.extension, '扩展');
     expect(loc.favoriteBooklist, '收藏');
     expect(loc.favoriteFailed, '收藏更新失败，请稍后重试。');
     expect(loc.favoriteRemoved, '已取消收藏');
@@ -1579,6 +1604,7 @@ void main() {
     expect(loc.noResults, '没有结果');
     expect(loc.noSavedAccounts, '暂无已保存账号');
     expect(loc.noSavedAccountsMessage, '登录过的账号会显示在这里。');
+    expect(loc.noSelection, '没有选择');
     expect(loc.noSimilarBooks, '未找到相似书籍');
     expect(loc.noSimilarBooksMessage, '我们没有找到相关的相似书籍推荐');
     expect(loc.ongoing, '进行中');
@@ -1724,6 +1750,8 @@ void main() {
     expect(loc.welcomeBack, '欢迎回来');
     expect(loc.writeComment, '写评论');
     expect(loc.year, '年份');
+    expect(loc.yearFrom, '年份（从）');
+    expect(loc.yearTo, '年份（到）');
     expect(loc.yourOpenLibrary, '你的开放图书馆');
   });
 
@@ -1747,6 +1775,7 @@ void main() {
     expect(loc.annasDonationKey, 'Anna\'s Archive 捐贈 Key');
     expect(loc.annasDonationKeyHint, '填入捐贈 Key 可用快速下載，留空則使用慢速下載。');
     expect(loc.appearance, '外觀');
+    expect(loc.apply, '使用');
     expect(loc.articleSearch, '文章');
     expect(loc.author, '作者');
     expect(loc.badgeAiBuilt, 'AI構建');
@@ -1813,6 +1842,7 @@ void main() {
     expect(loc.chooseCustomDownloadDir, '選擇自訂下載目錄');
     expect(loc.chooseDownloadSource, '選擇下載渠道');
     expect(loc.clear, '清除');
+    expect(loc.clearFilters, '刪除篩選');
     expect(loc.close, '關閉');
     expect(loc.commentDeleteConfirm, '刪除這條評論？');
     expect(loc.commentDeleteDesc, '刪除後將無法恢復。');
@@ -1825,6 +1855,7 @@ void main() {
     expect(loc.confirmOk, '確定');
     expect(loc.confirmRemoveMsg(1), '確定要從收藏中移除 1 本書嗎？');
     expect(loc.confirmRemoveTitle, '確認移除');
+    expect(loc.contentType, '內容類型');
     expect(loc.continueAnyway, '仍然繼續');
     expect(loc.copyrightRemoved, '版權下架');
     expect(loc.couldNotLoadBooks, '無法載入書籍');
@@ -1882,6 +1913,7 @@ void main() {
     expect(loc.error, '錯誤');
     expect(loc.exactMatch, '精確對應');
     expect(loc.exampleDomainHint, '例如 example.com');
+    expect(loc.extension, '擴展');
     expect(loc.favoriteBooklist, '收藏');
     expect(loc.favoriteFailed, '收藏更新失敗，請稍後再試。');
     expect(loc.favoriteRemoved, '已取消收藏');
@@ -2006,6 +2038,7 @@ void main() {
     expect(loc.noResults, '沒有結果');
     expect(loc.noSavedAccounts, '尚無已儲存帳號');
     expect(loc.noSavedAccountsMessage, '登入過的帳號會顯示在這裡。');
+    expect(loc.noSelection, '沒有選擇');
     expect(loc.noSimilarBooks, '未找到相似書籍');
     expect(loc.noSimilarBooksMessage, '我們沒有找到相關的相似書籍推薦');
     expect(loc.ongoing, '進行中');
@@ -2151,6 +2184,8 @@ void main() {
     expect(loc.welcomeBack, '歡迎回來');
     expect(loc.writeComment, '寫評論');
     expect(loc.year, '年份');
+    expect(loc.yearFrom, '年份（從）');
+    expect(loc.yearTo, '年份（到）');
     expect(loc.yourOpenLibrary, '你的開放圖書館');
   });
 

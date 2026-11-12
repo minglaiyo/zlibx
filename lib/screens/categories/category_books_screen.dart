@@ -10,6 +10,7 @@ import '../../widgets/book_list_tile.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/gradient_app_bar.dart';
 import '../../widgets/loading_widget.dart';
+import '../search/widgets/search_filter_page.dart';
 
 // Existing callers (routes) import the args class from this screen's
 // library.
@@ -77,156 +78,57 @@ class _CategoryBooksScreenState extends ConsumerState<CategoryBooksScreen> {
     ref.read(_provider.notifier).setOrder(order);
   }
 
-  /// Filter sheet (the search screen's idiom): language and
-  /// extension ChoiceChips plus the exact-match switch. Each tap
-  /// applies immediately and reloads page 1. The sheet keeps its own
-  /// copies of the filter values (like the search screen's sheet);
-  /// the controller setters update the provider state and reload.
-  Future<void> _openFilterSheet() async {
-    final l10n = AppLocalizations.of(context)!;
+  /// Filter page (the search screen's full-screen filter page,
+  /// reused): exact-match switch plus year / language / extension
+  /// dropdowns. Sort stays in its own dialog ([_pickSortOrder]);
+  /// content type is not shown (its option values are unverified —
+  /// see [SearchFilterPage]). Staged editing: 使用 applies, ✕
+  /// discards, 删除筛选 resets the staged values. On apply, an
+  /// all-defaults result goes through
+  /// [CategoryBooksController.resetFilters] (one reload); otherwise
+  /// the five setters run (each a no-op when its value is
+  /// unchanged).
+  Future<void> _openFilterPage() async {
     final locale = Localizations.localeOf(context).languageCode;
-    final languageNames = getLanguageDisplayNames(locale);
-    final extensionNames = getExtensionDisplayNames(locale);
+    final state = ref.read(_provider);
     final controller = ref.read(_provider.notifier);
-    var selectedLanguage = ref.read(_provider).language;
-    var selectedExtension = ref.read(_provider).extension;
-    var exact = ref.read(_provider).exact;
-    await showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    final result = await Navigator.of(context).push<SearchFilterResult>(
+      MaterialPageRoute<SearchFilterResult>(
+        builder: (context) => SearchFilterPage(
+          language: state.language,
+          order: state.order,
+          extension: state.extension,
+          yearFrom: state.yearFrom,
+          yearTo: state.yearTo,
+          exact: state.exact,
+          matchType: 'words',
+          languageNames: getLanguageDisplayNames(locale),
+          orderNames: const <String, String>{},
+          extensionNames: getExtensionDisplayNames(locale),
+          defaultOrder: 'popular',
+          showExact: true,
+          showMatchType: false,
+          showYears: true,
+          showLanguage: true,
+          showSort: false,
+          showExtension: true,
+        ),
       ),
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            final cs = Theme.of(context).colorScheme;
-            Widget section(
-              String? title,
-              Map<String, String> names,
-              String selected,
-              ValueChanged<String> onSelected,
-            ) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (title != null) ...[
-                    Text(
-                      title,
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: cs.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final entry in names.entries)
-                        ChoiceChip(
-                          label: Text(entry.value),
-                          selected: selected == entry.key,
-                          showCheckmark: false,
-                          selectedColor: cs.primaryContainer,
-                          side: BorderSide(
-                            color: selected == entry.key
-                                ? cs.primary
-                                : cs.outlineVariant,
-                          ),
-                          labelStyle: TextStyle(
-                            color: selected == entry.key
-                                ? cs.onPrimaryContainer
-                                : cs.onSurfaceVariant,
-                            fontWeight: selected == entry.key
-                                ? FontWeight.w600
-                                : FontWeight.normal,
-                          ),
-                          onSelected: (_) {
-                            onSelected(entry.key);
-                            setSheetState(() {});
-                          },
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                ],
-              );
-            }
-
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                0,
-                20,
-                20 + MediaQuery.viewInsetsOf(context).bottom,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    section(
-                      l10n.language,
-                      languageNames,
-                      selectedLanguage,
-                      (v) {
-                        selectedLanguage = v;
-                        controller.setLanguage(v);
-                      },
-                    ),
-                    section(
-                      null,
-                      extensionNames,
-                      selectedExtension,
-                      (v) {
-                        selectedExtension = v;
-                        controller.setExtension(v);
-                      },
-                    ),
-                    SwitchListTile(
-                      title: Text(l10n.exactMatch),
-                      value: exact,
-                      contentPadding: EdgeInsets.zero,
-                      onChanged: (value) {
-                        setSheetState(() => exact = value);
-                        controller.setExact(value);
-                      },
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        TextButton.icon(
-                          onPressed: () {
-                            setSheetState(() {
-                              selectedLanguage = 'all';
-                              selectedExtension = 'all';
-                              exact = false;
-                            });
-                            controller.resetFilters();
-                          },
-                          icon: const Icon(
-                            Icons.restart_alt_rounded,
-                            size: 18,
-                          ),
-                          label: Text(l10n.searchHistoryClear),
-                        ),
-                        const Spacer(),
-                        FilledButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: Text(l10n.close),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
     );
+    if (result == null || !mounted) return;
+    if (result.language == 'all' &&
+        result.extension == 'all' &&
+        !result.exact &&
+        result.yearFrom == null &&
+        result.yearTo == null) {
+      controller.resetFilters();
+      return;
+    }
+    controller.setLanguage(result.language);
+    controller.setExtension(result.extension);
+    controller.setExact(result.exact);
+    controller.setYearFrom(result.yearFrom);
+    controller.setYearTo(result.yearTo);
   }
 
   @override
@@ -273,7 +175,7 @@ class _CategoryBooksScreenState extends ConsumerState<CategoryBooksScreen> {
               IconButton(
                 tooltip: l10n.filter,
                 icon: const Icon(Icons.tune_rounded),
-                onPressed: _openFilterSheet,
+                onPressed: _openFilterPage,
               ),
             ],
           ),

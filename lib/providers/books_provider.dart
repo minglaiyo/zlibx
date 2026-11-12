@@ -26,6 +26,9 @@ class SearchParams {
   final String? order;
   final int limit;
 
+  /// Exact title match (sends `e=1` to /eapi/book/search).
+  final bool exact;
+
   SearchParams({
     this.query,
     this.yearFrom,
@@ -34,6 +37,7 @@ class SearchParams {
     this.extensions,
     this.order,
     this.limit = 20,
+    this.exact = false,
   });
 }
 
@@ -102,6 +106,7 @@ class SearchNotifier extends Notifier<SearchState> {
       order: params.order,
       page: page,
       limit: params.limit,
+      exact: params.exact,
     );
   }
 

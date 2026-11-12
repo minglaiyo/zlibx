@@ -212,6 +212,11 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
                               kToolbarHeight -
                               58)
                           .clamp(170.0, 295.0),
+                  // Rating lives only on the cover now: the interest /
+                  // quality text the info section used to show as a tag.
+                  badge: widget.book.ratingText == null
+                      ? null
+                      : _HeroRatingBadge(text: widget.book.ratingText!),
                 ),
               ),
             ),
@@ -233,6 +238,46 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
       imageBuilder: (context, image) => content(image: image),
       placeholder: (context, url) => content(loading: true),
       errorWidget: (context, url, error) => content(),
+    );
+  }
+}
+
+/// Rating pill on the hero cover: same dark pill + gold star as the
+/// search card's cover label, slightly larger for the big cover.
+class _HeroRatingBadge extends StatelessWidget {
+  const _HeroRatingBadge({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.star_rounded,
+              size: 15,
+              color: Color(0xFFFFD76A),
+            ),
+            const SizedBox(width: 3),
+            Text(
+              text,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

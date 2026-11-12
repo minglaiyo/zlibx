@@ -260,7 +260,11 @@ class _BookCardState extends State<BookCard> {
               )
             else
               _buildPlaceholder(),
-            if (widget.searchResult && (hasScore || hasMeta))
+            // Rating lives on the cover for every card now (not only
+            // search results): the text-row ★ in _buildBottomRow is
+            // gone. The filesize label stays search-only — it still
+            // has its own spot in the bottom row elsewhere.
+            if (hasScore || (widget.searchResult && hasMeta))
               Positioned(
                 right: 8,
                 bottom: 8,
@@ -269,8 +273,10 @@ class _BookCardState extends State<BookCard> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     if (hasScore) _buildCoverLabel(score, rating: true),
-                    if (hasScore && hasMeta) const SizedBox(height: 4),
-                    if (hasMeta) _buildCoverLabel(meta),
+                    if (hasScore && widget.searchResult && hasMeta)
+                      const SizedBox(height: 4),
+                    if (widget.searchResult && hasMeta)
+                      _buildCoverLabel(meta),
                   ],
                 ),
               ),
@@ -414,12 +420,12 @@ class _BookCardState extends State<BookCard> {
     );
   }
 
-  /// Build the bottom row (score + meta)
+  /// Build the bottom row (meta only — the rating lives on the cover
+  /// badge, see _buildFullCover).
   Widget _buildBottomRow() {
-    final hasScore = widget.book.score != null && widget.book.score!.isNotEmpty;
     final hasMeta = widget.book.meta != null && widget.book.meta!.isNotEmpty;
 
-    if (!hasScore && !hasMeta) {
+    if (!hasMeta) {
       // Show nothing if no data available
       return const SizedBox.shrink();
     }
@@ -427,27 +433,11 @@ class _BookCardState extends State<BookCard> {
     final cs = Theme.of(context).colorScheme;
     return Row(
       children: [
-        if (hasScore) ...[
-          Icon(Icons.star_rounded, size: 14, color: cs.secondary),
-          const SizedBox(width: 4),
-          Text(
-            widget.book.score!,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: cs.onSurface,
-            ),
-          ),
-        ],
         const Spacer(),
-        if (hasMeta)
-          Text(
-            widget.book.meta!,
-            style: TextStyle(
-              fontSize: 10,
-              color: cs.onSurfaceVariant,
-            ),
-          ),
+        Text(
+          widget.book.meta!,
+          style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+        ),
       ],
     );
   }

@@ -38,18 +38,8 @@ class BookInfoSection extends StatelessWidget {
           icon: Icons.calendar_today_outlined,
           text: '${book.year}',
         ),
-      // Detail-page rating (site header block `★ 3.0 / 5.0`): interest
-      // over quality. The interest side falls back to the eapi interest
-      // score (the ★ the search card shows) when the detail HTML fetch
-      // failed — see book_detail_screen.dart; quality is HTML-only.
-      // Shown when either score exists; the site hides each span
-      // independently for unrated books, and the parser nulls them.
-      if ((book.ratingInterest?.isNotEmpty ?? false) ||
-          (book.ratingQuality?.isNotEmpty ?? false))
-        BookDetailTag(
-          icon: Icons.star_rounded,
-          text: _ratingText(book),
-        ),
+      // No rating tag here anymore: the rating lives only on the hero
+      // cover badge (DisplayBook.ratingText, interest / quality).
       // Website categories (eapi `categories`, e.g. `{307: History -
       // World history}`): one chip per category, localized to the app
       // language (zh / zh_Hant via the category table; other locales show
@@ -217,20 +207,6 @@ class BookInfoSection extends StatelessWidget {
       ),
     );
   }
-}
-
-/// The rating tag's text, in the site's own `interest / quality`
-/// shape; a missing score collapses to the one that exists (the site
-/// hides each span independently, so a one-sided rating is real).
-String _ratingText(Book book) {
-  final interest = book.ratingInterest;
-  final quality = book.ratingQuality;
-  if (interest != null && interest.isNotEmpty && quality != null &&
-      quality.isNotEmpty) {
-    return '$interest / $quality';
-  }
-  if (interest != null && interest.isNotEmpty) return interest;
-  return quality ?? '';
 }
 
 /// Open the my-booklists picker and add this book to the picked list.

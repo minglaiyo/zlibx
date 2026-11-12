@@ -26,6 +26,10 @@ class DisplayBook {
   /// 评分/兴趣分（z站: interestScore）
   final String? score;
 
+  /// 详情页评分角标文本（站内 interest / quality 形态），无评分时 null。
+  /// 由 [BookToDisplay] 从 ratingInterest / ratingQuality 算出。
+  final String? ratingText;
+
   /// 卡片底部右侧辅助文本（z站=文件大小）
   final String? meta;
 
@@ -49,6 +53,7 @@ class DisplayBook {
     this.tag,
     this.tagExtra,
     this.score,
+    this.ratingText,
     this.meta,
     this.description,
     this.publisher,
@@ -81,6 +86,22 @@ class DisplayBook {
 // Extension 适配器
 // ═══════════════════════════════════════════════════════════════════
 
+/// 站内详情页的 `interest / quality` 评分文本；缺一边就只显示有的一边，
+/// 两边都没有时为 null（不显示角标）。
+String? _detailRatingText(Book book) {
+  final interest = book.ratingInterest;
+  final quality = book.ratingQuality;
+  if (interest != null &&
+      interest.isNotEmpty &&
+      quality != null &&
+      quality.isNotEmpty) {
+    return '$interest / $quality';
+  }
+  if (interest != null && interest.isNotEmpty) return interest;
+  if (quality != null && quality.isNotEmpty) return quality;
+  return null;
+}
+
 /// z站 Book → DisplayBook
 extension BookToDisplay on Book {
   DisplayBook toDisplay() => DisplayBook(
@@ -93,6 +114,7 @@ extension BookToDisplay on Book {
         : null,
     tagExtra: (year != null && year != 0) ? '$year' : null,
     score: interestScore,
+    ratingText: _detailRatingText(this),
     meta: filesizeString,
     description: description,
     publisher: publisher,

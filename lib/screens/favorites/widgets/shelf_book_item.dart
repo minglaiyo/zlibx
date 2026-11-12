@@ -68,6 +68,14 @@ class ShelfGridItem extends StatelessWidget {
                       child: _CoverPill(text: categoryName!),
                     ),
                   ),
+                // Rating pill on the cover (bottom-left: the downloaded
+                // circle owns the bottom-right corner).
+                if (book.score?.isNotEmpty == true)
+                  Positioned(
+                    left: 6,
+                    bottom: 6,
+                    child: _RatingPill(text: book.score!),
+                  ),
                 if (isDownloaded)
                   Positioned(
                     right: 6,
@@ -171,8 +179,9 @@ class ShelfListItem extends StatelessWidget {
         (icon: null, text: book.tagExtra!, highlighted: false),
       if (book.meta?.isNotEmpty == true)
         (icon: null, text: book.meta!, highlighted: false),
-      if (book.score?.isNotEmpty == true && book.tagExtra != book.score)
-        (icon: Icons.star_rounded, text: book.score!, highlighted: false),
+      // No rating badge here anymore: the rating lives only on the
+      // cover (the grid item's cover pill below); the 54 px list
+      // thumbnail is too small for one.
       if (isDownloaded)
         (
           icon: Icons.download_done_rounded,
@@ -340,6 +349,45 @@ class _ShelfCover extends StatelessWidget {
       fadeInDuration: AppMotion.medium,
       placeholder: (_, __) => const CoverPlaceholder.static(),
       errorWidget: (_, __, ___) => const CoverPlaceholder.static(),
+    );
+  }
+}
+
+/// Dark rating pill for a cover's corner (gold star + white score,
+/// same language as the search card's cover label).
+class _RatingPill extends StatelessWidget {
+  const _RatingPill({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.star_rounded,
+            size: 12,
+            color: Color(0xFFFFD76A),
+          ),
+          const SizedBox(width: 2),
+          Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              height: 1.1,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

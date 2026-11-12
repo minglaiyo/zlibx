@@ -125,32 +125,13 @@ class BookListTile extends StatelessWidget {
                     style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11),
                   ),
                 const Spacer(),
-                // Year or other extra detail; search results keep rating in score.
+                // Year or other extra detail. (Rating is cover-only now:
+                // the 48 px thumbnail here is too small for a badge, so
+                // list tiles show no rating at all.)
                 if (book.tagExtra != null && book.tagExtra!.isNotEmpty)
                   Text(
                     book.tagExtra!,
                     style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11),
-                  ),
-                if ((book.tagExtra == null || book.tagExtra!.isEmpty) &&
-                    book.score != null &&
-                    book.score!.isNotEmpty)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.star_rounded,
-                        size: 14,
-                        color: cs.secondary,
-                      ),
-                      const SizedBox(width: 2),
-                      Text(
-                        book.score!,
-                        style: TextStyle(
-                          color: cs.onSurfaceVariant,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
                   ),
               ],
             ),

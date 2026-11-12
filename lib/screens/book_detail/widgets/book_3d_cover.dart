@@ -13,6 +13,12 @@ class Book3DCover extends StatefulWidget {
   final bool animate;
   final double height;
 
+  /// Optional overlay pinned to the cover face's bottom-right corner
+  /// (e.g. the rating pill on the detail hero). The face is centered in
+  /// the [height] + 34 / width + 64 frame, so its corner sits 32 px from
+  /// the right and 17 px from the bottom of this widget.
+  final Widget? badge;
+
   const Book3DCover({
     super.key,
     required this.cover,
@@ -20,6 +26,7 @@ class Book3DCover extends StatefulWidget {
     required this.loading,
     required this.animate,
     required this.height,
+    this.badge,
   });
 
   @override
@@ -145,6 +152,11 @@ class _Book3DCoverState extends State<Book3DCover>
               },
             ),
           ),
+          // Rating pill pinned to the cover face's bottom-right corner:
+          // the face is centered in the +64 / +34 frame, so its corner
+          // sits 32 px from the right and 17 px from the bottom here.
+          if (widget.badge != null)
+            Positioned(right: 32, bottom: 17, child: widget.badge!),
         ],
       ),
     );

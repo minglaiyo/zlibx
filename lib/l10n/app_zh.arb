@@ -176,6 +176,8 @@
   },
   "confirmRemoveTitle": "确认移除",
   "contentType": "内容类型",
+  "contentTypeArticle": "文章",
+  "contentTypeBook": "书籍",
   "continueAnyway": "仍然继续",
   "copyrightRemoved": "版权下架",
   "couldNotLoadBooks": "无法加载书籍",

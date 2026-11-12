@@ -176,6 +176,8 @@
   },
   "confirmRemoveTitle": "削除の確認",
   "contentType": "コンテンツタイプ",
+  "contentTypeArticle": "記事",
+  "contentTypeBook": "書籍",
   "continueAnyway": "このまま続行",
   "copyrightRemoved": "著作権のため削除",
   "couldNotLoadBooks": "書籍を読み込めませんでした",

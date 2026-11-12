@@ -358,9 +358,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               ? _fullTextExact
               : _generalExact,
           matchType: _fullTextMatchType,
+          contentType: null,
           languageNames: languageNames,
           orderNames: orderNames,
           extensionNames: extensionNames,
+          contentTypeNames: const <String, String>{},
           defaultOrder: _mode == SearchMode.fulltext ? 'popular' : 'default',
           showExact: _mode != SearchMode.article,
           showMatchType: _mode == SearchMode.fulltext,
@@ -368,6 +370,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           showLanguage: _mode != SearchMode.article,
           showSort: true,
           showExtension: _mode != SearchMode.article,
+          showContentType: false,
         ),
       ),
     );

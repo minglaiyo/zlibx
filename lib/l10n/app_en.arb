@@ -176,6 +176,8 @@
   },
   "confirmRemoveTitle": "Confirm Remove",
   "contentType": "Content type",
+  "contentTypeArticle": "Articles",
+  "contentTypeBook": "Books",
   "continueAnyway": "Continue anyway",
   "copyrightRemoved": "Removed for copyright",
   "couldNotLoadBooks": "Could not load books",

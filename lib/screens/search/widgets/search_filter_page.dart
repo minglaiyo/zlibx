@@ -15,6 +15,7 @@ class SearchFilterResult {
     required this.yearTo,
     required this.exact,
     required this.matchType,
+    required this.contentType,
   });
 
   /// Language key (`all` = no language filter).
@@ -36,6 +37,10 @@ class SearchFilterResult {
 
   /// Full-text match type (`words` / `phrase`).
   final String matchType;
+
+  /// Content type (`book` / `article`); null means any content type.
+  /// Only the category caller shows this field.
+  final String? contentType;
 }
 
 /// Full-screen filter page, modelled on the Z-Library site's own
@@ -44,12 +49,13 @@ class SearchFilterResult {
 ///
 /// Shared by the search screen and the category screen: each caller
 /// picks which fields to show (search shows the mode's fields,
-/// category shows exact match + years + language + extension) and
-/// applies the returned values its own way. Sort is a page field
-/// only for search — the category screen keeps its own sort dialog.
-/// Content type is not shown: the site's 内容类型 option values
-/// could not be established from a verified source, so the dropdown
-/// is omitted rather than inventing values.
+/// category shows exact match + years + language + extension +
+/// content type) and applies the returned values its own way. Sort
+/// is a page field only for search — the category screen keeps its
+/// own sort dialog. The content-type values are the site's
+/// `selected_content_types` form values (`book` / `article`, labels
+/// confirmed from the site's own dropdown); the `article` value
+/// matches the article-search route's `content_type=article`.
 ///
 /// Staged editing: the page holds local copies of the values and only
 /// hands them back through Navigator.pop when 使用 is tapped, so
@@ -69,9 +75,11 @@ class SearchFilterPage extends StatefulWidget {
     required this.yearTo,
     required this.exact,
     required this.matchType,
+    required this.contentType,
     required this.languageNames,
     required this.orderNames,
     required this.extensionNames,
+    required this.contentTypeNames,
     required this.defaultOrder,
     required this.showExact,
     required this.showMatchType,
@@ -79,6 +87,7 @@ class SearchFilterPage extends StatefulWidget {
     required this.showLanguage,
     required this.showSort,
     required this.showExtension,
+    required this.showContentType,
   });
 
   final String language;
@@ -88,9 +97,11 @@ class SearchFilterPage extends StatefulWidget {
   final int? yearTo;
   final bool exact;
   final String matchType;
+  final String? contentType;
   final Map<String, String> languageNames;
   final Map<String, String> orderNames;
   final Map<String, String> extensionNames;
+  final Map<String, String> contentTypeNames;
 
   /// The sort key that means "no sort filter" for this caller
   /// (`popular` for full-text search, `default` elsewhere).
@@ -103,6 +114,7 @@ class SearchFilterPage extends StatefulWidget {
   final bool showLanguage;
   final bool showSort;
   final bool showExtension;
+  final bool showContentType;
 
   @override
   State<SearchFilterPage> createState() => _SearchFilterPageState();
@@ -116,6 +128,7 @@ class _SearchFilterPageState extends State<SearchFilterPage> {
   late int? _yearTo;
   late bool _exact;
   late String _matchType;
+  late String? _contentType;
 
   @override
   void initState() {
@@ -127,6 +140,7 @@ class _SearchFilterPageState extends State<SearchFilterPage> {
     _yearTo = widget.yearTo;
     _exact = widget.exact;
     _matchType = widget.matchType;
+    _contentType = widget.contentType;
   }
 
   void _resetStaged() {
@@ -138,6 +152,7 @@ class _SearchFilterPageState extends State<SearchFilterPage> {
       _yearTo = null;
       _exact = false;
       _matchType = 'words';
+      _contentType = null;
     });
   }
 
@@ -151,6 +166,7 @@ class _SearchFilterPageState extends State<SearchFilterPage> {
         yearTo: _yearTo,
         exact: _exact,
         matchType: _matchType,
+        contentType: _contentType,
       ),
     );
   }
@@ -330,6 +346,17 @@ class _SearchFilterPageState extends State<SearchFilterPage> {
                             setState(() => _extension = value);
                           }
                         },
+                      ),
+                    if (widget.showContentType)
+                      _dropdownField<String>(
+                        label: l10n.contentType,
+                        value: _contentType,
+                        options: const [null, 'book', 'article'],
+                        display: (value) => value == null
+                            ? l10n.noSelection
+                            : (widget.contentTypeNames[value] ?? value),
+                        onChanged: (value) =>
+                            setState(() => _contentType = value),
                       ),
                     // Clear row: resets the staged values only — the
                     // screen still applies nothing until 使用 is tapped.

@@ -3,7 +3,7 @@
 //
 // Proves the generated gen-l10n output returns byte-identical strings
 // to the pre-migration hand-written tables (scripts/l10n_snapshot.json):
-// every one of the 430 getters/methods, in all 5 locales, plus the 27
+// every one of the 432 getters/methods, in all 5 locales, plus the 27
 // placeholder methods called with fixed sample arguments. If any
 // user-visible string differs, this test fails.
 //
@@ -120,6 +120,8 @@ void main() {
     expect(loc.confirmRemoveMsg(1), 'Remove 1 book(s) from favorites?');
     expect(loc.confirmRemoveTitle, 'Confirm Remove');
     expect(loc.contentType, 'Content type');
+    expect(loc.contentTypeArticle, 'Articles');
+    expect(loc.contentTypeBook, 'Books');
     expect(loc.continueAnyway, 'Continue anyway');
     expect(loc.copyrightRemoved, 'Removed for copyright');
     expect(loc.couldNotLoadBooks, 'Could not load books');
@@ -554,6 +556,8 @@ void main() {
     expect(loc.confirmRemoveMsg(1), 'お気に入りから1冊を削除しますか？');
     expect(loc.confirmRemoveTitle, '削除の確認');
     expect(loc.contentType, 'コンテンツタイプ');
+    expect(loc.contentTypeArticle, '記事');
+    expect(loc.contentTypeBook, '書籍');
     expect(loc.continueAnyway, 'このまま続行');
     expect(loc.copyrightRemoved, '著作権のため削除');
     expect(loc.couldNotLoadBooks, '書籍を読み込めませんでした');
@@ -988,6 +992,8 @@ void main() {
     expect(loc.confirmRemoveMsg(1), '즐겨찾기에서 1권을 삭제하시겠습니까?');
     expect(loc.confirmRemoveTitle, '삭제 확인');
     expect(loc.contentType, '콘텐츠 유형');
+    expect(loc.contentTypeArticle, '기사');
+    expect(loc.contentTypeBook, '도서');
     expect(loc.continueAnyway, '그래도 계속');
     expect(loc.copyrightRemoved, '저작권으로 삭제됨');
     expect(loc.couldNotLoadBooks, '책을 불러올 수 없습니다');
@@ -1422,6 +1428,8 @@ void main() {
     expect(loc.confirmRemoveMsg(1), '确定从收藏中移除 1 本书？');
     expect(loc.confirmRemoveTitle, '确认移除');
     expect(loc.contentType, '内容类型');
+    expect(loc.contentTypeArticle, '文章');
+    expect(loc.contentTypeBook, '书籍');
     expect(loc.continueAnyway, '仍然继续');
     expect(loc.copyrightRemoved, '版权下架');
     expect(loc.couldNotLoadBooks, '无法加载书籍');
@@ -1856,6 +1864,8 @@ void main() {
     expect(loc.confirmRemoveMsg(1), '確定要從收藏中移除 1 本書嗎？');
     expect(loc.confirmRemoveTitle, '確認移除');
     expect(loc.contentType, '內容類型');
+    expect(loc.contentTypeArticle, '文章');
+    expect(loc.contentTypeBook, '書籍');
     expect(loc.continueAnyway, '仍然繼續');
     expect(loc.copyrightRemoved, '版權下架');
     expect(loc.couldNotLoadBooks, '無法載入書籍');

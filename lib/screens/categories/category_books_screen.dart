@@ -89,6 +89,7 @@ class _CategoryBooksScreenState extends ConsumerState<CategoryBooksScreen> {
   /// the five setters run (each a no-op when its value is
   /// unchanged).
   Future<void> _openFilterPage() async {
+    final l10n = AppLocalizations.of(context)!;
     final locale = Localizations.localeOf(context).languageCode;
     final state = ref.read(_provider);
     final controller = ref.read(_provider.notifier);
@@ -102,9 +103,17 @@ class _CategoryBooksScreenState extends ConsumerState<CategoryBooksScreen> {
           yearTo: state.yearTo,
           exact: state.exact,
           matchType: 'words',
+          contentType: state.contentTypes == null ||
+                  state.contentTypes!.isEmpty
+              ? null
+              : state.contentTypes!.first,
           languageNames: getLanguageDisplayNames(locale),
           orderNames: const <String, String>{},
           extensionNames: getExtensionDisplayNames(locale),
+          contentTypeNames: {
+            'book': l10n.contentTypeBook,
+            'article': l10n.contentTypeArticle,
+          },
           defaultOrder: 'popular',
           showExact: true,
           showMatchType: false,
@@ -112,6 +121,7 @@ class _CategoryBooksScreenState extends ConsumerState<CategoryBooksScreen> {
           showLanguage: true,
           showSort: false,
           showExtension: true,
+          showContentType: true,
         ),
       ),
     );
@@ -120,7 +130,8 @@ class _CategoryBooksScreenState extends ConsumerState<CategoryBooksScreen> {
         result.extension == 'all' &&
         !result.exact &&
         result.yearFrom == null &&
-        result.yearTo == null) {
+        result.yearTo == null &&
+        result.contentType == null) {
       controller.resetFilters();
       return;
     }
@@ -129,6 +140,9 @@ class _CategoryBooksScreenState extends ConsumerState<CategoryBooksScreen> {
     controller.setExact(result.exact);
     controller.setYearFrom(result.yearFrom);
     controller.setYearTo(result.yearTo);
+    controller.setContentTypes(
+      result.contentType == null ? null : [result.contentType!],
+    );
   }
 
   @override

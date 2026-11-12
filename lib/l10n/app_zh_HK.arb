@@ -176,6 +176,8 @@
   },
   "confirmRemoveTitle": "確認移除",
   "contentType": "內容類型",
+  "contentTypeArticle": "文章",
+  "contentTypeBook": "書籍",
   "continueAnyway": "仍然繼續",
   "copyrightRemoved": "版權下架",
   "couldNotLoadBooks": "無法載入書籍",

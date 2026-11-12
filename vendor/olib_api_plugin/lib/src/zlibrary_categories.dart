@@ -141,7 +141,24 @@ mixin ZLibraryCategories on ZLibraryApiBase {
     );
     final status = raw.status;
     if (status == null || status < 200 || status >= 300) {
-      _noteCategoryFetch(status, null, 0);
+      // A 503/513 is the mirror's browser-check wall even when the page
+      // body carries none of _looksLikeChallengePage's markers (or is
+      // empty): _fromError then answers a bare 'HTTP 503' that
+      // isChallengeError would not match, so the solver fallback would
+      // never trigger. Same status check as the download-history and
+      // detail-extras paths. (Diagnosed 2026-11-12: the in-category
+      // search 503'd twice while browse and eapi search worked.)
+      if (status == 503 || status == 513) {
+        _noteCategoryFetch(status, null, 0, challenge: true);
+        return ApiResponse.fail(
+          'HTTP $status: browser check page',
+          statusCode: status,
+        );
+      }
+      final errorLower = (raw.error ?? '').toLowerCase();
+      final challenge = errorLower.contains('browser check') ||
+          errorLower.contains('cf_blocked');
+      _noteCategoryFetch(status, null, 0, challenge: challenge);
       return ApiResponse.fail(
         raw.error ?? 'category failed (HTTP $status)',
         statusCode: status,
@@ -156,7 +173,7 @@ mixin ZLibraryCategories on ZLibraryApiBase {
       );
     }
     if (ZLibraryApiBase._looksLikeChallengePage(html)) {
-      _noteCategoryFetch(status, html, 0);
+      _noteCategoryFetch(status, html, 0, challenge: true);
       return ApiResponse.fail(
         'HTTP $status: browser check page',
         statusCode: status,
@@ -169,13 +186,18 @@ mixin ZLibraryCategories on ZLibraryApiBase {
 
   /// Temporary diagnostic (category search, 2026-11-12): summarize what
   /// a category page fetch actually returned, so the app can log it.
-  /// Release-safe: HTTP status, page title and element counts only —
-  /// never a query, URL, cookie or body preview. Remove with the
-  /// diagnostic.
-  void _noteCategoryFetch(int? status, String? html, int parsed) {
+  /// Release-safe: HTTP status, whether the error is a challenge error,
+  /// page title and element counts only — never a query, URL, cookie or
+  /// body preview. Remove with the diagnostic.
+  void _noteCategoryFetch(
+    int? status,
+    String? html,
+    int parsed, {
+    bool challenge = false,
+  }) {
     if (html == null || html.isEmpty) {
       ZLibraryApiBase.lastCategoryFetchDebug =
-          'status=$status html=empty parsed=$parsed';
+          'status=$status challenge=$challenge html=empty parsed=$parsed';
       return;
     }
     final titleMatch = RegExp(
@@ -189,7 +211,7 @@ mixin ZLibraryCategories on ZLibraryApiBase {
     final hasBox = html.contains('searchResultBox');
     final rawCards = '<z-bookcard'.allMatches(html).length;
     ZLibraryApiBase.lastCategoryFetchDebug =
-        'status=$status title=$title hasBox=$hasBox rawCards=$rawCards parsed=$parsed';
+        'status=$status challenge=$challenge title=$title hasBox=$hasBox rawCards=$rawCards parsed=$parsed';
   }
 
   /// `/category/{id}`, `/category/{id}/{slug}`, or

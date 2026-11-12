@@ -225,7 +225,15 @@ class SearchNotifier extends Notifier<SearchState> {
     } catch (e) {
       return ApiResponse.fail(e.toString());
     }
+    // Temporary diagnostic (category search, 2026-11-12): the direct
+    // fetch 503s (browser-check wall) and the solver is the only path
+    // to results. Log whether it ran and what it returned, so the next
+    // log shows whether the solver itself is the bottleneck.
+    // Release-safe: counts only.
+    var solverRan = false;
+    int? solverParsed;
     if (!response.success && repo.isChallengeError(response.error)) {
+      solverRan = true;
       final user = ref.read(authProvider).user;
       final html = await repo.fetchViaSolver(
         url,
@@ -234,8 +242,17 @@ class SearchNotifier extends Notifier<SearchState> {
       );
       if (html != null) {
         final parsed = repo.parseBooks(html, baseUrl: Uri.parse(url).origin);
-        if (parsed != null) response = ApiResponse.ok(parsed);
+        if (parsed != null) {
+          response = ApiResponse.ok(parsed);
+          solverParsed = parsed.books.length;
+        }
       }
+    }
+    if (solverRan) {
+      AppLog.report(
+        'category solver cat=$categoryId search=$inSearch parsed=${solverParsed ?? 'none'}',
+        tag: 'category-search',
+      );
     }
     // Temporary diagnostic (category search, 2026-11-12): the in-category
     // search returns 0 books even for a book listed in the browse. Log

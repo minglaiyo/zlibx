@@ -237,6 +237,18 @@ class SearchNotifier extends Notifier<SearchState> {
         if (parsed != null) response = ApiResponse.ok(parsed);
       }
     }
+    // Temporary diagnostic (category search, 2026-11-12): the in-category
+    // search returns 0 books even for a book listed in the browse. Log
+    // what the fetch actually returned. Release-safe: status, page title
+    // and counts only; no query, URL or cookie. Remove with the plugin
+    // field.
+    final categoryDebug = ZLibraryApiBase.lastCategoryFetchDebug;
+    if (categoryDebug != null) {
+      AppLog.report(
+        'category fetch cat=$categoryId search=$inSearch $categoryDebug',
+        tag: 'category-search',
+      );
+    }
     final data = response.data;
     if (!response.success || data == null) {
       return ApiResponse.fail(response.error ?? 'Failed to load category');

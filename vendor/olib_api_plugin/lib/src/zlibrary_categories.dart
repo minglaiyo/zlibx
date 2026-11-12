@@ -141,6 +141,7 @@ mixin ZLibraryCategories on ZLibraryApiBase {
     );
     final status = raw.status;
     if (status == null || status < 200 || status >= 300) {
+      _noteCategoryFetch(status, null, 0);
       return ApiResponse.fail(
         raw.error ?? 'category failed (HTTP $status)',
         statusCode: status,
@@ -148,18 +149,47 @@ mixin ZLibraryCategories on ZLibraryApiBase {
     }
     final html = raw.body;
     if (html == null || html.isEmpty) {
+      _noteCategoryFetch(status, html, 0);
       return ApiResponse.fail(
         raw.error ?? 'category failed',
         statusCode: status,
       );
     }
     if (ZLibraryApiBase._looksLikeChallengePage(html)) {
+      _noteCategoryFetch(status, html, 0);
       return ApiResponse.fail(
         'HTTP $status: browser check page',
         statusCode: status,
       );
     }
-    return ApiResponse.ok(parseCategoryBooksPage(html, baseUrl: _base));
+    final parsed = parseCategoryBooksPage(html, baseUrl: _base);
+    _noteCategoryFetch(status, html, parsed.books.length);
+    return ApiResponse.ok(parsed);
+  }
+
+  /// Temporary diagnostic (category search, 2026-11-12): summarize what
+  /// a category page fetch actually returned, so the app can log it.
+  /// Release-safe: HTTP status, page title and element counts only —
+  /// never a query, URL, cookie or body preview. Remove with the
+  /// diagnostic.
+  void _noteCategoryFetch(int? status, String? html, int parsed) {
+    if (html == null || html.isEmpty) {
+      ZLibraryApiBase.lastCategoryFetchDebug =
+          'status=$status html=empty parsed=$parsed';
+      return;
+    }
+    final titleMatch = RegExp(
+      r'<title[^>]*>(.*?)</title>',
+      caseSensitive: false,
+      dotAll: true,
+    ).firstMatch(html);
+    var title = titleMatch?.group(1) ?? '';
+    title = title.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (title.length > 60) title = '${title.substring(0, 60)}…';
+    final hasBox = html.contains('searchResultBox');
+    final rawCards = '<z-bookcard'.allMatches(html).length;
+    ZLibraryApiBase.lastCategoryFetchDebug =
+        'status=$status title=$title hasBox=$hasBox rawCards=$rawCards parsed=$parsed';
   }
 
   /// `/category/{id}`, `/category/{id}/{slug}`, or

@@ -11,7 +11,9 @@ import '../screens/account/booklist_detail_screen.dart';
 import '../screens/account/booklists_screen.dart';
 import '../screens/account/my_comments_screen.dart';
 import '../screens/account/user_profile_screen.dart';
+import '../screens/account/view_history_screen.dart';
 import '../screens/auth/login_screen.dart';
+import '../services/view_history_storage.dart';
 import '../screens/book_detail/book_detail_args.dart';
 import '../screens/book_detail/book_detail_screen.dart';
 import '../screens/comments/book_comments_screen.dart';
@@ -32,6 +34,7 @@ class AppRoutes {
   static const String bookDetail = '/book-detail';
   static const String favorites = '/favorites';
   static const String history = '/history';
+  static const String viewHistory = '/view-history';
   static const String similarBooks = '/similar-books';
   static const String bookComments = '/book-comments';
   static const String booklists = '/booklists';
@@ -51,7 +54,15 @@ class AppRoutes {
   static Future<T?> openBookDetail<T extends Object?>(
     BuildContext context,
     BookDetailArgs args,
-  ) => Navigator.of(context).pushNamed<T>(bookDetail, arguments: args);
+  ) {
+    // 浏览历史（官网"浏览历史"的本地实现）：所有详情入口都汇到这里，
+    // 每次打开都置顶一条，与网站行为一致。只记站内书——Anna's
+    // Archive / LibGen 的 DisplayBook 无法无损重建路由参数，不入历史。
+    // 记录失败只进诊断日志，绝不影响打开详情页。
+    final zBook = args.book ?? args.displayBook?.asZLibBook;
+    if (zBook != null) ViewHistoryStore.add(zBook);
+    return Navigator.of(context).pushNamed<T>(bookDetail, arguments: args);
+  }
 
   /// Book detail page for a Z-Library vendor [Book].
   static Future<T?> openBookDetailForBook<T extends Object?>(
@@ -159,6 +170,12 @@ class AppRoutes {
   static Future<T?> openHistory<T extends Object?>(BuildContext context) =>
       Navigator.of(context).pushNamed<T>(history);
 
+  /// The local viewing-history page (books whose detail page was
+  /// opened on this device).
+  static Future<T?> openViewHistory<T extends Object?>(
+    BuildContext context,
+  ) => Navigator.of(context).pushNamed<T>(viewHistory);
+
   /// After a successful sign-in, or "skip login": replace the login page
   /// with the home page.
   static Future<T?> goHomeAfterLogin<T extends Object?>(
@@ -248,6 +265,7 @@ Map<String, WidgetBuilder> buildAppRoutes() {
     },
     AppRoutes.favorites: (context) => const FavoritesScreen(),
     AppRoutes.history: (context) => const HistoryScreen(),
+    AppRoutes.viewHistory: (context) => const ViewHistoryScreen(),
     AppRoutes.similarBooks: (context) {
       final args = ModalRoute.of(context)!.settings.arguments;
       if (args is SimilarBooksArgs) {

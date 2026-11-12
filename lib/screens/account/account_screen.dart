@@ -93,6 +93,14 @@ class AccountScreen extends ConsumerWidget {
                     onTap: () =>
                         AppRoutes.openHistory(context),
                   ),
+                  const SizedBox(height: 12),
+                  _EntryCard(
+                    icon: Icons.manage_history,
+                    title: l10n.viewHistory,
+                    subtitle: l10n.viewHistorySubtitle,
+                    onTap: () =>
+                        AppRoutes.openViewHistory(context),
+                  ),
                   const SizedBox(height: 28),
                   Center(
                     child: TextButton.icon(

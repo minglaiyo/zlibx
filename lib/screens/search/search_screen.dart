@@ -18,7 +18,6 @@ import 'widgets/search_suggestions_view.dart';
 import 'widgets/source_selector.dart';
 import '../reader/reader_screen.dart';
 import '../../widgets/empty_state.dart';
-import '../../widgets/gradient_app_bar.dart';
 import '../../widgets/update_dialog.dart';
 import '../../models/display_book.dart';
 import '../../routes/app_routes.dart';
@@ -847,170 +846,173 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         resultCount != 0;
 
     return Scaffold(
-      appBar: GradientAppBar(title: l10n.searchBooks),
-      body: Column(
-        children: [
-          SearchBarField(
-            l10n: l10n,
-            controller: _searchController,
-            isExternal: isExternal,
-            activeFilterCount: _activeFilterCount,
-            isQueryEmpty: _isQueryEmpty,
-            hintText: _mode == SearchMode.fulltext
-                ? l10n.fullTextSearchHint
-                : null,
-            onSubmitted: _performSearch,
-            onFilterTap: _openFilterDialogForCurrentLocale,
-            onClear: _clearSearch,
-          ),
-          // The source / mode / filter-chip header folds away
-          // (animated) while the user scrolls down through the
-          // results, and folds back in when scrolling back up —
-          // the search bar above stays put. The height animates
-          // (SizeTransition, top-anchored) plus a fade, on the
-          // standard 200 ms — the same AnimatedSwitcher idiom as
-          // the filter dialog's content-type row. The chips row is
-          // conditional, so the height is never hard-coded.
-          AnimatedSwitcher(
-            duration: AppMotion.standard,
-            transitionBuilder: (child, animation) => FadeTransition(
-              opacity: animation,
-              child: SizeTransition(
-                sizeFactor: animation,
-                alignment: Alignment.topCenter,
-                child: child,
-              ),
+      body: SafeArea(
+        top: true,
+        bottom: false,
+        child: Column(
+          children: [
+            SearchBarField(
+              l10n: l10n,
+              controller: _searchController,
+              isExternal: isExternal,
+              activeFilterCount: _activeFilterCount,
+              isQueryEmpty: _isQueryEmpty,
+              hintText: _mode == SearchMode.fulltext
+                  ? l10n.fullTextSearchHint
+                  : null,
+              onSubmitted: _performSearch,
+              onFilterTap: _openFilterDialogForCurrentLocale,
+              onClear: _clearSearch,
             ),
-            child: _headerVisible || !showResults
-                ? Column(
-                    key: const ValueKey('search-header'),
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SearchSourceSelector(
-                        l10n: l10n,
-                        selected: _source,
-                        onSwitch: _switchSource,
-                      ),
-                      if (!isExternal)
-                        SearchModeSelector(
+            // The source / mode / filter-chip header folds away
+            // (animated) while the user scrolls down through the
+            // results, and folds back in when scrolling back up —
+            // the search bar above stays put. The height animates
+            // (SizeTransition, top-anchored) plus a fade, on the
+            // standard 200 ms — the same AnimatedSwitcher idiom as
+            // the filter dialog's content-type row. The chips row is
+            // conditional, so the height is never hard-coded.
+            AnimatedSwitcher(
+              duration: AppMotion.standard,
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SizeTransition(
+                  sizeFactor: animation,
+                  alignment: Alignment.topCenter,
+                  child: child,
+                ),
+              ),
+              child: _headerVisible || !showResults
+                  ? Column(
+                      key: const ValueKey('search-header'),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SearchSourceSelector(
                           l10n: l10n,
-                          mode: _mode,
-                          onSwitch: _switchMode,
+                          selected: _source,
+                          onSwitch: _switchSource,
                         ),
-                      if (!isExternal && _activeFilterCount > 0)
-                        SearchActiveFilterChips(
-                          l10n: l10n,
-                          mode: _mode,
-                          languageNames: languageNames,
-                          orderNames: orderNames,
-                          extensionNames: extensionNames,
-                          contentTypeNames: {
-                            'book': l10n.contentTypeBook,
-                            'article': l10n.contentTypeArticle,
-                          },
-                          selectedLanguage: _selectedLanguage,
-                          selectedOrder: _selectedOrder,
-                          selectedExtension: _selectedExtension,
-                          selectedYearFrom: _selectedYearFrom,
-                          selectedYearTo: _selectedYearTo,
-                          exact: _mode == SearchMode.fulltext
-                              ? _fullTextExact
-                              : _generalExact,
-                          selectedCategoryName: _selectedCategoryName,
-                          selectedContentType: _selectedContentType,
-                          onResetLanguage: _resetLanguageFilter,
-                          onResetOrder: _resetOrderFilter,
-                          onResetExtension: _resetExtensionFilter,
-                          onResetYearFrom: _resetYearFromFilter,
-                          onResetYearTo: _resetYearToFilter,
-                          onResetExact: _resetExactFilter,
-                          onResetCategory: _resetCategoryFilter,
-                          onResetContentType: _resetContentTypeFilter,
-                        ),
-                    ],
-                  )
-                : const SizedBox.shrink(
-                    key: ValueKey('search-header-hidden'),
-                  ),
-          ),
-          Expanded(
-            child: _isQueryEmpty && _selectedCategoryId == null
-                ? SearchEmptyQueryView(
-                    l10n: l10n,
-                    recentSearches: _recentSearches,
-                    onSearch: _searchAgain,
-                    onRemoveSearch: _removeRecentSearch,
-                    onClearHistory: _clearRecentSearches,
-                  )
-                : _showSuggestions
-                ? SearchSuggestionsView(
-                    l10n: l10n,
-                    suggestions: _suggestions,
-                    isLoading: _suggestionsLoading,
-                    query: _searchController.text.trim(),
-                    onSearch: _searchAgain,
-                    onInsert: _insertSuggestion,
-                  )
-                : !hasSearched
-                ? EmptyState(
-                    icon: Icons.search_rounded,
-                    title: l10n.startSearching,
-                    message: l10n.enterSearchHint,
-                  )
-                : isLoading
-                ? const SearchSkeletonGrid()
-                : loginRequired
-                ? EmptyState(
-                    icon: Icons.login_rounded,
-                    title: l10n.fullTextLoginRequired,
-                    action: FilledButton(
-                      onPressed: () => AppRoutes.openLogin(context),
-                      child: Text(l10n.login),
+                        if (!isExternal)
+                          SearchModeSelector(
+                            l10n: l10n,
+                            mode: _mode,
+                            onSwitch: _switchMode,
+                          ),
+                        if (!isExternal && _activeFilterCount > 0)
+                          SearchActiveFilterChips(
+                            l10n: l10n,
+                            mode: _mode,
+                            languageNames: languageNames,
+                            orderNames: orderNames,
+                            extensionNames: extensionNames,
+                            contentTypeNames: {
+                              'book': l10n.contentTypeBook,
+                              'article': l10n.contentTypeArticle,
+                            },
+                            selectedLanguage: _selectedLanguage,
+                            selectedOrder: _selectedOrder,
+                            selectedExtension: _selectedExtension,
+                            selectedYearFrom: _selectedYearFrom,
+                            selectedYearTo: _selectedYearTo,
+                            exact: _mode == SearchMode.fulltext
+                                ? _fullTextExact
+                                : _generalExact,
+                            selectedCategoryName: _selectedCategoryName,
+                            selectedContentType: _selectedContentType,
+                            onResetLanguage: _resetLanguageFilter,
+                            onResetOrder: _resetOrderFilter,
+                            onResetExtension: _resetExtensionFilter,
+                            onResetYearFrom: _resetYearFromFilter,
+                            onResetYearTo: _resetYearToFilter,
+                            onResetExact: _resetExactFilter,
+                            onResetCategory: _resetCategoryFilter,
+                            onResetContentType: _resetContentTypeFilter,
+                          ),
+                      ],
+                    )
+                  : const SizedBox.shrink(
+                      key: ValueKey('search-header-hidden'),
                     ),
-                  )
-                : error != null && resultCount == 0
-                ? EmptyState(
-                    icon: Icons.error_outline_rounded,
-                    title: l10n.searchFailed,
-                    message: error,
-                    action: FilledButton(
-                      onPressed: _performSearch,
-                      child: Text(l10n.searchRetry),
-                    ),
-                  )
-                : resultCount == 0
-                ? EmptyState(
-                    icon: Icons.search_off_rounded,
-                    title: l10n.noResults,
-                    message: l10n.searchNoResultsSwitch,
-                  )
-                // 滚动加载用气泡通知监听（见 _onScrollNotification）：
-                // 只包住结果分支，空态/建议页的滚动不会误触发加载。
-                : NotificationListener<ScrollNotification>(
-                    onNotification: _onScrollNotification,
-                    child: SearchResultsView(
+            ),
+            Expanded(
+              child: _isQueryEmpty && _selectedCategoryId == null
+                  ? SearchEmptyQueryView(
                       l10n: l10n,
-                      resultCount: resultCount,
-                      currentPage: currentPage,
-                      totalPagesText: totalPagesText,
-                      isListView: _isListView,
-                      onToggleView: () =>
-                          setState(() => _isListView = !_isListView),
-                      error: error,
-                      isLoadingMore: isLoadingMore,
-                      isFullTextMode: isFullTextMode,
-                      isArticleMode: isArticleMode,
-                      books: books,
-                      hits: fulltextState.hits,
-                      articles: articleState.articles,
-                      onOpenBook: _openBook,
-                      onOpenFullTextHit: _openFullTextHit,
-                      onOpenArticle: _openArticle,
-                      onRetryLoadMore: _loadMore,
+                      recentSearches: _recentSearches,
+                      onSearch: _searchAgain,
+                      onRemoveSearch: _removeRecentSearch,
+                      onClearHistory: _clearRecentSearches,
+                    )
+                  : _showSuggestions
+                  ? SearchSuggestionsView(
+                      l10n: l10n,
+                      suggestions: _suggestions,
+                      isLoading: _suggestionsLoading,
+                      query: _searchController.text.trim(),
+                      onSearch: _searchAgain,
+                      onInsert: _insertSuggestion,
+                    )
+                  : !hasSearched
+                  ? EmptyState(
+                      icon: Icons.search_rounded,
+                      title: l10n.startSearching,
+                      message: l10n.enterSearchHint,
+                    )
+                  : isLoading
+                  ? const SearchSkeletonGrid()
+                  : loginRequired
+                  ? EmptyState(
+                      icon: Icons.login_rounded,
+                      title: l10n.fullTextLoginRequired,
+                      action: FilledButton(
+                        onPressed: () => AppRoutes.openLogin(context),
+                        child: Text(l10n.login),
+                      ),
+                    )
+                  : error != null && resultCount == 0
+                  ? EmptyState(
+                      icon: Icons.error_outline_rounded,
+                      title: l10n.searchFailed,
+                      message: error,
+                      action: FilledButton(
+                        onPressed: _performSearch,
+                        child: Text(l10n.searchRetry),
+                      ),
+                    )
+                  : resultCount == 0
+                  ? EmptyState(
+                      icon: Icons.search_off_rounded,
+                      title: l10n.noResults,
+                      message: l10n.searchNoResultsSwitch,
+                    )
+                  // 滚动加载用气泡通知监听（见 _onScrollNotification）：
+                  // 只包住结果分支，空态/建议页的滚动不会误触发加载。
+                  : NotificationListener<ScrollNotification>(
+                      onNotification: _onScrollNotification,
+                      child: SearchResultsView(
+                        l10n: l10n,
+                        resultCount: resultCount,
+                        currentPage: currentPage,
+                        totalPagesText: totalPagesText,
+                        isListView: _isListView,
+                        onToggleView: () =>
+                            setState(() => _isListView = !_isListView),
+                        error: error,
+                        isLoadingMore: isLoadingMore,
+                        isFullTextMode: isFullTextMode,
+                        isArticleMode: isArticleMode,
+                        books: books,
+                        hits: fulltextState.hits,
+                        articles: articleState.articles,
+                        onOpenBook: _openBook,
+                        onOpenFullTextHit: _openFullTextHit,
+                        onOpenArticle: _openArticle,
+                        onRetryLoadMore: _loadMore,
+                      ),
                     ),
-                  ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

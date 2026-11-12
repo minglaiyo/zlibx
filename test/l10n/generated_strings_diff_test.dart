@@ -3,7 +3,7 @@
 //
 // Proves the generated gen-l10n output returns byte-identical strings
 // to the pre-migration hand-written tables (scripts/l10n_snapshot.json):
-// every one of the 432 getters/methods, in all 5 locales, plus the 27
+// every one of the 431 getters/methods, in all 5 locales, plus the 27
 // placeholder methods called with fixed sample arguments. If any
 // user-visible string differs, this test fails.
 //
@@ -334,7 +334,6 @@ void main() {
     expect(loc.recommended, 'Recommended');
     expect(loc.recommendedBooklists, 'Recommended booklists');
     expect(loc.refreshFailed, 'Failed to refresh');
-    expect(loc.relatedBooklists, 'Related booklists');
     expect(loc.remove, 'Remove');
     expect(loc.removeAccount, 'Remove account');
     expect(loc.removeAccountMessage, 'Its saved login details will be removed from this device.');
@@ -770,7 +769,6 @@ void main() {
     expect(loc.recommended, 'おすすめ');
     expect(loc.recommendedBooklists, 'おすすめのブックリスト');
     expect(loc.refreshFailed, '更新に失敗しました');
-    expect(loc.relatedBooklists, '関連ブックリスト');
     expect(loc.remove, '削除する');
     expect(loc.removeAccount, 'アカウントを削除');
     expect(loc.removeAccountMessage, 'このデバイスに保存されたログイン情報が削除されます。');
@@ -1206,7 +1204,6 @@ void main() {
     expect(loc.recommended, '추천');
     expect(loc.recommendedBooklists, '추천 북리스트');
     expect(loc.refreshFailed, '새로고침에 실패했습니다');
-    expect(loc.relatedBooklists, '관련 책 목록');
     expect(loc.remove, '제거');
     expect(loc.removeAccount, '계정 삭제');
     expect(loc.removeAccountMessage, '이 기기에 저장된 로그인 정보가 삭제됩니다.');
@@ -1642,7 +1639,6 @@ void main() {
     expect(loc.recommended, '推荐');
     expect(loc.recommendedBooklists, '推荐书单');
     expect(loc.refreshFailed, '刷新失败');
-    expect(loc.relatedBooklists, '关联书单');
     expect(loc.remove, '移除');
     expect(loc.removeAccount, '移除账号');
     expect(loc.removeAccountMessage, '将从此设备中删除该账号保存的登录信息。');
@@ -2078,7 +2074,6 @@ void main() {
     expect(loc.recommended, '推薦');
     expect(loc.recommendedBooklists, '推薦書單');
     expect(loc.refreshFailed, '刷新失敗');
-    expect(loc.relatedBooklists, '關聯書單');
     expect(loc.remove, '移除');
     expect(loc.removeAccount, '移除帳號');
     expect(loc.removeAccountMessage, '將從此裝置中刪除該帳號儲存的登入資訊。');

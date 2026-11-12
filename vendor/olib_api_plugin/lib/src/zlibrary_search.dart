@@ -52,23 +52,20 @@ mixin ZLibrarySearch on ZLibraryApiBase {
   ///
   /// The eapi book object does not carry volume / ISBN / IPFS, so the
   /// detail page HTML is the only source. Thin delegate over
-  /// [fetchBookDetailExtras] — same single fetch, only the metadata
-  /// half of the result; null when the fetch failed or the page
-  /// carried no property rows.
+  /// [fetchBookDetailExtras] — same single fetch, returning the
+  /// metadata; null when the fetch failed or the page carried no
+  /// property rows.
   Future<BookDetailMetadata?> fetchBookDetailMetadata(String href) async {
     final response = await fetchBookDetailExtras(href);
     final metadata = response.success ? response.data?.metadata : null;
     return metadata == null || metadata.isEmpty ? null : metadata;
   }
 
-  /// One best-effort fetch of the book detail page that parses
-  /// EVERYTHING the page renders beyond the eapi book: the metadata
-  /// rows ([BookDetailMetadata]) and the related-booklists block
-  /// ([BookDetailExtras.relatedBooklists]) — one request instead of
-  /// the two a separate related-booklists fetch would cost (both live
-  /// in the same document, server-rendered — verified 2026-11-12 by
-  /// fetching the raw document in a logged-out browser session: the
-  /// `z-booklist` cards are in the server response, no lazy XHR).
+  /// One best-effort fetch of the book detail page that parses the
+  /// metadata rows ([BookDetailMetadata]) — the page's server-rendered
+  /// property block (volume / ISBN / IPFS / rating), verified
+  /// 2026-11-12 by fetching the raw document in a logged-out browser
+  /// session.
   ///
   /// Returns [ApiResponse] rather than a nullable so the caller can
   /// tell a WALL from any other failure: the `/book/…` page sits
@@ -80,9 +77,7 @@ mixin ZLibrarySearch on ZLibraryApiBase {
   /// `'… browser check page'` error string the app's
   /// `BooklistSolver.isChallengeError` matches, so the caller can
   /// escalate to the WebView solver exactly like the booklists /
-  /// full-text / category HTML routes do. `Booklist.fromElement`
-  /// cards come back empty when the page (or the wall answer) carries
-  /// no block — the caller decides whether that is worth a solver.
+  /// full-text / category HTML routes do.
   Future<ApiResponse<BookDetailExtras>> fetchBookDetailExtras(
     String href,
   ) async {
@@ -92,16 +87,16 @@ mixin ZLibrarySearch on ZLibraryApiBase {
     }
     // `_getWithRedirects`, not `_get`: the detail page may hop (e.g.
     // a canonical-URL redirect), and a non-redirect-following `_get`
-    // would answer the 30x itself and drop the rating + related
-    // booklists. Same helper the article search and category pages
-    // use; it follows up to 5 hops, harvests the wall cookies a hop
-    // re-issues, and returns an error _Raw instead of throwing.
+    // would answer the 30x itself and drop the rating. Same helper
+    // the article search and category pages use; it follows up to 5
+    // hops, harvests the wall cookies a hop re-issues, and returns an
+    // error _Raw instead of throwing.
     //
     // 300s receive timeout, not the Dio default (60s): a detail page
     // is a large HTML document (hundreds of KB), and on a slow link
     // (~10 kB/s) it does not finish inside 60s — the fetch then fails
-    // silently and the rating + related booklists both vanish while
-    // the small eapi book loads fine (device-verified 2026-11-12).
+    // silently and the rating vanishes while the small eapi book
+    // loads fine (device-verified 2026-11-12).
     // Same 300s the downloads use for the same reason.
     final raw = await _getWithRedirects(
       path,
@@ -138,7 +133,6 @@ mixin ZLibrarySearch on ZLibraryApiBase {
     return ApiResponse.ok(
       BookDetailExtras(
         metadata: parseBookDetailProperties(html),
-        relatedBooklists: parseRelatedBooklists(html, baseUrl: _base),
       ),
     );
   }

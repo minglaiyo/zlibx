@@ -20,19 +20,6 @@ const _pageHtml = '''
     <div class="property_value">9787544258609</div>
   </div>
 </div>
-<div class="related-booklists-block">
-  <h2 class="color1">关联书单</h2>
-  <div class="z-booklists-carousel" data-book_id="21050993" data-loader="loadBooklists" data-booklists_type="related">
-    <z-carousel class="ready">
-      <z-booklist tile="" style="width: 144px;" href="/booklist/498889/f77552/1.html" id="498889" topic="1" quantity="32" class="ready">
-        <z-cover id="5748099" author="Synthetic Author One" title="Synthetic Book One" class="ready"><img data-src="https://example.com/covers200/fake-1.jpg"></z-cover>
-      </z-booklist>
-      <z-booklist tile="" style="width: 144px;" href="/booklist/4007439/2c889e/%E5%AD%A6%E4%B9%A0.html" id="4007439" topic="学习" quantity="21" class="ready">
-        <z-cover id="23630137" author="Synthetic Author Two" title="Synthetic Book Two" class="ready"><img data-src="https://example.com/covers200/fake-2.jpg"></z-cover>
-      </z-booklist>
-    </z-carousel>
-  </div>
-</div>
 </body></html>
 ''';
 
@@ -118,11 +105,6 @@ void main() {
 
       final extras = response.data!;
       expect(extras.metadata.isbn13, '9787544258609');
-      expect(extras.relatedBooklists, hasLength(2));
-      expect(extras.relatedBooklists[0].id, '498889');
-      expect(extras.relatedBooklists[0].name, '1');
-      expect(extras.relatedBooklists[0].count, 32);
-      expect(extras.relatedBooklists[1].name, '学习');
     });
 
     test('a direct 200 page parses in one hop', () async {
@@ -133,7 +115,6 @@ void main() {
       );
       expect(response.success, isTrue);
       expect(adapter.hops, 1);
-      expect(response.data!.relatedBooklists, hasLength(2));
     });
 
     test('a 513 challenge answer fails with the browser-check error',

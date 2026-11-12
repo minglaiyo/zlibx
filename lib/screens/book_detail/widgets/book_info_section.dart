@@ -5,10 +5,8 @@ import '../../../core/book_description.dart';
 import '../../../models/display_book.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../l10n/book_categories.dart';
-import '../../../providers/booklist_detail_provider.dart';
 import '../../../providers/category_books_provider.dart';
 import '../../../routes/app_routes.dart';
-import '../../../widgets/booklist_card.dart';
 import '../../similar/similar_books_screen.dart';
 import '../../comments/book_comments_screen.dart';
 import 'add_to_booklist_dialog.dart';
@@ -17,16 +15,9 @@ import 'book_detail_content.dart';
 class BookInfoSection extends StatelessWidget {
   final Book book;
 
-  /// The booklists the site renders in the detail page's 关联书单
-  /// block (parsed from the same HTML fetch as the metadata — see
-  /// `parseRelatedBooklists`). Empty when the page has none (most
-  /// books) or the fetch failed.
-  final List<Booklist> relatedBooklists;
-
   const BookInfoSection({
     super.key,
     required this.book,
-    this.relatedBooklists = const [],
   });
 
   @override
@@ -147,11 +138,6 @@ class BookInfoSection extends StatelessWidget {
               const SizedBox(height: 28),
               BookPublicationInfo(fields: fields),
             ],
-            // Related booklists (site's 关联书单 block): one horizontal
-            // row of compact tiles, each opening the booklist detail
-            // page. Same section position as the site's own page.
-            if (relatedBooklists.isNotEmpty)
-              _RelatedBooklistsSection(booklists: relatedBooklists),
             if (book.hash?.isNotEmpty ?? false) ...[
               const SizedBox(height: 24),
               Divider(
@@ -225,105 +211,6 @@ class BookInfoSection extends StatelessWidget {
                   bookTitle: book.title,
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 详情页的「关联书单」区：站点详情页在同一文档里渲染的书单卡
-/// （书单名 + 书本数 + 代表书封面堆），横向滚动，点击进书单详情页。
-/// 标题与分隔线样式沿用 [BookPublicationInfo] 的区块惯例。
-class _RelatedBooklistsSection extends StatelessWidget {
-  final List<Booklist> booklists;
-
-  const _RelatedBooklistsSection({required this.booklists});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 28),
-        Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.5)),
-        const SizedBox(height: 20),
-        Text(
-          AppLocalizations.of(context)!.relatedBooklists,
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            color: cs.onSurface,
-          ),
-        ),
-        const SizedBox(height: 12),
-        // 卡片宽 132（站点瓷砖 144 的近似值），行高容纳 132 宽的封面
-        // (≈176) 加名称与书本数两行文字。
-        SizedBox(
-          height: 258,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: booklists.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
-            itemBuilder: (context, index) {
-              final list = booklists[index];
-              return _RelatedBooklistTile(
-                list: list,
-                onTap: () => AppRoutes.openBooklistDetail(
-                  context,
-                  BooklistDetailArgs(booklist: list),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// 一张关联书单卡：封面 + 书单名 + 书本数。数据来自
-/// [Booklist.fromElement]（topic/quantity/z-cover 堆），没有作者/
-/// 浏览量等完整书单页字段，因此不复用整卡 [BooklistCard]。
-class _RelatedBooklistTile extends StatelessWidget {
-  final Booklist list;
-  final VoidCallback onTap;
-
-  const _RelatedBooklistTile({required this.list, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final l10n = AppLocalizations.of(context)!;
-    final count = list.count;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: SizedBox(
-        width: 132,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            BooklistCover(url: list.coverUrl, width: 132, height: 176),
-            const SizedBox(height: 6),
-            Text(
-              list.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              count == null ? '' : l10n.booklistBookCount(count),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
             ),
           ],
         ),

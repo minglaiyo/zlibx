@@ -7,12 +7,12 @@ import 'api_response.dart';
 import 'article_search.dart';
 import 'book.dart';
 import 'book_comment.dart';
+import 'book_detail_extras.dart';
 import 'book_detail_html.dart';
 import 'booklist.dart';
 import 'category.dart';
 import 'download_stats.dart';
 import 'fulltext.dart';
-import 'related_booklists.dart';
 import 'user.dart';
 
 part 'zlibrary_auth.dart';

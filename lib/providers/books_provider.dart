@@ -180,12 +180,10 @@ final searchProvider =
 /// 长会话逐本累积（每本详情是全量 [Book]）；相似书链路中每一页
 /// 详情始终 watch 自己的 identifier，不会产生重复请求。
 ///
-/// 返回 `(book, relatedBooklists)`：书本体（eapi 详情 + 详情页 HTML
-/// 合并进来的 卷/ISBN/IPFS/评分 字段）+ 站点详情页底部「关联书单」
-/// 区块解析出的书单列表。两者来自同一次 HTML 抓取
-/// （[ZLibraryApi.fetchBookDetailExtras]），不再为书单单独发请求。
-final bookDetailsProvider = FutureProvider.autoDispose
-    .family<({Book book, List<Booklist> relatedBooklists}), BookIdentifier>(
+/// 返回书本体（eapi 详情 + 详情页 HTML 合并进来的 卷/ISBN/IPFS/评分
+/// 字段），来自同一次 HTML 抓取（[ZLibraryApi.fetchBookDetailExtras]）。
+final bookDetailsProvider =
+    FutureProvider.autoDispose.family<Book, BookIdentifier>(
   (ref, identifier) async {
   final api = ref.watch(zlibraryApiProvider);
   final response = await api.getBookInfo(
@@ -200,18 +198,18 @@ final bookDetailsProvider = FutureProvider.autoDispose
   if (book == null) {
     throw StateError('Book details response did not contain a book');
   }
-  // Best-effort detail-page extras (volume / ISBN / IPFS / rating +
-  // the related-booklists block): the eapi book does not carry them.
+  // Best-effort detail-page extras (volume / ISBN / IPFS / rating):
+  // the eapi book does not carry them.
   // The HTML fetch runs AFTER the eapi detail loaded, so a slow or
   // walled page only delays the extra rows — the screen keeps showing
   // the eapi book meanwhile. The page sits behind the DiamWall: when
   // Dio answers the browser-check challenge, the repository
   // escalates to the WebView solver (same escalation as the
   // booklists / full-text / category HTML routes). Any failure
-  // returns the eapi book unchanged with no booklists.
+  // returns the eapi book unchanged.
   final href = identifier.href ?? book.href;
   if (href == null || href.isEmpty) {
-    return (book: book, relatedBooklists: const <Booklist>[]);
+    return book;
   }
   try {
     final user = ref.read(authProvider).user;
@@ -226,10 +224,10 @@ final bookDetailsProvider = FutureProvider.autoDispose
         'book_details_metadata',
         StateError(result.error ?? 'book detail page failed'),
       );
-      return (book: book, relatedBooklists: const <Booklist>[]);
+      return book;
     }
     final metadata = result.data!.metadata;
-    final merged = book.copyWith(
+    return book.copyWith(
       href: href,
       volume: metadata.volume,
       isbn10: metadata.isbn10,
@@ -239,13 +237,9 @@ final bookDetailsProvider = FutureProvider.autoDispose
       ratingInterest: metadata.ratingInterest,
       ratingQuality: metadata.ratingQuality,
     );
-    return (
-      book: merged,
-      relatedBooklists: result.data!.relatedBooklists,
-    );
   } catch (error) {
     logIgnored('book_details_metadata', error);
-    return (book: book, relatedBooklists: const <Booklist>[]);
+    return book;
   }
   },
 );

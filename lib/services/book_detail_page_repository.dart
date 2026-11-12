@@ -5,7 +5,7 @@ import 'wall_cookie_bridge.dart';
 import 'webview_challenge_solver.dart';
 
 /// Data layer for one book detail page: the payload
-/// ([BookDetailExtras] — metadata rows + related booklists) the
+/// ([BookDetailExtras] — metadata rows) the
 /// detail screen merges onto the eapi book.
 ///
 /// The page is an HTML route behind the DiamWall, so fetching runs in
@@ -74,7 +74,6 @@ class BookDetailPageRepository {
     try {
       return BookDetailExtras(
         metadata: parseBookDetailProperties(html),
-        relatedBooklists: parseRelatedBooklists(html, baseUrl: baseUrl),
       );
     } catch (_) {
       return null;

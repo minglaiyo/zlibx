@@ -678,6 +678,11 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
   // — see SavedBooksNotifier above.
   ZLibraryApi get _api => ref.read(zlibraryApiProvider);
 
+  /// 单调递增的拉取代号：每次拉取取下一个，只有最新一代能写 state。
+  /// 打开页面、下拉刷新、账号切换可能让多次拉取重叠，慢的那次不
+  /// 能用自己的旧页覆盖新一代已上屏的列表。
+  int _generation = 0;
+
   @override
   AsyncValue<List<Book>> build() {
     loadDownloadedBooks();
@@ -690,93 +695,127 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
   /// 序。[silent] 为 true 时是后台静默对账：不置 loading 态，失败时
   /// 保留已有数据（只在尚无数据时才报 error）——页面打开 / 下拉刷
   /// 新用它，列表不闪一下 loading。
+  ///
+  /// 渐进上屏：以前是等全部 dstats 页（最多 30 页）与全部 eapi 元
+  /// 数据页都拉完才一次性 setState，慢链路上首屏要等几十秒。现在
+  /// 每拉到一页 dstats 就上屏一次（最新 50 条先出来），eapi 元数
+  /// 据在后台并行跑、到了再叠加补上——列表最终内容与以前完全一致，
+  /// 只是出现得早。静默对账时已有列表保持可见，绝不先缩成半截再
+  /// 长回来（paint 的缩短守卫）；最终那次 setState 不受守卫限制，
+  /// 服务端删掉的记录也能正常消失。
+  ///
+  /// 代际守卫：每次调用取一个新代号，只有最新一代能写 state——
+  /// 打开页面、下拉刷新、账号切换可能让多次拉取重叠，慢的那次不
+  /// 能用自己的旧页覆盖新一代已上屏的列表。
   Future<void> loadDownloadedBooks({bool silent = false}) async {
     // build() 直接调这里，而首次 build 时 state 还不存在：读 `state`
     // 会抛 StateError（见 SavedBooksNotifier 上的注释），`stateOrNull`
     // 在未初始化时返回 null 而不抛，正是 Riverpod 给 build 期读 state
     // 的写法。
     final hadData = stateOrNull?.valueOrNull != null;
+    final generation = ++_generation;
+    bool isCurrent() => generation == _generation;
     if (!silent) state = const AsyncValue.loading();
 
+    final repository = DownloadStatsRepository(_api);
+    final records = <Book>[];
+    final seen = <String>{};
+    var meta = const <int, Book>{};
+
+    /// 当前累积记录叠加已到的元数据：只补空字段，dstats 自己的字段
+    /// 不动。同一本书下载多次是多条独立记录，各自叠加。
+    List<Book> overlay() => [
+          for (final record in records)
+            meta[record.id] == null
+                ? record
+                : record.copyWith(
+                    author: meta[record.id]!.author,
+                    cover: meta[record.id]!.cover,
+                    extension: meta[record.id]!.extension,
+                    filesize: meta[record.id]!.filesize,
+                    filesizeString: meta[record.id]!.filesizeString,
+                  ),
+        ];
+
+    /// 上屏一次累积列表。两条守卫：空累积不上屏（元数据先到时不能
+    /// 把 loading 闪成空历史）；绝不把可见列表换短（静默对账时旧
+    /// 列表先顶着，新列表没长到旧长度前不替换）。
+    void paint() {
+      if (!isCurrent() || records.isEmpty) return;
+      final next = overlay();
+      final current = stateOrNull?.valueOrNull;
+      if (current != null && next.length < current.length) return;
+      state = AsyncValue.data(next);
+    }
+
+    // eapi 元数据与 dstats 翻页并行跑；它只补作者/封面/格式/大小，
+    // 到了就重叠一次，不再卡首屏。失败只损失这些字段（以前也一样
+    // 容忍，只是以前要等它失败/成功才上屏）。
+    unawaited(
+      _fetchDownloadedMetadata().then<void>((m) {
+        if (!isCurrent()) return;
+        meta = m;
+        paint();
+      }, onError: (Object e) {
+        logIgnored('downloaded_meta', e);
+      }),
+    );
+
     try {
-      // 两路互不依赖，并行；dstats 失败才是真失败，eapi 元数据拉不
-      // 到时只损失封面/作者等信息，历史记录本身照常显示。
-      final results = await Future.wait([
-        _fetchDownloadStats(),
-        _fetchDownloadedMetadata().then(
-          (meta) => meta,
-          onError: (Object e) {
-            logIgnored('downloaded_meta', e);
-            return const <int, Book>{};
-          },
-        ),
-      ]);
-      final records = results[0] as List<Book>;
-      final meta = results[1] as Map<int, Book>;
-      // 叠加元数据：dstats 行缺作者/封面/格式/大小；eapi 命中同一
-      // book id 时补上（只补空字段，dstats 自己的字段不动）。同一本
-      // 书下载多次会有多条记录（逐次日志），各自独立叠加。
-      state = AsyncValue.data([
-        for (final record in records)
-          meta[record.id] == null
-              ? record
-              : record.copyWith(
-                  author: meta[record.id]!.author,
-                  cover: meta[record.id]!.cover,
-                  extension: meta[record.id]!.extension,
-                  filesize: meta[record.id]!.filesize,
-                  filesizeString: meta[record.id]!.filesizeString,
-                ),
-      ]);
+      const maxPages = 30;
+      for (var page = 1; page <= maxPages; page++) {
+        final batch = await _fetchStatsPage(repository, page);
+        if (!isCurrent()) return;
+        final before = seen.length;
+        for (final book in batch) {
+          // 键含时间戳：同一本书下载多次是合法的多条记录，只有"整页
+          // 逐条都和之前完全相同"才算没有新增。
+          if (seen.add(
+            '${book.id}|${book.downloadedAt?.toIso8601String()}|${book.title}',
+          )) {
+            records.add(book);
+          }
+        }
+        // 终止：空页，或整页都是已见过的记录（服务端忽略 page 参数时
+        // 每页回同一批，靠这个不空转）。
+        final done = batch.isEmpty || seen.length == before;
+        paint();
+        if (done) break;
+      }
+      if (!isCurrent()) return;
+      // 最终上屏：不受 paint 的缩短守卫限制，服务端已删的记录照
+      // 常消失；元数据还在路上时它到了还会再叠加一次。
+      state = AsyncValue.data(overlay());
     } catch (e, stack) {
       // 静默对账失败：已有列表是最后已知的好数据，别用 error 覆盖它。
       if (silent && hadData) return;
+      if (!isCurrent()) return;
       state = AsyncValue.error(e, stack);
     }
   }
 
-  /// `/users/downloads` 全量翻页（每页 50 行，上限 30 页 = 1500 条记录）。
-  /// 终止：空页，或整页都是已见过的记录（服务端忽略 page 参数时每页
-  /// 回同一批，靠这个不空转）。
+  /// 一页 `/users/downloads`（50 行，最新在前）。
   ///
   /// 镜像会用浏览器验证墙拦页面路由（HTTP 503 browser check page，
   /// eapi 端点不拦）：撞墙的那一页改走 WebView challenge solver 过墙
   /// 重取；过墙后 wall cookies 回灌 Dio，后续页恢复快路径直连。solver
   /// 也失败时抛出原始墙错误（可重试），绝不把墙页解析成空历史。
-  Future<List<Book>> _fetchDownloadStats() async {
-    final repository = DownloadStatsRepository(_api);
-    final records = <Book>[];
-    final seen = <String>{};
-    const maxPages = 30;
-    for (var page = 1; page <= maxPages; page++) {
-      final response = await repository.fetchPage(page: page);
-      List<Book>? batch;
-      if (response.success) {
-        batch = response.data ?? const <Book>[];
-      } else if (repository.isChallengeError(response.error)) {
-        batch = await _fetchStatsPageViaSolver(
-          repository,
-          page,
-          originalError: response.error ?? 'download history failed',
-        );
-      } else {
-        throw StateError(
-          response.error ?? 'Could not load download history',
-        );
-      }
-      final before = seen.length;
-      for (final book in batch) {
-        // 键含时间戳：同一本书下载多次是合法的多条记录，只有"整页
-        // 逐条都和之前完全相同"才算没有新增。
-        if (seen.add(
-          '${book.id}|${book.downloadedAt?.toIso8601String()}|${book.title}',
-        )) {
-          records.add(book);
-        }
-      }
-      if (batch.isEmpty || seen.length == before) break;
+  Future<List<Book>> _fetchStatsPage(
+    DownloadStatsRepository repository,
+    int page,
+  ) async {
+    final response = await repository.fetchPage(page: page);
+    if (response.success) return response.data ?? const <Book>[];
+    if (repository.isChallengeError(response.error)) {
+      return _fetchStatsPageViaSolver(
+        repository,
+        page,
+        originalError: response.error ?? 'download history failed',
+      );
     }
-    return records;
+    throw StateError(
+      response.error ?? 'Could not load download history',
+    );
   }
 
   /// 一页 dstats 的 solver 回退：装会话 → WebView 过墙取渲染后的

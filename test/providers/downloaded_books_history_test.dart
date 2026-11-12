@@ -6,6 +6,7 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/providers/auth_provider.dart';
 import 'package:zlibx/providers/books_provider.dart';
 import 'package:zlibx/providers/zlibrary_provider.dart';
+import 'package:zlibx/services/storage_service.dart';
 import 'package:zlibx/services/webview_challenge_solver.dart';
 
 /// [DownloadedBooksNotifier]（云端下载历史）回归测试。
@@ -147,11 +148,27 @@ class _SignedOutAuth extends AuthNotifier {
   AuthState build() => AuthState(isLoading: false);
 }
 
-ProviderContainer _container(_FakeZLibraryApi api) {
+/// 元数据缓存替身：不碰 Hive，直接内存 Map。记录每次 merge 供断言。
+class _FakeStorage extends StorageService {
+  Map<int, Book> metaCache = {};
+  final List<Map<int, Book>> merges = [];
+
+  @override
+  Map<int, Book> getDownloadedBookMetadataSync() => Map.of(metaCache);
+
+  @override
+  Future<void> mergeDownloadedBookMetadata(Map<int, Book> additions) async {
+    if (additions.isNotEmpty) merges.add(Map.of(additions));
+    metaCache.addAll(additions);
+  }
+}
+
+ProviderContainer _container(_FakeZLibraryApi api, {StorageService? storage}) {
   final container = ProviderContainer(
     overrides: [
       zlibraryApiProvider.overrideWithValue(api),
       authProvider.overrideWith(_SignedOutAuth.new),
+      if (storage != null) storageServiceProvider.overrideWithValue(storage),
     ],
   );
   return container;
@@ -200,7 +217,10 @@ void main() {
     expect(books[2].author, isNull);
     expect(books[2].title, '书乙');
     // dstats 翻到空页才停；eapi 按 total_pages 停。
-    expect(api.dstatsSeenPages, [1, 2, 3]);
+    // （2026-11-13 窗口化预取：page 1 之后第 2/3 页并行发出，第 3 页
+    // 空页终止后再把在途的第 4/5 页丢弃——抓取日志因此多两页，
+    // 上屏内容与旧串行版完全一致。）
+    expect(api.dstatsSeenPages, [1, 2, 3, 4, 5]);
     expect(api.metaSeenPages, [1]);
   });
 
@@ -222,8 +242,9 @@ void main() {
 
     final books = container.read(downloadedBooksProvider).valueOrNull!;
     expect(books.length, 2);
-    // 第 2 页整页都是已见记录 → 停，不把第 3 页也拉了。
-    expect(api.dstatsSeenPages, [1, 2]);
+    // 第 2 页整页都是已见记录 → 终止。窗口化预取会顺手把还在窗口里
+    // 的第 3 页 speculative 抓掉（结果丢弃），但不会消费它之后的页。
+    expect(api.dstatsSeenPages, [1, 2, 3]);
   });
 
   test('eapi 元数据失败容忍：dstats 记录照常显示（无作者/封面）', () async {
@@ -444,4 +465,170 @@ void main() {
     );
     expect(fallbackCalls, 2);
   });
+
+  test('元数据缓存全覆盖：eapi 元数据循环整段跳过，封面第一页就有', () async {
+    final storage = _FakeStorage()
+      ..metaCache = {
+        7: _meta(7, '作者甲'),
+        8: _meta(8, '作者乙'),
+      };
+    final api = _FakeZLibraryApi(
+      dstatsPages: {
+        1: [
+          _record(7, '书甲', DateTime(2026, 11, 11, 21, 2)),
+          _record(8, '书乙', DateTime(2026, 11, 9, 8, 30)),
+        ],
+        2: [],
+      },
+    );
+    final container = _container(api, storage: storage);
+    addTearDown(container.dispose);
+
+    container.read(downloadedBooksProvider);
+    await _settle();
+
+    final books = container.read(downloadedBooksProvider).valueOrNull!;
+    // 封面/作者来自缓存播种——第一页上屏就带，不等任何 eapi 请求。
+    expect(books[0].author, '作者甲');
+    expect(books[0].cover, 'https://cover.example/7.jpg');
+    expect(books[1].author, '作者乙');
+    // 缓存覆盖每一条 dstats 记录 → eapi 一次都不翻；没有新学到的
+    // 元数据，也不回写。
+    expect(api.metaCalls, 0);
+    expect(storage.merges, isEmpty);
+  });
+
+  test('元数据缓存部分覆盖：eapi 只补缺失，找到后按终止条件停', () async {
+    final storage = _FakeStorage()..metaCache = {7: _meta(7, '作者甲')};
+    final api = _FakeZLibraryApi(
+      dstatsPages: {
+        1: [
+          _record(7, '书甲', DateTime(2026, 11, 11, 21, 2)),
+          _record(8, '书乙', DateTime(2026, 11, 9, 8, 30)),
+          _record(9, '书丙', DateTime(2026, 11, 8, 7, 0)),
+        ],
+        2: [],
+      },
+      metaPages: {
+        1: [_meta(8, '作者乙'), _meta(99, '作者丙')],
+        // 第 2 页没有夹具 → 空页：没有任何新 id → 终止。
+      },
+    );
+    final container = _container(api, storage: storage);
+    addTearDown(container.dispose);
+
+    container.read(downloadedBooksProvider);
+    await _settle();
+
+    final books = container.read(downloadedBooksProvider).valueOrNull!;
+    // id 7 来自缓存；8 由 eapi 第 1 页补上；9 在 eapi 里没有记录，
+    // 元数据缺失但不丢行。
+    expect(books[0].author, '作者甲');
+    expect(books[1].author, '作者乙');
+    expect(books[2].author, isNull);
+    // 缺失集 {8, 9}：第 1 页找到 8（9 没有）→ 继续翻；第 2 页空 → 停。
+    expect(api.metaSeenPages, [1, 2]);
+    // 新学到的元数据（8、99）回写了持久缓存。
+    expect(storage.merges, isNotEmpty);
+  });
+
+  test('静默 TTL：刚完整拉取过就跳过，force 下拉照常全量拉', () async {
+    final api = _FakeZLibraryApi(
+      dstatsPages: {
+        1: [_record(1, '书一', DateTime(2026, 11, 10, 10, 0))],
+      },
+      metaPages: {1: []},
+      metaTotalPages: 1,
+    );
+    final container = _container(api);
+    addTearDown(container.dispose);
+
+    container.read(downloadedBooksProvider);
+    await _settle();
+    // 首次完整拉取：page 1 之后窗口 2→3，speculative 第 2/3 页并行
+    // 发出（第 3 页在终点后丢弃）。3 页 = 一个单页历史的全部抓取。
+    final callsAfterFirstLoad = api.dstatsCalls;
+    expect(callsAfterFirstLoad, 3);
+
+    // TTL 之内：静默对账直接跳过，一页都不抓。
+    await container
+        .read(downloadedBooksProvider.notifier)
+        .loadDownloadedBooks(silent: true);
+    expect(api.dstatsCalls, callsAfterFirstLoad);
+
+    // 下拉刷新（force: true）绕过 TTL，照常全量翻页。
+    await container
+        .read(downloadedBooksProvider.notifier)
+        .loadDownloadedBooks(silent: true, force: true);
+    expect(api.dstatsCalls, greaterThan(callsAfterFirstLoad));
+  });
+
+  test('封面兜底并发上限：一次最多 4 个详情请求在途', () async {
+    var inFlight = 0;
+    var maxInFlight = 0;
+    final gates = <String, Completer<void>>{};
+    final api = _FakeCoverApi((id) async {
+      inFlight++;
+      if (inFlight > maxInFlight) maxInFlight = inFlight;
+      await (gates[id] ??= Completer<void>()).future;
+      inFlight--;
+      return ApiResponse.ok(
+        Book(
+          id: int.parse(id),
+          title: '书$id',
+          cover: 'https://cover.example/$id.jpg',
+        ),
+      );
+    });
+    final container = ProviderContainer(
+      overrides: [zlibraryApiProvider.overrideWithValue(api)],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(historyCoverProvider.notifier);
+    for (var i = 1; i <= 10; i++) {
+      unawaited(
+        notifier.resolveCover(Book(id: i, title: '书$i', hash: 'h$i')),
+      );
+    }
+    await _settle();
+    // 10 行全来要封面：只有 4 个在途，其余排队。
+    expect(maxInFlight, 4);
+
+    for (final gate in List.of(gates.values)) {
+      gate.complete();
+    }
+    // 放行一批，下一批排队顶上并建新 gate：循环放行直到队列消化完。
+    while (gates.isNotEmpty) {
+      final current = List.of(gates.values);
+      gates.clear();
+      for (final gate in current) {
+        gate.complete();
+      }
+      await _settle();
+    }
+    await _settle();
+    // 排队的依次消化完：10 个封面全部到位。
+    expect(container.read(historyCoverProvider).length, 10);
+  });
+}
+
+/// HistoryCoverNotifier 的 fake：getBookInfo 可控（gate 挂起），
+/// 统计在途并发。其余成员照旧抛 UnsupportedError。
+class _FakeCoverApi implements ZLibraryApi {
+  _FakeCoverApi(this.onGetBookInfo);
+
+  final Future<ApiResponse<Book>> Function(String id) onGetBookInfo;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnsupportedError('unexpected: ${invocation.memberName}');
+
+  @override
+  Future<ApiResponse<Book>> getBookInfo(
+    String bookId,
+    String hashId, {
+    String? title,
+  }) =>
+      onGetBookInfo(bookId);
 }

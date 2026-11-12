@@ -348,6 +348,96 @@ class StorageService {
     return getServerDownloadHistorySyncForAccount(accountId);
   }
 
+  // ===== Downloaded-book metadata cache =====
+  //
+  // The `/users/downloads` rows carry only id/title/href/time; the
+  // author/cover/extension/size come from the eapi downloaded list.
+  // Those fields are book-level and essentially immutable, so they are
+  // cached per book id and seeded into every history load: covers and
+  // authors paint on the FIRST page, and when the cache already covers
+  // every row id the eapi pagination is skipped entirely.
+  //
+  // One global JSON blob (`downloaded_book_metadata`) in the settings
+  // box — deliberately NOT account-scoped, unlike the history cache
+  // above: which account downloaded a book does not change its author
+  // or cover. Same best-effort rules as every cache here: a failed
+  // save is logged and ignored, a corrupt read comes back empty.
+  // Growth is capped (see [mergeDownloadedBookMetadata]).
+
+  static const String _keyDownloadedBookMetadata = 'downloaded_book_metadata';
+
+  /// 上限：blob 是整读整写，条目无时间戳，超过上限丢先写入的（插入
+  /// 序 = Dart Map 的保留序）。一万条 × ~150B 也才 ~1.5MB，正常用户
+  /// 触不到；上限只防长期膨胀。
+  static const int _downloadedBookMetadataCap = 5000;
+
+  /// The cached overlay metadata per book id, or an empty map. Values
+  /// are [Book]s carrying ONLY the five overlay fields (+id) — exactly
+  /// what the history overlay reads. A corrupt/non-map blob — or a box
+  /// that is not even open (tests) — reads as empty, never throws.
+  Map<int, Book> getDownloadedBookMetadataSync() {
+    try {
+      final raw = HiveService.settingsBox.get(_keyDownloadedBookMetadata);
+      if (raw is! String || raw.isEmpty) return const <int, Book>{};
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return const <int, Book>{};
+      final out = <int, Book>{};
+      for (final entry in decoded.entries) {
+        final id = int.tryParse('${entry.key}');
+        if (id == null || id <= 0 || entry.value is! Map) continue;
+        out[id] = Book.fromJson({
+          ...Map<String, dynamic>.from(entry.value as Map),
+          'id': id,
+        });
+      }
+      return out;
+    } catch (error) {
+      AppLog.report(
+        '[storage] ignoring corrupt downloaded-metadata cache',
+        tag: 'storage_service',
+      );
+      return const <int, Book>{};
+    }
+  }
+
+  /// Merge freshly fetched metadata into the cache and persist. The
+  /// five overlay fields only (the caller's Books may carry more, but
+  /// the history overlay never reads them). Best-effort: a storage
+  /// failure is logged, never thrown out of a background load.
+  Future<void> mergeDownloadedBookMetadata(Map<int, Book> additions) async {
+    if (additions.isEmpty) return;
+    try {
+      final merged = <String, Map<String, dynamic>>{
+        for (final entry in getDownloadedBookMetadataSync().entries)
+          '${entry.key}': _overlayJsonOf(entry.value),
+        for (final entry in additions.entries)
+          '${entry.key}': _overlayJsonOf(entry.value),
+      };
+      while (merged.length > _downloadedBookMetadataCap) {
+        merged.remove(merged.keys.first);
+      }
+      await HiveService.settingsBox.put(
+        _keyDownloadedBookMetadata,
+        jsonEncode(merged),
+      );
+    } catch (error) {
+      AppLog.report(
+        '[storage] downloaded-metadata cache save failed',
+        tag: 'storage_service',
+      );
+    }
+  }
+
+  /// The five fields the history overlay reads, as the cached JSON
+  /// shape (id is the map key, not repeated inside).
+  Map<String, dynamic> _overlayJsonOf(Book book) => {
+        'author': book.author,
+        'cover': book.cover,
+        'extension': book.extension,
+        'filesize': book.filesize,
+        'filesizeString': book.filesizeString,
+      };
+
   /// downloadedAt descending, nulls last (a record without a stamp
   /// sorts after every stamped one).
   static int _downloadedAtDesc(Book a, Book b) {

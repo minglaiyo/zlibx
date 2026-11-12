@@ -70,12 +70,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         ],
       ),
       // 下拉手动对账：silent 拉取，老列表保持可见，不闪 loading
-      // （RefreshIndicator 自己转圈）。loading / 空态不可拉，打开
-      // 页面时的静默对账会补上这两处的刷新。
+      // （RefreshIndicator 自己转圈）。force: true 绕过静默 TTL——
+      // 用户主动下拉就是要看最新。loading / 空态不可拉，打开页面时
+      // 的静默对账会补上这两处的刷新。
       body: RefreshIndicator(
         onRefresh: () => ref
             .read(downloadedBooksProvider.notifier)
-            .loadDownloadedBooks(silent: true),
+            .loadDownloadedBooks(silent: true, force: true),
         child: downloadedBooksAsync.when(
           data: (books) {
             if (books.isEmpty) {

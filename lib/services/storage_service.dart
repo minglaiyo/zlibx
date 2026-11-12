@@ -438,6 +438,91 @@ class StorageService {
         'filesizeString': book.filesizeString,
       };
 
+  // ===== Book-detail extras cache =====
+  //
+  // The detail page's volume/ISBN/IPFS/rating rows exist only in the
+  // book's HTML page — hundreds of KB, previously fetched fresh on
+  // EVERY open (the heaviest single request in the app on a slow
+  // mirror). The parsed payload is 7 short strings; volume/ISBN/IPFS
+  // are edition constants and only the two community ratings ever
+  // change (with the eapi interestScore as the hero's fallback), so
+  // they are cached per detail-page path and the provider skips the
+  // HTML download entirely within its 7-day freshness window (same
+  // TTL convention as BooklistHtmlCache).
+  //
+  // Key: the page's PATH (`/book/{hash}/{slug}.html`, query stripped
+  // by the caller) — stable per edition. One global blob (not
+  // account-scoped: bibliographic data does not depend on the
+  // account), 2000-entry cap, corrupt reads empty, best-effort
+  // writes. Values carry `fetchedAt` (ms since epoch) for the
+  // provider's freshness check.
+
+  static const String _keyBookDetailExtras = 'book_detail_extras';
+  static const int _bookDetailExtrasCap = 2000;
+
+  /// The cached extras JSON for one detail-page path, or null. The
+  /// map carries the seven parsed fields plus `fetchedAt`. A
+  /// corrupt/blob-missing/box-not-open situation reads as null,
+  /// never throws.
+  Map<String, dynamic>? getBookDetailExtrasSync(String pagePath) {
+    if (pagePath.isEmpty) return null;
+    try {
+      final raw = HiveService.settingsBox.get(_keyBookDetailExtras);
+      if (raw is! String || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final entry = decoded[pagePath];
+      if (entry is! Map) return null;
+      return Map<String, dynamic>.from(entry);
+    } catch (error) {
+      AppLog.report(
+        '[storage] ignoring corrupt book-detail extras cache',
+        tag: 'storage_service',
+      );
+      return null;
+    }
+  }
+
+  /// Merge one book's freshly parsed extras into the cache (stamp
+  /// `fetchedAt` = now, overwrite the key) and persist. Best-effort:
+  /// a storage failure is logged, never thrown out of a page load.
+  Future<void> mergeBookDetailExtras(
+    String pagePath,
+    Map<String, dynamic> fields,
+  ) async {
+    if (pagePath.isEmpty || fields.isEmpty) return;
+    try {
+      final merged = <String, dynamic>{};
+      final raw = HiveService.settingsBox.get(_keyBookDetailExtras);
+      if (raw is String && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          decoded.forEach((key, value) {
+            if (value is Map) {
+              merged['$key'] = Map<String, dynamic>.from(value);
+            }
+          });
+        }
+      }
+      merged[pagePath] = {
+        ...fields,
+        'fetchedAt': DateTime.now().millisecondsSinceEpoch,
+      };
+      while (merged.length > _bookDetailExtrasCap) {
+        merged.remove(merged.keys.first);
+      }
+      await HiveService.settingsBox.put(
+        _keyBookDetailExtras,
+        jsonEncode(merged),
+      );
+    } catch (error) {
+      AppLog.report(
+        '[storage] book-detail extras cache save failed',
+        tag: 'storage_service',
+      );
+    }
+  }
+
   /// downloadedAt descending, nulls last (a record without a stamp
   /// sorts after every stamped one).
   static int _downloadedAtDesc(Book a, Book b) {

@@ -186,6 +186,7 @@ class _SimilarBooksScreenState extends ConsumerState<SimilarBooksScreen> {
                                           final book = _books[index];
                                           return BookListTile(
                                             book: book.toDisplay(),
+                                            showCover: true,
                                             onTap: () {
                                               AppRoutes.openBookDetailForBook(
                                                 context,

@@ -135,20 +135,27 @@ class _FakeArticleApi implements ZLibraryApi {
       'https://example.com/s/$query?content_type=article&page=$page';
 }
 
-ProviderContainer _container({
-  List<Override> overrides = const [],
-}) {
-  final container = ProviderContainer(overrides: [
-    authProvider.overrideWithValue(
-      AuthState(
+/// A signed-in auth state without touching the real notifier's
+/// storage/network init: the notifiers under test only read
+/// `authProvider.user` (the full-text login gate and the solver
+/// fallback's session), so a fixed state is all they need.
+class _SignedInAuthNotifier extends AuthNotifier {
+  @override
+  AuthState build() => AuthState(
         user: User(
           id: '1',
           email: 'synthetic@example.com',
           name: 'Synthetic User',
           remixUserkey: 'key',
         ),
-      ),
-    ),
+      );
+}
+
+ProviderContainer _container({
+  List<Override> overrides = const [],
+}) {
+  final container = ProviderContainer(overrides: [
+    authProvider.overrideWith(_SignedInAuthNotifier.new),
     ...overrides,
   ]);
   addTearDown(container.dispose);

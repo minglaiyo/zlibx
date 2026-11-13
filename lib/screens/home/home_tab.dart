@@ -105,17 +105,23 @@ class HomeTabState extends ConsumerState<HomeTab> {
     }
   }
 
-  /// Pull-to-refresh: re-roll the random-category recommendations.
-  /// Every refresh picks a new random category and page, so the grid
-  /// always shows a different 50 books (user 2026-11-13: 每次刷新都换).
+  /// Pull-to-refresh: re-fetch the active home feed. Random on: a new
+  /// random category and page, so the grid always shows a different 50
+  /// books (user 2026-11-13: 每次刷新都换). Random off: re-fetch the
+  /// personalised recommendations.
   ///
   /// Do NOT `await ref.refresh(...)` here: on a FutureProvider it
   /// returns the AsyncValue, not a Future (await_only_futures,
-  /// build #246). Invalidate, then await the provider's future.
+  /// build #246). Invalidate the active source, then await its future.
   Future<void> _refreshRecommendations() async {
     try {
-      ref.invalidate(randomBooksProvider);
-      await ref.read(randomBooksProvider.future);
+      if (ref.read(randomRecommendProvider)) {
+        ref.invalidate(randomBooksProvider);
+        await ref.read(randomBooksProvider.future);
+      } else {
+        ref.invalidate(recommendedBooksProvider);
+        await ref.read(recommendedBooksProvider.future);
+      }
     } catch (_) {
       // The grid shows the error/retry branch; nothing more to do here.
     }
@@ -268,7 +274,7 @@ class HomeTabState extends ConsumerState<HomeTab> {
       ),
     );
 
-    final booksAsync = ref.watch(randomBooksProvider);
+    final booksAsync = ref.watch(homeRecommendedProvider);
 
     return Column(
       children: [

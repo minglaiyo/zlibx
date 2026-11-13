@@ -209,6 +209,36 @@ final homeGridFourColumnsProvider =
       HomeGridFourColumnsNotifier.new,
     );
 
+/// 首页随机推荐 — whether the home feed shows random-category
+/// recommendations (on) or the personalised recommendations (off).
+/// Default off: the random path needs the category HTML route, which
+/// can be walled on some lines (home shows an error then); off keeps
+/// the previously working personalised feed. Hive key
+/// `randomRecommend`.
+class RandomRecommendNotifier extends Notifier<bool> {
+  @override
+  bool build() => _load();
+
+  /// Sync Hive read; returns the persisted value as the initial state
+  /// instead of assigning it (see LocaleNotifier).
+  bool _load() {
+    final v = HiveService.settingsBox.get('randomRecommend');
+    if (v is bool) return v;
+    return false;
+  }
+
+  Future<void> setEnabled(bool value) async {
+    state = value;
+    await HiveService.settingsBox.put('randomRecommend', value);
+  }
+}
+
+/// 首页随机推荐 provider
+final randomRecommendProvider =
+    NotifierProvider<RandomRecommendNotifier, bool>(
+      RandomRecommendNotifier.new,
+    );
+
 /// Whether the bottom nav bar is currently visible. Driven by the home
 /// grid's scroll direction (transient UI state, not persisted).
 class NavBarVisibleNotifier extends Notifier<bool> {

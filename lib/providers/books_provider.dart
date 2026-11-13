@@ -15,6 +15,7 @@ import '../services/libgen_service.dart';
 import '../services/network_error.dart';
 import '../services/storage_service.dart';
 import 'auth_provider.dart';
+import 'settings_provider.dart';
 import 'zlibrary_provider.dart';
 
 // ── Search ──────────────────────────────────────────────────────────
@@ -838,6 +839,15 @@ final mostPopularBooksProvider = FutureProvider<List<Book>>((ref) async {
   return response.data ?? [];
 });
 
+final recommendedBooksProvider = FutureProvider<List<Book>>((ref) async {
+  final api = ref.watch(zlibraryApiProvider);
+  final response = await api.getUserRecommended();
+  if (!response.success) {
+    throw StateError(response.error ?? 'Failed to load recommendations');
+  }
+  return response.data ?? [];
+});
+
 /// 首页随机推荐：每次刷新从全部 841 个分类里随机挑一个分类，随机取
 /// 一页，补满 50 本。不走推荐接口（/eapi/user/book/recommended）也
 /// 不走热门接口（/eapi/book/most-popular 及 popular 排序搜索）。每次
@@ -909,6 +919,24 @@ Future<List<Book>> _randomCategoryBooks(
   }
   return collected.take(target).toList();
 }
+
+/// 首页推荐：开关（randomRecommendProvider，设置页，默认关）开时用
+/// 随机分类推荐（randomBooksProvider），关时用个性化推荐
+///（recommendedBooksProvider，/eapi/user/book/recommended）。
+/// 开关关是之前一直能用的首页；随机那条路走分类 HTML 页，某些线路
+/// 被墙时会直接报错，开关让用户随时切回能用的那一路。
+final homeRecommendedProvider = Provider<AsyncValue<List<DisplayBook>>>((ref) {
+  final useRandom = ref.watch(randomRecommendProvider);
+  if (useRandom) {
+    return ref.watch(randomBooksProvider);
+  }
+  // whenData keeps loading/error states as-is: the home screen keeps its
+  // error/retry entry and keeps showing the previous data while a
+  // revalidation after an account switch is in flight.
+  return ref.watch(recommendedBooksProvider).whenData(
+    (books) => books.map((b) => b.toDisplay()).toList(),
+  );
+});
 
 final recentBooksProvider = FutureProvider<List<Book>>((ref) async {
   final api = ref.watch(zlibraryApiProvider);

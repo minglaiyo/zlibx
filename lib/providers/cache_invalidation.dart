@@ -13,6 +13,7 @@ import 'books_provider.dart';
 void invalidateAccountScopedProviders(Ref ref) {
   ref.invalidate(bookDetailsProvider);
   ref.invalidate(randomBooksProvider);
+  ref.invalidate(recommendedBooksProvider);
   ref.invalidate(mostPopularBooksProvider);
   ref.invalidate(recentBooksProvider);
   ref.invalidate(downloadedBooksProvider);

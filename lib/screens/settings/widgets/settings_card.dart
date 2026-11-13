@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../theme/app_metrics.dart';
 
 /// Flat, bordered card used as the visual container for every settings group.
 /// Overrides the app's default Card style (elevation + horizontal margin) so
@@ -19,15 +20,15 @@ class SettingsCard extends StatelessWidget {
 
     return Material(
       color: cs.surface,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: AppRadius.sheet,
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppRadius.sheet,
           border: Border.all(color: cs.outlineVariant, width: 1),
         ),
         padding: padding,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppRadius.sheet,
           child: child,
         ),
       ),

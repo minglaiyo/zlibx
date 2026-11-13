@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../../theme/app_metrics.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../services/open_library.dart';
@@ -64,7 +65,7 @@ class SearchTrendingSection extends StatelessWidget {
                 padding: const EdgeInsets.only(right: 12),
                 child: InkWell(
                   onTap: () => onSearch(title),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppRadius.card,
                   child: SizedBox(
                     width: 105,
                     child: Column(
@@ -73,7 +74,7 @@ class SearchTrendingSection extends StatelessWidget {
                         Stack(
                           children: [
                             ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: AppRadius.card,
                               child: CachedNetworkImage(
                                 imageUrl: coverUrlAtWidth(
                                   book.thumbnail ?? '',

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:zlibx/utils/diagnostics.dart';
 import 'package:flutter/material.dart';
+import '../../../theme/app_metrics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
@@ -109,7 +110,7 @@ class BookActionBar extends ConsumerWidget {
           foregroundColor: cs.onSurfaceVariant,
           disabledBackgroundColor: cs.surfaceContainerHighest,
           disabledForegroundColor: cs.onSurfaceVariant,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(borderRadius: AppRadius.thumb),
           minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           elevation: 0,
@@ -167,7 +168,7 @@ class BookActionBar extends ConsumerWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: isCompleted ? cs.primaryContainer : cs.primary,
             foregroundColor: isCompleted ? cs.onPrimaryContainer : cs.onPrimary,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape: RoundedRectangleBorder(borderRadius: AppRadius.thumb),
             minimumSize: const Size(0, 48),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             elevation: 0,
@@ -188,7 +189,7 @@ class BookActionBar extends ConsumerWidget {
             color: cs.primary.withValues(alpha: 0.35),
             width: 1,
           ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(borderRadius: AppRadius.thumb),
           minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         ),
@@ -212,7 +213,7 @@ class BookActionBar extends ConsumerWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: cs.primary,
           foregroundColor: cs.onPrimary,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(borderRadius: AppRadius.thumb),
           minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           elevation: 0,

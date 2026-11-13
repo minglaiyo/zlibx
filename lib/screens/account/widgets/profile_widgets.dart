@@ -204,7 +204,7 @@ class ProfileCommentCard extends StatelessWidget {
                               style: tt.bodyMedium?.copyWith(height: 1.45),
                             ),
                           ],
-                          const SizedBox(height: AppSpacing.sm + 2),
+                          const SizedBox(height: AppSpacing.md),
                           Row(
                             children: [
                               Text(

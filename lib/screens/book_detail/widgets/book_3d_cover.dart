@@ -41,8 +41,12 @@ class _Book3DCoverState extends State<Book3DCover>
     duration: AppMotion.idleDrift,
   );
 
-  double _rotationX = 0;
-  double _rotationY = 0;
+  /// 拖拽旋转量。ValueNotifier 而非 setState：拖拽期间每次 pointer
+  /// 事件只重跑 AnimatedBuilder 的 builder（Transform/阴影），预构建
+  /// 的 _bookFaces 子树不再每帧重建（审查批动画发现 11）。
+  /// dx = rotationY（水平），dy = rotationX（垂直），与原字段一一对应。
+  final ValueNotifier<Offset> _dragRotation =
+      ValueNotifier(const Offset(0, 0));
   bool _dragging = false;
 
   @override
@@ -70,6 +74,7 @@ class _Book3DCoverState extends State<Book3DCover>
 
   @override
   void dispose() {
+    _dragRotation.dispose();
     _motion.dispose();
     super.dispose();
   }
@@ -93,25 +98,17 @@ class _Book3DCoverState extends State<Book3DCover>
             behavior: HitTestBehavior.opaque,
             onPanStart: (_) => setState(() => _dragging = true),
             onPanUpdate: (details) {
-              setState(() {
-                _rotationY = (_rotationY + details.delta.dx * 0.35).clamp(
-                  -42.0,
-                  30.0,
-                );
-                _rotationX = (_rotationX - details.delta.dy * 0.25).clamp(
-                  -20.0,
-                  16.0,
-                );
-              });
+              final current = _dragRotation.value;
+              _dragRotation.value = Offset(
+                (current.dx + details.delta.dx * 0.35).clamp(-42.0, 30.0),
+                (current.dy - details.delta.dy * 0.25).clamp(-20.0, 16.0),
+              );
             },
             onPanEnd: (_) => setState(() => _dragging = false),
             onPanCancel: () => setState(() => _dragging = false),
-            onDoubleTap: () => setState(() {
-              _rotationX = 0;
-              _rotationY = 0;
-            }),
+            onDoubleTap: () => _dragRotation.value = const Offset(0, 0),
             child: AnimatedBuilder(
-              animation: _motion,
+              animation: Listenable.merge([_motion, _dragRotation]),
               child: _bookFaces(
                 bookWidth,
                 bookHeight,
@@ -127,8 +124,8 @@ class _Book3DCoverState extends State<Book3DCover>
                 final idleX = widget.animate && !_dragging
                     ? math.cos(phase) * 0.5
                     : 0.0;
-                final angleX = (_rotationX + idleX) * math.pi / 180;
-                final angleY = (_rotationY + idleY) * math.pi / 180;
+                final angleX = (_dragRotation.value.dy + idleX) * math.pi / 180;
+                final angleY = (_dragRotation.value.dx + idleY) * math.pi / 180;
                 final shadowWidth =
                     bookWidth * (0.72 + 0.13 * math.cos(angleY).abs());
                 final shadowOffset = math.sin(angleY) * bookWidth * 0.14;

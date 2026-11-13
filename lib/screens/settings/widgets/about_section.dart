@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../../theme/app_metrics.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../l10n/generated/app_localizations.dart';
@@ -73,14 +74,14 @@ class AboutSection extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            RoundedRectangleBorder(borderRadius: AppRadius.sheet),
         title: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: cs.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: AppRadius.thumb,
               ),
               child: Icon(
                 Icons.auto_stories,
@@ -156,7 +157,7 @@ class AboutSection extends StatelessWidget {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: cs.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: AppRadius.thumb,
                 ),
                 child: Row(
                   children: [

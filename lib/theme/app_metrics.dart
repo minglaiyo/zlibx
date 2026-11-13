@@ -12,8 +12,6 @@ abstract final class AppRadius {
 
   /// 大横幅/弹窗（16）。
   static const BorderRadius sheet = BorderRadius.all(Radius.circular(16));
-
-  static BorderRadius circular(double value) => BorderRadius.circular(value);
 }
 
 /// 全 app 间距基线。此前 100+ 处 `SizedBox(height/width:)` 散落

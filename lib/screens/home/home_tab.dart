@@ -14,6 +14,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../theme/app_metrics.dart';
 import '../../utils/app_snack.dart';
 import '../search/search_screen.dart';
+import '../search/widgets/category_picker_dialog.dart';
 import '../search/widgets/search_filter_dialog.dart';
 import 'widgets/home_book_grid.dart';
 import 'widgets/home_line_unavailable_banner.dart';
@@ -166,7 +167,7 @@ class HomeTabState extends ConsumerState<HomeTab> {
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.all(16),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadius.card,
           ),
           duration: const Duration(seconds: 6),
           dismissDirection: DismissDirection.horizontal,

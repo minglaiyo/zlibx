@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/storage_service.dart';
 import '../services/hive_service.dart';
+import '../utils/diagnostics.dart';
 import '../utils/locale_utils.dart';
 
 enum AppThemeMode {
@@ -254,8 +255,17 @@ class CollapseDetailDescriptionNotifier extends Notifier<bool> {
   /// Sync Hive read; returns the persisted value as the initial state
   /// instead of assigning it (see LocaleNotifier).
   bool _load() {
-    final v = HiveService.settingsBox.get('collapseDetailDescription');
-    if (v is bool) return v;
+    try {
+      final v = HiveService.settingsBox.get('collapseDetailDescription');
+      if (v is bool) return v;
+    } catch (e) {
+      // Hive box not open: the detail page (unlike the settings UI)
+      // watches this provider, and widget tests build it without
+      // opening Hive. Production always opens boxes in main(), so
+      // this only ever fires in tests — default off there.
+      logIgnored('settings_provider', e);
+      return false;
+    }
     return false;
   }
 

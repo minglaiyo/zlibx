@@ -407,6 +407,12 @@ void main() {
       _cachedMineHtml,
       accountId: _userA.id,
     );
+    // Hold the background refresh: loadFirst paints the cached page
+    // and then revalidates in the background, and the fake answers
+    // instantly — without the gate the 10 network lists overwrite
+    // the 2 cached lists before any poll can observe them.
+    final refreshGate = Completer<ApiResponse<BooklistsPage>>();
+    api.searchMyGate = refreshGate;
     final container = _container(api);
     // Load as A (paints A's cached page).
     await _waitForList(
@@ -414,6 +420,12 @@ void main() {
       (s) => s.phase == BooklistsPhase.ready && s.lists.length == 2,
     );
     expect(_ids(container), ['4088695', '4090055']);
+    // Release the background refresh and let it paint the network page.
+    refreshGate.complete(ApiResponse.ok(_minePage('', 'popular', 1)));
+    await _waitForList(
+      container,
+      (s) => s.phase == BooklistsPhase.ready && s.lists.length == 10,
+    );
 
     // Switch the account the way the real AuthNotifier does: the
     // switch invalidates every account-scoped provider, including

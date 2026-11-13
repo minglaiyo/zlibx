@@ -74,7 +74,7 @@ class AppearanceSheet extends ConsumerWidget {
     final hideNavOnScroll = ref.watch(hideNavOnScrollProvider);
     final homeGridFourColumns = ref.watch(homeGridFourColumnsProvider);
     final collapseDetailDescription = ref.watch(
-      collapseDetailDescriptionProvider,
+      detailQuickActionsUpProvider,
     );
     final t = AppLocalizations.of(context)!;
     final cs = Theme.of(context).colorScheme;
@@ -183,7 +183,7 @@ class AppearanceSheet extends ConsumerWidget {
           isThreeLine: true,
           onChanged: (value) {
             ref
-                .read(collapseDetailDescriptionProvider.notifier)
+                .read(detailQuickActionsUpProvider.notifier)
                 .setEnabled(value);
           },
         ),

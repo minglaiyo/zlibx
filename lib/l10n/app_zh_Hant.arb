@@ -169,8 +169,8 @@
   "commentsDisabled": "這本書的評論已關閉",
   "completed": "已完成",
   "confirmOk": "確定",
-  "collapseDetailDescription": "收起書籍簡介",
-  "collapseDetailDescriptionDesc": "書籍詳情頁預設不顯示簡介，點擊書名後展開顯示全文",
+  "collapseDetailDescription": "詳情頁快捷入口上移",
+  "collapseDetailDescriptionDesc": "書籍詳情頁把相似書籍、加入書單、評論提到標題正下方（首屏直達）",
   "addedToFavorites": "已加入收藏",
   "confirmRemoveMsg": "確定要從收藏中移除 {count} 本書嗎？",
   "@confirmRemoveMsg": {

@@ -246,9 +246,10 @@ final randomRecommendProvider =
       RandomRecommendNotifier.new,
     );
 
-/// 书籍详情页简介折叠开关：开启后详情页默认不显示简介，点书名展开
-/// 显示全文（用户批 2026-11-14 功能 1）。
-class CollapseDetailDescriptionNotifier extends Notifier<bool> {
+/// 详情页快捷入口上移开关：开启后相似书籍 / 加入书单 / 评论三行
+/// 提到标题正下方（首屏直达）；关闭时保持页面底部原位置。简介与
+/// 出版信息始终正常显示（用户批 2026-11-14 两轮调整后的最终语义）。
+class DetailQuickActionsUpNotifier extends Notifier<bool> {
   @override
   bool build() => _load();
 
@@ -256,7 +257,7 @@ class CollapseDetailDescriptionNotifier extends Notifier<bool> {
   /// instead of assigning it (see LocaleNotifier).
   bool _load() {
     try {
-      final v = HiveService.settingsBox.get('collapseDetailDescription');
+      final v = HiveService.settingsBox.get('detailQuickActionsUp');
       if (v is bool) return v;
     } catch (e) {
       // Hive box not open: the detail page (unlike the settings UI)
@@ -271,14 +272,14 @@ class CollapseDetailDescriptionNotifier extends Notifier<bool> {
 
   Future<void> setEnabled(bool value) async {
     state = value;
-    await HiveService.settingsBox.put('collapseDetailDescription', value);
+    await HiveService.settingsBox.put('detailQuickActionsUp', value);
   }
 }
 
-/// 书籍详情页简介折叠 provider
-final collapseDetailDescriptionProvider =
-    NotifierProvider<CollapseDetailDescriptionNotifier, bool>(
-      CollapseDetailDescriptionNotifier.new,
+/// 详情页快捷入口上移 provider
+final detailQuickActionsUpProvider =
+    NotifierProvider<DetailQuickActionsUpNotifier, bool>(
+      DetailQuickActionsUpNotifier.new,
     );
 
 /// Whether the bottom nav bar is currently visible. Driven by the home

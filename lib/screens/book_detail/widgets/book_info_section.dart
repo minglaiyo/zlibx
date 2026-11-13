@@ -27,11 +27,6 @@ class BookInfoSection extends ConsumerStatefulWidget {
 }
 
 class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
-  /// 简介折叠开关开启时：true = 已点书名展开全文。开关本身是持久
-  /// 设置（collapseDetailDescriptionProvider），这里的 reveal 只影响
-  /// 当前页面的显示。
-  bool _descriptionRevealed = false;
-
   @override
   Widget build(BuildContext context) {
     final book = widget.book;
@@ -108,7 +103,7 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
     // A missing description must stay absent rather than rendering as
     // the literal word "null".
     final description = normalizedBookDescription(book.description);
-    final collapseDescription = ref.watch(collapseDetailDescriptionProvider);
+    final quickActionsUp = ref.watch(detailQuickActionsUpProvider);
 
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -125,18 +120,7 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
               onAuthorTap: book.author?.isNotEmpty ?? false
                   ? () => AppRoutes.openSearchWithQuery(context, book.author!)
                   : null,
-              // 简介折叠开关开启时点书名切换展开/收起（功能 1），
-              // 标题带主色提示可点；开关关闭时标题纯展示。
-              onTitleTap: collapseDescription
-                  ? () =>
-                      setState(() => _descriptionRevealed = !_descriptionRevealed)
-                  : null,
             ),
-            // 简介折叠模式（用户批 2026-11-14）：相似书籍 / 加入书单 /
-            // 评论三行提到标题正下方——像参考截图那样，首屏一屏完整
-            // 呈现封面 → 书名/作者 → 三个入口；简介与出版信息顺移到
-            // 下方（点书名展开）。开关关闭时保持原位置（页面底部）。
-            if (collapseDescription) ..._actionTiles(book, l10n, cs),
             if (tags.isNotEmpty) ...[
               const SizedBox(height: 16),
               // One row, never wrapped below: a category name can be long,
@@ -154,14 +138,14 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
                 ),
               ),
             ],
-            if (description != null &&
-                (!collapseDescription || _descriptionRevealed)) ...[
+            // 快捷入口上移开关（用户批 2026-11-14 两轮调整后的最终形
+            // 态）：相似书籍 / 加入书单 / 评论提到标题正下方（首屏直达
+            // ）；简介与出版信息保持原位、正常显示——反正都在下面，
+            // 不再折叠简介。开关关闭时三行入口保持页面底部原位置。
+            if (quickActionsUp) ..._actionTiles(book, l10n, cs),
+            if (description != null) ...[
               const SizedBox(height: 28),
-              // 折叠模式下经书名展开：直接出全文（开合按钮保留）。
-              BookDetailDescription(
-                text: description,
-                initiallyExpanded: collapseDescription && _descriptionRevealed,
-              ),
+              BookDetailDescription(text: description),
             ],
             if (fields.isNotEmpty) ...[
               const SizedBox(height: 28),
@@ -180,7 +164,7 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
                     : null,
               ),
             ],
-            if (!collapseDescription) ..._actionTiles(book, l10n, cs),
+            if (!quickActionsUp) ..._actionTiles(book, l10n, cs),
           ],
         ),
       ),

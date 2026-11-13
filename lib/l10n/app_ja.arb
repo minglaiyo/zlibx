@@ -169,8 +169,8 @@
   "commentsDisabled": "この本のコメントは無効です",
   "completed": "完了",
   "confirmOk": "OK",
-  "collapseDetailDescription": "本の説明を折りたたむ",
-  "collapseDetailDescriptionDesc": "書籍詳細ページでは説明を表示せず、タイトルをタップすると全文が表示されます",
+  "collapseDetailDescription": "クイック操作を上に移動",
+  "collapseDetailDescriptionDesc": "書籍詳細ページで「類似の本」「本リストに追加」「コメント」をタイトルの下に表示します",
   "addedToFavorites": "お気に入りに追加しました",
   "confirmRemoveMsg": "お気に入りから{count}冊を削除しますか？",
   "@confirmRemoveMsg": {

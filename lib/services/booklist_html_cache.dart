@@ -44,6 +44,18 @@ class BooklistHtmlCache {
   /// of kilobytes); the oldest entries are evicted on store.
   static const int maxEntries = 50;
 
+  /// Upper bound on the total bytes stored in the box (P1). A regular
+  /// Hive [Box] loads every value into memory when it opens, so the
+  /// entry count alone does not bound memory: 50 detail pages at
+  /// ~300 KB each is ~15 MB. The byte cap evicts the oldest entries
+  /// until the box fits under it (see [_evictOldest]). A full LazyBox
+  /// migration would need every sync reader
+  /// (`BooklistRepository.cachedDetailHtml` and friends) to become
+  /// async — the same ~7-file refactor the user already skipped for
+  /// the settings box (item 2) — so the byte cap is the fix, not the
+  /// box type.
+  static const int maxBytes = 20 * 1024 * 1024;
+
   static Box get _box {
     final box = HiveService.booklistHtmlBox;
     _sweepTokenHtmlOnce(box);
@@ -169,6 +181,9 @@ class BooklistHtmlCache {
     // fire-and-forget.
     unawaited(box.put(key, value));
     _evictOldest(box);
+    // The byte cap applies even when the entry count is under the cap:
+    // a few very large pages can exceed it on their own.
+    _evictOversize(box);
   }
 
   /// Stores one HTML page. [fetchedAt] is when the fetch that
@@ -343,6 +358,27 @@ class BooklistHtmlCache {
 
   static Future<void> clear() => _box.clear();
 
+  /// Approximate stored size of one entry, in bytes. HTML entries
+  /// are measured by their string length (UTF-16 code units ≈ 2
+  /// bytes each, an over-estimate for ASCII pages — the cap is a
+  /// safety bound, not a quota); JSON book pages are measured by the
+  /// serialized books list. Corrupt entries count as 0 so they are
+  /// evicted first by age, not by size.
+  static int _entryBytes(Object? raw) {
+    if (raw is! Map) return 0;
+    final html = raw['html'];
+    if (html is String) return html.length * 2;
+    final books = raw['books'];
+    if (books is List) {
+      var bytes = 0;
+      for (final item in books) {
+        if (item is Map) bytes += item.length * 64;
+      }
+      return bytes;
+    }
+    return 0;
+  }
+
   static void _evictOldest(Box box) {
     if (box.length <= maxEntries) return;
     // Entries carry their own timestamp; drop the oldest until the
@@ -359,6 +395,38 @@ class BooklistHtmlCache {
       ..sort((a, b) => atByKey[a]!.compareTo(atByKey[b]!));
     for (var i = 0; i < keys.length - maxEntries; i++) {
       unawaited(box.delete(keys[i]));
+    }
+  }
+
+  /// Evicts the oldest entries until the box fits under [maxBytes]
+  /// (P1). Runs after every store (via [_evictOldest]) so the box
+  /// never grows past the cap. A single entry larger than the cap is
+  /// kept — dropping it would make its URL uncacheable forever — but
+  /// it still counts toward the total, so the next store evicts
+  /// everything older than it.
+  static void _evictOversize(Box box) {
+    var total = 0;
+    final bytesByKey = <Object?, int>{};
+    for (final key in box.keys) {
+      final bytes = _entryBytes(box.get(key));
+      bytesByKey[key] = bytes;
+      total += bytes;
+    }
+    if (total <= maxBytes) return;
+    final atByKey = <Object?, int>{};
+    for (final key in box.keys) {
+      final raw = box.get(key);
+      var at = 0;
+      if (raw is Map && raw['at'] is int) at = raw['at'] as int;
+      atByKey[key] = at;
+    }
+    final keys = atByKey.keys.toList()
+      ..sort((a, b) => atByKey[a]!.compareTo(atByKey[b]!));
+    for (final key in keys) {
+      if (total <= maxBytes) break;
+      if (box.length <= 1) break;
+      total -= bytesByKey[key] ?? 0;
+      unawaited(box.delete(key));
     }
   }
 }

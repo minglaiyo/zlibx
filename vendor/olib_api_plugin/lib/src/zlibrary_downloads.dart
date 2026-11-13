@@ -15,6 +15,61 @@ part of 'zlibrary_api.dart';
 mixin ZLibraryDownloads on ZLibraryApiBase {
   // ── Download ───────────────────────────────────────────────────────
 
+  /// Sidecar file holding the resume validator for [savePath].
+  /// Same contract as `ResumableDownloader.metaPathFor` (the external
+  /// path): the validator (ETag, else Last-Modified) seen when the
+  /// partial file was started is stored next to it and sent back as
+  /// `If-Range`.
+  static String metaPathFor(String savePath) => '$savePath.meta';
+
+  /// True when [bytes] (the start of a body) look like an ebook file
+  /// the app can open. Checked after a download finishes, as a last
+  /// line of defence against a silently corrupt file (a mislabelled
+  /// challenge page, or a resume that stitched two different files
+  /// together): epub/zip start with `PK`, PDF with `%PDF`, MOBI
+  /// carries `BOOKMOBI` at offset 60. A file too short to check (or
+  /// an unknown format) passes — the length check in [_downloadOnce]
+  /// is the primary guard, this only rejects content that is provably
+  /// not a book.
+  static bool looksLikeBook(List<int> bytes) {
+    if (bytes.length >= 2 && bytes[0] == 0x50 && bytes[1] == 0x4B) {
+      return true; // PK — epub / zip.
+    }
+    if (bytes.length >= 5 &&
+        bytes[0] == 0x25 && // %
+        bytes[1] == 0x50 && // P
+        bytes[2] == 0x44 && // D
+        bytes[3] == 0x46) {
+      return true; // %PDF (the 5th byte is the version digit).
+    }
+    if (bytes.length >= 68) {
+      const marker = 'BOOKMOBI';
+      for (var i = 0; i < marker.length; i++) {
+        if (bytes[60 + i] != marker.codeUnitAt(i)) return false;
+      }
+      return true;
+    }
+    // Too short to check, or an unknown format: do not reject.
+    return true;
+  }
+
+  /// True when [bytes] (the start of a body) look like an HTML document.
+  /// Same sniff as `ResumableDownloader.looksLikeHtml` (the external
+  /// path): a fresh body that is really an HTML page (mislabelled
+  /// Content-Type) must not touch the disk.
+  static bool looksLikeHtml(List<int> bytes) {
+    if (bytes.isEmpty) return false;
+    final head = utf8
+        .decode(bytes.take(512).toList(), allowMalformed: true)
+        .replaceFirst('\uFEFF', '')
+        .trimLeft()
+        .toLowerCase();
+    return head.startsWith('<!doctype html') ||
+        head.startsWith('<html') ||
+        head.startsWith('<head') ||
+        head.startsWith('<body');
+  }
+
   /// Resolve the file link via `/eapi/book/{id}/{hash}/file` and stream
   /// the file to [savePath]. Throws on failure (the app catches it and
   /// re-checks the download quota via getProfile).
@@ -88,6 +143,19 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
   /// truncates and restarts once. Progress reports the true position
   /// (resumed bytes + bytes received in this request) against the full
   /// size, so a resumed download does not restart the progress bar.
+  ///
+  /// Resume safety (S2): the validator (ETag, else Last-Modified) seen
+  /// when the partial file was started is stored next to it
+  /// (`<part>.meta`, see [metaPathFor]) and sent back as `If-Range`.
+  /// If the remote file changed, the server answers 200 with the full
+  /// body and we restart from zero instead of appending to a stale
+  /// prefix (which would produce a corrupt book). A partial file with
+  /// no recorded validator cannot be trusted to belong to the same
+  /// remote file, so it restarts too. A 206 whose `Content-Range`
+  /// starts anywhere but [start] also restarts — a server (or proxy)
+  /// that answers a different range would otherwise get its bytes
+  /// appended at the wrong offset. Same contract as the external path
+  /// (`ResumableDownloader`); the two engines must stay in step.
   Future<Response<ResponseBody>> _downloadOnce(
     String link,
     String savePath,
@@ -97,13 +165,32 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
     PendingDownloadWriter? pendingWriter,
   }) async {
     final file = File(savePath);
+    final meta = File(metaPathFor(savePath));
     var start = pendingWriter != null
         ? pendingWriter.bytesWritten
         : await file.exists()
             ? await file.length()
             : 0;
+    final validator = start > 0 ? await _readValidator(meta) : null;
+    if (start > 0 && validator == null) {
+      // A partial file with no recorded validator cannot be trusted to
+      // belong to the same remote file: restart instead of appending.
+      start = 0;
+    }
+    // A pending entry cannot be truncated, only recreated: when the
+    // resume offset is dropped, reset the writer before the request.
+    if (pendingWriter != null &&
+        start == 0 &&
+        pendingWriter.bytesWritten > 0) {
+      if (!await pendingWriter.reset()) {
+        throw StateError('cannot restart the pending MediaStore entry');
+      }
+    }
     final reqHeaders = Map<String, String>.from(headers);
-    if (start > 0) reqHeaders['Range'] = 'bytes=$start-';
+    if (start > 0) {
+      reqHeaders['Range'] = 'bytes=$start-';
+      reqHeaders['If-Range'] = validator!;
+    }
     final res = await _dio.get<ResponseBody>(
       link,
       options: Options(
@@ -133,6 +220,7 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
       } else {
         await file.writeAsBytes(const []);
       }
+      if (await meta.exists()) await meta.delete();
       return _downloadOnce(
         link,
         savePath,
@@ -141,6 +229,36 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
         cancelToken: cancelToken,
         pendingWriter: pendingWriter,
       );
+    }
+    // A 206 must continue exactly where our partial file ends. A server
+    // (or proxy) that answers a different range would otherwise get its
+    // bytes appended at the wrong offset: a silently corrupt book. When
+    // Content-Range is present and disagrees, restart from zero.
+    if (code == 206 && start > 0) {
+      final cr = res.headers.value('content-range');
+      final m = cr == null
+          ? null
+          : RegExp(r'^\s*bytes\s+(\d+)-', caseSensitive: false)
+              .firstMatch(cr);
+      if (cr != null && (m == null || int.parse(m.group(1)!) != start)) {
+        await res.data?.stream.drain<void>();
+        if (pendingWriter != null) {
+          if (!await pendingWriter.reset()) {
+            throw StateError('cannot restart the pending MediaStore entry');
+          }
+        } else {
+          await file.writeAsBytes(const []);
+        }
+        if (await meta.exists()) await meta.delete();
+        return _downloadOnce(
+          link,
+          savePath,
+          headers,
+          onProgress: onProgress,
+          cancelToken: cancelToken,
+          pendingWriter: pendingWriter,
+        );
+      }
     }
     final contentLength = int.tryParse(
           res.headers.value(HttpHeaders.contentLengthHeader) ?? '',
@@ -163,24 +281,51 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
       );
     }
 
+    // The validator for this body, for the next resume: ETag, else
+    // Last-Modified. Recorded on a fresh (non-resumed) download only.
+    final newValidator = res.headers.value(HttpHeaders.etagHeader) ??
+        res.headers.value(HttpHeaders.lastModifiedHeader);
+
     // With a pending writer there is no file sink at all; bytes go
     // through the writer's buffered channel. When the server answered
     // 200 to a resume request (restarting the body), the pending entry
     // must be recreated — appending would corrupt the file.
     IOSink? sink;
     var received = resumed ? start : 0;
-    if (pendingWriter == null) {
-      sink = file.openWrite(
-        mode: resumed ? FileMode.append : FileMode.write,
-      );
-    } else if (!resumed && start > 0) {
-      if (!await pendingWriter.reset()) {
-        throw StateError('cannot restart the pending MediaStore entry');
-      }
-      received = 0;
-    }
+    var firstChunk = true;
     try {
       await for (final chunk in res.data!.stream) {
+        if (firstChunk) {
+          firstChunk = false;
+          // A fresh body that is really an HTML page (mislabelled
+          // Content-Type) must not touch the disk.
+          if (!resumed && looksLikeHtml(chunk)) {
+            throw DownloadHtmlException(
+              'download body is an HTML page, not a book file',
+            );
+          }
+          if (!resumed) {
+            // New file: remember its validator for future resumes.
+            if (newValidator != null) {
+              await meta.writeAsString(newValidator);
+            } else if (await meta.exists()) {
+              await meta.delete();
+            }
+          }
+          if (pendingWriter == null) {
+            sink = file.openWrite(
+              mode: resumed ? FileMode.append : FileMode.write,
+            );
+          } else if (!resumed && start > 0) {
+            // The server restarted the body (200 to a resume request):
+            // recreate the pending entry — appending would corrupt it.
+            if (!await pendingWriter.reset()) {
+              throw StateError(
+                  'cannot restart the pending MediaStore entry');
+            }
+            received = 0;
+          }
+        }
         if (sink != null) {
           sink.add(chunk);
         } else {
@@ -200,7 +345,61 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
         'download truncated: received $received of $total bytes',
       );
     }
+    // File-header check: the finished file must look like a book
+    // (epub/zip `PK`, PDF `%PDF`, MOBI `BOOKMOBI`). A mislabelled
+    // challenge page or a resume that stitched two different files
+    // together is caught here instead of being recorded as a
+    // successful download. The partial file is kept so a retry can
+    // resume; the validator is dropped so the retry restarts from
+    // zero instead of appending to the bad prefix. The pending
+    // writer path has no file to check here — its bytes are checked
+    // by the same rule in the app layer when the entry is published.
+    if (pendingWriter == null && !await _looksLikeBookFile(file)) {
+      if (await meta.exists()) await meta.delete();
+      throw DownloadHtmlException(
+        'download finished but the file does not look like a book '
+        '(unexpected file header) — the mirror may have served a '
+        'challenge or error page instead of the file',
+      );
+    }
+    if (await meta.exists()) {
+      // The download finished: the validator is no longer needed. The
+      // file is about to be renamed away by the caller, so keeping the
+      // sidecar would only orphan it next to a path that no longer
+      // exists. A later download of the same book rewrites it.
+      await meta.delete();
+    }
     return res;
+  }
+
+  /// Reads the resume validator recorded next to [meta] (`<part>.meta`).
+  /// Returns null when there is none, it is empty, or it cannot be read.
+  static Future<String?> _readValidator(File meta) async {
+    try {
+      if (!await meta.exists()) return null;
+      final v = (await meta.readAsString()).trim();
+      return v.isEmpty ? null : v;
+    } on FileSystemException {
+      return null;
+    }
+  }
+
+  /// True when the file at [file] looks like a book (see [looksLikeBook]).
+  /// Reads at most the first 68 bytes (the MOBI marker offset). A file
+  /// too short to check passes — the length check in [_downloadOnce] is
+  /// the primary guard. False when the file cannot be read.
+  static Future<bool> _looksLikeBookFile(File file) async {
+    try {
+      final raf = await file.open();
+      try {
+        final bytes = await raf.read(68);
+        return looksLikeBook(bytes);
+      } finally {
+        await raf.close();
+      }
+    } on FileSystemException {
+      return false;
+    }
   }
 
   Future<String> _resolveDownloadLink(
@@ -226,19 +425,32 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
     }
   }
 
+  /// Resolve the file link for [bookId]/[hash].
+  ///
+  /// The `/eapi/book/{id}/{hash}/file` endpoint answers either JSON
+  /// (a `downloadLink` / `download_url` / …) or the file itself.
+  /// The file case must not be read as a String (S3): a tens-of-MB
+  /// PDF decoded as UTF-8 spikes memory and can OOM a low-end phone,
+  /// and the bytes are then downloaded a second time anyway. The
+  /// response is streamed instead: a JSON Content-Type is read and
+  /// parsed, anything else is drained unread and the endpoint is
+  /// treated as the file URL itself.
   Future<String> _fetchDownloadLink(String bookId, String hash) async {
     final path = '/eapi/book/$bookId/$hash/file';
     try {
-      final res = await _dio.get<String>(
+      final res = await _dio.get<ResponseBody>(
         '$_base$path',
         options: Options(
           headers: _headers,
-          responseType: ResponseType.plain,
+          responseType: ResponseType.stream,
           followRedirects: false,
         ),
       );
-      final body = res.data ?? '';
-      try {
+      final contentType =
+          (res.headers.value(HttpHeaders.contentTypeHeader) ?? '')
+              .toLowerCase();
+      if (contentType.contains('json')) {
+        final body = await utf8.decoder.bind(res.data!.stream).join();
         final decoded = jsonDecode(body);
         if (decoded is Map<String, dynamic>) {
           final link = _findLink(decoded);
@@ -247,31 +459,32 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
             if (uri != null && uri.hasScheme && uri.scheme != 'https') {
               throw StateError('download link is not https');
             }
-            return link.startsWith('/') ? '$_base$link' : link;
+            // Resolve relative links against the base instead of
+            // string-concatenating: a bare path without a leading `/`
+            // and a `//host/path` link were both handled wrong.
+            return Uri.parse(_base).resolve(link).toString();
           }
           final err = (decoded['error'] ?? decoded['message'])?.toString();
           throw StateError(err ?? 'no download link in file response');
         }
-      } on FormatException {
-        // Not JSON: the endpoint itself streams the file — but only if
-        // the payload really is a binary/ebook response. An HTML answer
-        // is a wall or error page: treating it as a "file stream" makes
-        // downloadBook fetch the same page a second time and save the
-        // HTML as the book (and this request already pulled the whole
-        // body into memory for nothing).
-        final contentType =
-            res.headers.value(HttpHeaders.contentTypeHeader) ?? '';
-        if (res.statusCode == 200 &&
-            !contentType.toLowerCase().contains('text/html')) {
-          return '$_base$path';
-        }
-        throw StateError(
-          'file endpoint answered HTTP ${res.statusCode} '
-          '(${contentType.isEmpty ? 'no content-type' : contentType}) '
-          'instead of JSON or a file stream',
-        );
+        throw StateError('no download link in file response');
       }
-      throw StateError('no download link in file response');
+      // Not JSON: the endpoint itself streams the file — but only if
+      // the payload really is a binary/ebook response. An HTML answer
+      // is a wall or error page: treating it as a "file stream" makes
+      // downloadBook fetch the same page a second time and save the
+      // HTML as the book. Drain the stream unread (the body was never
+      // buffered) and answer from the headers alone.
+      await res.data?.stream.drain<void>();
+      if (res.statusCode == 200 &&
+          !contentType.contains('text/html')) {
+        return '$_base$path';
+      }
+      throw StateError(
+        'file endpoint answered HTTP ${res.statusCode} '
+        '(${contentType.isEmpty ? 'no content-type' : contentType}) '
+        'instead of JSON or a file stream',
+      );
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) rethrow;
       throw StateError(_fromError(

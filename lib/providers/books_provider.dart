@@ -856,7 +856,15 @@ final recommendedBooksProvider = FutureProvider<List<Book>>((ref) async {
 /// 顺取下一页补满，最多取 3 页。分类为空时换一个分类重试，最多 3 个。
 final randomBooksProvider = FutureProvider<List<DisplayBook>>((ref) async {
   final api = ref.watch(zlibraryApiProvider);
-  final user = ref.watch(authProvider).user;
+  // Read, do NOT watch, the auth state: this provider is invalidated
+  // explicitly on every account switch (invalidateAccountScopedProviders),
+  // so a reactive watch is unnecessary — and a watch makes the adopt
+  // flow a cycle (CircularDependencyError in
+  // adopt_webview_session_test, build #249): AuthNotifier invalidates
+  // this provider from adoptWebViewSession/logout while it watches
+  // authProvider. Every other authProvider access in the providers
+  // layer uses ref.read for the same reason.
+  final user = ref.read(authProvider).user;
   final random = Random();
   const target = 50;
   for (var attempt = 0; attempt < 3; attempt++) {

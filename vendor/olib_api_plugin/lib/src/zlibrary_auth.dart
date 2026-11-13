@@ -27,6 +27,9 @@ mixin ZLibraryAuth on ZLibraryApiBase {
     _userId = null;
     _userKey = null;
     _wallCookies.clear();
+    // The wall UA belongs to the old host's clearance, same as the
+    // cookies — a new host re-bridges both after its own solve.
+    _wallUserAgent = null;
   }
 
   /// Adopt a session pair learned outside this API layer — e.g. the user
@@ -61,6 +64,18 @@ mixin ZLibraryAuth on ZLibraryApiBase {
       }
       _wallCookies[name] = value;
     }
+  }
+
+  /// Remember the WebView User-Agent a wall clearance was issued
+  /// against (see `wall_cookie_bridge.dart` in the app). `cf_clearance`
+  /// is commonly bound to the UA it was minted with: replaying the
+  /// clearance through a Dio with a different UA can loop 403 even
+  /// though the cookies are valid. Called together with
+  /// [setWallCookies] after a solve; an empty string is ignored.
+  void setWallUserAgent(String userAgent) {
+    final ua = userAgent.trim();
+    if (ua.isEmpty) return;
+    _wallUserAgent = ua;
   }
 
   void _learnSession(Map<String, dynamic> json, List<String> setCookie) {

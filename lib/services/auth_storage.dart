@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../utils/diagnostics.dart';
 import 'hive_service.dart';
 import 'secure_storage.dart';
 
@@ -148,27 +149,44 @@ class AuthStorage {
     await SecureStorage.delete(_keyAccounts);
   }
 
+  /// Serializes the saved-accounts read-modify-write cycles (save /
+  /// remove): two interleaved runs would each read the old list and
+  /// the second write would silently drop the first's change. The
+  /// chain never stays broken — an action's error is rethrown to ITS
+  /// caller but swallowed for the chain itself.
+  Future<void>? _accountsWriteChain;
+
+  Future<T> _serializeAccountsWrite<T>(Future<T> Function() action) {
+    final run =
+        (_accountsWriteChain ?? Future<void>.value()).then((_) => action());
+    _accountsWriteChain =
+        run.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    return run;
+  }
+
   /// Save an account to the list (session keys only — no password).
-  Future<void> saveAccount(Map<String, dynamic> account) async {
-    await _migrateLegacyIfNeeded();
-    final accounts = await getStoredAccounts();
-    final existingIndex = accounts.indexWhere(
-      (a) => a['userId'] == account['userId'],
-    );
-    if (existingIndex != -1) {
-      accounts.removeAt(existingIndex);
-    }
-    // Keep the most recently used account at the end of the list.
-    final entry = Map<String, dynamic>.from(account)..remove('password');
-    accounts.add(entry);
-    // Each entry carries a session key that can re-login the account.
-    // Copies accumulate forever otherwise — cap the list and drop the
-    // LEAST recently used entries (front of the MRU-ordered list).
-    const maxSavedAccounts = 8;
-    while (accounts.length > maxSavedAccounts) {
-      accounts.removeAt(0);
-    }
-    await SecureStorage.write(_keyAccounts, jsonEncode(accounts));
+  Future<void> saveAccount(Map<String, dynamic> account) {
+    return _serializeAccountsWrite(() async {
+      await _migrateLegacyIfNeeded();
+      final accounts = await getStoredAccounts();
+      final existingIndex = accounts.indexWhere(
+        (a) => a['userId'] == account['userId'],
+      );
+      if (existingIndex != -1) {
+        accounts.removeAt(existingIndex);
+      }
+      // Keep the most recently used account at the end of the list.
+      final entry = Map<String, dynamic>.from(account)..remove('password');
+      accounts.add(entry);
+      // Each entry carries a session key that can re-login the account.
+      // Copies accumulate forever otherwise — cap the list and drop the
+      // LEAST recently used entries (front of the MRU-ordered list).
+      const maxSavedAccounts = 8;
+      while (accounts.length > maxSavedAccounts) {
+        accounts.removeAt(0);
+      }
+      await SecureStorage.write(_keyAccounts, jsonEncode(accounts));
+    });
   }
 
   /// Get all stored accounts.
@@ -176,16 +194,30 @@ class AuthStorage {
     await _migrateLegacyIfNeeded();
     final raw = await SecureStorage.read(_keyAccounts);
     if (raw == null || raw.isEmpty) return [];
-    final decoded = jsonDecode(raw);
-    if (decoded is! List) return [];
-    return decoded.map((e) => Map<dynamic, dynamic>.from(e as Map)).toList();
+    // Corrupted stored content (truncated write, Keystore churn) must not
+    // break login / account switching: report and start over empty.
+    final List<dynamic> decoded;
+    try {
+      final value = jsonDecode(raw);
+      if (value is! List) return [];
+      decoded = value;
+    } catch (e) {
+      logIgnored('auth_storage', e);
+      return [];
+    }
+    return decoded
+        .whereType<Map>()
+        .map((e) => Map<dynamic, dynamic>.from(e))
+        .toList();
   }
 
   /// Remove an account.
-  Future<void> removeAccount(String userId) async {
-    await _migrateLegacyIfNeeded();
-    final accounts = await getStoredAccounts();
-    accounts.removeWhere((a) => a['userId'] == userId);
-    await SecureStorage.write(_keyAccounts, jsonEncode(accounts));
+  Future<void> removeAccount(String userId) {
+    return _serializeAccountsWrite(() async {
+      await _migrateLegacyIfNeeded();
+      final accounts = await getStoredAccounts();
+      accounts.removeWhere((a) => a['userId'] == userId);
+      await SecureStorage.write(_keyAccounts, jsonEncode(accounts));
+    });
   }
 }

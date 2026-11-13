@@ -115,6 +115,43 @@ class WebviewChallengeSolver {
   /// different URL must never receive this page's HTML.
   static final Map<String, Future<String?>> _inFlightSolves = {};
 
+  /// Host → the WebView User-Agent that last cleared a wall for that
+  /// host. Wall clearance cookies are commonly bound to the UA they
+  /// were minted with (`cf_clearance`), so `bridgeWallCookies` replays
+  /// this UA to the API layer together with the cookies. Kept per host
+  /// for the app session; a re-solve overwrites the entry.
+  static final Map<String, String> _wallUserAgents = {};
+
+  /// The WebView UA captured for [pageUrl]'s host, or null when no
+  /// solve has recorded one yet.
+  static String? wallUserAgentFor(String pageUrl) {
+    final host = Uri.tryParse(pageUrl)?.host ?? '';
+    if (host.isEmpty) return null;
+    return _wallUserAgents[host];
+  }
+
+  /// Records [pageUrl]'s host → WebView UA. Best effort: a read
+  /// failure leaves no entry and the bridge keeps the old UA-only
+  /// behaviour. Only https hosts are recorded.
+  static Future<void> _rememberWallUserAgent(
+    InAppWebViewController controller,
+    String pageUrl,
+  ) async {
+    final uri = Uri.tryParse(pageUrl);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return;
+    try {
+      final ua = await controller.evaluateJavascript(
+        source: 'navigator.userAgent',
+      );
+      if (ua == null) return;
+      final s = ua.toString();
+      if (s.isEmpty || s == 'null') return;
+      _wallUserAgents[uri.host] = s;
+    } catch (error) {
+      logIgnored('webview_challenge_solver', error);
+    }
+  }
+
   /// Solves the challenge for [url] and returns the fully rendered page HTML,
   /// or null if the challenge could not be cleared within [timeout].
   ///
@@ -292,6 +329,13 @@ class WebviewChallengeSolver {
         // final page; also poll the controller directly.
         try {
           controller ??= await _waitForController(controllerHolder);
+          // Record this WebView's UA as soon as the controller exists:
+          // the UA is fixed per WebView, and whatever clearance this
+          // run earns was minted against it.
+          if (controller != null &&
+              _wallUserAgents[_hostOf(url)] == null) {
+            await _rememberWallUserAgent(controller, url);
+          }
           if (controller != null) {
             final title = (await controller.getTitle()) ?? '';
             // Same check as onLoadStop: a wall page whose title carries
@@ -341,6 +385,8 @@ class WebviewChallengeSolver {
   // ------------------------------------------------------------------
   // SHARED HELPERS
   // ------------------------------------------------------------------
+
+  static String _hostOf(String url) => Uri.tryParse(url)?.host ?? '';
 
   /// Captures outerHTML once the document is complete and settled.
   static Future<String?> _captureHtml(InAppWebViewController controller) async {

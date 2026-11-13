@@ -17,6 +17,7 @@ import 'package:html/parser.dart' as html_parser;
 // Project imports:
 import 'package:zlibx/services/annas_archieve.dart';
 import 'package:zlibx/services/external_logger.dart';
+import 'package:zlibx/services/http_client.dart';
 import 'package:zlibx/services/instance_manager.dart';
 import 'package:zlibx/services/network_error.dart';
 
@@ -106,12 +107,10 @@ class AnnasArchiveProvider implements SearchProvider {
   }
 }
 
-/// Browser User-Agent shared by the external providers (copied from
-/// OpenlibExtended's search_manager.dart).
-const _browserHeaders = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/125.0 Safari/537.36',
-};
+/// Browser headers shared by the external providers: the same
+/// desktop-Chrome UA as every other app HTTP client (kDefaultUserAgent,
+/// http_client.dart — one definition, W1).
+const _browserHeaders = {'User-Agent': kDefaultUserAgent};
 
 /// Library Genesis behind the provider interface — ported verbatim from
 /// OpenlibExtended's search_manager.dart (LibgenProvider), except the

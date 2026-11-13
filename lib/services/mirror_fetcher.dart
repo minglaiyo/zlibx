@@ -36,6 +36,16 @@ class MirrorFetcherService {
 
   final AppLogger _logger = AppLogger();
 
+  /// Links scraped out of a page (JS `a.href` / extracted download
+  /// anchors) must be absolute https: page-injected `javascript:` /
+  /// `data:` hrefs and non-string engine quirks (a `null` entry would
+  /// make `cast<String>()` throw on first use) are dropped here.
+  static bool _isUsableLink(Object? href) {
+    if (href is! String || href.isEmpty) return false;
+    final uri = Uri.tryParse(href);
+    return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
+  }
+
   /// Fetch mirror links from the given URL in the background
   /// Returns a list of mirror download links
   Future<List<String>> fetchMirrors(String url) async {
@@ -118,8 +128,15 @@ class MirrorFetcherService {
                       metadata: {'error': pollError.toString()});
                 }
                 if (mirrorLink != null && mirrorLink.isNotEmpty) {
-                  bookDownloadLinks.add(mirrorLink);
-                  _logger.info('Extracted slow_download link', tag: 'MirrorFetcher');
+                  if (_isUsableLink(mirrorLink)) {
+                    bookDownloadLinks.add(mirrorLink);
+                    _logger.info('Extracted slow_download link', tag: 'MirrorFetcher');
+                  } else {
+                    _logger.warning('slow_download link failed the '
+                            'https/host check, dropped',
+                        tag: 'MirrorFetcher',
+                        metadata: {'link': mirrorLink});
+                  }
                   break;
                 }
                 await Future<void>.delayed(slowLinkPollInterval);
@@ -130,7 +147,8 @@ class MirrorFetcherService {
                   """Array.from(document.querySelectorAll('ul>li>a')).map(e=>e.href).filter(Boolean);""";
               List<dynamic> mirrorLinks =
                   await controller.evaluateJavascript(source: query);
-              bookDownloadLinks.addAll(mirrorLinks.cast<String>());
+              bookDownloadLinks
+                  .addAll(mirrorLinks.where(_isUsableLink).cast<String>());
               _logger.info('Extracted mirror links', tag: 'MirrorFetcher', metadata: {'count': bookDownloadLinks.length});
             }
 

@@ -1,11 +1,18 @@
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
+import 'webview_challenge_solver.dart';
+
 /// After the WebView challenge solver passes a browser check, copy
 /// the wall-clearance cookies it earned (`__diamwall`, `cf_clearance`,
 /// ...) from the WebView's CookieManager into the API layer's Dio
 /// headers, so the next HTML load passes the wall through fast Dio
 /// instead of solving again (up to 60 s per solve).
+///
+/// The WebView User-Agent that cleared the wall is replayed too when
+/// the solver captured one (W1): `cf_clearance` is commonly bound to
+/// the UA it was minted with, so a Dio with a different UA can loop
+/// 403 despite carrying valid cookies.
 ///
 /// Only the page's own host is read, and only non-session cookies are
 /// copied — the plugin already sends the login session from its own
@@ -29,6 +36,13 @@ Future<void> bridgeWallCookies(ZLibraryApi api, String pageUrl) async {
     wall[cookie.name] = cookie.value;
   }
   if (wall.isNotEmpty) api.setWallCookies(wall);
+  // The UA belongs with the cookies (same solve, same host): without
+  // it the replayed clearance can be rejected on UA mismatch. The
+  // plugin keeps it only for requests to its own host.
+  final wallUserAgent = WebviewChallengeSolver.wallUserAgentFor(pageUrl);
+  if (wallUserAgent != null) {
+    api.setWallUserAgent(wallUserAgent);
+  }
 }
 
 /// Install the `remix_userid` / `remix_userkey` session into the

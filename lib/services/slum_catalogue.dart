@@ -15,6 +15,7 @@ import 'package:dio/dio.dart';
 
 // Project imports:
 import 'package:zlibx/services/external_logger.dart';
+import 'package:zlibx/services/http_client.dart';
 import 'package:zlibx/services/preference_store.dart';
 
 import 'package:zlibx/core/slum.dart';
@@ -47,11 +48,9 @@ class SlumCatalogue {
                 options: BaseOptions(
               connectTimeout: const Duration(seconds: 15),
               receiveTimeout: const Duration(seconds: 20),
-              headers: const {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                    'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 '
-                    'Safari/537.36',
-              },
+              // Same desktop-Chrome UA as every other app HTTP client
+              // (kDefaultUserAgent, http_client.dart — one definition, W1).
+              headers: const {'User-Agent': kDefaultUserAgent},
             )),
         _store = store,
         _baseUrl = baseUrl ?? defaultBaseUrl;

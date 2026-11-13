@@ -14,6 +14,7 @@ import 'package:meta/meta.dart';
 // Project imports:
 import 'package:zlibx/services/annas_archieve.dart';
 import 'package:zlibx/services/external_logger.dart';
+import 'package:zlibx/services/http_client.dart';
 import 'package:zlibx/services/instance_manager.dart'; // For MirrorService (re-exported from the catalogue).
 import 'package:zlibx/services/mirror_speed_test.dart';
 
@@ -25,10 +26,9 @@ import 'package:zlibx/services/mirror_speed_test.dart';
 /// is minted per page load and the link 307-redirects to the CDN file, so
 /// it doubles as a native download URL - no webview needed.
 class LibgenService {
-  static const _browserHeaders = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/'
-        '537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
-  };
+  // Same desktop-Chrome UA as every other app HTTP client
+  // (kDefaultUserAgent, http_client.dart — one definition, W1).
+  static const _browserHeaders = {'User-Agent': kDefaultUserAgent};
 
   final Dio _dio;
   final AppLogger _logger = AppLogger();

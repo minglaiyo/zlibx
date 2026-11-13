@@ -61,6 +61,10 @@ class UpdateManifest {
   /// forced, app-blocking update). Add a netdisk here when you start
   /// using it in a release — an unknown host is dropped and counted in
   /// [droppedLinkCount] so the dialog can warn about it.
+  ///
+  /// `github.com` is narrower than a host entry: only this repo's paths
+  /// (see [isAllowedLink]) — a compromised Release body must not be
+  /// able to point the dialog at another account's releases.
   static const allowedLinkHosts = <String>[
     'pan.baidu.com',
     'pan.quark.cn',
@@ -69,12 +73,29 @@ class UpdateManifest {
   ];
 
   /// Whether [url] is https AND on an allow-listed host.
+  ///
+  /// `github.com` only passes for this repo's paths
+  /// (`github.com/minglaiyo/zlibx/...`); any other repo, gist or
+  /// subdomain is dropped, so a compromised Release body cannot point
+  /// the update dialog at someone else's releases.
   static bool isAllowedLink(String url) {
     final uri = Uri.tryParse(url);
     if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return false;
     if (uri.userInfo.isNotEmpty) return false; // https://good.com@evil.com
     final host = uri.host.toLowerCase();
+    if (host == 'github.com' || host.endsWith('.github.com')) {
+      return host == 'github.com' && _isThisRepoPath(uri.path);
+    }
     return allowedLinkHosts.any((h) => host == h || host.endsWith('.$h'));
+  }
+
+  /// `github.com/minglaiyo/zlibx` itself or anything under it
+  /// (`/releases`, `/releases/download/…`, …). GitHub resolves repo
+  /// paths case-insensitively, so compare lowercased.
+  static bool _isThisRepoPath(String path) {
+    const repo = '/minglaiyo/zlibx';
+    final p = path.toLowerCase();
+    return p == repo || p.startsWith('$repo/');
   }
   static const _maxNameChars = 20;
   static final _forceRe = RegExp(r'\[FORCE(_UPDATE)?\]', caseSensitive: false);
@@ -150,17 +171,82 @@ class UpdateManifest {
   }
 }
 
-/// 语义化版本比较：`latest` 是否比 `current` 新（只比较数字段，非数字段按 0）
-bool isNewerVersion(String latest, String current) {
-  List<int> parse(String s) =>
-      s.split('.').map((p) => int.tryParse(p) ?? 0).toList();
-  final l = parse(latest);
-  final c = parse(current);
-  final n = l.length > c.length ? l.length : c.length;
+/// 语义化版本比较：`latest` 是否比 `current` 新。
+///
+/// 先比数字核心（`1.5.8`），再比预发布后缀，最后比 build 号：
+/// - `1.5.9` > `1.5.8`；`1.5.8+10509` > `1.5.8+10508`（同版本高 build
+///   号也算更新，热修复重发才能触达用户）。
+/// - 预发布版低于同版本正式版：`1.5.8-beta` < `1.5.8`；
+///   `1.5.8-beta.2` > `1.5.8-beta.1`。
+/// - 核心里的非数字段按 0 计（保持旧的宽容行为）。
+bool isNewerVersion(String latest, String current) =>
+    _compareVersions(latest, current) > 0;
+
+/// Like [Comparable.compareTo]: <0 if [a] is older, 0 if equal, >0 if newer.
+int _compareVersions(String a, String b) {
+  final (aCore, aPre, aBuild) = _splitVersion(a);
+  final (bCore, bPre, bBuild) = _splitVersion(b);
+  final n = aCore.length > bCore.length ? aCore.length : bCore.length;
   for (var i = 0; i < n; i++) {
-    final lv = i < l.length ? l[i] : 0;
-    final cv = i < c.length ? c[i] : 0;
-    if (lv != cv) return lv > cv;
+    final av = i < aCore.length ? aCore[i] : 0;
+    final bv = i < bCore.length ? bCore[i] : 0;
+    if (av != bv) return av.compareTo(bv);
   }
-  return false;
+  // Pre-release: a version without one is newer than the same core with one.
+  if (aPre == null && bPre != null) return 1;
+  if (aPre != null && bPre == null) return -1;
+  if (aPre != null && bPre != null) {
+    final r = _comparePreRelease(aPre, bPre);
+    if (r != 0) return r;
+  }
+  // Build metadata: numeric when both parse, else lexical.
+  final aBuildNum = int.tryParse(aBuild ?? '');
+  final bBuildNum = int.tryParse(bBuild ?? '');
+  if (aBuildNum != null && bBuildNum != null) {
+    return aBuildNum.compareTo(bBuildNum);
+  }
+  return (aBuild ?? '').compareTo(bBuild ?? '');
+}
+
+/// Splits `1.5.8-beta.1+10508` into core `[1, 5, 8]`, pre `beta.1`,
+/// build `10508`. Missing pre/build are null.
+(List<int>, String?, String?) _splitVersion(String s) {
+  var rest = s.trim();
+  String? build;
+  final plus = rest.indexOf('+');
+  if (plus >= 0) {
+    build = rest.substring(plus + 1);
+    rest = rest.substring(0, plus);
+  }
+  String? pre;
+  final dash = rest.indexOf('-');
+  if (dash >= 0) {
+    pre = rest.substring(dash + 1);
+    rest = rest.substring(0, dash);
+  }
+  final core = rest.split('.').map((p) => int.tryParse(p) ?? 0).toList();
+  return (core, pre, build);
+}
+
+/// Semver pre-release comparison: identifiers split on `.`; numeric
+/// identifiers compare numerically and sort before alphanumeric ones;
+/// a shorter pre-release is older when it is a prefix of the other.
+int _comparePreRelease(String a, String b) {
+  final aParts = a.split('.');
+  final bParts = b.split('.');
+  final n = aParts.length > bParts.length ? aParts.length : bParts.length;
+  for (var i = 0; i < n; i++) {
+    if (i >= aParts.length) return -1;
+    if (i >= bParts.length) return 1;
+    final ap = aParts[i];
+    final bp = bParts[i];
+    if (ap == bp) continue;
+    final aNum = int.tryParse(ap);
+    final bNum = int.tryParse(bp);
+    if (aNum != null && bNum != null) return aNum.compareTo(bNum);
+    if (aNum != null) return -1; // numeric < alphanumeric
+    if (bNum != null) return 1;
+    return ap.compareTo(bp);
+  }
+  return 0;
 }

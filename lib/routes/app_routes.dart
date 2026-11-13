@@ -13,6 +13,8 @@ import '../screens/account/my_comments_screen.dart';
 import '../screens/account/user_profile_screen.dart';
 import '../screens/account/view_history_screen.dart';
 import '../screens/auth/login_screen.dart';
+import '../screens/downloads/local_downloads_screen.dart';
+import '../screens/settings/settings_screen.dart';
 import '../services/view_history_storage.dart';
 import '../screens/book_detail/book_detail_args.dart';
 import '../screens/book_detail/book_detail_screen.dart';
@@ -44,6 +46,8 @@ class AppRoutes {
   static const String myComments = '/my-comments';
   static const String userProfile = '/user-profile';
   static const String reader = '/reader';
+  static const String settings = '/settings';
+  static const String downloads = '/downloads';
 
   // ── Typed navigation helpers (routes that take arguments) ──────────
   //
@@ -273,6 +277,22 @@ Map<String, WidgetBuilder> buildAppRoutes() {
     },
     AppRoutes.favorites: (context) => const FavoritesScreen(),
     AppRoutes.history: (context) => const HistoryScreen(),
+    // Settings and local downloads are bottom-nav tabs, but the forced
+    // update dialog needs them as standalone pages (its escape hatch).
+    // SettingsScreen has no inner Scaffold/AppBar, so the route supplies
+    // the page chrome; LocalDownloadsScreen builds its own AppBar (with
+    // a back button via automaticallyImplyLeading), so a bare Scaffold
+    // is enough. Settings' list reserves 128dp at the bottom for the
+    // floating nav this page does not have — harmless dead space.
+    AppRoutes.settings: (context) => Scaffold(
+      appBar: AppBar(
+        title: Text(AppLocalizations.of(context)!.settings),
+      ),
+      body: const SettingsScreen(),
+    ),
+    AppRoutes.downloads: (context) => const Scaffold(
+      body: LocalDownloadsScreen(),
+    ),
     AppRoutes.viewHistory: (context) => const ViewHistoryScreen(),
     AppRoutes.recentBooks: (context) => const RecentBooksScreen(),
     AppRoutes.similarBooks: (context) {

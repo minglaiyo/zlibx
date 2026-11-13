@@ -21,13 +21,15 @@ void main() {
         AppRoutes.myComments,
         AppRoutes.userProfile,
         AppRoutes.reader,
+        AppRoutes.settings,
+        AppRoutes.downloads,
       };
 
       final routes = buildAppRoutes();
 
-      expect(expected.length, 16);
+      expect(expected.length, 18);
       expect(routes.keys.toSet(), expected);
-      expect(routes.length, 16);
+      expect(routes.length, 18);
     });
   });
 }

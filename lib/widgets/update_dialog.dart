@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../providers/update_provider.dart';
+import '../routes/app_routes.dart';
 import '../utils/app_log.dart';
 import '../utils/app_snack.dart';
 import 'loading_widget.dart';
@@ -60,6 +61,14 @@ Future<void> showManualUpdateCheck(BuildContext context) async {
       ],
     ),
   );
+}
+
+/// 强制更新对话框里的逃生口：先关对话框，再打开指定页面。
+/// NavigatorState 先取出来再 pop —— pop 掉的 dialog context 不能再用来 push。
+void _openEscapePage(BuildContext context, String route) {
+  final navigator = Navigator.of(context);
+  navigator.pop();
+  navigator.pushNamed(route);
 }
 
 class _Channel {
@@ -184,6 +193,20 @@ class _UpdateDialog extends ConsumerWidget {
             },
             child: Text(AppLocalizations.of(context)!.later),
           ),
+        if (forced) ...[
+          // 强制更新的逃生口：这是一把远程熔断开关（仓库/账号被入侵时
+          // 阻止旧版继续用），不是要把用户锁在应用外。已下载的书和
+          // 设置页始终可达；搜索与新下载仍被 isBlocked 拦截，冷启动
+          // 时对话框还会再出现。
+          TextButton(
+            onPressed: () => _openEscapePage(context, AppRoutes.downloads),
+            child: Text(AppLocalizations.of(context)!.shelfDownloaded),
+          ),
+          TextButton(
+            onPressed: () => _openEscapePage(context, AppRoutes.settings),
+            child: Text(AppLocalizations.of(context)!.settings),
+          ),
+        ],
       ],
     );
   }

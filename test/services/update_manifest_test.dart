@@ -35,9 +35,66 @@ min_version: 1.4.0
     });
 
     test('subdomains of an allowed host pass, look-alikes do not', () {
-      expect(UpdateManifest.isAllowedLink('https://gist.github.com/x'), isTrue);
+      // github.com is narrowed to this repo's paths (S7): a gist or any
+      // other repo is not a download channel for this app.
+      expect(UpdateManifest.isAllowedLink('https://gist.github.com/x'),
+          isFalse);
+      expect(
+        UpdateManifest.isAllowedLink(
+          'https://github.com/minglaiyo/zlibx/releases',
+        ),
+        isTrue,
+      );
+      expect(
+        UpdateManifest.isAllowedLink('https://github.com/minglaiyo/zlibx'),
+        isTrue,
+      );
+      expect(
+        UpdateManifest.isAllowedLink(
+          'https://github.com/other/zlibx/releases',
+        ),
+        isFalse,
+      );
+      expect(
+        UpdateManifest.isAllowedLink(
+          'https://github.com/minglaiyo/other/releases',
+        ),
+        isFalse,
+      );
       expect(UpdateManifest.isAllowedLink('https://notgithub.com/x'), isFalse);
       expect(UpdateManifest.isAllowedLink('ftp://github.com/x'), isFalse);
+    });
+
+    test('github release asset links under this repo pass', () {
+      expect(
+        UpdateManifest.isAllowedLink(
+          'https://github.com/minglaiyo/zlibx/releases/download/v1.5.8/zlibx.apk',
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('isNewerVersion', () {
+    test('core comparison (unchanged behaviour)', () {
+      expect(isNewerVersion('1.5.9', '1.5.8'), isTrue);
+      expect(isNewerVersion('1.5.8', '1.5.8'), isFalse);
+      expect(isNewerVersion('1.5.8', '1.5.9'), isFalse);
+      expect(isNewerVersion('1.6', '1.5.8'), isTrue);
+    });
+
+    test('a higher build number counts as newer (S7)', () {
+      expect(isNewerVersion('1.5.8+10509', '1.5.8+10508'), isTrue);
+      expect(isNewerVersion('1.5.8+10508', '1.5.8+10508'), isFalse);
+      expect(isNewerVersion('1.5.8+10508', '1.5.8'), isTrue);
+    });
+
+    test('a pre-release is older than the same release (S7)', () {
+      expect(isNewerVersion('1.5.8', '1.5.8-beta'), isTrue);
+      expect(isNewerVersion('1.5.8-beta', '1.5.8'), isFalse);
+      expect(isNewerVersion('1.5.8-beta.2', '1.5.8-beta.1'), isTrue);
+      expect(isNewerVersion('1.5.8-beta.1', '1.5.8-beta.2'), isFalse);
+      expect(isNewerVersion('1.5.8-rc.1', '1.5.8-beta.9'), isTrue);
     });
   });
 }

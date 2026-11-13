@@ -3,6 +3,12 @@ part of 'download_provider.dart';
 /// The download execution cluster: startDownload plus the resumable
 /// transport and its failure cleanup.
 mixin _DownloadEngineMixin on _DownloadPathsMixin {
+  /// S6: at most this many downloads run at once (the review suggests
+  /// 2–3). A field, not a local: the pool must survive `ref.invalidate`
+  /// re-running build() on the same notifier instance, and a queued
+  /// download's wait must outlive the call that started it.
+  final DownloadSlotPool _slotPool = DownloadSlotPool();
+
   /// Start a download.
   ///
   /// 默认走 ZLibraryApi（用户自己账号查 URL + 下载）。
@@ -38,6 +44,18 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         needsFreshLink: presetUrl != null,
       ),
     );
+
+    // S6: wait for a free slot (FIFO). Callers fire this with
+    // `unawaited`, so the wait never blocks the UI; the task shows as
+    // pending while queued.
+    await _slotPool.acquire();
+    // Cancelled while queued: give the slot back and stop without
+    // downloading. (The `finally` below never runs on this path, so
+    // the release has to happen here.)
+    if (cancelToken.isCancelled) {
+      _slotPool.release();
+      return;
+    }
 
     String? temporaryPath;
     // Pending MediaStore entry for this download (Android 10+ only).
@@ -250,6 +268,9 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         _clearProgressThrottle(id);
       }
     } finally {
+      // S6: free the slot first, so a cleanup failure below cannot leak
+      // it and stall the queue; the next waiter starts immediately.
+      _slotPool.release();
       // Keep the partial file after a failure so the next retry resumes
       // from it instead of starting over; only an explicit user cancel
       // drops it. On success the file was already renamed away.

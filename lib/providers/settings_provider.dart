@@ -245,6 +245,32 @@ final randomRecommendProvider =
       RandomRecommendNotifier.new,
     );
 
+/// 书籍详情页简介折叠开关：开启后详情页默认不显示简介，点书名展开
+/// 显示全文（用户批 2026-11-14 功能 1）。
+class CollapseDetailDescriptionNotifier extends Notifier<bool> {
+  @override
+  bool build() => _load();
+
+  /// Sync Hive read; returns the persisted value as the initial state
+  /// instead of assigning it (see LocaleNotifier).
+  bool _load() {
+    final v = HiveService.settingsBox.get('collapseDetailDescription');
+    if (v is bool) return v;
+    return false;
+  }
+
+  Future<void> setEnabled(bool value) async {
+    state = value;
+    await HiveService.settingsBox.put('collapseDetailDescription', value);
+  }
+}
+
+/// 书籍详情页简介折叠 provider
+final collapseDetailDescriptionProvider =
+    NotifierProvider<CollapseDetailDescriptionNotifier, bool>(
+      CollapseDetailDescriptionNotifier.new,
+    );
+
 /// Whether the bottom nav bar is currently visible. Driven by the home
 /// grid's scroll direction (transient UI state, not persisted).
 class NavBarVisibleNotifier extends Notifier<bool> {

@@ -169,6 +169,9 @@
   "commentsDisabled": "이 책의 댓글은 비활성화되어 있습니다",
   "completed": "완료됨",
   "confirmOk": "확인",
+  "collapseDetailDescription": "책 설명 접기",
+  "collapseDetailDescriptionDesc": "책 상세 페이지에서 설명을 숨기고 제목을 탭하면 전체가 표시됩니다",
+  "addedToFavorites": "즐겨찾기에 추가되었습니다",
   "confirmRemoveMsg": "즐겨찾기에서 {count}권을 삭제하시겠습니까?",
   "@confirmRemoveMsg": {
     "placeholders": {

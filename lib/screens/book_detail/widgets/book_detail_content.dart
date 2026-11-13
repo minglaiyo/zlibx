@@ -12,11 +12,17 @@ class BookDetailHeading extends StatelessWidget {
   /// for that author. Null means display-only.
   final VoidCallback? onAuthorTap;
 
+  /// Tap handler for the title: the collapse-description setting hides
+  /// the detail description until the title is tapped (feature request
+  /// 2026-11-14). Null means the title is plain text.
+  final VoidCallback? onTitleTap;
+
   const BookDetailHeading({
     super.key,
     required this.book,
     this.subtitle,
     this.onAuthorTap,
+    this.onTitleTap,
   });
 
   @override
@@ -32,13 +38,20 @@ class BookDetailHeading extends StatelessWidget {
           ),
           const SizedBox(height: 6),
         ],
-        Text(
-          book.title,
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            height: 1.35,
-            color: cs.onSurface,
+        // 简介折叠开关开启时点标题展开全文：给主色做可点暗示（与
+        // 作者链接一致）；否则标题纯展示。
+        InkWell(
+          onTap: onTitleTap,
+          borderRadius: BorderRadius.circular(4),
+          child: Text(
+            book.title,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+              // 标题可点开简介时给一点可点暗示（与作者链接一致的主色）。
+              color: onTitleTap != null ? cs.primary : cs.onSurface,
+            ),
           ),
         ),
         if (book.author?.isNotEmpty ?? false) ...[
@@ -113,7 +126,15 @@ class BookDetailTag extends StatelessWidget {
 class BookDetailDescription extends StatefulWidget {
   final String text;
 
-  const BookDetailDescription({super.key, required this.text});
+  /// Start with the full text shown (简介折叠模式下经书名展开：直接
+  /// 出全文而非 6 行预览）。默认 false = 现有行为（6 行预览 + 展开）。
+  final bool initiallyExpanded;
+
+  const BookDetailDescription({
+    super.key,
+    required this.text,
+    this.initiallyExpanded = false,
+  });
 
   @override
   State<BookDetailDescription> createState() => _BookDetailDescriptionState();
@@ -121,12 +142,14 @@ class BookDetailDescription extends StatefulWidget {
 
 class _BookDetailDescriptionState extends State<BookDetailDescription> {
   static const _previewLines = 6;
-  bool _expanded = false;
+  late bool _expanded = widget.initiallyExpanded;
 
   @override
   void didUpdateWidget(covariant BookDetailDescription oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.text != widget.text) _expanded = false;
+    if (oldWidget.text != widget.text) {
+      _expanded = widget.initiallyExpanded;
+    }
   }
 
   @override

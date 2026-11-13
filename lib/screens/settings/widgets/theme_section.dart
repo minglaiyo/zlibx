@@ -73,6 +73,9 @@ class AppearanceSheet extends ConsumerWidget {
     final floatingNav = ref.watch(floatingNavProvider);
     final hideNavOnScroll = ref.watch(hideNavOnScrollProvider);
     final homeGridFourColumns = ref.watch(homeGridFourColumnsProvider);
+    final collapseDetailDescription = ref.watch(
+      collapseDetailDescriptionProvider,
+    );
     final t = AppLocalizations.of(context)!;
     final cs = Theme.of(context).colorScheme;
     final followingSystem = themeMode == AppThemeMode.system;
@@ -164,6 +167,24 @@ class AppearanceSheet extends ConsumerWidget {
             ref
                 .read(homeGridFourColumnsProvider.notifier)
                 .setFourColumns(value);
+          },
+        ),
+        SwitchListTile(
+          title: Text(t.collapseDetailDescription),
+          subtitle: Text(
+            t.collapseDetailDescriptionDesc,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+          ),
+          value: collapseDetailDescription,
+          activeThumbColor: cs.primary,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          isThreeLine: true,
+          onChanged: (value) {
+            ref
+                .read(collapseDetailDescriptionProvider.notifier)
+                .setEnabled(value);
           },
         ),
         const SizedBox(height: 16),

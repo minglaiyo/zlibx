@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../../../core/book_description.dart';
@@ -6,13 +7,14 @@ import '../../../models/display_book.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../l10n/book_categories.dart';
 import '../../../routes/app_routes.dart';
+import '../../../providers/settings_provider.dart';
 import '../../search/search_screen.dart';
 import '../../similar/similar_books_screen.dart';
 import '../../comments/book_comments_screen.dart';
 import 'add_to_booklist_dialog.dart';
 import 'book_detail_content.dart';
 
-class BookInfoSection extends StatelessWidget {
+class BookInfoSection extends ConsumerStatefulWidget {
   final Book book;
 
   const BookInfoSection({
@@ -21,7 +23,18 @@ class BookInfoSection extends StatelessWidget {
   });
 
   @override
+  ConsumerState<BookInfoSection> createState() => _BookInfoSectionState();
+}
+
+class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
+  /// 简介折叠开关开启时：true = 已点书名展开全文。开关本身是持久
+  /// 设置（collapseDetailDescriptionProvider），这里的 reveal 只影响
+  /// 当前页面的显示。
+  bool _descriptionRevealed = false;
+
+  @override
   Widget build(BuildContext context) {
+    final book = widget.book;
     final l10n = AppLocalizations.of(context)!;
     final cs = Theme.of(context).colorScheme;
     final tags = <Widget>[
@@ -95,6 +108,7 @@ class BookInfoSection extends StatelessWidget {
     // A missing description must stay absent rather than rendering as
     // the literal word "null".
     final description = normalizedBookDescription(book.description);
+    final collapseDescription = ref.watch(collapseDetailDescriptionProvider);
 
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -110,6 +124,12 @@ class BookInfoSection extends StatelessWidget {
               // so the callback can only fire then).
               onAuthorTap: book.author?.isNotEmpty ?? false
                   ? () => AppRoutes.openSearchWithQuery(context, book.author!)
+                  : null,
+              // 简介折叠开关开启时点书名切换展开/收起（功能 1），
+              // 标题带主色提示可点；开关关闭时标题纯展示。
+              onTitleTap: collapseDescription
+                  ? () =>
+                      setState(() => _descriptionRevealed = !_descriptionRevealed)
                   : null,
             ),
             if (tags.isNotEmpty) ...[
@@ -129,9 +149,14 @@ class BookInfoSection extends StatelessWidget {
                 ),
               ),
             ],
-            if (description != null) ...[
+            if (description != null &&
+                (!collapseDescription || _descriptionRevealed)) ...[
               const SizedBox(height: 28),
-              BookDetailDescription(text: description),
+              // 折叠模式下经书名展开：直接出全文（开合按钮保留）。
+              BookDetailDescription(
+                text: description,
+                initiallyExpanded: collapseDescription && _descriptionRevealed,
+              ),
             ],
             if (fields.isNotEmpty) ...[
               const SizedBox(height: 28),

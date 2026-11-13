@@ -169,6 +169,9 @@
   "commentsDisabled": "Comments are disabled for this book",
   "completed": "Completed",
   "confirmOk": "OK",
+  "collapseDetailDescription": "Collapse book description",
+  "collapseDetailDescriptionDesc": "Hide the description on the book detail page until the title is tapped",
+  "addedToFavorites": "Added to Favorites",
   "confirmRemoveMsg": "Remove {count} book(s) from favorites?",
   "@confirmRemoveMsg": {
     "placeholders": {

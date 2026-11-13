@@ -169,6 +169,9 @@
   "commentsDisabled": "这本书的评论已关闭",
   "completed": "已完成",
   "confirmOk": "确定",
+  "collapseDetailDescription": "收起书籍简介",
+  "collapseDetailDescriptionDesc": "书籍详情页默认不显示简介，点击书名后展开显示全文",
+  "addedToFavorites": "已加入收藏",
   "confirmRemoveMsg": "确定从收藏中移除 {count} 本书？",
   "@confirmRemoveMsg": {
     "placeholders": {

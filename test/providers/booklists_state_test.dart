@@ -442,12 +442,16 @@ void main() {
     expect(stateAfterInvalidate.phase, BooklistsPhase.loading);
     expect(stateAfterInvalidate.lists, isEmpty);
 
-    // Drive the reload explicitly and await it: the rebuild's
-    // microtask load is timing-sensitive in a test harness, while
-    // awaiting the load directly is deterministic. The fresh load
+    // Wait for the rebuild's own load (build() kicks off loadFirst
+    // in a microtask): polling is the deterministic way to observe
+    // it — calling loadFirst() here would race that microtask load,
+    // take a newer generation and have its own result dropped, then
+    // assert before the microtask load has applied. The fresh load
     // under B must come from the network, NOT from A's cached page.
-    final notifier = container.read(booklistsControllerProvider.notifier);
-    await notifier.loadFirst();
+    await _waitForList(
+      container,
+      (s) => s.phase == BooklistsPhase.ready && s.lists.length == 10,
+    );
     expect(_ids(container), List.generate(10, (i) => '${100 + i}'));
   });
 }

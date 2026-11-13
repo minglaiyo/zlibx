@@ -40,7 +40,6 @@ dependencies:
 
   # UI & Icons
   cached_network_image: ^3.3.1
-  awesome_dialog: ^3.3.0
   # Material You dynamic color (Android 12+): ColorScheme from the wallpaper,
   # falls back to the built-in palette where dynamic color is unavailable.
   dynamic_color: ^1.7.0

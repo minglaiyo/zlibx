@@ -11,13 +11,13 @@ import 'dart:async';
 // detail page's BookInfoData, so the task id, file name and download
 // history all key on externalBookId(md5).
 import 'package:zlibx/utils/diagnostics.dart';
-import 'package:awesome_dialog/awesome_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:open_filex/open_filex.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
+import 'file_exists_dialog.dart';
 import '../../../models/display_book.dart';
 import '../../../providers/download_provider.dart';
 import '../../../services/annas_archieve.dart';
@@ -150,26 +150,13 @@ class _ExternalBookActionBarState
     final existingPath =
         await ref.read(downloadProvider.notifier).checkFileExists(book);
     if (existingPath != null && context.mounted) {
-      unawaited(AwesomeDialog(
-        context: context,
-        dialogType: DialogType.info,
-        animType: AnimType.bottomSlide,
-        title: AppLocalizations.of(context)!.fileExistsTitle,
-        desc: AppLocalizations.of(context)!.fileExistsDesc,
-        btnCancelText: AppLocalizations.of(context)!.openFile,
-        btnCancelColor: Theme.of(context).colorScheme.primary,
-        btnCancelOnPress: () async {
-          // The dialog outlives this bar: re-check before using context.
-          if (!context.mounted) return;
-          await _openDownloadedFile(context, existingPath);
-        },
-        btnOkText: AppLocalizations.of(context)!.downloadAgain,
-        btnOkColor: Theme.of(context).colorScheme.primary,
-        btnOkOnPress: () {
-          if (!context.mounted) return;
-          _resolveAndDownload(context, ref, book);
-        },
-      ).show());
+      final again = await showFileExistsDialog(
+        context,
+        onOpenFile: () => _openDownloadedFile(context, existingPath),
+      );
+      if (again != true) return;
+      if (!context.mounted) return;
+      await _resolveAndDownload(context, ref, book);
       return;
     }
 

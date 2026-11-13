@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:awesome_dialog/awesome_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -144,23 +143,33 @@ class AccountScreen extends ConsumerWidget {
   }
 
   void _confirmLogout(BuildContext context, WidgetRef ref) {
-    unawaited(AwesomeDialog(
+    final l10n = AppLocalizations.of(context)!;
+    unawaited(showDialog<bool>(
       context: context,
-      dialogType: DialogType.warning,
-      animType: AnimType.bottomSlide,
-      title: AppLocalizations.of(context)!.logoutConfirmTitle,
-      desc: AppLocalizations.of(context)!.logoutConfirmDesc,
-      btnCancelText: AppLocalizations.of(context)!.cancel,
-      btnCancelOnPress: () {},
-      btnOkText: AppLocalizations.of(context)!.logoutAction,
-      btnOkColor: Theme.of(context).colorScheme.error,
-      btnOkOnPress: () async {
-        await ref.read(authProvider.notifier).logout();
-        if (context.mounted) {
-          await AppRoutes.logoutToLogin(context);
-        }
-      },
-    ).show());
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.logoutConfirmTitle),
+        content: Text(l10n.logoutConfirmDesc),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(l10n.logoutAction),
+          ),
+        ],
+      ),
+    ).then((confirmed) async {
+      if (confirmed != true || !context.mounted) return;
+      await ref.read(authProvider.notifier).logout();
+      if (context.mounted) {
+        await AppRoutes.logoutToLogin(context);
+      }
+    }));
   }
 }
 

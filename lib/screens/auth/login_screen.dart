@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:awesome_dialog/awesome_dialog.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/domain_provider.dart';
 import '../../routes/app_routes.dart';
@@ -143,51 +142,66 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final failureKind = classifyLoginFailure(error);
       if (failureKind == LoginFailureKind.line) {
         // 线路被拦截 / 连接失败 —— 不是账号密码问题，提示切换线路。
-        final cf = error == 'cf_blocked';
-        unawaited(AwesomeDialog(
-          context: context,
-          dialogType: DialogType.warning,
-          animType: AnimType.bottomSlide,
-          title: AppLocalizations.of(context)!.lineUnavailable,
-          desc: cf
-              ? AppLocalizations.of(context)!.loginLineBlockedCf
-              : AppLocalizations.of(context)!.loginLineConnectFailed,
-          btnCancelText: AppLocalizations.of(context)!.close,
-          btnCancelOnPress: () {},
-          btnOkText: AppLocalizations.of(context)!.switchLine,
-          btnOkColor: Theme.of(context).colorScheme.primary,
-          btnOkOnPress: () {
-            unawaited(showDialog(
-              context: context,
-              builder: (_) => const DomainSelectionDialog(),
-            ));
-          },
-        ).show());
+        await _showLineFailureDialog(error == 'cf_blocked');
       } else {
-        unawaited(AwesomeDialog(
+        final l10n = AppLocalizations.of(context)!;
+        unawaited(showDialog<void>(
           context: context,
-          dialogType: DialogType.error,
-          animType: AnimType.bottomSlide,
-          title: AppLocalizations.of(context)!.loginFailed,
-          desc: failureKind == LoginFailureKind.credentials
-              ? (AppLocalizations.of(context)!.loginBadCredentials)
-              : (AppLocalizations.of(context)!.loginUnknownFailure(
-                  lineName,
-                  occurredAt,
-                  safeLoginErrorDetail(
-                    error,
-                    email,
-                    password,
-                    noDetailText:
-                        AppLocalizations.of(context)!.loginNoErrorDetail,
-                  ),
-                )),
-          btnOkText: AppLocalizations.of(context)!.confirmOk,
-          btnOkColor: Theme.of(context).colorScheme.primary,
-          btnOkOnPress: () {},
-        ).show());
+          builder: (dialogContext) => AlertDialog(
+            title: Text(l10n.loginFailed),
+            content: Text(failureKind == LoginFailureKind.credentials
+                ? l10n.loginBadCredentials
+                : l10n.loginUnknownFailure(
+                    lineName,
+                    occurredAt,
+                    safeLoginErrorDetail(
+                      error,
+                      email,
+                      password,
+                      noDetailText: l10n.loginNoErrorDetail,
+                    ),
+                  )),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(l10n.confirmOk),
+              ),
+            ],
+          ),
+        ));
       }
     }
+  }
+
+  /// 线路失败弹窗：确认「切换线路」后接线路选择弹窗。await 链式
+  /// 写法让 use_build_context_synchronously 能看到 mounted 守卫
+  ///（.then 回调里的 context 使用分析器不认）。
+  Future<void> _showLineFailureDialog(bool cfBlocked) async {
+    final l10n = AppLocalizations.of(context)!;
+    await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.lineUnavailable),
+        content: Text(
+          cfBlocked ? l10n.loginLineBlockedCf : l10n.loginLineConnectFailed,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(l10n.close),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(l10n.switchLine),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    unawaited(showDialog(
+      context: context,
+      builder: (_) => const DomainSelectionDialog(),
+    ));
   }
 
   Future<void> _showSavedAccounts() async {

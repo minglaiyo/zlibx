@@ -84,11 +84,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       ),
     );
 
-    // Pulse glow behind logo: infinite breathing
+    // Pulse glow behind logo: infinite breathing. 无动画可达性：系统
+    // 关动画时（disableAnimations）不循环，停在中点静态呼吸态。
+    // initState 里拿不到 MediaQuery，用 platformDispatcher 全局判定。
+    final animationsEnabled = !WidgetsBinding
+        .instance.platformDispatcher.accessibilityFeatures.disableAnimations;
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    )..repeat(reverse: true);
+      duration: AppMotion.pulse,
+    );
+    if (animationsEnabled) _pulseController.repeat(reverse: true);
     _pulseAnimation = Tween<double>(begin: 0.85, end: 1.15).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
@@ -96,8 +101,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     // Ring spinner: replaces CircularProgressIndicator
     _ringController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat();
+      duration: AppMotion.shimmer,
+    );
+    if (animationsEnabled) _ringController.repeat();
     _ringRotation = Tween<double>(begin: 0.0, end: 2 * math.pi).animate(
       CurvedAnimation(parent: _ringController, curve: Curves.linear),
     );

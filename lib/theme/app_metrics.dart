@@ -60,6 +60,12 @@ abstract final class AppMotion {
 
   /// 最长过渡：启动页 logo 入场、书单骨架呼吸（900）。
   static const Duration slowest = Duration(milliseconds: 900);
+
+  /// 启动页 logo 呼吸脉冲的完整周期（2000，reverse 往复）。
+  static const Duration pulse = Duration(milliseconds: 2000);
+
+  /// 3D 封面静置漂移的慢速循环（9s）——远超普通过渡的持续氛围动画。
+  static const Duration idleDrift = Duration(seconds: 9);
 }
 
 /// 全 app 悬浮阴影基线。同一颗胶囊的阴影此前明暗模式各自为政：

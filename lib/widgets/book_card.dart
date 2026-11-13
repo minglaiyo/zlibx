@@ -209,8 +209,8 @@ class _BookCardState extends State<BookCard> {
           imageUrl: coverUrlAtWidth(widget.book.cover!, cacheWidth),
           memCacheWidth: cacheWidth,
           memCacheHeight: cacheHeight,
-          fadeInDuration: const Duration(milliseconds: 300),
-          fadeOutDuration: const Duration(milliseconds: 100),
+          fadeInDuration: AppMotion.slow,
+          fadeOutDuration: AppMotion.fast,
           httpHeaders: const {'Connection': 'keep-alive'},
           imageBuilder: (context, imageProvider) {
             return _maybeHero(content(image: imageProvider));
@@ -246,8 +246,8 @@ class _BookCardState extends State<BookCard> {
                 imageUrl: coverUrlAtWidth(widget.book.cover!, cacheWidth),
                 fit: BoxFit.cover,
                 memCacheWidth: cacheWidth,
-                fadeInDuration: const Duration(milliseconds: 300),
-                fadeOutDuration: const Duration(milliseconds: 100),
+                fadeInDuration: AppMotion.slow,
+                fadeOutDuration: AppMotion.fast,
                 httpHeaders: const {'Connection': 'keep-alive'},
                 imageBuilder: (context, imageProvider) {
                   return _maybeHero(

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../theme/app_metrics.dart';
 import '../../../widgets/cover_placeholder.dart';
 
 /// A small book-shaped scene. Every face shares the same perspective transform,
@@ -37,7 +38,7 @@ class _Book3DCoverState extends State<Book3DCover>
     with SingleTickerProviderStateMixin {
   late final AnimationController _motion = AnimationController(
     vsync: this,
-    duration: const Duration(seconds: 9),
+    duration: AppMotion.idleDrift,
   );
 
   double _rotationX = 0;
@@ -47,14 +48,20 @@ class _Book3DCoverState extends State<Book3DCover>
   @override
   void initState() {
     super.initState();
-    if (widget.animate) _motion.repeat(reverse: true);
+    // initState 里没有 MediaQuery：用 platformDispatcher 判定系统
+    // 「关闭动画」可达性设置（与 empty_state / entrance 的处理一致）。
+    final animationsEnabled = !WidgetsBinding
+        .instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    if (widget.animate && animationsEnabled) _motion.repeat(reverse: true);
   }
 
   @override
   void didUpdateWidget(covariant Book3DCover oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.animate == oldWidget.animate) return;
-    if (widget.animate) {
+    final animationsEnabled = !WidgetsBinding
+        .instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    if (widget.animate && animationsEnabled) {
       _motion.repeat(reverse: true);
     } else {
       _motion.stop();

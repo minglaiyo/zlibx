@@ -7,6 +7,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/zlibrary_provider.dart';
 import '../../routes/app_routes.dart';
+import '../../theme/app_metrics.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/gradient_app_bar.dart';
 import '../../widgets/loading_widget.dart';
@@ -115,7 +116,7 @@ class _BookCommentsScreenState extends ConsumerState<BookCommentsScreen> {
       if (!wasReply && _scrollController.hasClients) {
         unawaited(_scrollController.animateTo(
           0,
-          duration: const Duration(milliseconds: 350),
+          duration: AppMotion.slower,
           curve: Curves.easeOutCubic,
         ));
       }

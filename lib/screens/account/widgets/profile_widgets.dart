@@ -99,7 +99,7 @@ class ProfileStatPill extends StatelessWidget {
           const SizedBox(width: 5),
           // 数字变化时轻微上滑淡入（下拉刷新计数变化不跳变）。
           AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
+            duration: AppMotion.standard,
             switchInCurve: Curves.easeOutCubic,
             transitionBuilder: (child, animation) => FadeTransition(
               opacity: animation,

@@ -4,9 +4,12 @@ name: Build Android APK
 # moved tag cannot change what runs. To bump an action, resolve the
 # new tag's commit SHA and update both the SHA and the comment.
 
-# Triggered by either:
-#   - pushing a vX.Y.Z tag       → builds + creates a GitHub Release with APKs attached
-#   - manual workflow_dispatch   → builds + uploads APKs as workflow artifact only
+# Triggered by:
+#   - pushing to main / opening a PR → `check` job only (analyze + test)
+#   - pushing a vX.Y.Z tag           → `check`, then `build` creates a
+#                                      GitHub Release with APKs attached
+#   - manual workflow_dispatch       → `check`, then `build` uploads APKs
+#                                      as workflow artifact only
 #
 # Required secrets (configure in repo Settings → Secrets and variables → Actions):
 #   KEYSTORE_BASE64        base64-encoded contents of olib-release-key.jks
@@ -23,8 +26,11 @@ name: Build Android APK
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*.*.*'
+  pull_request:
   workflow_dispatch:
     inputs:
       reason:
@@ -32,16 +38,66 @@ on:
         required: false
         default: 'Manual build'
 
+# Default to read-only; only the release step inside `build` needs
+# write, and it gets it from the job-level override below.
 permissions:
-  contents: write  # needed to create a Release on tag pushes
+  contents: read
 
 concurrency:
   group: build-android-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Fast gate: analyze + test on every push to main and every PR, so a
+  # broken commit is caught at push time instead of at the next manual
+  # build. No secrets, no keystore, no APK — pure Dart checks.
+  check:
+    name: Check (analyze + test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: '3.44.0'
+          cache: true
+
+      - name: Print toolchain versions
+        run: |
+          flutter --version
+          dart --version
+
+      - name: Cache pub
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
   build:
     name: Build release APK
+    # Only tag pushes (release) and manual dispatch (artifact) build.
+    # Pushes to main and PRs run `check` only. `needs: check` gates the
+    # release on a green analyze + test.
+    needs: check
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write  # needed to create a Release on tag pushes
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
@@ -73,9 +129,9 @@ jobs:
       - name: Cache pub
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: |
-            ~/.pub-cache
-            .dart_tool
+          # Only the pub cache: caching .dart_tool can carry stale
+          # generated state into the build.
+          path: ~/.pub-cache
           key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
           restore-keys: |
             ${{ runner.os }}-pub-
@@ -192,8 +248,8 @@ jobs:
           # build-tools includes apksigner; pick the latest available version
           apksigner_bin=$(ls -1 "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n1)
           if [ -z "$apksigner_bin" ]; then
-            echo "::warning::apksigner not found, skipping verification"
-            exit 0
+            echo "::error::apksigner not found, cannot verify signature"
+            exit 1
           fi
           "$apksigner_bin" verify --print-certs "$apk"
 

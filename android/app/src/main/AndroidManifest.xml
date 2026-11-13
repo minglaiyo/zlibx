@@ -3,6 +3,9 @@
     <!-- Network permissions required for API access -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Privacy lock: BiometricPrompt (fingerprint / face; falls back to
+         the device credential, which needs no extra permission). -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <application
         android:label="zlibx"

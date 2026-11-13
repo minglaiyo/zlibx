@@ -6,7 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -15,7 +15,10 @@ import java.io.OutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-class MainActivity : FlutterActivity() {
+// FlutterFragmentActivity instead of FlutterActivity: the privacy
+// lock's local_auth (BiometricPrompt) requires a FragmentActivity —
+// FlutterActivity makes the biometric plugin throw on every call.
+class MainActivity : FlutterFragmentActivity() {
 
     companion object {
         private const val CHANNEL = "zlibx/media_store"
@@ -121,6 +124,30 @@ class MainActivity : FlutterActivity() {
                     "openContent" -> {
                         val uri = call.argument<String>("uri")?.let(Uri::parse)
                         result.success(uri != null && openContent(uri))
+                    }
+                    "setSecureFlag" -> {
+                        // Privacy lock companion: FLAG_SECURE blurs this
+                        // app in the recents screen and blocks screenshots.
+                        // Main thread — a window flag change must run there.
+                        val enabled = call.argument<Boolean>("enabled") ?: false
+                        runOnUiThread {
+                            try {
+                                if (enabled) {
+                                    window.setFlags(
+                                        android.view.WindowManager.LayoutParams.FLAG_SECURE,
+                                        android.view.WindowManager.LayoutParams.FLAG_SECURE,
+                                    )
+                                } else {
+                                    window.clearFlags(
+                                        android.view.WindowManager.LayoutParams.FLAG_SECURE,
+                                    )
+                                }
+                                result.success(true)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "setSecureFlag failed", e)
+                                result.success(false)
+                            }
+                        }
                     }
                     "deleteContent" -> {
                         val uri = call.argument<String>("uri")?.let(Uri::parse)

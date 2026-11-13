@@ -132,6 +132,11 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
                       setState(() => _descriptionRevealed = !_descriptionRevealed)
                   : null,
             ),
+            // 简介折叠模式（用户批 2026-11-14）：相似书籍 / 加入书单 /
+            // 评论三行提到标题正下方——像参考截图那样，首屏一屏完整
+            // 呈现封面 → 书名/作者 → 三个入口；简介与出版信息顺移到
+            // 下方（点书名展开）。开关关闭时保持原位置（页面底部）。
+            if (collapseDescription) ..._actionTiles(book, l10n, cs),
             if (tags.isNotEmpty) ...[
               const SizedBox(height: 16),
               // One row, never wrapped below: a category name can be long,
@@ -175,83 +180,83 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
                     : null,
               ),
             ],
-            if (book.hash?.isNotEmpty ?? false) ...[
-              const SizedBox(height: 24),
-              Divider(
-                height: 1,
-                color: cs.outlineVariant.withValues(alpha: 0.5),
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  Icons.auto_stories_outlined,
-                  color: cs.primary,
-                  size: 22,
-                ),
-                title: Text(
-                  l10n.similarBooks,
-                  style: const TextStyle(fontSize: 15),
-                ),
-                trailing: const Icon(Icons.chevron_right_rounded, size: 20),
-                onTap: () => AppRoutes.openSimilarBooks(
-                  context,
-                  SimilarBooksArgs(
-                    bookId: book.id,
-                    hashId: book.hash!,
-                    bookTitle: book.title,
-                  ),
-                ),
-              ),
-            ],
-            // Add this book to one of the user's own booklists.
-            const SizedBox(height: 8),
-            Divider(
-              height: 1,
-              color: cs.outlineVariant.withValues(alpha: 0.5),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(
-                Icons.collections_bookmark_outlined,
-                color: cs.primary,
-                size: 22,
-              ),
-              title: Text(
-                l10n.addToBooklist,
-                style: const TextStyle(fontSize: 15),
-              ),
-              trailing: const Icon(Icons.chevron_right_rounded, size: 20),
-              onTap: () => _addToBooklist(context, book),
-            ),
-            // Book comments (Z-Library site comments, view-only).
-            const SizedBox(height: 8),
-            Divider(
-              height: 1,
-              color: cs.outlineVariant.withValues(alpha: 0.5),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(
-                Icons.comment_outlined,
-                color: cs.primary,
-                size: 22,
-              ),
-              title: Text(
-                l10n.comments,
-                style: const TextStyle(fontSize: 15),
-              ),
-              trailing: const Icon(Icons.chevron_right_rounded, size: 20),
-              onTap: () => AppRoutes.openBookComments(
-                context,
-                BookCommentsArgs(
-                  bookId: book.id,
-                  bookTitle: book.title,
-                ),
-              ),
-            ),
+            if (!collapseDescription) ..._actionTiles(book, l10n, cs),
           ],
         ),
       ),
+    );
+  }
+
+  /// 相似书籍 / 加入书单 / 评论三行入口（每行 Divider 分隔）。简介
+  /// 折叠模式下渲染在标题正下方，否则保持在页面底部（原位置）。
+  List<Widget> _actionTiles(
+    Book book,
+    AppLocalizations l10n,
+    ColorScheme cs,
+  ) {
+    return [
+      if (book.hash?.isNotEmpty ?? false)
+        _actionTile(
+          icon: Icons.auto_stories_outlined,
+          label: l10n.similarBooks,
+          cs: cs,
+          first: true,
+          onTap: () => AppRoutes.openSimilarBooks(
+            context,
+            SimilarBooksArgs(
+              bookId: book.id,
+              hashId: book.hash!,
+              bookTitle: book.title,
+            ),
+          ),
+        ),
+      _actionTile(
+        icon: Icons.collections_bookmark_outlined,
+        label: l10n.addToBooklist,
+        cs: cs,
+        first: book.hash?.isNotEmpty != true,
+        // Add this book to one of the user's own booklists.
+        onTap: () => _addToBooklist(context, book),
+      ),
+      // Book comments (Z-Library site comments, view-only).
+      _actionTile(
+        icon: Icons.comment_outlined,
+        label: l10n.comments,
+        cs: cs,
+        onTap: () => AppRoutes.openBookComments(
+          context,
+          BookCommentsArgs(
+            bookId: book.id,
+            bookTitle: book.title,
+          ),
+        ),
+      ),
+    ];
+  }
+
+  Widget _actionTile({
+    required IconData icon,
+    required String label,
+    required ColorScheme cs,
+    required VoidCallback onTap,
+    bool first = false,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(height: first ? 20 : 8),
+        Divider(
+          height: 1,
+          color: cs.outlineVariant.withValues(alpha: 0.5),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(icon, color: cs.primary, size: 22),
+          title: Text(label, style: const TextStyle(fontSize: 15)),
+          trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+          onTap: onTap,
+        ),
+      ],
     );
   }
 }

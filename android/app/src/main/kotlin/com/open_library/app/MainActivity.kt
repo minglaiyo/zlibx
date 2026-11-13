@@ -471,7 +471,6 @@ class MainActivity : FlutterActivity() {
     private fun copyContentToCache(uri: Uri): String? {
         cleanupStaleShareFiles()
         return try {
-            val input = contentResolver.openInputStream(uri) ?: return null
             val displayName = contentResolver.query(
                 uri,
                 arrayOf(MediaStore.MediaColumns.DISPLAY_NAME),
@@ -492,11 +491,15 @@ class MainActivity : FlutterActivity() {
                 cacheDir,
                 "share_${System.currentTimeMillis()}_$safeName",
             )
-            input.use { inputStream ->
+            // The stream is opened last, wrapped in `use` for its whole
+            // lifetime: a failing name lookup above can no longer leak
+            // it (the old order opened the stream first), and an
+            // exception inside the copy closes it too.
+            contentResolver.openInputStream(uri)?.use { inputStream ->
                 file.outputStream().use { output ->
                     inputStream.copyTo(output)
                 }
-            }
+            } ?: return null
             file.absolutePath
         } catch (e: Exception) {
             Log.w(TAG, "MediaStore copy to cache failed", e)

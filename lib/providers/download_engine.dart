@@ -13,13 +13,13 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
   ///
   /// 默认走 ZLibraryApi（用户自己账号查 URL + 下载）。
   /// [presetUrl] 传入时跳过 URL 获取，直接用此 URL 下文件 —
-  /// 用于 LAN 传书（电脑直连下载）。
-  /// [presetHeaders] 随 presetUrl 请求发送的 header（LAN token 走
-  /// `X-Olib-Token`，绝不拼进 URL）。
+  /// 用于外部源（Anna's Archive / LibGen）解析出的直链。
+  /// 不支持自定义请求头（S5）：dio 自动跟随重定向时会把自定义头
+  /// 带到任意目标主机，这个口子不开。以前留过 LAN 传书的
+  /// `presetHeaders`（`X-Olib-Token`），功能无调用方，已删除。
   Future<void> startDownload(
     Book book, {
     String? presetUrl,
-    Map<String, String>? presetHeaders,
   }) async {
     final id = book.id.toString();
 
@@ -103,18 +103,17 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         );
       }
       if (!alreadyExists && presetUrl != null) {
-        // presetUrl 路径（LAN 传书 / 外部源解析链接）：直接 stream 到本地
-        // 用独立 Dio，不带 z站 cookie / auth；LAN token 走 header。
-        // followRedirects 必须为 true：LibGen get.php 307 跳到 CDN 文件，
-        // 不跟随会把重定向响应本身存成文件。LAN 不发重定向，不受影响；
-        // 外部下载不带 presetHeaders，不存在 token 外泄问题。
+        // presetUrl 路径（外部源解析链接）：直接 stream 到本地，
+        // 用独立 Dio，不带 z站 cookie / auth，也不带任何自定义头 —
+        // followRedirects 必须为 true：LibGen get.php 307 跳到 CDN
+        // 文件，不跟随会把重定向响应本身存成文件；跟随时不带上层
+        // 自定义头，所以跨主机跳转没有凭据外泄面（S5）。
         // receiveTimeout: null = 不限接收超时：大文件慢速网络不能被打断。
         final dio = createDio(receiveTimeout: null);
         await _downloadResumable(
           dio,
           presetUrl,
           temporaryPath,
-          headers: presetHeaders,
           onProgress: (received, total) {
             // `total` can be 0 (empty body / CDN without length): only a
             // positive total yields a valid fraction — 0/0 would push a
@@ -288,13 +287,12 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
 
   /// Download [url] to [savePath] through [ResumableDownloader]: resume
   /// with `Range` + `If-Range`, reject HTML answers, flag truncated
-  /// streams. Redirects are followed by Dio (no auth headers travel on
-  /// this path).
+  /// streams. Redirects are followed by Dio; no custom headers travel
+  /// on this path, so a cross-host redirect carries nothing sensitive.
   Future<void> _downloadResumable(
     Dio dio,
     String url,
     String savePath, {
-    Map<String, String>? headers,
     void Function(int received, int total)? onProgress,
     CancelToken? cancelToken,
     PendingDownloadWriter? pendingWriter,
@@ -304,7 +302,6 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         dio,
         url,
         savePath,
-        headers: headers,
         onProgress: onProgress,
         cancelToken: cancelToken,
         pendingWriter: pendingWriter,

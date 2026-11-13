@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'booklists_provider.dart';
 import 'books_provider.dart';
 
 /// Invalidate every provider that caches account-scoped data.
@@ -18,6 +19,13 @@ void invalidateAccountScopedProviders(Ref ref) {
   ref.invalidate(recentBooksProvider);
   ref.invalidate(downloadedBooksProvider);
   ref.invalidate(savedBooksProvider);
+  // The booklists screen's own-lists tab is account-scoped too (the
+  // same URL serves another account's lists after a switch, and the
+  // controller does not watch authProvider): without this, switching
+  // accounts leaves the previous account's lists on screen until a
+  // manual refresh. Invalidating the autoDispose controller reloads
+  // it under the new account (its build() kicks off loadFirst).
+  ref.invalidate(booklistsControllerProvider);
   // Family providers must be invalidated as a whole (no member arg):
   // each cached (bookId -> bool / cover) entry belongs to the old
   // account's storage.

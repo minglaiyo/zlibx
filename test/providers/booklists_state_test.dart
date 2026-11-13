@@ -26,6 +26,7 @@ import 'package:hive/hive.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/providers/auth_provider.dart';
 import 'package:zlibx/providers/booklists_provider.dart';
+import 'package:zlibx/providers/cache_invalidation.dart';
 import 'package:zlibx/providers/zlibrary_provider.dart';
 import 'package:zlibx/services/booklist_html_cache.dart';
 
@@ -161,6 +162,11 @@ const _cachedMineHtml = '''
 ''';
 
 const _cachedMineUrl = 'https://example.com/booklists/my?page=1';
+
+/// Captures a [Ref] so a test can call the real account-switch path
+/// ([invalidateAccountScopedProviders]) instead of only invalidating
+/// one provider by hand.
+final _refCaptureProvider = Provider<Ref>((ref) => ref);
 
 ProviderContainer _container(_FakeZLibraryApi api, {User? user}) {
   final container = ProviderContainer(
@@ -425,27 +431,36 @@ void main() {
   });
 
   test(
-      '(f) account switch without a reload still shows the previous account lists '
-      '(documents current behaviour)', () async {
+      '(f) account switch reloads the controller under the new account',
+      () async {
     final api = _FakeZLibraryApi();
-    final container = await _loadedContainer(api);
-    expect(_ids(container), List.generate(10, (i) => '${100 + i}'));
+    // Seed A's cached mine page so A's lists are distinguishable.
+    BooklistHtmlCache.store(
+      _cachedMineUrl,
+      _cachedMineHtml,
+      accountId: _userA.id,
+    );
+    final container = _container(api);
+    // Load as A (paints A's cached page).
+    await _waitForList(
+      container,
+      (s) => s.phase == BooklistsPhase.ready && s.lists.length == 2,
+    );
+    expect(_ids(container), ['4088695', '4090055']);
 
-    // Switch the account. The controller does not watch authProvider
-    // and is not in invalidateAccountScopedProviders, so nothing
-    // reloads it.
+    // Switch the account the way the real AuthNotifier does: the
+    // switch invalidates every account-scoped provider, including
+    // this controller, so it reloads under B instead of keeping A's
+    // lists on screen.
     final authNotifier =
         container.read(authProvider.notifier) as _FakeAuthNotifier;
     authNotifier.setUser(_userB);
-    await _pump();
-
-    // CURRENT BEHAVIOUR (gap, see the report): the previous account's
-    // lists stay on screen until something triggers a reload. The
-    // cache itself is partitioned (see the fresh-load test above), so
-    // a reload under B would not paint A's cached page — but the
-    // visible state is stale until that reload happens.
-    final state = container.read(booklistsControllerProvider);
-    expect(state.phase, BooklistsPhase.ready);
+    invalidateAccountScopedProviders(container.read(_refCaptureProvider));
+    await _waitForList(
+      container,
+      (s) => s.phase == BooklistsPhase.ready && s.lists.length == 10,
+    );
+    // B's lists come from the network (the fake), NOT from A's cache.
     expect(_ids(container), List.generate(10, (i) => '${100 + i}'));
   });
 }

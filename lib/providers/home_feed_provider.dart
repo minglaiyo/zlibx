@@ -44,6 +44,11 @@ final recommendedBooksProvider = FutureProvider<List<Book>>((ref) async {
 /// 打开 / 下拉刷新都重新随机（用户 2026-11-13 定：每次刷新都换）。
 /// 分类浏览是 HTML 页（getCategoryBooks），一页约 50 本；页数不够时
 /// 顺取下一页补满，最多取 3 页。分类为空时换一个分类重试，最多 3 个。
+///
+/// 提速（2026-11-13）：每批展示后在后台预取下一批，下次刷新直接
+/// 取，免掉 2~3 次顺序取页（被墙时每次都可能走 WebView solver）。
+/// 预取只存一批、失败不报错；账号切换时失效（取用时核对账号 id）。
+/// 另外记下各分类的总页数（本会话内），已知时跳过第 1 页直取随机页。
 final randomBooksProvider = FutureProvider<List<DisplayBook>>((ref) async {
   final api = ref.watch(zlibraryApiProvider);
   // Read, do NOT watch, the auth state: this provider is invalidated
@@ -55,6 +60,21 @@ final randomBooksProvider = FutureProvider<List<DisplayBook>>((ref) async {
   // authProvider. Every other authProvider access in the providers
   // layer uses ref.read for the same reason.
   final user = ref.read(authProvider).user;
+  final userId = user?.id;
+  final userKey = user?.remixUserkey;
+  // Serve a prefetched batch instantly when one is ready for this
+  // account, and roll a fresh prefetch for the next refresh.
+  final prefetched = _prefetchedBatch;
+  if (prefetched != null &&
+      prefetched.isNotEmpty &&
+      _prefetchedBatchUserId == userId) {
+    _prefetchedBatch = null;
+    _prefetchedBatchUserId = null;
+    unawaited(_prefetchNextBatch(api, userId: userId, userKey: userKey));
+    return prefetched;
+  }
+  _prefetchedBatch = null;
+  _prefetchedBatchUserId = null;
   final random = Random();
   const target = 50;
   for (var attempt = 0; attempt < 3; attempt++) {
@@ -62,20 +82,67 @@ final randomBooksProvider = FutureProvider<List<DisplayBook>>((ref) async {
       api,
       random,
       target,
-      userId: user?.id,
-      userKey: user?.remixUserkey,
+      userId: userId,
+      userKey: userKey,
     );
     if (books.isNotEmpty) {
-      return books.map((b) => b.toDisplay()).toList();
+      final result = books.map((b) => b.toDisplay()).toList();
+      unawaited(_prefetchNextBatch(api, userId: userId, userKey: userKey));
+      return result;
     }
   }
   return <DisplayBook>[];
 });
 
-/// 从一个随机分类里取 [target] 本书：先取第 1 页拿到总页数，再随机取
-/// 一页，不够时顺取下一页补满（最多 3 次请求）。去掉已下架的书，按 id
-/// 去重。分类为空时返回空列表，由调用方换分类重试；第 1 页取书失败时
-/// 抛错（首页显示错误 / 重试入口）。
+/// 后台预取的下一批随机推荐 + 它属于的账号。只存一批。
+List<DisplayBook>? _prefetchedBatch;
+String? _prefetchedBatchUserId;
+bool _prefetching = false;
+
+/// 在后台滚下一批随机推荐，存到 [_prefetchedBatch] 供下次刷新直接
+/// 取。Best-effort：失败（网络/墙）不报错，下次刷新走正常取页。
+/// 只用传进来的 api 与账号值，不碰 ref——预取活得比某次 provider
+/// 构建久，构建结束后 ref 不能再用。
+Future<void> _prefetchNextBatch(
+  ZLibraryApi api, {
+  String? userId,
+  String? userKey,
+}) async {
+  if (_prefetching) return;
+  _prefetching = true;
+  try {
+    final random = Random();
+    const target = 50;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      final books = await _randomCategoryBooks(
+        api,
+        random,
+        target,
+        userId: userId,
+        userKey: userKey,
+      );
+      if (books.isNotEmpty) {
+        _prefetchedBatch = books.map((b) => b.toDisplay()).toList();
+        _prefetchedBatchUserId = userId;
+        return;
+      }
+    }
+  } catch (_) {
+    // Best-effort only: a failed prefetch just means the next refresh
+    // fetches live. Never surface prefetch errors.
+  } finally {
+    _prefetching = false;
+  }
+}
+
+/// 各分类的总页数（本会话内）。分类总页数变得慢，记下来后下次抽
+/// 到同一分类可跳过第 1 页直取随机页，省一次顺序取页。
+final Map<int, int> _categoryTotalPages = {};
+
+/// 从一个随机分类里取 [target] 本书：先取第 1 页拿到总页数（本会话
+/// 已知的跳过），再随机取一页，不够时顺取下一页补满（最多 3 次
+/// 请求）。去掉已下架的书，按 id 去重。分类为空时返回空列表，由
+/// 调用方换分类重试；第 1 页取书失败时抛错（首页显示错误 / 重试入口）。
 ///
 /// 每页都是 Dio 先取、墙一拦就走无头 WebView solver——跟搜索页分类
 /// 浏览（SearchNotifier._fetchCategory）同一个兜底。没有它时，被墙
@@ -111,13 +178,6 @@ Future<List<Book>> _randomCategoryBooks(
     return response;
   }
 
-  final first = await fetchPage(1);
-  if (!first.success || first.data == null) {
-    throw StateError(first.error ?? 'Failed to load random books');
-  }
-  final totalPages = first.data!.totalPages ?? 1;
-  final total = totalPages < 1 ? 1 : totalPages;
-  final page = 1 + random.nextInt(total);
   final collected = <Book>[];
   final seen = <int>{};
   void addPage(CategoryPage pg) {
@@ -126,17 +186,55 @@ Future<List<Book>> _randomCategoryBooks(
       if (seen.add(cb.book.id)) collected.add(cb.book);
     }
   }
-  var fetches = 1;
-  if (page == 1) {
-    addPage(first.data!);
+
+  var total = _categoryTotalPages[categoryId];
+  CategoryPage? firstPage;
+  var fetches = 0;
+  if (total == null) {
+    final first = await fetchPage(1);
+    if (!first.success || first.data == null) {
+      throw StateError(first.error ?? 'Failed to load random books');
+    }
+    firstPage = first.data;
+    total = firstPage.totalPages ?? 1;
+    if (total < 1) total = 1;
+    _categoryTotalPages[categoryId] = total;
+    fetches = 1;
+  }
+  final page = 1 + random.nextInt(total);
+  if (page == 1 && firstPage != null) {
+    addPage(firstPage);
   } else {
     final res = await fetchPage(page);
     if (res.success && res.data != null) {
-      addPage(res.data!);
+      final pg = res.data!;
+      // 每页都带同样的 pagerOptions 总数，顺手刷新缓存与本地 total。
+      final t = pg.totalPages;
+      if (t != null && t >= 1) {
+        _categoryTotalPages[categoryId] = t;
+        total = t;
+      }
+      addPage(pg);
       fetches++;
-    } else {
+      if (collected.isEmpty && firstPage == null) {
+        // 随机页为空且无第 1 页可兜底（totalPages 来自过期的缓存）：
+        // 重读第 1 页拿新鲜的书与总数。
+        final fb = await fetchPage(1);
+        if (fb.success && fb.data != null) {
+          addPage(fb.data!);
+          fetches++;
+        }
+      }
+    } else if (firstPage != null) {
       // 随机页失败：用已取到的第 1 页兜底。
-      addPage(first.data!);
+      addPage(firstPage);
+    } else {
+      // 随机页失败且无第 1 页可兜底：取第 1 页兜底。
+      final fb = await fetchPage(1);
+      if (fb.success && fb.data != null) {
+        addPage(fb.data!);
+        fetches++;
+      }
     }
   }
   var next = page + 1;
@@ -147,8 +245,8 @@ Future<List<Book>> _randomCategoryBooks(
     fetches++;
     next++;
   }
-  if (collected.length < target && page != 1) {
-    addPage(first.data!);
+  if (collected.length < target && page != 1 && firstPage != null) {
+    addPage(firstPage);
   }
   return collected.take(target).toList();
 }

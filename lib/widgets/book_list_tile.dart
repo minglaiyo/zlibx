@@ -39,7 +39,10 @@ class BookListTile extends StatelessWidget {
                   height: 68,
                   child: book.cover != null && book.cover!.isNotEmpty
                       ? CachedNetworkImage(
-                          imageUrl: book.cover!,
+                          imageUrl: coverUrlAtWidth(
+                            book.cover!,
+                            coverCacheWidth(48, context),
+                          ),
                           fit: BoxFit.cover,
                           memCacheWidth: coverCacheWidth(48, context),
                           memCacheHeight: coverCacheHeight(68, context),

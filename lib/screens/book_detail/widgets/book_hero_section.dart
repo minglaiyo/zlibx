@@ -9,6 +9,7 @@ import '../../../providers/books_provider.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../theme/app_metrics.dart';
 import '../../../utils/app_snack.dart';
+import '../../../utils/cover_cache.dart';
 import '../../../widgets/loading_widget.dart';
 import '../../../widgets/state_transition_switch.dart';
 import 'book_3d_cover.dart';
@@ -227,14 +228,15 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
 
     final cover = widget.book.cover;
     if (cover == null || cover.isEmpty) return content();
+    // 要图与解码同宽：详情大图解码 400~900，covers100 原图放大会糊。
+    final cacheWidth = ((height - kToolbarHeight) *
+            0.7 *
+            MediaQuery.devicePixelRatioOf(context))
+        .ceil()
+        .clamp(400, 900);
     return CachedNetworkImage(
-      imageUrl: cover,
-      memCacheWidth:
-          ((height - kToolbarHeight) *
-                  0.7 *
-                  MediaQuery.devicePixelRatioOf(context))
-              .ceil()
-              .clamp(400, 900),
+      imageUrl: coverUrlAtWidth(cover, cacheWidth),
+      memCacheWidth: cacheWidth,
       imageBuilder: (context, image) => content(image: image),
       placeholder: (context, url) => content(loading: true),
       errorWidget: (context, url, error) => content(),

@@ -168,6 +168,9 @@ class _CoverTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // 要图与解码同宽：列表给的是 covers100 缩略图，按格宽直接解码
+    // 会糊；按解码宽度要高清版（coverUrlAtWidth）。
+    final cacheWidth = coverCacheWidth(cellWidth, context);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(6),
@@ -176,9 +179,9 @@ class _CoverTile extends StatelessWidget {
         child: AspectRatio(
           aspectRatio: 2 / 3,
           child: CachedNetworkImage(
-            imageUrl: book.cover ?? '',
+            imageUrl: coverUrlAtWidth(book.cover ?? '', cacheWidth),
             fit: BoxFit.cover,
-            memCacheWidth: coverCacheWidth(cellWidth, context),
+            memCacheWidth: cacheWidth,
             placeholder: (context, url) =>
                 ColoredBox(color: cs.surfaceContainerHighest),
             errorWidget: (context, url, error) => ColoredBox(

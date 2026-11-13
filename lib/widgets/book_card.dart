@@ -196,7 +196,7 @@ class _BookCardState extends State<BookCard> {
 
     // 首页只加载一次封面，保留原有加载和错误状态。解码尺寸按
     // 实际渲染尺寸算：宽是卡片宽，高由 BookCoverBackdrop 的
-    // 0.7 宽高比（见 heightFor）定。
+    // 0.7 宽高比（见 heightFor）定。要图与解码同宽（高清版）。
     return LayoutBuilder(
       builder: (context, constraints) {
         final cacheWidth = coverCacheWidth(constraints.maxWidth, context);
@@ -205,7 +205,7 @@ class _BookCardState extends State<BookCard> {
           context,
         );
         return CachedNetworkImage(
-          imageUrl: widget.book.cover!,
+          imageUrl: coverUrlAtWidth(widget.book.cover!, cacheWidth),
           memCacheWidth: cacheWidth,
           memCacheHeight: cacheHeight,
           fadeInDuration: const Duration(milliseconds: 300),
@@ -242,7 +242,7 @@ class _BookCardState extends State<BookCard> {
           children: [
             if (_hasCover)
               CachedNetworkImage(
-                imageUrl: widget.book.cover!,
+                imageUrl: coverUrlAtWidth(widget.book.cover!, cacheWidth),
                 fit: BoxFit.cover,
                 memCacheWidth: cacheWidth,
                 fadeInDuration: const Duration(milliseconds: 300),

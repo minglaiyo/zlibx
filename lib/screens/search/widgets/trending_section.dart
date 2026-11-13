@@ -72,7 +72,10 @@ class SearchTrendingSection extends StatelessWidget {
                             ClipRRect(
                               borderRadius: BorderRadius.circular(12),
                               child: CachedNetworkImage(
-                                imageUrl: book.thumbnail ?? '',
+                                imageUrl: coverUrlAtWidth(
+                                  book.thumbnail ?? '',
+                                  coverCacheWidth(105, context),
+                                ),
                                 height: 145,
                                 width: 105,
                                 fit: BoxFit.cover,

@@ -161,8 +161,9 @@ class SearchNotifier extends Notifier<SearchState> {
   /// The slug for [categoryId]'s search URL, from the browse page's
   /// search form (cached). Resolves by browsing (fast Dio first,
   /// the WebView solver on the wall) when nothing is cached yet;
-  /// null when the browse fails, in which case the caller falls
-  /// back to the bare search URL. Never throws.
+  /// null when the browse fails — the caller treats that as an
+  /// error, never a bare-URL fallback (the bare search URL answers
+  /// an empty page). Never throws.
   Future<String?> _resolveCategorySlug(int categoryId) async {
     final cached = _categorySearchSlugs[categoryId];
     if (cached != null && cached.isNotEmpty) return cached;
@@ -228,9 +229,16 @@ class SearchNotifier extends Notifier<SearchState> {
     // (`/category/{id}/{slug}/s/`); the bare `/category/{id}/s/`
     // answers an empty page (device-proven 2026-11-12: the solver
     // loaded the bare URL and parsed 0 cards). Resolve the slug
-    // from the browse page's search form (cached per category);
-    // null falls back to the bare URL.
+    // from the browse page's search form (cached per category).
+    // A failed resolve is a retryable error, not an empty result:
+    // never fall back to the bare URL — it would answer an empty
+    // page and the search would look like it found nothing.
     final slug = inSearch ? await _resolveCategorySlug(categoryId) : null;
+    if (inSearch && slug == null) {
+      return ApiResponse.fail(
+        'Failed to load the category search address. Please retry.',
+      );
+    }
     final url = inSearch
         ? repo.categorySearchUrl(
             categoryId: categoryId,

@@ -856,10 +856,17 @@ final recommendedBooksProvider = FutureProvider<List<Book>>((ref) async {
 /// 顺取下一页补满，最多取 3 页。分类为空时换一个分类重试，最多 3 个。
 final randomBooksProvider = FutureProvider<List<DisplayBook>>((ref) async {
   final api = ref.watch(zlibraryApiProvider);
+  final user = ref.watch(authProvider).user;
   final random = Random();
   const target = 50;
   for (var attempt = 0; attempt < 3; attempt++) {
-    final books = await _randomCategoryBooks(api, random, target);
+    final books = await _randomCategoryBooks(
+      api,
+      random,
+      target,
+      userId: user?.id,
+      userKey: user?.remixUserkey,
+    );
     if (books.isNotEmpty) {
       return books.map((b) => b.toDisplay()).toList();
     }
@@ -871,14 +878,42 @@ final randomBooksProvider = FutureProvider<List<DisplayBook>>((ref) async {
 /// 一页，不够时顺取下一页补满（最多 3 次请求）。去掉已下架的书，按 id
 /// 去重。分类为空时返回空列表，由调用方换分类重试；第 1 页取书失败时
 /// 抛错（首页显示错误 / 重试入口）。
+///
+/// 每页都是 Dio 先取、墙一拦就走无头 WebView solver——跟搜索页分类
+/// 浏览（SearchNotifier._fetchCategory）同一个兜底。没有它时，被墙
+/// 的线路上首页直接报错，而搜索页的分类能出（2026-11-13，开关开着
+/// 报错、关着没事，用户设备实测）。
 Future<List<Book>> _randomCategoryBooks(
   ZLibraryApi api,
   Random random,
-  int target,
-) async {
+  int target, {
+  String? userId,
+  String? userKey,
+}) async {
+  final repo = CategoryRepository(api);
   final categoryIds = kBookCategoryParents.keys.toList();
   final categoryId = categoryIds[random.nextInt(categoryIds.length)];
-  final first = await api.getCategoryBooks(categoryId, page: 1);
+
+  Future<ApiResponse<CategoryPage>> fetchPage(int page) async {
+    var response = await repo.fetchBooks(categoryId: categoryId, page: page);
+    if (!response.success && repo.isChallengeError(response.error)) {
+      final url = repo.categoryPageUrl(categoryId: categoryId, page: page);
+      final html = await repo.fetchViaSolver(
+        url,
+        userId: userId,
+        userKey: userKey,
+      );
+      if (html != null) {
+        final parsed = repo.parseBooks(html, baseUrl: Uri.parse(url).origin);
+        if (parsed != null) {
+          response = ApiResponse.ok(parsed);
+        }
+      }
+    }
+    return response;
+  }
+
+  final first = await fetchPage(1);
   if (!first.success || first.data == null) {
     throw StateError(first.error ?? 'Failed to load random books');
   }
@@ -897,7 +932,7 @@ Future<List<Book>> _randomCategoryBooks(
   if (page == 1) {
     addPage(first.data!);
   } else {
-    final res = await api.getCategoryBooks(categoryId, page: page);
+    final res = await fetchPage(page);
     if (res.success && res.data != null) {
       addPage(res.data!);
       fetches++;
@@ -908,7 +943,7 @@ Future<List<Book>> _randomCategoryBooks(
   }
   var next = page + 1;
   while (collected.length < target && next <= total && fetches < 3) {
-    final res = await api.getCategoryBooks(categoryId, page: next);
+    final res = await fetchPage(next);
     if (!res.success || res.data == null) break;
     addPage(res.data!);
     fetches++;

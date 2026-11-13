@@ -7,6 +7,7 @@ import '../../providers/article_search_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/books_provider.dart';
 import '../../providers/fulltext_search_provider.dart';
+import '../../providers/settings_provider.dart';
 import 'widgets/active_filter_chips.dart';
 import 'widgets/empty_query_view.dart';
 import 'widgets/search_mode_selector.dart';
@@ -262,6 +263,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   Future<void> _saveRecentSearches(List<String> searches) async {
     setState(() => _recentSearches = searches);
+    // 无痕模式（隐私锁配套）：内存态保留（本次会话 UI 照常），不落盘。
+    if (ref.read(incognitoModeProvider)) return;
     try {
       await HiveService.settingsBox.put(_recentSearchesKey, searches);
     } catch (error) {

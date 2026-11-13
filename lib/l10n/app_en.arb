@@ -184,6 +184,8 @@
   "unlock": "Unlock",
   "unlockFailed": "Unlock failed, please retry",
   "appLockAuthReason": "Unlock zlibx",
+  "incognitoMode": "Incognito mode",
+  "incognitoModeDesc": "Do not record browsing history or recent searches while enabled",
   "confirmRemoveMsg": "Remove {count} book(s) from favorites?",
   "@confirmRemoveMsg": {
     "placeholders": {

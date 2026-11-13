@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
+import '../services/hive_service.dart';
+import '../utils/diagnostics.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/display_book.dart';
 import '../providers/auth_provider.dart';
@@ -66,7 +68,15 @@ class AppRoutes {
     // Archive / LibGen 的 DisplayBook 无法无损重建路由参数，不入历史。
     // 记录失败只进诊断日志，绝不影响打开详情页。
     final zBook = args.book ?? args.displayBook?.asZLibBook;
-    if (zBook != null) ViewHistoryStore.add(zBook);
+    // 无痕模式（隐私锁配套）：开启后不写浏览历史。这里没有 ref，直接
+    // 读 Hive；读失败（测试环境无 box）按未开启处理。
+    var incognito = false;
+    try {
+      incognito = HiveService.settingsBox.get('incognitoMode') == true;
+    } catch (error) {
+      logIgnored('app_routes', error);
+    }
+    if (zBook != null && !incognito) ViewHistoryStore.add(zBook);
     return Navigator.of(context).pushNamed<T>(bookDetail, arguments: args);
   }
 

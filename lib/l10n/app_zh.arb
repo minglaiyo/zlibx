@@ -184,6 +184,8 @@
   "unlock": "解锁",
   "unlockFailed": "解锁失败，请重试",
   "appLockAuthReason": "解锁 zlibx",
+  "incognitoMode": "无痕模式",
+  "incognitoModeDesc": "开启后不记录浏览历史和搜索记录",
   "confirmRemoveMsg": "确定从收藏中移除 {count} 本书？",
   "@confirmRemoveMsg": {
     "placeholders": {

@@ -316,6 +316,30 @@ class SecureFlagNotifier extends Notifier<bool> {
 final secureFlagProvider =
     NotifierProvider<SecureFlagNotifier, bool>(SecureFlagNotifier.new);
 
+/// 无痕模式：开启后不记录浏览历史（app_routes 的详情入口）和搜索
+/// 记录（search_screen 的最近搜索）。历史/记录页照常显示旧内容，
+/// 只是不再新增。
+class IncognitoModeNotifier extends Notifier<bool> {
+  @override
+  bool build() => _load();
+
+  bool _load() {
+    final v = HiveService.settingsBox.get('incognitoMode');
+    if (v is bool) return v;
+    return false;
+  }
+
+  Future<void> setEnabled(bool value) async {
+    state = value;
+    await HiveService.settingsBox.put('incognitoMode', value);
+  }
+}
+
+final incognitoModeProvider =
+    NotifierProvider<IncognitoModeNotifier, bool>(
+      IncognitoModeNotifier.new,
+    );
+
 /// 详情页快捷入口上移开关：开启后相似书籍 / 加入书单 / 评论三行
 /// 提到标题正下方（首屏直达）；关闭时保持页面底部原位置。简介与
 /// 出版信息始终正常显示（用户批 2026-11-14 两轮调整后的最终语义）。

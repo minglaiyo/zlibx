@@ -207,36 +207,126 @@ class StorageService {
     await HiveService.settingsBox.put(_keyDownloadPath, path);
   }
 
+  // ===== Serialized whole-blob JSON writes =====
+  //
+  // The download history, downloaded-book metadata and book-detail
+  // extras are each one JSON blob in the settings box. A Hive `put`
+  // is async, so two concurrent read-modify-write calls for the same
+  // key would both read the same stale blob — the second write then
+  // silently drops the first one's entry. Chaining each write onto
+  // the previous write for the same key makes the read-modify-write
+  // atomic per key: a chained write only reads after the previous
+  // write's `put` completed. Different keys run independently, and
+  // pure reads are NOT serialized (they may see a slightly stale
+  // snapshot — acceptable for these caches). The map is static on
+  // purpose: the Hive box is global, and StorageService is also
+  // constructed directly (main.dart, tests) outside the Riverpod
+  // singleton, so an instance field would not serialize writes
+  // across instances. It holds at most one entry per blob key (a
+  // fixed small set), so no cleanup is needed.
+  static final Map<String, Future<void>> _writeChains = {};
+
+  /// Run [work] after the previous write for [key] finished, and
+  /// return [work]'s own future to the caller. The stored chain
+  /// future never completes with an error — a failed write is
+  /// swallowed in the chain — so one failure does not block later
+  /// writers for the same key; the caller still sees its own
+  /// result/error through the returned future.
+  static Future<T> _runSerialized<T>(String key, Future<T> Function() work) {
+    final previous = _writeChains[key];
+    final run = (previous ?? Future<void>.value()).then((_) => work());
+    _writeChains[key] = run.then<void>((_) {}).catchError((_, __) {});
+    return run;
+  }
+
   // ===== Download History Methods =====
-  
+
+  /// Read the local download-history blob, tolerating a corrupt
+  /// entry instead of crashing the caller. Returns {} when the key is
+  /// absent (the defaultValue '{}' below), when the stored value is
+  /// not a String, when it is not valid JSON, or when the top-level
+  /// value is not a Map. A corrupt value is moved to an isolation
+  /// backup key (see [_quarantineDownloadHistory]) and the
+  /// corruption is logged without the raw value. Entries whose value
+  /// is not a Map are dropped, so a malformed entry cannot break a
+  /// later field read.
+  Future<Map<String, dynamic>> _readDownloadHistorySafely() async {
+    final raw = HiveService.settingsBox.get(
+      _keyDownloadHistory,
+      defaultValue: '{}',
+    );
+    if (raw is! String) {
+      await _quarantineDownloadHistory(raw);
+      return {};
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) {
+        await _quarantineDownloadHistory(raw);
+        return {};
+      }
+      final history = <String, dynamic>{};
+      for (final entry in decoded.entries) {
+        if (entry.value is Map) {
+          history['${entry.key}'] =
+              Map<String, dynamic>.from(entry.value as Map);
+        }
+      }
+      return history;
+    } catch (_) {
+      await _quarantineDownloadHistory(raw);
+      return {};
+    }
+  }
+
+  /// Move a corrupt download-history value to an isolation backup
+  /// key and log the corruption (without the raw value) so the bad
+  /// entry is preserved for inspection instead of being silently
+  /// overwritten. Best-effort: a failed backup must not break the
+  /// read that found the corruption.
+  Future<void> _quarantineDownloadHistory(Object? raw) async {
+    AppLog.report(
+      '[storage] ignoring corrupt download history entry',
+      tag: 'storage_service',
+    );
+    try {
+      await HiveService.settingsBox.put(
+        '${_keyDownloadHistory}_corrupt',
+        raw,
+      );
+    } catch (_) {
+      // Best-effort backup; the read already returns {}.
+    }
+  }
+
   /// Add book to download history
   /// Stores: {bookId: {title, author, filePath, cover, extension, downloadTime}}
   Future<void> addToDownloadHistory(
-    String bookId, 
-    String title, 
-    String? author, 
-    String filePath, 
+    String bookId,
+    String title,
+    String? author,
+    String filePath,
     {String? cover, String? extension}
   ) async {
-    final historyJson = HiveService.settingsBox.get(_keyDownloadHistory, defaultValue: '{}') as String;
-    final history = Map<String, dynamic>.from(jsonDecode(historyJson));
-    
-    history[bookId] = {
-      'title': title,
-      'author': author,
-      'filePath': filePath,
-      'cover': cover,
-      'extension': extension,
-      'downloadTime': DateTime.now().toIso8601String(),
-    };
-    
-    await HiveService.settingsBox.put(_keyDownloadHistory, jsonEncode(history));
+    await _runSerialized(_keyDownloadHistory, () async {
+      final history = await _readDownloadHistorySafely();
+
+      history[bookId] = {
+        'title': title,
+        'author': author,
+        'filePath': filePath,
+        'cover': cover,
+        'extension': extension,
+        'downloadTime': DateTime.now().toIso8601String(),
+      };
+
+      await HiveService.settingsBox.put(_keyDownloadHistory, jsonEncode(history));
+    });
   }
 
   /// Get all download history
   Future<Map<String, dynamic>> getDownloadHistory() async {
-    final historyJson = HiveService.settingsBox.get(_keyDownloadHistory, defaultValue: '{}') as String;
-    return Map<String, dynamic>.from(jsonDecode(historyJson));
+    return _readDownloadHistorySafely();
   }
 
   /// Get downloaded file path for a book
@@ -250,12 +340,13 @@ class StorageService {
 
   /// Remove book from download history
   Future<void> removeFromDownloadHistory(String bookId) async {
-    final historyJson = HiveService.settingsBox.get(_keyDownloadHistory, defaultValue: '{}') as String;
-    final history = Map<String, dynamic>.from(jsonDecode(historyJson));
-    
-    history.remove(bookId);
-    
-    await HiveService.settingsBox.put(_keyDownloadHistory, jsonEncode(history));
+    await _runSerialized(_keyDownloadHistory, () async {
+      final history = await _readDownloadHistorySafely();
+
+      history.remove(bookId);
+
+      await HiveService.settingsBox.put(_keyDownloadHistory, jsonEncode(history));
+    });
   }
 
   // ===== Server Download History Cache =====
@@ -406,26 +497,28 @@ class StorageService {
   /// failure is logged, never thrown out of a background load.
   Future<void> mergeDownloadedBookMetadata(Map<int, Book> additions) async {
     if (additions.isEmpty) return;
-    try {
-      final merged = <String, Map<String, dynamic>>{
-        for (final entry in getDownloadedBookMetadataSync().entries)
-          '${entry.key}': _overlayJsonOf(entry.value),
-        for (final entry in additions.entries)
-          '${entry.key}': _overlayJsonOf(entry.value),
-      };
-      while (merged.length > _downloadedBookMetadataCap) {
-        merged.remove(merged.keys.first);
+    await _runSerialized(_keyDownloadedBookMetadata, () async {
+      try {
+        final merged = <String, Map<String, dynamic>>{
+          for (final entry in getDownloadedBookMetadataSync().entries)
+            '${entry.key}': _overlayJsonOf(entry.value),
+          for (final entry in additions.entries)
+            '${entry.key}': _overlayJsonOf(entry.value),
+        };
+        while (merged.length > _downloadedBookMetadataCap) {
+          merged.remove(merged.keys.first);
+        }
+        await HiveService.settingsBox.put(
+          _keyDownloadedBookMetadata,
+          jsonEncode(merged),
+        );
+      } catch (error) {
+        AppLog.report(
+          '[storage] downloaded-metadata cache save failed',
+          tag: 'storage_service',
+        );
       }
-      await HiveService.settingsBox.put(
-        _keyDownloadedBookMetadata,
-        jsonEncode(merged),
-      );
-    } catch (error) {
-      AppLog.report(
-        '[storage] downloaded-metadata cache save failed',
-        tag: 'storage_service',
-      );
-    }
+    });
   }
 
   /// The five fields the history overlay reads, as the cached JSON
@@ -491,42 +584,44 @@ class StorageService {
     Map<String, dynamic> fields,
   ) async {
     if (pagePath.isEmpty || fields.isEmpty) return;
-    try {
-      final merged = <String, dynamic>{};
-      // 已有 blob 的解码单独容错：损坏时丢掉旧内容、用本条重建（修
-      // 复性写入），而不是让整次保存失败。
+    await _runSerialized(_keyBookDetailExtras, () async {
       try {
-        final raw = HiveService.settingsBox.get(_keyBookDetailExtras);
-        if (raw is String && raw.isNotEmpty) {
-          final decoded = jsonDecode(raw);
-          if (decoded is Map) {
-            decoded.forEach((key, value) {
-              if (value is Map) {
-                merged['$key'] = Map<String, dynamic>.from(value);
-              }
-            });
+        final merged = <String, dynamic>{};
+        // 已有 blob 的解码单独容错：损坏时丢掉旧内容、用本条重建（修
+        // 复性写入），而不是让整次保存失败。
+        try {
+          final raw = HiveService.settingsBox.get(_keyBookDetailExtras);
+          if (raw is String && raw.isNotEmpty) {
+            final decoded = jsonDecode(raw);
+            if (decoded is Map) {
+              decoded.forEach((key, value) {
+                if (value is Map) {
+                  merged['$key'] = Map<String, dynamic>.from(value);
+                }
+              });
+            }
           }
+        } catch (_) {
+          // fall through to the repair write below.
         }
-      } catch (_) {
-        // fall through to the repair write below.
+        merged[pagePath] = {
+          ...fields,
+          'fetchedAt': DateTime.now().millisecondsSinceEpoch,
+        };
+        while (merged.length > _bookDetailExtrasCap) {
+          merged.remove(merged.keys.first);
+        }
+        await HiveService.settingsBox.put(
+          _keyBookDetailExtras,
+          jsonEncode(merged),
+        );
+      } catch (error) {
+        AppLog.report(
+          '[storage] book-detail extras cache save failed',
+          tag: 'storage_service',
+        );
       }
-      merged[pagePath] = {
-        ...fields,
-        'fetchedAt': DateTime.now().millisecondsSinceEpoch,
-      };
-      while (merged.length > _bookDetailExtrasCap) {
-        merged.remove(merged.keys.first);
-      }
-      await HiveService.settingsBox.put(
-        _keyBookDetailExtras,
-        jsonEncode(merged),
-      );
-    } catch (error) {
-      AppLog.report(
-        '[storage] book-detail extras cache save failed',
-        tag: 'storage_service',
-      );
-    }
+    });
   }
 
   /// downloadedAt descending, nulls last (a record without a stamp

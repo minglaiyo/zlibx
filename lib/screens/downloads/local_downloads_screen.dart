@@ -13,6 +13,8 @@ import '../../theme/app_colors.dart';
 import '../../utils/cover_cache.dart';
 import '../../utils/file_utils.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/entrance.dart';
+import '../../widgets/confirm_dialog.dart';
 
 import '../../utils/app_snack.dart';
 import '../../utils/date_text.dart';
@@ -129,7 +131,10 @@ class _DownloadList extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 124),
       itemCount: taskIds.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (_, index) => _DownloadItem(id: taskIds[index]),
+      itemBuilder: (_, index) => EntranceSlideFade(
+        index: index,
+        child: _DownloadItem(id: taskIds[index]),
+      ),
     );
   }
 }
@@ -500,32 +505,18 @@ class _DownloadItem extends ConsumerWidget {
     DownloadTask task,
   ) async {
     final l = AppLocalizations.of(context)!;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-          task.status == DownloadStatus.completed
-              ? l.downloadDeleteFile
-              : l.downloadRemoveRecord,
-        ),
-        content: Text(
-          task.status == DownloadStatus.completed
-              ? l.deleteDesc
-              : l.downloadRemoveRecordHint,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(l.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(l.delete),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: task.status == DownloadStatus.completed
+          ? l.downloadDeleteFile
+          : l.downloadRemoveRecord,
+      message: task.status == DownloadStatus.completed
+          ? l.deleteDesc
+          : l.downloadRemoveRecordHint,
+      confirmLabel: l.delete,
+      cancelLabel: l.cancel,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     unawaited(HapticFeedback.mediumImpact());
     try {
       await ref.read(downloadProvider.notifier).removeTask(task.id);

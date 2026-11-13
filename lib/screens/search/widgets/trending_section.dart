@@ -5,6 +5,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../services/open_library.dart';
 import '../../../utils/cover_cache.dart';
 import '../../../widgets/cover_placeholder.dart';
+import '../../../widgets/entrance.dart';
 
 /// Open Library trending (ported from OpenlibExtended): a horizontal
 /// cover strip. Tapping a cover searches its title on the current
@@ -57,7 +58,9 @@ class SearchTrendingSection extends StatelessWidget {
             itemBuilder: (context, index) {
               final book = books[index];
               final title = book.title!.trim();
-              return Padding(
+              return EntranceSlideFade(
+                index: index,
+                child: Padding(
                 padding: const EdgeInsets.only(right: 12),
                 child: InkWell(
                   onTap: () => onSearch(title),
@@ -122,6 +125,7 @@ class SearchTrendingSection extends StatelessWidget {
                       ],
                     ),
                   ),
+                ),
                 ),
               );
             },

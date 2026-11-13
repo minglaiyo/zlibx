@@ -11,6 +11,7 @@ import '../../widgets/book_list_tile.dart';
 import '../../widgets/booklist_card.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/loading_widget.dart';
+import '../../widgets/confirm_dialog.dart';
 
 import '../../utils/app_snack.dart';
 // Existing callers (main.dart routes, the profile page) import the args
@@ -60,24 +61,14 @@ class _BooklistDetailScreenState extends ConsumerState<BooklistDetailScreen> {
   /// and the error is shown.
   Future<void> _confirmRemove(Book book) async {
     final l10n = AppLocalizations.of(context)!;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.booklistRemoveBookConfirm),
-        content: Text(book.title),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(l10n.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(l10n.remove),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: l10n.booklistRemoveBookConfirm,
+      message: book.title,
+      confirmLabel: l10n.remove,
+      cancelLabel: l10n.cancel,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     final response = await ref.read(_provider.notifier).removeBook(book);
     if (!mounted) return;

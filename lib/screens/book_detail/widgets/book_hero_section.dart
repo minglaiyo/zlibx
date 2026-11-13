@@ -129,7 +129,7 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
                             color: collapsed
                                 ? (widget.isFavorited ? cs.primary : cs.onSurface)
                                 : (widget.isFavorited
-                                      ? const Color(0xFFFFA6B7)
+                                      ? AppColors.favoriteHeart
                                       : Colors.white),
                             size: 22,
                           ),

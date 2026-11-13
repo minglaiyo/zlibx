@@ -351,7 +351,7 @@ class _BookCardState extends State<BookCard> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFF2B6685),
+        color: AppColors.sourceBadge,
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(

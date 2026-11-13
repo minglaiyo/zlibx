@@ -15,6 +15,7 @@ import '../../screens/comments/widgets/comment_metric_chip.dart';
 import '../../utils/app_snack.dart';
 import '../../utils/date_text.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/confirm_dialog.dart';
 import '../../widgets/entrance.dart';
 import '../../widgets/gradient_app_bar.dart';
 import '../../widgets/loading_widget.dart';
@@ -201,24 +202,14 @@ class _MyCommentsScreenState extends ConsumerState<MyCommentsScreen> {
   /// 失败时把评论放回原位并提示。
   Future<void> _confirmDelete(MyComment comment) async {
     final l10n = AppLocalizations.of(context)!;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.commentDeleteConfirm),
-        content: Text(l10n.commentDeleteDesc),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(l10n.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(l10n.delete),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: l10n.commentDeleteConfirm,
+      message: l10n.commentDeleteDesc,
+      confirmLabel: l10n.delete,
+      cancelLabel: l10n.cancel,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     unawaited(HapticFeedback.mediumImpact());
     final index = _comments.indexWhere((c) => c.id == comment.id);
     if (index < 0) return;

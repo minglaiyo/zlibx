@@ -35,6 +35,12 @@ class AppColors {
   // 此前各自硬编码同一 hex）。
   static const ratingStar = Color(0xFFFFD76A);
 
+  // 书卡来源角标底色（z 站蓝，与主题色无关的固定识别色）。
+  static const sourceBadge = Color(0xFF2B6685);
+
+  // 详情页 hero 的收藏心形点缀色（展开态 favorited）。
+  static const favoriteHeart = Color(0xFFFFA6B7);
+
   // ─── Progress Bars ───
   static const progressGreen = Color(0xFF52B788);
   static const progressYellow = Color(0xFFE6C84D);

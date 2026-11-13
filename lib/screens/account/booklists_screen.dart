@@ -14,6 +14,7 @@ import '../../theme/app_metrics.dart';
 import '../../widgets/booklist_card.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/loading_widget.dart';
+import '../../widgets/confirm_dialog.dart';
 import 'widgets/booklist_color_dialog.dart';
 import 'widgets/create_booklist_dialog.dart';
 
@@ -258,24 +259,14 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
   /// cached page.
   Future<void> _confirmDelete(Booklist list) async {
     final l10n = AppLocalizations.of(context)!;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.booklistDeleteConfirm),
-        content: Text(l10n.booklistDeleteDesc),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(l10n.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(l10n.delete),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: l10n.booklistDeleteConfirm,
+      message: l10n.booklistDeleteDesc,
+      confirmLabel: l10n.delete,
+      cancelLabel: l10n.cancel,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     unawaited(HapticFeedback.mediumImpact());
     final messenger = ScaffoldMessenger.of(context);
     final controller = ref.read(booklistsControllerProvider.notifier);

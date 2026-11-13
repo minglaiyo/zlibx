@@ -416,14 +416,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               onPressed: _isLoading ? null : _handleLogin,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Theme.of(context).colorScheme.primary,
-                                foregroundColor: Colors.white,
+                                foregroundColor: Theme.of(context).colorScheme.onPrimary,
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 16,
                                 ),
                               ),
                               child: _isLoading
-                                  ? const LoadingWidget.inline(
-                                      color: Colors.white,
+                                  ? LoadingWidget.inline(
+                                      color: Theme.of(context).colorScheme.onPrimary,
                                     )
                                   : Text(
                                       AppLocalizations.of(context)!.login,

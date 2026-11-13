@@ -10,6 +10,7 @@ import '../../services/view_history_storage.dart';
 import '../../utils/date_text.dart';
 import '../../widgets/book_list_tile.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/entrance.dart';
 import '../../widgets/book_quick_actions_sheet.dart';
 import '../../widgets/loading_widget.dart';
 import '../../widgets/gradient_app_bar.dart';
@@ -112,25 +113,28 @@ class _ViewHistoryScreenState extends State<ViewHistoryScreen> {
             itemCount: entries.length,
             itemBuilder: (context, index) {
               final entry = entries[index];
-              return BookListTile(
-                book: entry.book.toDisplay(),
-                showCover: true,
-                // 长按封面：收藏 / 加入书单快捷面板（功能 2 推广）。
-                onLongPress: () => showBookQuickActionsSheet(
-                  context,
-                  entry.book.toDisplay(),
-                ),
-                extraLabel: formatViewedAt(entry.viewedAt),
-                onTap: () {
-                  // openBookDetail 内部会重新置顶该条（与网站一致：
-                  // 重看即更新时间），返回后刷新列表顺序。
-                  AppRoutes.openBookDetailForBook(
+              return EntranceSlideFade(
+                index: index,
+                child: BookListTile(
+                  book: entry.book.toDisplay(),
+                  showCover: true,
+                  // 长按封面：收藏 / 加入书单快捷面板（功能 2 推广）。
+                  onLongPress: () => showBookQuickActionsSheet(
                     context,
-                    entry.book,
-                  ).whenComplete(() {
-                    if (mounted) setState(_reload);
-                  });
-                },
+                    entry.book.toDisplay(),
+                  ),
+                  extraLabel: formatViewedAt(entry.viewedAt),
+                  onTap: () {
+                    // openBookDetail 内部会重新置顶该条（与网站一致：
+                    // 重看即更新时间），返回后刷新列表顺序。
+                    AppRoutes.openBookDetailForBook(
+                      context,
+                      entry.book,
+                    ).whenComplete(() {
+                      if (mounted) setState(_reload);
+                    });
+                  },
+                ),
               );
             },
           );

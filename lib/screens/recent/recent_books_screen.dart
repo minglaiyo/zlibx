@@ -8,6 +8,7 @@ import '../../routes/app_routes.dart';
 import '../../widgets/book_card.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/loading_widget.dart';
+import '../../widgets/book_quick_actions_sheet.dart';
 import '../../utils/error_text.dart';
 import '../../widgets/gradient_app_bar.dart';
 
@@ -79,6 +80,9 @@ class RecentBooksScreen extends ConsumerWidget {
                 final book = books[index];
                 return BookCard(
                   book: book.toDisplay(),
+                  // 长按封面：收藏 / 加入书单快捷面板（功能 2 推广）。
+                  onLongPress: () =>
+                      showBookQuickActionsSheet(context, book.toDisplay()),
                   onTap: () {
                     AppRoutes.openBookDetailForBook(context, book);
                   },

@@ -4,7 +4,7 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
 import '../../../widgets/book_card.dart';
-import 'book_quick_actions_sheet.dart';
+import '../../../widgets/book_quick_actions_sheet.dart';
 import '../../../widgets/book_list_tile.dart';
 import '../../../widgets/entrance.dart';
 import '../../../widgets/loading_widget.dart';

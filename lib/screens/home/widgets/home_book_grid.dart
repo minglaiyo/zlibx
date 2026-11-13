@@ -6,6 +6,7 @@ import '../../../models/display_book.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../routes/app_routes.dart';
 import '../../../utils/cover_cache.dart';
+import '../../../widgets/book_quick_actions_sheet.dart';
 import '../../../widgets/book_card.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/entrance.dart';
@@ -125,6 +126,12 @@ class HomeBookGrid extends ConsumerWidget {
                       onTap: () {
                         AppRoutes.openBookDetailForDisplayBook(context, book);
                       },
+                      // 长按封面：收藏 / 加入书单快捷面板（功能 2 推广）。
+                      // 非外部源书（无 z 站收藏体系）面板自身不弹。
+                      onLongPress: () => showBookQuickActionsSheet(
+                        context,
+                        book,
+                      ),
                     ),
                   );
                 },

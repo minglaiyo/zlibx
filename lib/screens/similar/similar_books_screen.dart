@@ -4,6 +4,7 @@ import '../../providers/zlibrary_provider.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import '../../models/display_book.dart';
 import '../../widgets/book_card.dart';
+import '../../widgets/book_quick_actions_sheet.dart';
 import '../../widgets/book_list_tile.dart';
 import '../../widgets/loading_widget.dart';
 import '../../widgets/empty_state.dart';
@@ -187,6 +188,13 @@ class _SimilarBooksScreenState extends ConsumerState<SimilarBooksScreen> {
                                           return BookListTile(
                                             book: book.toDisplay(),
                                             showCover: true,
+                                            // 长按封面：收藏 / 加入书单
+                                            // 快捷面板（功能 2 推广）。
+                                            onLongPress: () =>
+                                                showBookQuickActionsSheet(
+                                              context,
+                                              book.toDisplay(),
+                                            ),
                                             onTap: () {
                                               AppRoutes.openBookDetailForBook(
                                                 context,
@@ -212,6 +220,13 @@ class _SimilarBooksScreenState extends ConsumerState<SimilarBooksScreen> {
                                             // 相似书列表同屏同 id 重复
                                             // 几乎不可能，可安全开 Hero。
                                             heroEnabled: true,
+                                            // 长按封面：收藏 / 加入书单
+                                            // 快捷面板（功能 2 推广）。
+                                            onLongPress: () =>
+                                                showBookQuickActionsSheet(
+                                              context,
+                                              book.toDisplay(),
+                                            ),
                                             onTap: () {
                                               AppRoutes.openBookDetailForBook(
                                                 context,

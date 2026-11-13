@@ -10,6 +10,7 @@ import '../../services/view_history_storage.dart';
 import '../../utils/date_text.dart';
 import '../../widgets/book_list_tile.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/book_quick_actions_sheet.dart';
 import '../../widgets/loading_widget.dart';
 import '../../widgets/gradient_app_bar.dart';
 import '../../utils/error_text.dart';
@@ -114,6 +115,11 @@ class _ViewHistoryScreenState extends State<ViewHistoryScreen> {
               return BookListTile(
                 book: entry.book.toDisplay(),
                 showCover: true,
+                // 长按封面：收藏 / 加入书单快捷面板（功能 2 推广）。
+                onLongPress: () => showBookQuickActionsSheet(
+                  context,
+                  entry.book.toDisplay(),
+                ),
                 extraLabel: formatViewedAt(entry.viewedAt),
                 onTap: () {
                   // openBookDetail 内部会重新置顶该条（与网站一致：

@@ -3,6 +3,7 @@
 // method clusters in the part files below. Dart cannot split one class
 // body across parts, so each part declares a private mixin applied to
 // DownloadNotifier; the public API stays on the notifier itself.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
@@ -61,6 +62,11 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
     _updateTask(id, (t) => t.copyWith(status: DownloadStatus.cancelled));
     _clearProgressThrottle(id);
   }
+
+  /// 请求暂停的任务 id：engine 的取消清理据此保留 .part（用户取消才
+  /// 删）。请求本身只置一次，engine 的 finally 会把它消费掉。方法在
+  /// download_engine.dart 的 mixin 里（要调 startDownload）。
+  final Set<String> _pauseRequested = {};
 
   void markMissingFile(String id) {
     _updateTask(

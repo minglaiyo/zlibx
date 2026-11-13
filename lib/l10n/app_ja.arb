@@ -186,6 +186,8 @@
   "appLockAuthReason": "zlibx をロック解除",
   "incognitoMode": "シークレットモード",
   "incognitoModeDesc": "有効な間は閲覧履歴と検索履歴を記録しません",
+  "pauseDownload": "一時停止",
+  "resumeDownload": "再開",
   "confirmRemoveMsg": "お気に入りから{count}冊を削除しますか？",
   "@confirmRemoveMsg": {
     "placeholders": {

@@ -186,6 +186,8 @@
   "appLockAuthReason": "解锁 zlibx",
   "incognitoMode": "无痕模式",
   "incognitoModeDesc": "开启后不记录浏览历史和搜索记录",
+  "pauseDownload": "暂停",
+  "resumeDownload": "继续",
   "confirmRemoveMsg": "确定从收藏中移除 {count} 本书？",
   "@confirmRemoveMsg": {
     "placeholders": {

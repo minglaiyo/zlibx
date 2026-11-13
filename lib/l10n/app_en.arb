@@ -186,6 +186,8 @@
   "appLockAuthReason": "Unlock zlibx",
   "incognitoMode": "Incognito mode",
   "incognitoModeDesc": "Do not record browsing history or recent searches while enabled",
+  "pauseDownload": "Pause",
+  "resumeDownload": "Resume",
   "confirmRemoveMsg": "Remove {count} book(s) from favorites?",
   "@confirmRemoveMsg": {
     "placeholders": {

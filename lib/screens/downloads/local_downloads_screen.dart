@@ -292,7 +292,23 @@ class _DownloadItem extends ConsumerWidget {
                     icon: const Icon(Icons.refresh_rounded, size: 18),
                     label: Text(l.retry),
                   )
-                else if (isActive)
+                else if (task.status == DownloadStatus.paused)
+                  TextButton.icon(
+                    onPressed: () => ref
+                        .read(downloadProvider.notifier)
+                        .resumeDownload(task.id),
+                    icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                    label: Text(l.resumeDownload),
+                  )
+                else if (isActive) ...[
+                  // 暂停：网络层立即停，.part 保留（继续时断点续传）。
+                  TextButton.icon(
+                    onPressed: () => ref
+                        .read(downloadProvider.notifier)
+                        .pauseDownload(task.id),
+                    icon: const Icon(Icons.pause_rounded, size: 18),
+                    label: Text(l.pauseDownload),
+                  ),
                   TextButton.icon(
                     onPressed: () => ref
                         .read(downloadProvider.notifier)
@@ -300,6 +316,7 @@ class _DownloadItem extends ConsumerWidget {
                     icon: const Icon(Icons.close_rounded, size: 18),
                     label: Text(l.cancel),
                   ),
+                ],
                 const Spacer(),
                 PopupMenuButton<String>(
                   tooltip: l.more,
@@ -351,6 +368,10 @@ class _DownloadItem extends ConsumerWidget {
         Theme.of(context).colorScheme.primary,
       ),
       DownloadStatus.downloading => (l.downloading, Theme.of(context).colorScheme.primary),
+      DownloadStatus.paused => (
+        l.pauseDownload,
+        Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
       DownloadStatus.completed => (l.completed, AppColors.success),
       DownloadStatus.error => (
         l.downloadFailed,

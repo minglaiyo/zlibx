@@ -42,6 +42,7 @@ bool _idsEqual(List<String> a, List<String> b) {
 int _downloadPriority(DownloadStatus status) => switch (status) {
   DownloadStatus.downloading => 0,
   DownloadStatus.pending => 1,
+  DownloadStatus.paused => 1,
   DownloadStatus.error => 2,
   DownloadStatus.cancelled => 3,
   DownloadStatus.completed => 4,

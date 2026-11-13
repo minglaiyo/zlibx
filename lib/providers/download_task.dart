@@ -1,7 +1,7 @@
 // Download task model, split out of download_provider.dart.
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
-enum DownloadStatus { pending, downloading, completed, error, cancelled }
+enum DownloadStatus { pending, downloading, paused, completed, error, cancelled }
 
 class DownloadTask {
   final String id;
@@ -17,6 +17,10 @@ class DownloadTask {
 
   /// 用户自己 Z 站账号当日下载次数已用尽导致的失败。
   final bool quotaExceeded;
+
+  /// 外部源直链（Anna/LibGen 解析出的 URL）。暂停后恢复要用同一个
+  /// 入口重跑下载流程；z 站任务为 null。
+  final String? presetUrl;
 
   bool get canRetry =>
       (status == DownloadStatus.error || status == DownloadStatus.cancelled) &&
@@ -37,6 +41,7 @@ class DownloadTask {
     this.needsFreshLink = false,
     this.missingFile = false,
     this.quotaExceeded = false,
+    this.presetUrl,
   });
 
   DownloadTask copyWith({
@@ -51,6 +56,7 @@ class DownloadTask {
     bool? needsFreshLink,
     bool? missingFile,
     bool? quotaExceeded,
+    String? presetUrl,
   }) {
     return DownloadTask(
       id: id ?? this.id,
@@ -64,6 +70,7 @@ class DownloadTask {
       needsFreshLink: needsFreshLink ?? this.needsFreshLink,
       missingFile: missingFile ?? this.missingFile,
       quotaExceeded: quotaExceeded ?? this.quotaExceeded,
+      presetUrl: presetUrl ?? this.presetUrl,
     );
   }
 }

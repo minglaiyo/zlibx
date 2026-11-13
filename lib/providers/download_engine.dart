@@ -9,6 +9,27 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
   /// download's wait must outlive the call that started it.
   final DownloadSlotPool _slotPool = DownloadSlotPool();
 
+  /// 暂停：取消在途请求（网络层立即停），.part 保留，任务停在被暂停
+  /// 的进度上。恢复走 [resumeDownload] → startDownload 的断点续传。
+  void pauseDownload(String id) {
+    final token = _cancelTokens[id];
+    if (token == null) return;
+    _pauseRequested.add(id);
+    token.cancel();
+    _updateTask(id, (t) => t.copyWith(status: DownloadStatus.paused));
+    _clearProgressThrottle(id);
+  }
+
+  /// 恢复：重跑完整下载流程（startDownload 会从 .part 断点续传，
+  /// pendingWriter/MediaStore 条目也会按已写字节恢复）。
+  void resumeDownload(String id) {
+    final matches = state.where((t) => t.id == id).toList();
+    if (matches.isEmpty) return;
+    final task = matches.first;
+    if (task.status != DownloadStatus.paused) return;
+    unawaited(startDownload(task.book, presetUrl: task.presetUrl));
+  }
+
   /// Start a download.
   ///
   /// 默认走 ZLibraryApi（用户自己账号查 URL + 下载）。
@@ -42,6 +63,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         book: book,
         status: DownloadStatus.pending,
         needsFreshLink: presetUrl != null,
+        presetUrl: presetUrl,
       ),
     );
 
@@ -54,6 +76,9 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     // the release has to happen here.)
     if (cancelToken.isCancelled) {
       _slotPool.release();
+      // 排队期间被暂停：任务已由 pauseDownload 置为 paused，.part 还
+      // 没有开始写，无需清理；只要消费掉暂停标记。
+      _pauseRequested.remove(id);
       return;
     }
 
@@ -274,11 +299,16 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       // from it instead of starting over; only an explicit user cancel
       // drops it. On success the file was already renamed away.
       if (temporaryPath != null && cancelToken.isCancelled) {
-        if (pendingWriter != null) {
-          await pendingWriter.discard();
-          pendingWriter = null;
-        } else {
-          await _deletePartial(temporaryPath);
+        // 暂停：保留 .part / pendingWriter（下次 resume 从断点继续）；
+        // 用户取消：照旧清理。标记在此消费，只对本轮生效。
+        final wasPauseRequested = _pauseRequested.remove(id);
+        if (!wasPauseRequested) {
+          if (pendingWriter != null) {
+            await pendingWriter.discard();
+            pendingWriter = null;
+          } else {
+            await _deletePartial(temporaryPath);
+          }
         }
       }
       if (identical(_cancelTokens[id], cancelToken)) _cancelTokens.remove(id);

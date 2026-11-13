@@ -15,7 +15,7 @@ import 'package:zlibx/services/storage_service.dart';
 void main() {
   late Directory tempDir;
   late StorageService storage;
-  late Box box;
+  late Box<dynamic> box;
 
   setUpAll(() async {
     tempDir = await Directory.systemTemp.createTemp('storage_service');

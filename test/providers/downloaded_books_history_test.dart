@@ -276,7 +276,7 @@ void main() {
     container.read(downloadedBooksProvider);
     await _settle();
 
-    expect(container.read(downloadedBooksProvider), isA<AsyncError>());
+    expect(container.read(downloadedBooksProvider), isA<AsyncError<dynamic>>());
   });
 
   test('静默对账：补进其他设备的新记录；失败时保留已有列表', () async {
@@ -357,7 +357,7 @@ void main() {
     container.read(downloadedBooksProvider);
     await _settle();
 
-    expect(container.read(downloadedBooksProvider), isA<AsyncError>());
+    expect(container.read(downloadedBooksProvider), isA<AsyncError<dynamic>>());
   });
 
   test('镜像验证墙：solver 不可用时抛原始墙错误，不把墙页当空历史', () async {
@@ -379,9 +379,9 @@ void main() {
     await _settle();
 
     final state = container.read(downloadedBooksProvider);
-    expect(state, isA<AsyncError>());
+    expect(state, isA<AsyncError<dynamic>>());
     expect(
-      (state as AsyncError).error.toString(),
+      (state as AsyncError<dynamic>).error.toString(),
       contains('browser check page'),
     );
   });
@@ -460,9 +460,9 @@ void main() {
     await _settle();
 
     final state = container.read(downloadedBooksProvider);
-    expect(state, isA<AsyncError>());
+    expect(state, isA<AsyncError<dynamic>>());
     expect(
-      (state as AsyncError).error.toString(),
+      (state as AsyncError<dynamic>).error.toString(),
       contains('browser check page'),
     );
     expect(fallbackCalls, 2);

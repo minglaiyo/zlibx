@@ -56,7 +56,7 @@ class BooklistHtmlCache {
   /// box type.
   static const int maxBytes = 20 * 1024 * 1024;
 
-  static Box get _box {
+  static Box<dynamic> get _box {
     final box = HiveService.booklistHtmlBox;
     _sweepTokenHtmlOnce(box);
     return box;
@@ -71,7 +71,7 @@ class BooklistHtmlCache {
   /// untouched, and the 7-day TTL / 50-entry cap are unchanged.
   static bool _tokenSweepDone = false;
 
-  static void _sweepTokenHtmlOnce(Box box) {
+  static void _sweepTokenHtmlOnce(Box<dynamic> box) {
     if (_tokenSweepDone) return;
     _tokenSweepDone = true;
     // Delete only the entries that actually contain a legacy token.
@@ -379,7 +379,7 @@ class BooklistHtmlCache {
     return 0;
   }
 
-  static void _evictOldest(Box box) {
+  static void _evictOldest(Box<dynamic> box) {
     if (box.length <= maxEntries) return;
     // Entries carry their own timestamp; drop the oldest until the
     // cap holds. A corrupt entry (no usable timestamp) counts as
@@ -404,7 +404,7 @@ class BooklistHtmlCache {
   /// kept — dropping it would make its URL uncacheable forever — but
   /// it still counts toward the total, so the next store evicts
   /// everything older than it.
-  static void _evictOversize(Box box) {
+  static void _evictOversize(Box<dynamic> box) {
     var total = 0;
     final bytesByKey = <Object?, int>{};
     for (final key in box.keys) {

@@ -18,8 +18,8 @@ class HiveService {
     ]);
   }
 
-  static Box get settingsBox => Hive.box(settingsBoxName);
-  static Box get authBox => Hive.box(authBoxName);
-  static Box get booklistHtmlBox => Hive.box(booklistHtmlBoxName);
-  static Box get viewHistoryBox => Hive.box(viewHistoryBoxName);
+  static Box<dynamic> get settingsBox => Hive.box(settingsBoxName);
+  static Box<dynamic> get authBox => Hive.box(authBoxName);
+  static Box<dynamic> get booklistHtmlBox => Hive.box(booklistHtmlBoxName);
+  static Box<dynamic> get viewHistoryBox => Hive.box(viewHistoryBoxName);
 }

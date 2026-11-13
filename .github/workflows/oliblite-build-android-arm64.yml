@@ -103,7 +103,7 @@ jobs:
           cp analysis_options_strict.yaml analysis_options.yaml
           dart analyze lib vendor/olib_api_plugin/lib | tee strict_lint.log || true
           cp analysis_options.base.yaml analysis_options.yaml
-          echo "Strict-profile findings: $(grep -cE '(info|warning|error) - ' strict_lint.log || echo 0) (baseline: 285 lib/ on 2026-11-13 — avoid_catches_without_on_clauses 149, directives_ordering 103, strict_raw_type 15, prefer_final_locals 9, strict-casts 5)"
+          echo "Strict-profile findings: $(grep -cE '(info|warning|error) - ' strict_lint.log || echo 0) (baseline: 262 lib/ on 2026-11-14 — avoid_catches_without_on_clauses 149, directives_ordering 112; strict-casts/raw-types/final-locals/use_build_context_synchronously/cancel_subscriptions/close_sinks promoted to the blocking profile in M8 batch 1)"
 
   build:
     name: Build release APK

@@ -113,13 +113,14 @@ class MirrorFetcherService {
               // per second until the link appears or the outer timeout
               // bounds the wait (same selector as Route 4's
               // extractSlowDownloadLink in lib/core/annas_archive.dart).
-              String query =
+              final String query =
                   """var paragraphTag=document.querySelector('p[class="mb-4 text-xl font-bold"]');var anchorTagHref=paragraphTag.querySelector('a').href;var url=()=>{return anchorTagHref};url();""";
               while (!completer.isCompleted) {
                 String? mirrorLink;
                 try {
                   mirrorLink =
-                      await controller.evaluateJavascript(source: query);
+                      await controller.evaluateJavascript(source: query)
+                          as String?;
                 } catch (pollError) {
                   // The selector throws while the countdown paragraph is
                   // absent: "not ready yet", poll again.
@@ -143,12 +144,16 @@ class MirrorFetcherService {
               }
             } else {
               // For other mirror pages, extract all IPFS/mirror links
-              String query =
+              final String query =
                   """Array.from(document.querySelectorAll('ul>li>a')).map(e=>e.href).filter(Boolean);""";
-              List<dynamic> mirrorLinks =
-                  await controller.evaluateJavascript(source: query);
-              bookDownloadLinks
-                  .addAll(mirrorLinks.where(_isUsableLink).cast<String>());
+              final mirrorLinks =
+                  await controller.evaluateJavascript(source: query)
+                      as List<dynamic>?;
+              if (mirrorLinks != null) {
+                bookDownloadLinks.addAll(
+                  mirrorLinks.where(_isUsableLink).cast<String>(),
+                );
+              }
               _logger.info('Extracted mirror links', tag: 'MirrorFetcher', metadata: {'count': bookDownloadLinks.length});
             }
 

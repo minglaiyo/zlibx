@@ -37,7 +37,7 @@ class ShelfCategoriesNotifier extends Notifier<ShelfCategoriesState> {
     try {
       final data = jsonDecode(raw) as Map<String, dynamic>;
       final categories = (data['categories'] as List<dynamic>? ?? [])
-          .whereType<Map>()
+          .whereType<Map<String, dynamic>>()
           .map(
             (value) => ShelfCategory(
               id: value['id'].toString(),

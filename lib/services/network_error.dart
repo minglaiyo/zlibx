@@ -416,7 +416,7 @@ class NetworkError implements Exception {
   }
 
   // Detect Cloudflare challenge or block
-  static bool _isCloudflareBlock(Response? response) {
+  static bool _isCloudflareBlock(Response<dynamic>? response) {
     if (response == null) return false;
 
     // Check cf-mitigated header (official Cloudflare detection)

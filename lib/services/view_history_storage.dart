@@ -61,7 +61,7 @@ class ViewHistoryStore {
     }
   }
 
-  static void _trimOldest(Box box) {
+  static void _trimOldest(Box<dynamic> box) {
     if (box.length <= maxEntries) return;
     // (key, viewedAt) 对，按时间升序删除最旧的，直到回到上限。
     final pairs = <(dynamic, DateTime)>[];

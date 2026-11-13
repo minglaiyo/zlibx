@@ -16,6 +16,7 @@ import '../../widgets/empty_state.dart';
 
 import '../../utils/app_snack.dart';
 import '../../utils/date_text.dart';
+import '../../utils/error_text.dart';
 class LocalDownloadsScreen extends ConsumerWidget {
   const LocalDownloadsScreen({super.key});
 
@@ -419,7 +420,10 @@ class _DownloadItem extends ConsumerWidget {
       }
     } catch (error) {
       if (context.mounted) {
-        showAppSnack(context, error.toString());
+        showAppSnack(
+          context,
+          friendlyErrorText(error, AppLocalizations.of(context)!),
+        );
       }
     }
   }

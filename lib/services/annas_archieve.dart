@@ -46,7 +46,7 @@ abstract class _AnnasArchieveBase {
   //    pages ("cloudflare", "please wait") only count on a status code a
   //    challenge actually uses (403/503), so a real search result page
   //    that happens to mention Cloudflare is not mistaken for a block.
-  bool _isChallengeResponse(Response response) {
+  bool _isChallengeResponse(Response<dynamic> response) {
     final blocked = ArchiveParsing.isChallengeResponse(
       statusCode: response.statusCode ?? 0,
       cfMitigated: response.headers.value('cf-mitigated'),

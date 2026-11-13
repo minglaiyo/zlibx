@@ -9,6 +9,14 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  language:
+    # Promoted from analysis_options_strict.yaml (M8 batch 1, 2026-11-14):
+    # the whole codebase compiles clean under both — findings fixed at
+    # promotion time, so new violations block `flutter analyze`.
+    strict-casts: true
+    strict-raw-types: true
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`
@@ -22,6 +30,12 @@ linter:
   # producing the lint.
   rules:
     unawaited_futures: true
+    # Promoted from analysis_options_strict.yaml (M8 batch 1): zero
+    # findings at promotion time.
+    use_build_context_synchronously: true
+    cancel_subscriptions: true
+    close_sinks: true
+    prefer_final_locals: true
     # avoid_print: false  # Uncomment to disable the `avoid_print` rule
     # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
 

@@ -183,9 +183,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
       String? userId;
       String? userKey;
       for (final cookie in cookies) {
-        if (cookie.value.isEmpty) continue;
-        if (cookie.name == 'remix_userid') userId = cookie.value;
-        if (cookie.name == 'remix_userkey') userKey = cookie.value;
+        // Cookie.value is dynamic in flutter_inappwebview 6.1.5 — cast
+        // once; strict-casts flags the bare assignments.
+        final value = cookie.value as String?;
+        if (value == null || value.isEmpty) continue;
+        if (cookie.name == 'remix_userid') userId = value;
+        if (cookie.name == 'remix_userkey') userKey = value;
       }
       if (userId == null || userKey == null) return;
       if (userId == _installedUserId && userKey == _installedUserKey) return;

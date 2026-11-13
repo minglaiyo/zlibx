@@ -206,7 +206,7 @@ class AuthStorage {
       return [];
     }
     return decoded
-        .whereType<Map>()
+        .whereType<Map<dynamic, dynamic>>()
         .map((e) => Map<dynamic, dynamic>.from(e))
         .toList();
   }

@@ -98,7 +98,7 @@ mixin _AnnasClientMixin on _AnnasArchieveBase {
   // Plain HTTP fetch. No cookie replay: DDoS-Guard clearance is bound to the
   // browser's TLS fingerprint, so stored cookies never help here. Blocked
   // requests surface as cloudflareBlock and the webview solver takes over.
-  Future<Response> _makeRequest(
+  Future<Response<dynamic>> _makeRequest(
     String url, {
     Map<String, String>? headers,
     CancelToken? cancelToken,
@@ -126,7 +126,7 @@ mixin _AnnasClientMixin on _AnnasArchieveBase {
   /// failure so [_requestWithRetry] moves on to the next mirror (and
   /// the caller never treats e.g. a 404 or a plain "link expired" 403
   /// as an empty-but-successful result).
-  void _ensureResponseStatus(Response response, String url) {
+  void _ensureResponseStatus(Response<dynamic> response, String url) {
     final status = response.statusCode ?? 0;
     if (status >= 200 && status < 300) return;
     _logger.warning('Anna\'s Archive returned an error status',

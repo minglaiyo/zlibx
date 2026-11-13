@@ -28,12 +28,16 @@ Future<void> bridgeWallCookies(ZLibraryApi api, String pageUrl) async {
   );
   final wall = <String, String>{};
   for (final cookie in cookies) {
+    // Cookie.value is dynamic in flutter_inappwebview 6.1.5 — cast once
+    // (strict-casts flags the bare bool test / map assignment).
+    final value = cookie.value as String?;
     if (cookie.name == 'remix_userid' ||
         cookie.name == 'remix_userkey' ||
-        cookie.value.isEmpty) {
+        value == null ||
+        value.isEmpty) {
       continue;
     }
-    wall[cookie.name] = cookie.value;
+    wall[cookie.name] = value;
   }
   if (wall.isNotEmpty) api.setWallCookies(wall);
   // The UA belongs with the cookies (same solve, same host): without

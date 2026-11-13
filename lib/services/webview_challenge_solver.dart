@@ -426,7 +426,7 @@ class WebviewChallengeSolver {
     try {
       final result = await controller.evaluateJavascript(source: script);
       if (result == null) return null;
-      var s = result.toString();
+      final s = result.toString();
       if (s == 'null') return null;
       // WebKit and inappwebview bridges may return strings JSON-encoded.
       if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {

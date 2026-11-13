@@ -141,7 +141,7 @@ mixin _AnnasBookInfoMixin on _AnnasClientMixin {
         // rather than be parsed into a null (handled below) or an
         // error page mistaken for book details.
         _ensureResponseStatus(response, adjustedUrl);
-        BookInfoData? data =
+        final BookInfoData? data =
             await _bookInfoParser(response.data, adjustedUrl, currentBaseUrl);
         if (data != null) {
           return data;

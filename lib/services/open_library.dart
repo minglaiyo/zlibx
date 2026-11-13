@@ -53,15 +53,15 @@ class OpenLibrary extends TrendingBooksImpl {
 
   @override
   List<TrendingBookData> _parser(data) {
-    var document = parse(data.toString());
-    var bookList =
+    final document = parse(data.toString());
+    final bookList =
         document.querySelectorAll('li[class="searchResultItem sri--w-main"]');
-    List<TrendingBookData> trendingBooks = [];
+    final List<TrendingBookData> trendingBooks = [];
     for (var element in bookList) {
       if (element.querySelector('h3[class="booktitle"]')?.text != null &&
           element.querySelector('img[itemprop="image" ]')?.attributes['src'] !=
               null) {
-        String? thumbnail =
+        final String? thumbnail =
             element.querySelector('img[itemprop="image" ]')?.attributes['src'];
         final thumb = thumbnail?.toString() ?? '';
         trendingBooks.add(

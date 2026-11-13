@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -235,13 +236,44 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
             MediaQuery.devicePixelRatioOf(context))
         .ceil()
         .clamp(400, 900);
-    return CachedNetworkImage(
-      imageUrl: coverUrlAtWidth(cover, cacheWidth),
-      memCacheWidth: cacheWidth,
-      imageBuilder: (context, image) => content(image: image),
-      placeholder: (context, url) => content(loading: true),
-      errorWidget: (context, url, error) => content(),
+    // 长按封面查看高清大图（用户批 2026-11-14 功能 3）：GestureDetector
+    // 在 Hero 外层，长按不影响共享元素转场。
+    return GestureDetector(
+      onLongPress: () => _showHdCoverViewer(cover),
+      child: CachedNetworkImage(
+        imageUrl: coverUrlAtWidth(cover, cacheWidth),
+        memCacheWidth: cacheWidth,
+        imageBuilder: (context, image) => content(image: image),
+        placeholder: (context, url) => content(loading: true),
+        errorWidget: (context, url, error) => content(),
+      ),
     );
+  }
+
+  /// 高清大图查看器：covers800（实测最大档，800x1200），支持捏合
+  /// 缩放，点任意处关闭。
+  void _showHdCoverViewer(String cover) {
+    unawaited(showDialog<void>(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (dialogContext) => GestureDetector(
+        onTap: () => Navigator.pop(dialogContext),
+        child: InteractiveViewer(
+          maxScale: 4,
+          child: Center(
+            child: CachedNetworkImage(
+              imageUrl: coverUrlAtWidth(cover, 800),
+              placeholder: (context, url) => const LoadingWidget.page(),
+              errorWidget: (context, url, error) => const Icon(
+                Icons.broken_image_outlined,
+                color: Colors.white70,
+                size: 48,
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
   }
 }
 

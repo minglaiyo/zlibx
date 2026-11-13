@@ -459,6 +459,8 @@
   "readerSessionWriteFailed": "Failed to write reader session. Please log in again and retry.",
   "recentAccount": "Recent account",
   "recommendationFourColumns": "Four-column recommendations",
+  "recommendationRandom": "Random recommendations",
+  "recommendationRandomDesc": "Show 50 randomly picked books on the home page, refreshed every time; off shows your personalised recommendations.",
   "recentlyAdded": "Recently added",
   "recentlyAddedEmpty": "Nothing new has been added yet",
   "recommended": "Recommended",

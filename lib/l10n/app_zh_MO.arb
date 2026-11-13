@@ -459,6 +459,8 @@
   "readerSessionWriteFailed": "閱讀器會話寫入失敗，請重新登入再試",
   "recentAccount": "最近使用",
   "recommendationFourColumns": "推薦頁四列版面",
+  "recommendationRandom": "隨機推薦",
+  "recommendationRandomDesc": "首頁隨機推送 50 本書，每次刷新都換；關閉時顯示個人化推薦",
   "recentlyAdded": "最新上架",
   "recentlyAddedEmpty": "暫時沒有新上架的書籍",
   "recommended": "推薦",

@@ -459,6 +459,8 @@
   "readerSessionWriteFailed": "リーダーセッションの書き込みに失敗しました。再度ログインしてお試しください。",
   "recentAccount": "最近使用したアカウント",
   "recommendationFourColumns": "おすすめを4列で表示",
+  "recommendationRandom": "ランダムなおすすめ",
+  "recommendationRandomDesc": "ホームにランダムに選んだ50冊を表示し、更新のたびに入れ替えます。オフにするとパーソナライズされたおすすめを表示します。",
   "recentlyAdded": "新着書籍",
   "recentlyAddedEmpty": "まだ新しく追加された本はありません",
   "recommended": "おすすめ",

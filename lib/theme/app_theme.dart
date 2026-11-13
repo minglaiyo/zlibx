@@ -1,5 +1,7 @@
-import 'package:flutter/cupertino.dart'
-    show CupertinoPageTransitionsBuilder;
+// The cupertino import is REQUIRED on Flutter 3.44 (CupertinoPageTransitionsBuilder
+// is not exported by material there); 3.41.8's analyzer wrongly reports it
+// unused — do not "fix" that warning (CI proved it, see 6787de5 failure).
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'app_colors.dart';
 

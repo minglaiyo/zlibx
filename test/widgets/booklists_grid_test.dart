@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/l10n/generated/app_localizations.dart';
 import 'package:zlibx/providers/booklists_provider.dart';
+import 'package:zlibx/providers/recommended_booklists_provider.dart';
 import 'package:zlibx/screens/account/booklists_screen.dart';
 import 'package:zlibx/widgets/booklist_card.dart';
 

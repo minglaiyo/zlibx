@@ -89,6 +89,22 @@ jobs:
       - name: Test
         run: flutter test
 
+      # Strict-lint triage (M8): runs the stricter profile
+      # (analysis_options_strict.yaml) and only REPORTS the finding
+      # count — `continue-on-error` keeps it from gating the check.
+      # Fix findings per directory, then promote rules that hit zero
+      # into analysis_options.yaml so the blocking step enforces them.
+      # dart analyze has no --options override, so the file is swapped
+      # in for the duration of this step and restored right after.
+      - name: Strict lint triage (non-blocking)
+        continue-on-error: true
+        run: |
+          cp analysis_options.yaml analysis_options.base.yaml
+          cp analysis_options_strict.yaml analysis_options.yaml
+          dart analyze lib vendor/olib_api_plugin/lib | tee strict_lint.log || true
+          cp analysis_options.base.yaml analysis_options.yaml
+          echo "Strict-profile findings: $(grep -cE '(info|warning|error) - ' strict_lint.log || echo 0) (baseline: 285 lib/ on 2026-11-13 — avoid_catches_without_on_clauses 149, directives_ordering 103, strict_raw_type 15, prefer_final_locals 9, strict-casts 5)"
+
   build:
     name: Build release APK
     # Only tag pushes (release) and manual dispatch (artifact) build.

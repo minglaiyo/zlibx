@@ -74,18 +74,13 @@ lib/l10n/generated/
 
 # Publish page
 api_dump/
-test/*
-!test/widgets/
-!test/parsers/
-!test/providers/
-!test/services/
-!test/l10n/
-!test/routes/
 debug/
 publish_page/
 dev_docs/*
 !dev_docs/home-book-card-layout.md
 !dev_docs/book-detail-design.md
+!dev_docs/booklists.md
+!dev_docs/package-name-migration.md
 !dev_docs/shelf-and-downloads.md
 !dev_docs/update-manifest.md
 

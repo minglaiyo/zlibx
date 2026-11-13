@@ -12,9 +12,10 @@ export '../services/update/update_manifest.dart' show UpdateLink;
 
 /// Update checker state.
 ///
-/// Migrated from [UpdateService]'s static mutable fields (see §6 item 9):
-/// same values, same timing, same dismiss semantics — only the owner
-/// changed, from process-global statics to this Notifier's state.
+/// Formerly process-global statics on a now-removed `UpdateService`;
+/// the same values, timing and dismiss semantics now live on this
+/// Notifier's state. The update link host whitelist is in
+/// `lib/services/update/update_manifest.dart` (S7).
 class UpdateState {
   /// GitHub Releases 数据源
   static const String releaseApiUrl =

@@ -40,14 +40,14 @@ Models are hand-written: `Book`/`User` and all other models use no freezed, no j
 
 ## Tests
 
-`test/` is organised as `test/parsers/` (HTML/JSON parsers), `test/services/` (providers, caches, storage, downloader, trust), `test/providers/` (Riverpod notifier tests), `test/widgets/` (widget tests), `test/l10n/` (localization string/resolution tests) and `test/routes/` (route table and argument guards). `.gitignore` ignores `test/*` but un-ignores exactly these six directories — a new test directory needs a matching `!test/<dir>/` line, otherwise it is silently not committed.
+`test/` is organised as `test/parsers/` (HTML/JSON parsers), `test/services/` (providers, caches, storage, downloader, trust), `test/providers/` (Riverpod notifier tests), `test/widgets/` (widget tests), `test/l10n/` (localization string/resolution tests) and `test/routes/` (route table and argument guards). Nothing under `test/` is ignored — a new test directory is committed like any source (the old `test/*` + per-directory un-ignore whitelist, which silently dropped new directories, was removed in M7).
 
 ## Key Patterns
 
 - `ZLibraryApi` has no async init step: `zlibraryApiProvider` constructs it on the persisted domain (`resolveInitialDomain()`), and every request is built against that host.
 - Domain/mirror switching goes through `DomainNotifier` → `ZLibraryApi.setDomain`, which changes the host for subsequent requests; device-side speed testing is in `lib/services/mirror_speed_test.dart`.
 - Multi-account support: `AuthStorage` persists multiple credential sets in secure storage.
-- Downloads are single-stream with resume (`Range` + `If-Range` + append to a stable `<final>.part` file, validator in `<final>.part.meta`). Segmented parallel downloading is deliberately NOT implemented. The external-source / LAN path goes through `lib/services/resumable_downloader.dart` (rejects HTML answers, flags truncated streams); the Z-Library path has its own equivalent checks in `vendor/olib_api_plugin` (`_downloadOnce`) — keep the two in step.
+- Downloads are single-stream with resume (`Range` + `If-Range` + append to a stable `<final>.part` file, validator in `<final>.part.meta`). Segmented parallel downloading is deliberately NOT implemented. The external-source path (Anna's Archive / LibGen direct links) goes through `lib/services/resumable_downloader.dart` (rejects HTML answers, flags truncated streams); the Z-Library path has its own equivalent checks in `vendor/olib_api_plugin` (`_downloadOnce`) — keep the two in step. The preset download carries no custom headers (S5): dio follows redirects itself, and custom headers would travel to the redirect target.
 - Swallowed exceptions must go through `logIgnored(tag, error)` (`lib/utils/diagnostics.dart`), never a bare `debugPrint`: it keeps a bounded in-memory trail (tag + exception type only, no message) that works in release builds.
 - Credentials only go to confirmed hosts: `lib/services/mirror_trust.dart` + `confirmMirrorTrust()` ask once per community mirror before login / line switch, and `DomainNotifier.setDomain` refuses to re-send the session to an unconfirmed host.
 - Update-dialog links are restricted to `UpdateManifest.allowedLinkHosts`; add a host there before using a new netdisk in a release.

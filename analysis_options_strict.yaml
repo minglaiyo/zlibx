@@ -1,10 +1,14 @@
 # Staged, NOT enforced by CI: a stricter lint profile to triage gradually.
 #
-#   flutter analyze --options analysis_options_strict.yaml
+# CI runs this profile as a NON-BLOCKING step ("Strict lint triage") that
+# reports the finding count on every push/PR (dart analyze has no
+# --options override, so CI swaps this file in for that step).
 #
-# It was not run when added (no Flutter SDK was available), so expect a
-# first batch of findings. Fix them per directory, then move the rules you
-# want into analysis_options.yaml so `flutter analyze` in CI enforces them.
+# Baseline 2026-11-13 (lib/, fresh gen-l10n output): 285 findings —
+# avoid_catches_without_on_clauses 149, directives_ordering 103,
+# strict_raw_type 15, prefer_final_locals 9, strict-casts 5, misc 4.
+# Fix per directory; when a rule hits zero, promote it into
+# analysis_options.yaml so `flutter analyze` enforces it there.
 include: package:flutter_lints/flutter.yaml
 
 analyzer:

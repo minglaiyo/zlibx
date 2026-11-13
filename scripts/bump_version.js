@@ -37,6 +37,12 @@ const FILES = {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function readFile(filePath) {
+  // 安卓化后部分目标已不存在（installer.iss、publish_page/*）：
+  // 缺失的文件跳过并告警，不再让整个版本提升中断。
+  if (!fs.existsSync(filePath)) {
+    console.log(`  ⚠️  跳过不存在的文件: ${filePath}`);
+    return null;
+  }
   return fs.readFileSync(filePath, 'utf-8');
 }
 
@@ -97,6 +103,7 @@ function updatePubspec(version, buildNumber) {
 
 function updateInstaller(version) {
   let content = readFile(FILES.installer);
+  if (content === null) return;
 
   content = content.replace(
     /#define MyAppVersion ".*?"/,
@@ -109,6 +116,7 @@ function updateInstaller(version) {
 
 function updateSettingsScreen(version) {
   let content = readFile(FILES.settingsScreen);
+  if (content === null) return;
 
   // Replace the hardcoded version in the About section
   // Pattern: trailing: const Text('x.y.z'),
@@ -123,6 +131,7 @@ function updateSettingsScreen(version) {
 
 function updateVersionJson(version) {
   const content = readFile(FILES.versionJson);
+  if (content === null) return;
   const json = JSON.parse(content);
 
   const oldVersion = json.version;
@@ -144,6 +153,7 @@ function updateVersionJson(version) {
 
 function updateConfigJs(version) {
   let content = readFile(FILES.configJs);
+  if (content === null) return;
 
   // Update version: 'vx.y.z'
   content = content.replace(
@@ -194,11 +204,11 @@ function main() {
   console.log(`  ${currentVersion || '?'} → ${newVersion} (build ${buildNumber})`);
   console.log('');
 
-  // Verify all files exist
+  // 预检：缺失的文件（安卓化后已删除的 installer.iss、publish_page/*）
+  // 在各 updater 里跳过，这里只告警不再整体退出。
   for (const [name, filePath] of Object.entries(FILES)) {
     if (!fs.existsSync(filePath)) {
-      console.error(`  ❌ File not found: ${filePath}`);
-      process.exit(1);
+      console.log(`  ⚠️  跳过不存在的文件: ${filePath}`);
     }
   }
 

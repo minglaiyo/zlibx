@@ -11,6 +11,7 @@ import '../../routes/app_routes.dart';
 import '../../l10n/generated/app_localizations.dart';
 
 import '../../utils/cover_cache.dart';
+import '../../utils/error_text.dart';
 
 /// Sort order for the cloud download history list. The default
 /// ([dateDesc]) is the server's own order (newest download first —
@@ -135,7 +136,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           error: (error, stack) => EmptyState(
             icon: Icons.error_outline,
             title: l10n.error,
-            message: error.toString(),
+            message: friendlyErrorText(error, l10n),
           ),
         ),
       ),

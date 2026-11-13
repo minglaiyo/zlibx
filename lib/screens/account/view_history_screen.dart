@@ -12,6 +12,7 @@ import '../../widgets/book_list_tile.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/loading_widget.dart';
 import '../../widgets/gradient_app_bar.dart';
+import '../../utils/error_text.dart';
 
 /// 浏览历史（本地）：站内书详情页的最近打开记录，每次打开置顶
 /// （记录点在 AppRoutes.openBookDetail，所有入口统一生效）。
@@ -94,7 +95,7 @@ class _ViewHistoryScreenState extends State<ViewHistoryScreen> {
             return EmptyState(
               icon: Icons.error_outline,
               title: l10n.error,
-              message: snapshot.error.toString(),
+              message: friendlyErrorText(snapshot.error, l10n),
             );
           }
           final entries = snapshot.data ?? const [];

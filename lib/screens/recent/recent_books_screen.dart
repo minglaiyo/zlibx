@@ -8,6 +8,7 @@ import '../../routes/app_routes.dart';
 import '../../widgets/book_card.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/loading_widget.dart';
+import '../../utils/error_text.dart';
 import '../../widgets/gradient_app_bar.dart';
 
 /// 最新上架——官网首页"最近添加"栏目的承载页。`/eapi/book/recently`
@@ -38,7 +39,7 @@ class RecentBooksScreen extends ConsumerWidget {
               EmptyState(
                 icon: Icons.error_outline,
                 title: l10n.error,
-                message: error.toString(),
+                message: friendlyErrorText(error, l10n),
               ),
               Center(
                 child: TextButton.icon(

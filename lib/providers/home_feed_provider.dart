@@ -195,8 +195,9 @@ Future<List<Book>> _randomCategoryBooks(
     if (!first.success || first.data == null) {
       throw StateError(first.error ?? 'Failed to load random books');
     }
-    firstPage = first.data;
-    total = firstPage.totalPages ?? 1;
+    final firstData = first.data!;
+    firstPage = firstData;
+    total = firstData.totalPages ?? 1;
     if (total < 1) total = 1;
     _categoryTotalPages[categoryId] = total;
     fetches = 1;

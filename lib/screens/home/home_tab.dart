@@ -5,12 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/books_provider.dart';
-import '../../providers/zlibrary_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/update_provider.dart';
 import '../../widgets/update_dialog.dart';
-import '../../models/display_book.dart';
 import '../../routes/app_routes.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../theme/app_metrics.dart';
@@ -48,16 +46,6 @@ class HomeTab extends ConsumerStatefulWidget {
 
 class HomeTabState extends ConsumerState<HomeTab> {
   final _scrollController = ScrollController();
-
-  /// Current popular-books page (0 = showing the personalised
-  /// recommendations; >0 = showing popular page N). Pull-to-refresh
-  /// pages through popular books because the personalised endpoint
-  /// returns the same list every time.
-  int _popularPage = 0;
-
-  /// The popular page currently displayed, or null while showing the
-  /// personalised recommendations.
-  List<DisplayBook>? _pagedBooks;
 
   @override
   void initState() {
@@ -117,41 +105,15 @@ class HomeTabState extends ConsumerState<HomeTab> {
     }
   }
 
-  /// Pull-to-refresh: show the next page of popular books. The
-  /// personalised endpoint returns the same list every time, so paging
-  /// popular is the only way a refresh shows genuinely different books.
+  /// Pull-to-refresh: re-roll the random-category recommendations.
+  /// Every refresh picks a new random category and page, so the grid
+  /// always shows a different 50 books (user 2026-11-13: 每次刷新都换).
   Future<void> _refreshRecommendations() async {
-    await _loadPopularPage(_popularPage + 1);
-  }
-
-  Future<void> _loadPopularPage(int page) async {
-    final api = ref.read(zlibraryApiProvider);
-    final res = await api.search(order: 'popular', page: page, limit: 20);
-    if (!mounted) return;
-    final books = res.data;
-    final totalPages = res.meta?['total_pages'];
-    final outOfRange = totalPages is int && page > totalPages;
-    if (!res.success || books == null || books.isEmpty || outOfRange) {
-      // No more pages (or the fetch failed) — wrap back to page 1.
-      if (page != 1) {
-        await _loadPopularPage(1);
-        return;
-      }
-      // Page 1 itself failed: nothing to wrap to — say so instead of
-      // silently leaving the old list in place (a failed first refresh
-      // otherwise looks exactly like a refresh that never fired).
-      if (mounted && (!res.success || books == null)) {
-        showAppSnack(
-          context,
-          AppLocalizations.of(context)!.refreshFailed,
-        );
-      }
-      return;
+    try {
+      await ref.refresh(randomBooksProvider);
+    } catch (_) {
+      // The grid shows the error/retry branch; nothing more to do here.
     }
-    setState(() {
-      _popularPage = page;
-      _pagedBooks = books.map((b) => b.toDisplay()).toList();
-    });
   }
 
   Future<void> _checkForUpdates() async {
@@ -301,12 +263,7 @@ class HomeTabState extends ConsumerState<HomeTab> {
       ),
     );
 
-    // When paging popular books, show the fetched page instead of the
-    // personalised recommendations.
-    final booksAsync = ref.watch(homeRecommendedProvider);
-    final effectiveAsync = (_popularPage > 0 && _pagedBooks != null)
-        ? AsyncValue.data(_pagedBooks!)
-        : booksAsync;
+    final booksAsync = ref.watch(randomBooksProvider);
 
     return Column(
       children: [
@@ -316,7 +273,7 @@ class HomeTabState extends ConsumerState<HomeTab> {
           child: Stack(
             children: [
               HomeBookGrid(
-                booksAsync: effectiveAsync,
+                booksAsync: booksAsync,
                 topPadding: gridTopPadding,
                 scrollController: _scrollController,
                 onRefresh: _refreshRecommendations,

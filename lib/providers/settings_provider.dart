@@ -209,35 +209,6 @@ final homeGridFourColumnsProvider =
       HomeGridFourColumnsNotifier.new,
     );
 
-/// 推荐页伪随机排序 — whether the home recommendation feed is
-/// shuffled with a day-stable seed (on, default) or shown in the
-/// site's own ranking order (off). Appearance setting; lives in the
-/// appearance sheet next to the four-column toggle. Hive key
-/// `pseudoRandomRecommend`.
-class PseudoRandomRecommendNotifier extends Notifier<bool> {
-  @override
-  bool build() => _load();
-
-  /// Sync Hive read; returns the persisted value as the initial state
-  /// instead of assigning it (see LocaleNotifier).
-  bool _load() {
-    final v = HiveService.settingsBox.get('pseudoRandomRecommend');
-    if (v is bool) return v;
-    return true;
-  }
-
-  Future<void> setEnabled(bool value) async {
-    state = value;
-    await HiveService.settingsBox.put('pseudoRandomRecommend', value);
-  }
-}
-
-/// 推荐页伪随机排序 provider
-final pseudoRandomRecommendProvider =
-    NotifierProvider<PseudoRandomRecommendNotifier, bool>(
-      PseudoRandomRecommendNotifier.new,
-    );
-
 /// Whether the bottom nav bar is currently visible. Driven by the home
 /// grid's scroll direction (transient UI state, not persisted).
 class NavBarVisibleNotifier extends Notifier<bool> {

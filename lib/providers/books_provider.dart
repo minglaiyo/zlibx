@@ -1,9 +1,10 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/utils/diagnostics.dart';
-import 'package:zlibx/utils/seeded_shuffle.dart';
+import '../l10n/book_categories.dart';
 import '../models/display_book.dart';
 import '../services/annas_archieve.dart';
 import '../services/book_detail_page_repository.dart';
@@ -14,7 +15,6 @@ import '../services/libgen_service.dart';
 import '../services/network_error.dart';
 import '../services/storage_service.dart';
 import 'auth_provider.dart';
-import 'settings_provider.dart';
 import 'zlibrary_provider.dart';
 
 // ── Search ──────────────────────────────────────────────────────────
@@ -838,34 +838,77 @@ final mostPopularBooksProvider = FutureProvider<List<Book>>((ref) async {
   return response.data ?? [];
 });
 
-final recommendedBooksProvider = FutureProvider<List<Book>>((ref) async {
+/// 首页随机推荐：每次刷新从全部 841 个分类里随机挑一个分类，随机取
+/// 一页，补满 50 本。不走推荐接口（/eapi/user/book/recommended）也
+/// 不走热门接口（/eapi/book/most-popular 及 popular 排序搜索）。每次
+/// 打开 / 下拉刷新都重新随机（用户 2026-11-13 定：每次刷新都换）。
+/// 分类浏览是 HTML 页（getCategoryBooks），一页约 50 本；页数不够时
+/// 顺取下一页补满，最多取 3 页。分类为空时换一个分类重试，最多 3 个。
+final randomBooksProvider = FutureProvider<List<DisplayBook>>((ref) async {
   final api = ref.watch(zlibraryApiProvider);
-  final response = await api.getUserRecommended();
-  if (!response.success) {
-    throw StateError(response.error ?? 'Failed to load recommendations');
+  final random = Random();
+  const target = 50;
+  for (var attempt = 0; attempt < 3; attempt++) {
+    final books = await _randomCategoryBooks(api, random, target);
+    if (books.isNotEmpty) {
+      return books.map((b) => b.toDisplay()).toList();
+    }
   }
-  return response.data ?? [];
+  return <DisplayBook>[];
 });
 
-/// 首页推荐：z站推荐，转为 DisplayBook 列表。
-///
-/// "推荐页伪随机排序"开启（pseudoRandomRecommendProvider，默认开）时，
-/// 用当天日期做种子的确定性洗牌打散站点固定排序：同一天内顺序稳定，
-/// 隔天换一副"牌"（见 seededShuffle/daySeed）。关闭时保持站点原序。
-/// 洗牌只作用于个性化推荐列表；HomeTab 翻页加载的 most-popular 分页
-/// （_pagedBooks）不在此列——那是按页取的榜单，重排会破坏页序。
-final homeRecommendedProvider = Provider<AsyncValue<List<DisplayBook>>>((ref) {
-  final zlibAsync = ref.watch(recommendedBooksProvider);
-  final pseudoRandom = ref.watch(pseudoRandomRecommendProvider);
-  // whenData keeps loading/error states as-is: the home screen keeps its
-  // error/retry entry and keeps showing the previous data while a
-  // revalidation after an account switch is in flight.
-  return zlibAsync.whenData((books) {
-    final display = books.map((b) => b.toDisplay()).toList();
-    if (!pseudoRandom) return display;
-    return seededShuffle(display, daySeed(DateTime.now()));
-  });
-});
+/// 从一个随机分类里取 [target] 本书：先取第 1 页拿到总页数，再随机取
+/// 一页，不够时顺取下一页补满（最多 3 次请求）。去掉已下架的书，按 id
+/// 去重。分类为空时返回空列表，由调用方换分类重试；第 1 页取书失败时
+/// 抛错（首页显示错误 / 重试入口）。
+Future<List<Book>> _randomCategoryBooks(
+  ZLibraryApi api,
+  Random random,
+  int target,
+) async {
+  final categoryIds = kBookCategoryParents.keys.toList();
+  final categoryId = categoryIds[random.nextInt(categoryIds.length)];
+  final first = await api.getCategoryBooks(categoryId, page: 1);
+  if (!first.success || first.data == null) {
+    throw StateError(first.error ?? 'Failed to load random books');
+  }
+  final totalPages = first.data!.totalPages ?? 1;
+  final total = totalPages < 1 ? 1 : totalPages;
+  final page = 1 + random.nextInt(total);
+  final collected = <Book>[];
+  final seen = <int>{};
+  void addPage(CategoryPage pg) {
+    for (final cb in pg.books) {
+      if (cb.removed) continue;
+      if (seen.add(cb.book.id)) collected.add(cb.book);
+    }
+  }
+  var fetches = 1;
+  if (page == 1) {
+    addPage(first.data!);
+  } else {
+    final res = await api.getCategoryBooks(categoryId, page: page);
+    if (res.success && res.data != null) {
+      addPage(res.data!);
+      fetches++;
+    } else {
+      // 随机页失败：用已取到的第 1 页兜底。
+      addPage(first.data!);
+    }
+  }
+  var next = page + 1;
+  while (collected.length < target && next <= total && fetches < 3) {
+    final res = await api.getCategoryBooks(categoryId, page: next);
+    if (!res.success || res.data == null) break;
+    addPage(res.data!);
+    fetches++;
+    next++;
+  }
+  if (collected.length < target && page != 1) {
+    addPage(first.data!);
+  }
+  return collected.take(target).toList();
+}
 
 final recentBooksProvider = FutureProvider<List<Book>>((ref) async {
   final api = ref.watch(zlibraryApiProvider);

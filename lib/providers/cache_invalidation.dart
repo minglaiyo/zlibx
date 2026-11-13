@@ -12,7 +12,7 @@ import 'books_provider.dart';
 /// Keep the list here so it can never drift again.
 void invalidateAccountScopedProviders(Ref ref) {
   ref.invalidate(bookDetailsProvider);
-  ref.invalidate(recommendedBooksProvider);
+  ref.invalidate(randomBooksProvider);
   ref.invalidate(mostPopularBooksProvider);
   ref.invalidate(recentBooksProvider);
   ref.invalidate(downloadedBooksProvider);

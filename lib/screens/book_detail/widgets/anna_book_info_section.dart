@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/book_description.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
+import '../../../routes/app_routes.dart';
 import '../../../services/annas_archieve.dart';
 import 'book_detail_content.dart';
 
@@ -49,7 +50,17 @@ class AnnaBookInfoSection extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            BookDetailHeading(book: displayBook),
+            BookDetailHeading(
+              book: displayBook,
+              // Tapping the author searches for that author on
+              // z站 (the search screen's default source).
+              onAuthorTap: displayBook.author?.isNotEmpty ?? false
+                  ? () => AppRoutes.openSearchWithQuery(
+                      context,
+                      displayBook.author!,
+                    )
+                  : null,
+            ),
             if (tags.isNotEmpty) ...[
               const SizedBox(height: 16),
               Wrap(spacing: 8, runSpacing: 8, children: tags),
@@ -60,7 +71,17 @@ class AnnaBookInfoSection extends StatelessWidget {
             ],
             if (fields.isNotEmpty) ...[
               const SizedBox(height: 28),
-              BookPublicationInfo(fields: fields),
+              BookPublicationInfo(
+                fields: fields,
+                onFieldTap: info.publisher?.isNotEmpty ?? false
+                    ? {
+                        l10n.publisher: () => AppRoutes.openSearchWithQuery(
+                          context,
+                          info.publisher!,
+                        ),
+                      }
+                    : null,
+              ),
             ],
           ],
         ),

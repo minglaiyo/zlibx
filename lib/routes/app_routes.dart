@@ -160,6 +160,17 @@ class AppRoutes {
     SearchScreenArgs args,
   ) => Navigator.of(context).pushNamed<T>(search, arguments: args);
 
+  /// The search page, pre-filled with a query: it runs the search
+  /// immediately. This is what the book-detail author/publisher taps
+  /// navigate to.
+  static Future<T?> openSearchWithQuery<T extends Object?>(
+    BuildContext context,
+    String query,
+  ) => Navigator.of(context).pushNamed<T>(
+    search,
+    arguments: SearchScreenArgs(query: query),
+  );
+
   /// The favorites page.
   static Future<T?> openFavorites<T extends Object?>(BuildContext context) =>
       Navigator.of(context).pushNamed<T>(favorites);
@@ -247,6 +258,7 @@ Map<String, WidgetBuilder> buildAppRoutes() {
         return SearchScreen(
           initialCategoryId: args.categoryId,
           initialCategoryName: args.categoryName,
+          initialQuery: args.query,
         );
       }
       return const SearchScreen();

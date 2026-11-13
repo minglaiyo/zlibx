@@ -7,7 +7,17 @@ class BookDetailHeading extends StatelessWidget {
   final DisplayBook book;
   final String? subtitle;
 
-  const BookDetailHeading({super.key, required this.book, this.subtitle});
+  /// Tap handler for the author name: when set, the author reads as
+  /// a link (it already uses the primary color) and opens a search
+  /// for that author. Null means display-only.
+  final VoidCallback? onAuthorTap;
+
+  const BookDetailHeading({
+    super.key,
+    required this.book,
+    this.subtitle,
+    this.onAuthorTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -33,13 +43,17 @@ class BookDetailHeading extends StatelessWidget {
         ),
         if (book.author?.isNotEmpty ?? false) ...[
           const SizedBox(height: 8),
-          Text(
-            book.author!,
-            style: TextStyle(
-              fontSize: 15,
-              height: 1.4,
-              fontWeight: FontWeight.w500,
-              color: cs.primary,
+          InkWell(
+            onTap: onAuthorTap,
+            borderRadius: BorderRadius.circular(4),
+            child: Text(
+              book.author!,
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.4,
+                fontWeight: FontWeight.w500,
+                color: cs.primary,
+              ),
             ),
           ),
         ],
@@ -180,7 +194,17 @@ class _BookDetailDescriptionState extends State<BookDetailDescription> {
 class BookPublicationInfo extends StatelessWidget {
   final Map<String, String> fields;
 
-  const BookPublicationInfo({super.key, required this.fields});
+  /// Tap handlers per field, keyed by the field label (the same
+  /// string used as the map key in [fields]): a field with a handler
+  /// renders its value as a link (primary color + ripple). A field
+  /// without one stays plain text. Null means no field is tappable.
+  final Map<String, VoidCallback>? onFieldTap;
+
+  const BookPublicationInfo({
+    super.key,
+    required this.fields,
+    this.onFieldTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -203,8 +227,19 @@ class BookPublicationInfo extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        ...entries.map(
-          (entry) => Padding(
+        ...entries.map((entry) {
+          // A field with a tap handler (publisher) reads as a link:
+          // primary color + ripple. Other fields stay plain text.
+          final onTap = onFieldTap?[entry.key];
+          final value = Text(
+            entry.value,
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.5,
+              color: onTap == null ? cs.onSurface : cs.primary,
+            ),
+          );
+          return Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,19 +257,18 @@ class BookPublicationInfo extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    entry.value,
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.5,
-                      color: cs.onSurface,
-                    ),
-                  ),
+                  child: onTap == null
+                      ? value
+                      : InkWell(
+                          onTap: onTap,
+                          borderRadius: BorderRadius.circular(4),
+                          child: value,
+                        ),
                 ),
               ],
             ),
-          ),
-        ),
+          );
+        }),
       ],
     );
   }

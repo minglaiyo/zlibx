@@ -102,7 +102,16 @@ class BookInfoSection extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            BookDetailHeading(book: book.toDisplay(), subtitle: book.series),
+            BookDetailHeading(
+              book: book.toDisplay(),
+              subtitle: book.series,
+              // Tapping the author searches for that author (the
+              // heading only shows the author when it is non-empty,
+              // so the callback can only fire then).
+              onAuthorTap: book.author?.isNotEmpty ?? false
+                  ? () => AppRoutes.openSearchWithQuery(context, book.author!)
+                  : null,
+            ),
             if (tags.isNotEmpty) ...[
               const SizedBox(height: 16),
               // One row, never wrapped below: a category name can be long,
@@ -126,7 +135,20 @@ class BookInfoSection extends StatelessWidget {
             ],
             if (fields.isNotEmpty) ...[
               const SizedBox(height: 28),
-              BookPublicationInfo(fields: fields),
+              BookPublicationInfo(
+                fields: fields,
+                // Tapping the publisher searches for that publisher
+                // (the key is the same localized label used for the
+                // row above, so it can only match that row).
+                onFieldTap: book.publisher?.isNotEmpty ?? false
+                    ? {
+                        l10n.publisher: () => AppRoutes.openSearchWithQuery(
+                          context,
+                          book.publisher!,
+                        ),
+                      }
+                    : null,
+              ),
             ],
             if (book.hash?.isNotEmpty ?? false) ...[
               const SizedBox(height: 24),

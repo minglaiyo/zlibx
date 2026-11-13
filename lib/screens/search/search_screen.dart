@@ -31,17 +31,25 @@ import '../../utils/app_snack.dart';
 const _recentSearchesKey = 'recent_search_keywords';
 const _recentSearchesLimit = 12;
 
-/// Arguments for opening the search screen scoped to one category:
-/// the screen browses that category immediately (empty query). The
-/// category pages are gone — category lives only inside search now,
-/// so this is also what the book-detail category chips navigate to.
+/// Arguments for opening the search screen with a preset: either
+/// scoped to one category (browse it immediately, empty query) or
+/// pre-filled with a query (run it immediately). The category pages
+/// are gone — category lives only inside search now, so the category
+/// form is also what the book-detail category chips navigate to;
+/// the query form is what the book-detail author/publisher taps
+/// navigate to.
 class SearchScreenArgs {
-  final int categoryId;
-  final String categoryName;
+  final int? categoryId;
+  final String? categoryName;
+
+  /// Query to pre-fill and run on open (detail-page author/publisher
+  /// tap). Null means no preset query.
+  final String? query;
 
   const SearchScreenArgs({
-    required this.categoryId,
-    required this.categoryName,
+    this.categoryId,
+    this.categoryName,
+    this.query,
   });
 }
 
@@ -54,11 +62,17 @@ class SearchScreen extends ConsumerStatefulWidget {
   final int? initialCategoryId;
   final String? initialCategoryName;
 
+  /// Query to pre-fill and run on open: set when the screen is
+  /// opened from a book-detail author/publisher tap. Null means no
+  /// preset query.
+  final String? initialQuery;
+
   const SearchScreen({
     super.key,
     this.initialSource,
     this.initialCategoryId,
     this.initialCategoryName,
+    this.initialQuery,
   });
 
   @override
@@ -199,6 +213,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           .take(_recentSearchesLimit)
           .toList();
     }
+    // Opened with a query (detail-page author/publisher tap): put
+    // the query in the box before the listener is attached, so the
+    // empty-state flag is set here rather than via a setState in
+    // initState.
+    final initialQuery = widget.initialQuery?.trim();
+    if (initialQuery != null && initialQuery.isNotEmpty) {
+      _searchController.text = initialQuery;
+      _isQueryEmpty = false;
+    }
     _searchController.addListener(_onQueryChanged);
     // Opened with a category (detail-page chip): browse it
     // immediately — an empty query plus a category is a browse, not
@@ -206,6 +229,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     if (_selectedCategoryId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _runSearch();
+      });
+    }
+    // Opened with a query: run it right after the first frame — the
+    // query is already in the box, so the results come up directly.
+    if (initialQuery != null && initialQuery.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _performSearch();
       });
     }
   }

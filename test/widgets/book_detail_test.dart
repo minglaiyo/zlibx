@@ -9,6 +9,7 @@ import 'package:zlibx/screens/book_detail/widgets/book_action_bar.dart';
 import 'package:zlibx/screens/book_detail/widgets/book_detail_content.dart';
 import 'package:zlibx/screens/book_detail/widgets/book_hero_section.dart';
 import 'package:zlibx/screens/book_detail/widgets/book_info_section.dart';
+import 'package:zlibx/screens/search/search_screen.dart';
 
 Widget app(Widget body, {Brightness brightness = Brightness.light,
   double scale = 1, Widget? actionBar, Locale locale = const Locale('en')}) => ProviderScope(
@@ -198,6 +199,80 @@ void main() {
     expect(find.text('42%'), findsOneWidget);
     expect(tester.widget<OutlinedButton>(find.byType(OutlinedButton)).onPressed, isNull);
     expect(tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  // The author/publisher taps navigate to the search page carrying
+  // the tapped name as the query (the search screen pre-fills it and
+  // runs it). The route generator captures the pushed arguments; the
+  // dummy page stands in for the real search screen.
+  testWidgets('tapping the author opens a search for that author',
+      (tester) async {
+    SearchScreenArgs? pushed;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          locale: const Locale('en'),
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          onGenerateRoute: (settings) {
+            if (settings.arguments is SearchScreenArgs) {
+              pushed = settings.arguments as SearchScreenArgs;
+            }
+            return MaterialPageRoute(
+              builder: (_) => const Scaffold(body: Text('search')),
+            );
+          },
+          home: Scaffold(
+            body: CustomScrollView(
+              slivers: [BookInfoSection(book: book)],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(book.author!));
+    await tester.pumpAndSettle();
+    expect(pushed, isNotNull);
+    expect(pushed!.query, book.author);
+    expect(pushed!.categoryId, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('tapping the publisher opens a search for that publisher',
+      (tester) async {
+    SearchScreenArgs? pushed;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          locale: const Locale('en'),
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          onGenerateRoute: (settings) {
+            if (settings.arguments is SearchScreenArgs) {
+              pushed = settings.arguments as SearchScreenArgs;
+            }
+            return MaterialPageRoute(
+              builder: (_) => const Scaffold(body: Text('search')),
+            );
+          },
+          home: Scaffold(
+            body: CustomScrollView(
+              slivers: [BookInfoSection(book: book)],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text(book.publisher!));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(book.publisher!));
+    await tester.pumpAndSettle();
+    expect(pushed, isNotNull);
+    expect(pushed!.query, book.publisher);
+    expect(pushed!.categoryId, isNull);
     expect(tester.takeException(), isNull);
   });
 }

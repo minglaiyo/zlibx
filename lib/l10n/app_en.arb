@@ -459,8 +459,6 @@
   "readerSessionWriteFailed": "Failed to write reader session. Please log in again and retry.",
   "recentAccount": "Recent account",
   "recommendationFourColumns": "Four-column recommendations",
-  "recommendationPseudoRandom": "Pseudo-random recommendations",
-  "recommendationPseudoRandomDesc": "Shuffles the recommendation order with a daily seed — stable within the same day.",
   "recentlyAdded": "Recently added",
   "recentlyAddedEmpty": "Nothing new has been added yet",
   "recommended": "Recommended",

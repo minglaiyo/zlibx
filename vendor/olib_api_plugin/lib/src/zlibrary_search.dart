@@ -246,7 +246,13 @@ mixin ZLibrarySearch on ZLibraryApiBase {
     );
   }
 
-  /// Recently added books. Falls back to a newest-ordered search on 404.
+  /// Recently added books. The `/eapi/book/recently` endpoint only
+  /// returns `success=1` with no `books` array (heartleo research:
+  /// do not treat `recently` as a usable list), so an empty payload
+  /// falls back to a date-ordered search — same as [getMostPopular]
+  /// falling back on empty. `date` is the server's real "Recently
+  /// added" sort value; `newest` is not a valid order (an invalid
+  /// value silently degrades to popular).
   Future<ApiResponse<List<Book>>> getRecently() async {
     final raw = await _get('/eapi/book/recently');
     // Same cf_blocked short-circuit as [getMostPopular]: the search
@@ -255,7 +261,7 @@ mixin ZLibrarySearch on ZLibraryApiBase {
       return ApiResponse.fail('cf_blocked', statusCode: raw.status);
     }
     if (raw.status == 404) {
-      return search(order: 'newest', limit: 20);
+      return search(order: 'date', limit: 20);
     }
     if (raw.json == null) {
       return ApiResponse.fail(raw.error ?? 'recently failed',
@@ -268,7 +274,11 @@ mixin ZLibrarySearch on ZLibraryApiBase {
         statusCode: raw.status,
       );
     }
-    return ApiResponse.ok(ZLibraryApiBase._booksOf(raw.json!), meta: ZLibraryApiBase._metaOf(raw.json!));
+    final books = ZLibraryApiBase._booksOf(raw.json!);
+    if (books.isEmpty) {
+      return search(order: 'date', limit: 20);
+    }
+    return ApiResponse.ok(books, meta: ZLibraryApiBase._metaOf(raw.json!));
   }
 
   Future<ApiResponse<List<Book>>> getUserSaved({

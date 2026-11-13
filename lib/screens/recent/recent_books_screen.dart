@@ -10,8 +10,9 @@ import '../../widgets/empty_state.dart';
 import '../../widgets/gradient_app_bar.dart';
 
 /// 最新上架——官网首页"最近添加"栏目的承载页。`/eapi/book/recently`
-/// 的一次快照（约 20 本，接口 404 时插件自动回退到 newest 搜索），
-/// 下拉刷新重新拉取。卡片与首页推荐一致（BookCard）。
+/// 的一次快照（约 20 本；该接口只回 success=1 不带书单，404 或
+/// 空列表时插件自动回退到 date 排序搜索），下拉刷新重新拉取。
+/// 卡片与首页推荐一致（BookCard）。
 ///
 /// recentBooksProvider 是账号维度缓存的一员（换号/换线时随
 /// invalidateAccountScopedProviders 一起失效），这里不重复管理。

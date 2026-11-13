@@ -30,6 +30,11 @@ class AppColors {
   static const error = Color(0xFFD45454);
   static const info = Color(0xFF4A9EC4);
 
+  // ─── Content accents ───
+  // 评分星（book_card / shelf_book_item / book_hero_section 三处共用，
+  // 此前各自硬编码同一 hex）。
+  static const ratingStar = Color(0xFFFFD76A);
+
   // ─── Progress Bars ───
   static const progressGreen = Color(0xFF52B788);
   static const progressYellow = Color(0xFFE6C84D);

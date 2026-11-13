@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/display_book.dart';
 import '../theme/app_metrics.dart';
+import '../theme/app_colors.dart';
 import '../utils/cover_cache.dart';
 import 'book_cover_backdrop.dart';
 import 'cover_placeholder.dart';
@@ -298,7 +299,7 @@ class _BookCardState extends State<BookCard> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (rating) ...[
-              const Icon(Icons.star_rounded, size: 14, color: Color(0xFFFFD76A)),
+              const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingStar),
               const SizedBox(width: 3),
             ],
             Text(

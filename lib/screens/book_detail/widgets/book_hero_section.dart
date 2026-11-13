@@ -8,6 +8,7 @@ import '../../../models/display_book.dart';
 import '../../../providers/books_provider.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../theme/app_metrics.dart';
+import '../../../theme/app_colors.dart';
 import '../../../utils/app_snack.dart';
 import '../../../utils/cover_cache.dart';
 import '../../../widgets/loading_widget.dart';
@@ -266,7 +267,7 @@ class _HeroRatingBadge extends StatelessWidget {
             const Icon(
               Icons.star_rounded,
               size: 15,
-              color: Color(0xFFFFD76A),
+              color: AppColors.ratingStar,
             ),
             const SizedBox(width: 3),
             Text(

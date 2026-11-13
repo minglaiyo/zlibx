@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import '../../theme/app_colors.dart';
 import 'dart:io';
 import '../../l10n/generated/app_localizations.dart';
 import '../../providers/auth_provider.dart';
@@ -445,13 +446,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                             height: 7,
                             decoration: BoxDecoration(
                               color: _networkOk
-                                  ? const Color(0xFF4ADE80)
+                                  ? AppColors.success
                                   : Colors.white.withValues(alpha:0.5),
                               shape: BoxShape.circle,
                               boxShadow: _networkOk
                                   ? [
                                       BoxShadow(
-                                        color: const Color(0xFF4ADE80)
+                                        color: AppColors.success
                                             .withValues(alpha:0.6),
                                         blurRadius: 8,
                                         spreadRadius: 1,

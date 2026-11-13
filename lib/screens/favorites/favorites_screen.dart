@@ -15,12 +15,14 @@ import '../../routes/app_routes.dart';
 import '../../screens/search/search_screen.dart';
 import '../../services/media_store.dart';
 import '../../theme/app_metrics.dart';
+import '../../widgets/empty_state.dart';
 import 'category_actions.dart';
 import 'widgets/shelf_book_sliver.dart';
 import 'widgets/shelf_chip.dart';
 import '../../widgets/loading_widget.dart';
 
 import '../../utils/app_snack.dart';
+import '../../utils/error_text.dart';
 enum _ShelfSort { defaultOrder, title, author }
 
 class FavoritesScreen extends ConsumerStatefulWidget {
@@ -390,48 +392,31 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
         : filtered
         ? l.shelfTryOtherFilter
         : l.shelfEmptyMessage;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              filtered ? Icons.search_off_rounded : Icons.auto_stories_outlined,
-              size: 54,
-              color: Theme.of(
-                context,
-              ).colorScheme.primary.withValues(alpha: 0.6),
-            ),
-            const SizedBox(height: 14),
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 7),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton.tonal(
-              onPressed: hasSourceError
-                  ? () {
-                      ref.read(savedBooksProvider.notifier).loadSavedBooks();
-                    }
-                  : filtered
-                  ? () => setState(() {
-                      _searchController.clear();
-                      _selectedCategoryId = null;
-                    })
-                  : () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const SearchScreen(),
-                      ),
-                    ),
-              child: Text(
-                hasSourceError
-                    ? l.retry
-                    : filtered
-                    ? l.shelfClearFilters
-                    : l.shelfFindBooks,
+    return EmptyState(
+      icon: filtered ? Icons.search_off_rounded : Icons.auto_stories_outlined,
+      title: title,
+      message: message,
+      action: FilledButton.tonal(
+        onPressed: hasSourceError
+            ? () {
+                ref.read(savedBooksProvider.notifier).loadSavedBooks();
+              }
+            : filtered
+            ? () => setState(() {
+                _searchController.clear();
+                _selectedCategoryId = null;
+              })
+            : () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SearchScreen(),
+                ),
               ),
-            ),
-          ],
+        child: Text(
+          hasSourceError
+              ? l.retry
+              : filtered
+              ? l.shelfClearFilters
+              : l.shelfFindBooks,
         ),
       ),
     );
@@ -557,7 +542,11 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
         if (result.type == ResultType.done) return;
         if (mounted) _message(result.message);
       } catch (error) {
-        if (mounted) _message(error.toString());
+        if (mounted) {
+              _message(
+                friendlyErrorText(error, AppLocalizations.of(context)!),
+              );
+            }
       }
       return;
     }

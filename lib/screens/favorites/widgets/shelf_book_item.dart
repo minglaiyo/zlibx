@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/unified_shelf_item.dart';
 import '../../../theme/app_metrics.dart';
+import '../../../theme/app_colors.dart';
 import '../../../widgets/cover_placeholder.dart';
 
 /// 封面 + 书名/作者的网格卡片，与首页、搜索页的卡片语言保持一致。
@@ -374,7 +375,7 @@ class _RatingPill extends StatelessWidget {
           const Icon(
             Icons.star_rounded,
             size: 12,
-            color: Color(0xFFFFD76A),
+            color: AppColors.ratingStar,
           ),
           const SizedBox(width: 2),
           Text(

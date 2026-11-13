@@ -312,38 +312,41 @@ class HomeTabState extends ConsumerState<HomeTab> {
   }
 
   /// 搜索胶囊（原搜索触发条原样抽出，供首行 Row 与快捷按钮并排）。
-  /// Material+Ink 而不是 GestureDetector：水波纹画在装饰层之上，
-  /// 首页主入口按下要有反馈；阴影从 AppShadows.elevated 取（深色
-  /// 模式加深，与书架/书单的同款胶囊一致）。
+  /// 阴影画在外层 Container（Ink 的 boxShadow 会按矩形边界外溢，
+  /// 真机截图证实），Material 只负责表面色与水波裁切——水波纹画
+  /// 在表面色之上，首页主入口按下要有反馈；阴影从 AppShadows.elevated
+  /// 取（深色模式加深，与书架/书单的同款胶囊一致）。
   Widget _buildSearchPill(BuildContext context, ColorScheme cs, double height) {
-    return Material(
-      color: Colors.transparent,
-      child: Ink(
-        height: height,
-        decoration: BoxDecoration(
-          color: cs.surface.withValues(alpha: 0.8),
-          borderRadius: BorderRadius.circular(30),
-          boxShadow: AppShadows.elevated(cs.brightness),
-        ),
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: AppShadows.elevated(cs.brightness),
+      ),
+      child: Material(
+        color: cs.surface.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(30),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: () => AppRoutes.openSearch(context),
-          borderRadius: BorderRadius.circular(30),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    AppLocalizations.of(context)!.searchForBooks,
-                    style: TextStyle(
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.7),
-                      fontSize: 16,
+          child: SizedBox(
+            height: height,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      AppLocalizations.of(context)!.searchForBooks,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                        fontSize: 16,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Icon(Icons.search, color: cs.onSurfaceVariant),
-              ],
+                  const SizedBox(width: 12),
+                  Icon(Icons.search, color: cs.onSurfaceVariant),
+                ],
+              ),
             ),
           ),
         ),
@@ -392,22 +395,25 @@ class _HeaderIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // 阴影画在外层 Container（Ink 的 boxShadow 会按矩形边界外溢，
+    // 真机截图证实，与搜索胶囊同一修法）。
     return Tooltip(
       message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: Ink(
-          width: 54,
-          height: 54,
-          decoration: BoxDecoration(
-            color: cs.surface.withValues(alpha: 0.8),
-            shape: BoxShape.circle,
-            boxShadow: AppShadows.elevated(cs.brightness),
-          ),
+      child: Container(
+        width: 54,
+        height: 54,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: AppShadows.elevated(cs.brightness),
+        ),
+        child: Material(
+          color: cs.surface.withValues(alpha: 0.8),
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onTap,
             customBorder: const CircleBorder(),
-            child: Icon(icon, color: cs.onSurfaceVariant),
+            child: Center(child: Icon(icon, color: cs.onSurfaceVariant)),
           ),
         ),
       ),

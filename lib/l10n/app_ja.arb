@@ -172,6 +172,18 @@
   "collapseDetailDescription": "クイック操作を上に移動",
   "collapseDetailDescriptionDesc": "書籍詳細ページで「類似の本」「本リストに追加」「コメント」をタイトルの下に表示します",
   "addedToFavorites": "お気に入りに追加しました",
+  "privacyLock": "プライバシーロック",
+  "appLockEnable": "プライバシーロックを有効にする",
+  "appLockEnableDesc": "バックグラウンドから戻る際、指紋 / 顔 / 端末の認証情報でロック解除します",
+  "appLockTimeout": "ロックタイミング",
+  "lockImmediately": "バックグラウンドですぐロック",
+  "lockAfter1Min": "1 分後",
+  "lockAfter5Min": "5 分後",
+  "secureRecents": "最近使用のタスクをぼかす",
+  "secureRecentsDesc": "システムの最近使用画面でこのアプリをぼかし、スクリーンショットを防ぎます",
+  "unlock": "ロック解除",
+  "unlockFailed": "ロック解除に失敗しました。再試行してください",
+  "appLockAuthReason": "zlibx をロック解除",
   "confirmRemoveMsg": "お気に入りから{count}冊を削除しますか？",
   "@confirmRemoveMsg": {
     "placeholders": {

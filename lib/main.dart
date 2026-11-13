@@ -14,8 +14,10 @@ import 'services/mirror_trust.dart';
 import 'services/booklist_html_cache.dart';
 import 'services/instance_manager.dart';
 import 'services/storage_service.dart';
+import 'services/app_lock_service.dart';
 import 'services/challenge_html_cache.dart';
 import 'services/webview_challenge_solver.dart';
+import 'widgets/app_lock_overlay.dart';
 import 'utils/diagnostics.dart';
 import 'screens/challenge_solver/challenge_solver_screen.dart';
 import 'l10n/generated/app_localizations.dart';
@@ -40,6 +42,13 @@ void main() async {
   };
 
   await HiveService.init();
+  // Privacy lock companion: re-apply FLAG_SECURE from the persisted
+  // setting (recents blur survives process restarts only if re-set).
+  // A throwaway read — the notifier reads the same key later.
+  final secureRecents = HiveService.settingsBox.get('secureRecents');
+  if (secureRecents is bool && secureRecents) {
+    unawaited(AppLockController.applySecureFlag(true));
+  }
   // Existing installs keep their current line without a trust prompt.
   await MirrorTrust.grandfatherCurrent();
 
@@ -89,10 +98,13 @@ class MyApp extends ConsumerStatefulWidget {
   ConsumerState<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends ConsumerState<MyApp> {
+
+class _MyAppState extends ConsumerState<MyApp>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // The plugin reports the raw HTML of every booklist page it
     // loads over Dio; persist it so the next open paints from cache
     // first (see BooklistHtmlCache). Registered once here: the
@@ -112,6 +124,38 @@ class _MyAppState extends ConsumerState<MyApp> {
         fetchedAt: fetchedAt,
       );
     };
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // 隐私锁：paused 记时 / 立即锁，resumed 判定延迟锁是否到点。
+    // 用 ref.read：不订阅开关本身，开关变化下次生命周期事件自然生效。
+    final enabled = ref.read(appLockEnabledProvider);
+    final timeoutSeconds = ref.read(appLockTimeoutProvider);
+    final controller = AppLockController.instance;
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        controller.handlePaused(
+          enabled: enabled,
+          timeoutSeconds: timeoutSeconds,
+        );
+      case AppLifecycleState.resumed:
+        controller.handleResumed(
+          enabled: enabled,
+          timeoutSeconds: timeoutSeconds,
+        );
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        break;
+    }
   }
 
   @override
@@ -156,6 +200,10 @@ class _MyAppState extends ConsumerState<MyApp> {
 
           initialRoute: AppRoutes.splash,
           routes: buildAppRoutes(),
+          // 隐私锁覆盖层：盖在所有路由之上（builder 在 Navigator 外，
+          // 所以路由切换不影响门闩）。
+          builder: (context, child) =>
+              AppLockOverlay(child: child ?? const SizedBox.shrink()),
         );
       },
     );

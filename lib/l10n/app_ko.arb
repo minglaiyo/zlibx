@@ -172,6 +172,18 @@
   "collapseDetailDescription": "빠른 작업 위로 이동",
   "collapseDetailDescriptionDesc": "책 상세 페이지에서 비슷한 책 / 서목록에 추가 / 댓글을 제목 바로 아래에 표시합니다",
   "addedToFavorites": "즐겨찾기에 추가되었습니다",
+  "privacyLock": "개인정보 보호 잠금",
+  "appLockEnable": "개인정보 보호 잠금 사용",
+  "appLockEnableDesc": "백그라운드에서 돌아올 때 지문 / 얼굴 / 기기 자격 증명으로 잠금을 해제합니다",
+  "appLockTimeout": "잠금 시점",
+  "lockImmediately": "백그라운드 전환 시 즉시",
+  "lockAfter1Min": "1분 후",
+  "lockAfter5Min": "5분 후",
+  "secureRecents": "최근 사용 앱 가리기",
+  "secureRecentsDesc": "시스템 최근 사용 화면에서 이 앱을 흐리게 하고 스크린샷을 차단합니다",
+  "unlock": "잠금 해제",
+  "unlockFailed": "잠금 해제에 실패했습니다. 다시 시도하세요",
+  "appLockAuthReason": "zlibx 잠금 해제",
   "confirmRemoveMsg": "즐겨찾기에서 {count}권을 삭제하시겠습니까?",
   "@confirmRemoveMsg": {
     "placeholders": {

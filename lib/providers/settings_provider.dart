@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../services/app_lock_service.dart';
 import '../services/storage_service.dart';
 import '../services/hive_service.dart';
 import '../utils/diagnostics.dart';
@@ -245,6 +246,75 @@ final randomRecommendProvider =
     NotifierProvider<RandomRecommendNotifier, bool>(
       RandomRecommendNotifier.new,
     );
+
+/// ── 隐私锁（用户批 2026-11-14 功能）─────────────────────────────
+///
+/// 三个持久化设置：启用开关、锁定时机（秒）、最近任务遮蔽（
+/// FLAG_SECURE）。锁定状态本身是运行时状态，见
+/// `lib/services/app_lock_service.dart` 的 AppLockController。
+class AppLockEnabledNotifier extends Notifier<bool> {
+  @override
+  bool build() => _load();
+
+  bool _load() {
+    final v = HiveService.settingsBox.get('appLockEnabled');
+    if (v is bool) return v;
+    return false;
+  }
+
+  Future<void> setEnabled(bool value) async {
+    state = value;
+    await HiveService.settingsBox.put('appLockEnabled', value);
+  }
+}
+
+final appLockEnabledProvider =
+    NotifierProvider<AppLockEnabledNotifier, bool>(
+      AppLockEnabledNotifier.new,
+    );
+
+/// 切后台多少秒后要求解锁：0 = 立即，60 / 300 = 延迟。
+class AppLockTimeoutNotifier extends Notifier<int> {
+  @override
+  int build() => _load();
+
+  int _load() {
+    final v = HiveService.settingsBox.get('appLockTimeoutSeconds');
+    if (v is int && (v == 0 || v == 60 || v == 300)) return v;
+    return 0;
+  }
+
+  Future<void> setTimeout(int seconds) async {
+    state = seconds;
+    await HiveService.settingsBox.put('appLockTimeoutSeconds', seconds);
+  }
+}
+
+final appLockTimeoutProvider =
+    NotifierProvider<AppLockTimeoutNotifier, int>(
+      AppLockTimeoutNotifier.new,
+    );
+
+class SecureFlagNotifier extends Notifier<bool> {
+  @override
+  bool build() => _load();
+
+  bool _load() {
+    final v = HiveService.settingsBox.get('secureRecents');
+    if (v is bool) return v;
+    return false;
+  }
+
+  Future<void> setEnabled(bool value) async {
+    state = value;
+    await HiveService.settingsBox.put('secureRecents', value);
+    // 窗口旗标跟着开关走；失败只记录（旗标是隐私增强，不是功能闸）。
+    await AppLockController.applySecureFlag(value);
+  }
+}
+
+final secureFlagProvider =
+    NotifierProvider<SecureFlagNotifier, bool>(SecureFlagNotifier.new);
 
 /// 详情页快捷入口上移开关：开启后相似书籍 / 加入书单 / 评论三行
 /// 提到标题正下方（首屏直达）；关闭时保持页面底部原位置。简介与

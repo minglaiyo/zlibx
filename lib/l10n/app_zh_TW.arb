@@ -172,6 +172,18 @@
   "collapseDetailDescription": "詳情頁快捷入口上移",
   "collapseDetailDescriptionDesc": "書籍詳情頁把相似書籍、加入書單、評論提到標題正下方（首屏直達）",
   "addedToFavorites": "已加入收藏",
+  "privacyLock": "隱私鎖",
+  "appLockEnable": "啟用隱私鎖",
+  "appLockEnableDesc": "切後台後再進入需通過指紋 / 臉部 / 裝置密碼解鎖",
+  "appLockTimeout": "鎖定時機",
+  "lockImmediately": "切後台立即鎖定",
+  "lockAfter1Min": "切後台 1 分鐘後",
+  "lockAfter5Min": "切後台 5 分鐘後",
+  "secureRecents": "最近工作遮蔽",
+  "secureRecentsDesc": "系統最近工作裡模糊本應用畫面，並阻止截屏",
+  "unlock": "解鎖",
+  "unlockFailed": "解鎖失敗，請重試",
+  "appLockAuthReason": "解鎖 zlibx",
   "confirmRemoveMsg": "確定要從收藏中移除 {count} 本書嗎？",
   "@confirmRemoveMsg": {
     "placeholders": {

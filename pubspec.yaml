@@ -51,7 +51,15 @@ dependencies:
   dio: ^5.4.3+1
   # Imported directly by lib/services/libgen_service.dart and
   # lib/services/annas_archieve.dart (used to be transitive-only).
-  meta: ^1.18.0
+  # >=1.17.0 (not ^1.18.0): Flutter 3.41.x pins meta 1.17.0, so ^1.18.0
+  # made `pub get` impossible on the older local toolchain — the API
+  # used (@visibleForTesting etc.) is identical across both.
+  meta: ">=1.17.0 <2.0.0"
+
+  # Privacy lock (隐私锁): system BiometricPrompt — fingerprint / face,
+  # falling back to the device credential. Requires MainActivity to be
+  # a FlutterFragmentActivity (see MainActivity.kt).
+  local_auth: ^2.3.0
   # HTML parsing for the external book sources (Anna's Archive / LibGen).
   html: ^0.15.6
   

@@ -172,6 +172,18 @@
   "collapseDetailDescription": "Move quick actions up",
   "collapseDetailDescriptionDesc": "Show Similar books / Add to booklist / Comments right below the title on the book detail page",
   "addedToFavorites": "Added to Favorites",
+  "privacyLock": "Privacy lock",
+  "appLockEnable": "Enable privacy lock",
+  "appLockEnableDesc": "Require fingerprint / face / device credential when re-entering the app",
+  "appLockTimeout": "Lock timing",
+  "lockImmediately": "Immediately on background",
+  "lockAfter1Min": "After 1 minute",
+  "lockAfter5Min": "After 5 minutes",
+  "secureRecents": "Blur in Recents",
+  "secureRecentsDesc": "Blur this app in the system Recents screen and block screenshots",
+  "unlock": "Unlock",
+  "unlockFailed": "Unlock failed, please retry",
+  "appLockAuthReason": "Unlock zlibx",
   "confirmRemoveMsg": "Remove {count} book(s) from favorites?",
   "@confirmRemoveMsg": {
     "placeholders": {

@@ -10,6 +10,7 @@ import 'widgets/donation_key_section.dart';
 import 'widgets/about_section.dart';
 import 'widgets/language_section.dart';
 import 'widgets/theme_section.dart';
+import 'widgets/privacy_section.dart';
 import 'widgets/network_section.dart';
 import 'widgets/recommendation_section.dart';
 import 'widgets/section_header.dart';
@@ -77,6 +78,9 @@ class SettingsScreen extends ConsumerWidget {
 
           // ── Theme ────────────────────────────────────────────────
           const ThemeSection(),
+
+          // ── Privacy lock ─────────────────────────────────────────
+          const PrivacySection(),
 
           // ── Recommendations ──────────────────────────────────────
           const RecommendationSection(),

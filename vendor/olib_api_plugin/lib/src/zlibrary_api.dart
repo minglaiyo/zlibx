@@ -68,6 +68,14 @@ class DownloadHtmlException implements Exception {
 /// [ZLibraryApi] extends this class and [ZLibraryAuth] constrains
 /// on it, so a private base would put a private type in the
 /// public API.
+///
+/// The HTTP method a redirect-following request starts with
+/// ([ZLibraryApiBase._sendFollowing]). 301/302/303 turn the follow-up
+/// into a GET; 307/308 keep the current method (browser behaviour).
+/// Top-level, not a class member: Dart does not allow an enum
+/// declaration inside a class.
+enum _RedirectMethod { get, delete, post }
+
 abstract class ZLibraryApiBase {
   static const String _defaultDomain = 'bookroom.lifestyle';
 
@@ -227,11 +235,6 @@ abstract class ZLibraryApiBase {
   /// [receiveTimeout] overrides the Dio default (60s) for this call
   /// only; null keeps the default. Callers fetching a large HTML page
   /// on a slow link pass a longer one.
-  /// The HTTP method a redirect-following request starts with. 301/302/303
-  /// turn the follow-up into a GET; 307/308 keep the current method
-  /// (browser behaviour).
-  enum _RedirectMethod { get, delete, post }
-
   /// One redirect-following request: GET, DELETE or POST-with-a-text-body,
   /// following 301/302/303/307/308 by hand (max 5 hops).
   ///

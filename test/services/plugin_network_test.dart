@@ -312,6 +312,7 @@ void main() {
       // The cross-host hop is followed (the fake answers 200 there),
       // but the session Cookie must not travel to the other host and
       // the other host's set-cookie must not enter the jar.
+      expect(response.success, isTrue);
       expect(adapter.deleteCalls, 2);
       final hops = _hopIndexes(adapter.requestedUris, _deletePath);
       expect(hops.length, 2);

@@ -12,25 +12,30 @@ enum AppThemeMode {
 
 /// Theme mode notifier
 class ThemeModeNotifier extends Notifier<AppThemeMode> {
-  late final StorageService _storage;
+  // Getter, not `late final`: ref.invalidate() re-runs build() on the
+  // same instance, and a second assignment to a late final throws
+  // LateInitializationError (the trap documented on books_provider /
+  // download_provider).
+  StorageService get _storage => ref.read(storageServiceProvider);
 
   @override
-  AppThemeMode build() {
-    _storage = ref.read(storageServiceProvider);
-    _loadThemeMode();
-    return AppThemeMode.system;
-  }
+  AppThemeMode build() => _loadThemeMode();
 
-  Future<void> _loadThemeMode() async {
-    final mode = await _storage.getThemeMode();
+  /// Sync Hive read; returns the persisted mode as the initial state
+  /// instead of assigning it (see LocaleNotifier). Reading it here
+  /// (instead of defaulting to `system` and loading async) means the
+  /// first frame already uses the user's theme — no flash.
+  AppThemeMode _loadThemeMode() {
+    final v = HiveService.settingsBox.get('theme_mode');
     // Persisted values can be out of range after an enum change or a
     // corrupted settings box: AppThemeMode.values[mode] would throw an
-    // uncaught RangeError inside this async gap and the theme would
-    // silently stay on `system` forever. Clamp instead (clamp() returns
-    // num, so round-trip through toInt() for the list index).
-    final index =
-        mode.clamp(0, AppThemeMode.values.length - 1).toInt();
-    state = AppThemeMode.values[index];
+    // uncaught RangeError and the theme would silently stay on `system`
+    // forever. Clamp instead (clamp() returns num, so round-trip
+    // through toInt() for the list index).
+    final index = v is int
+        ? v.clamp(0, AppThemeMode.values.length - 1).toInt()
+        : 0;
+    return AppThemeMode.values[index];
   }
 
   Future<void> setThemeMode(AppThemeMode mode) async {
@@ -46,24 +51,25 @@ final themeModeProvider =
 
 /// Download path notifier for custom download directory (Android only)
 class DownloadPathNotifier extends Notifier<String?> {
-  late final StorageService _storage;
+  // Getter, not `late final` (see ThemeModeNotifier).
+  StorageService get _storage => ref.read(storageServiceProvider);
 
   @override
-  String? build() {
-    _storage = ref.read(storageServiceProvider);
-    _init();
-    return null;
+  String? build() => _loadDownloadPath();
+
+  /// Sync Hive read; returns the persisted path as the initial state
+  /// instead of assigning it (see LocaleNotifier). An empty string
+  /// means "cleared" (see clearDownloadPath), so it reads as null.
+  String? _loadDownloadPath() {
+    final v = HiveService.settingsBox.get('download_path');
+    return v is String && v.isNotEmpty ? v : null;
   }
-  
-  Future<void> _init() async {
-    state = await _storage.getDownloadPath();
-  }
-  
+
   Future<void> setDownloadPath(String path) async {
     await _storage.setDownloadPath(path);
     state = path;
   }
-  
+
   Future<void> clearDownloadPath() async {
     // Clear by setting empty string, storage will handle deletion
     await _storage.setDownloadPath('');

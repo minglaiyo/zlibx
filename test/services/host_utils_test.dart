@@ -47,6 +47,49 @@ void main() {
     });
   });
 
+  group('isAnnasFamilyHost', () {
+    test('accepts the Anna search hosts (exact match, case-insensitive)', () {
+      for (final host in [
+        'annas-archive.org',
+        'annas-archive.gl',
+        'annas-archive.pk',
+        'annas-archive.gd',
+        'ANNAS-ARCHIVE.ORG',
+      ]) {
+        expect(isAnnasFamilyHost(host), isTrue, reason: host);
+      }
+    });
+
+    test('rejects non-search hosts, subdomains and look-alikes', () {
+      for (final host in [
+        // software.annas-archive.gl is a GitLab instance on the same
+        // annas page, not a search host — it must never receive the key.
+        'software.annas-archive.gl',
+        // Download servers are not search hosts.
+        'yqrii5.org',
+        'wbsg8v.xyz',
+        // No subdomain wildcard: only the bare search hosts count.
+        'www.annas-archive.org',
+        'foo.annas-archive.gl',
+        // Any TLD not on the list is not family.
+        'annas-archive.xyz',
+        'annas-archive.top',
+        'annas-archive.se',
+        'annas-archive.li',
+        // Look-alikes and malformed input.
+        'annas-archive.gl.evil.com',
+        'evilannas-archive.gl',
+        'annas-archive',
+        'localhost',
+        'annas-archive.gl:443',
+        'annas-archive..gl',
+        '',
+      ]) {
+        expect(isAnnasFamilyHost(host), isFalse, reason: host);
+      }
+    });
+  });
+
   group('readerDomainFor', () {
     test('maps a line to its reader host', () {
       expect(readerDomainFor('z-lib.fm'), 'reader.z-lib.fm');

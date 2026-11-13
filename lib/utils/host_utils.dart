@@ -33,6 +33,37 @@ bool isZlibFamilyHost(String rawHost) {
   );
 }
 
+/// Explicit allow-list of Anna's Archive SEARCH hosts. Only these hosts
+/// ever receive the user's donation key (see
+/// `AnnasArchieve.getFastDownloadUrl`).
+///
+/// Ground truth (checked 2026-11-13, open-slum.org/annas.html): the
+/// live search mirrors are `annas-archive.gl`, `annas-archive.pk` and
+/// `annas-archive.gd`; `annas-archive.org` is the canonical domain.
+/// The download servers `yqrii5.org` / `wbsg8v.xyz` are NOT search
+/// hosts and are not here.
+///
+/// Exact-host match only — deliberately NO subdomain wildcard, unlike
+/// [isZlibFamilyHost]: `software.annas-archive.gl` is a GitLab instance
+/// on the same annas page, not a search host, and must never receive
+/// the key. If Anna adds a new official search domain, add it here
+/// explicitly; an unlisted host fails closed (fast download returns
+/// null and the caller falls back to slow download).
+const _annasFamilyHosts = {
+  'annas-archive.org',
+  'annas-archive.gl',
+  'annas-archive.pk',
+  'annas-archive.gd',
+};
+
+/// Whether [rawHost] is an Anna's Archive search host that may receive
+/// the user's donation key. Exact-host match only (see [_annasFamilyHosts]).
+bool isAnnasFamilyHost(String rawHost) {
+  final host = rawHost.trim().toLowerCase();
+  if (host.isEmpty || host.contains(':') || host.contains('/')) return false;
+  return _annasFamilyHosts.contains(host);
+}
+
 /// Language prefixes some mirrors put in front of the domain
 /// (`zh.z-lib.fm`); the reader never lives under them.
 const _readerLangPrefixes = {

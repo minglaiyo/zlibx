@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import 'services/instance_manager.dart';
 import 'services/storage_service.dart';
 import 'services/challenge_html_cache.dart';
 import 'services/webview_challenge_solver.dart';
+import 'utils/diagnostics.dart';
 import 'screens/challenge_solver/challenge_solver_screen.dart';
 import 'l10n/generated/app_localizations.dart';
 
@@ -22,6 +24,21 @@ final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Global error hooks (M2): uncaught async errors (e.g. inside an
+  // unawaited(...) Future) and framework errors otherwise vanish
+  // silently in a release + obfuscated build — the user only sees
+  // "it doesn't work". logIgnored records only the tag + exception
+  // TYPE + timestamp (never the message or URL), so nothing sensitive
+  // reaches the ring log; Settings can dump it for bug reports.
+  FlutterError.onError = (details) {
+    logIgnored('flutter', details.exception);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    logIgnored('platform', error);
+    return true;
+  };
+
   await HiveService.init();
   // Existing installs keep their current line without a trust prompt.
   await MirrorTrust.grandfatherCurrent();

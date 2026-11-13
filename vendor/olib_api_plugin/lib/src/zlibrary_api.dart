@@ -93,6 +93,14 @@ abstract class ZLibraryApiBase {
   /// header for cross-host links, so these never leak to a CDN.
   final Map<String, String> _wallCookies = {};
 
+  /// The WebView User-Agent the current wall clearance was issued
+  /// against (`cf_clearance` is commonly bound to the UA it was
+  /// minted with). Set alongside the wall cookies after a solve; the
+  /// default UA keeps answering until then. Not a credential — it
+  /// travels with every request of this instance, including redirect
+  /// hops (unlike the Cookie, which the download path strips).
+  String? _wallUserAgent;
+
   /// [dio] is a test seam: a caller-provided client (with a fake
   /// adapter) replaces the default one. Production code never passes it.
   ZLibraryApiBase({String? domain, Dio? dio})
@@ -131,6 +139,9 @@ abstract class ZLibraryApiBase {
 
   Map<String, String> get _headers {
     final h = <String, String>{};
+    if (_wallUserAgent != null) {
+      h['User-Agent'] = _wallUserAgent!;
+    }
     final parts = <String>[];
     if (_userId != null && _userKey != null) {
       parts.add('remix_userid=$_userId');
@@ -458,8 +469,12 @@ abstract class ZLibraryApiBase {
 
   Future<_Raw> _postForm(
     String path,
-    Map<String, dynamic> fields,
-  ) async {
+    Map<String, dynamic> fields, {
+    // Only `search` takes one today: the app layer cancels a superseded
+    // search instead of letting it finish. Optional, so the other
+    // callers (login / rpc / send_code / verify_code) are untouched.
+    CancelToken? cancelToken,
+  }) async {
     try {
       final res = await _dio.post<String>(
         '$_base$path',
@@ -470,6 +485,7 @@ abstract class ZLibraryApiBase {
           responseType: ResponseType.plain,
           followRedirects: false,
         ),
+        cancelToken: cancelToken,
       );
       return _fromResponse(res);
     } on DioException catch (e) {
@@ -532,7 +548,7 @@ abstract class ZLibraryApiBase {
     final body = res.data ?? '';
     final status = res.statusCode;
     final cookies = res.headers['set-cookie'] ?? const <String>[];
-    if (status == 403 && _looksLikeCloudflare(body)) {
+    if (_isCloudflareBlock(body: body, status: status, headers: res.headers)) {
       return _Raw(status: status, error: 'cf_blocked', cookies: cookies);
     }
     if (body.isEmpty) {
@@ -549,7 +565,7 @@ abstract class ZLibraryApiBase {
       }
       return _Raw(status: status, error: 'unexpected response format');
     } on FormatException {
-      if (_looksLikeCloudflare(body)) {
+      if (_isCloudflareBlock(body: body, status: status, headers: res.headers)) {
         return _Raw(status: status, error: 'cf_blocked');
       }
       // Not JSON — keep the raw body: the site's list pages (booklists)
@@ -569,7 +585,11 @@ abstract class ZLibraryApiBase {
     final res = e.response;
     final status = res?.statusCode;
     final body = res?.data?.toString() ?? '';
-    if (status == 403 && _looksLikeCloudflare(body)) {
+    if (_isCloudflareBlock(
+      body: body,
+      status: status,
+      headers: res?.headers,
+    )) {
       return _Raw(status: status, error: 'cf_blocked');
     }
     switch (e.type) {
@@ -632,8 +652,35 @@ abstract class ZLibraryApiBase {
     }
   }
 
+  /// Cloudflare block verdict for a response. The body markers alone
+  /// are NOT enough: a 200 page (booklist, comments) whose text merely
+  /// mentions the word used to be misread as a block and its content
+  /// dropped. The markers only count on a Cloudflare-served response —
+  /// status 403/503, or a `cf-ray` / `server: cloudflare` header.
+  static bool _isCloudflareBlock({
+    required String body,
+    required int? status,
+    Headers? headers,
+  }) {
+    final statusSuspect = status == 403 || status == 503;
+    if (!statusSuspect) {
+      if (headers == null) return false;
+      final cfRay = headers.value('cf-ray');
+      final server = headers.value('server');
+      if (cfRay == null &&
+          !(server?.toLowerCase().contains('cloudflare') ?? false)) {
+        return false;
+      }
+    }
+    return _looksLikeCloudflare(body);
+  }
+
+  /// The challenge page's markers sit in the first bytes of the body,
+  /// so only the head is scanned: a full lowercase copy of a
+  /// multi-MB HTML page is waste on every response.
   static bool _looksLikeCloudflare(String body) {
-    final lower = body.toLowerCase();
+    final head = body.length > 4096 ? body.substring(0, 4096) : body;
+    final lower = head.toLowerCase();
     return lower.contains('cloudflare') ||
         lower.contains('attention required') ||
         lower.contains('cf-challenge');
@@ -713,8 +760,15 @@ abstract class ZLibraryApiBase {
     // full-text search already uses (see FullTextSearchParams).
     // Null/false sends nothing, so existing callers are unaffected.
     bool? exact,
+    // Cancelled by the app layer when a newer search supersedes this
+    // one: the in-flight request stops instead of running to
+    // completion only for its result to be discarded by the caller's
+    // request-id guard. Optional — every other caller passes nothing.
+    CancelToken? cancelToken,
   }) async {
-    final raw = await _postForm('/eapi/book/search', {
+    final raw = await _postForm(
+      '/eapi/book/search',
+      {
       if (message != null) 'message': message,
       if (yearFrom != null) 'yearFrom': yearFrom,
       if (yearTo != null) 'yearTo': yearTo,
@@ -724,7 +778,9 @@ abstract class ZLibraryApiBase {
       if (page != null) 'page': page,
       if (limit != null) 'limit': limit,
       if (exact == true) 'e': '1',
-    });
+      },
+      cancelToken: cancelToken,
+    );
     if (raw.json == null) {
       return ApiResponse.fail(raw.error ?? 'search failed',
           statusCode: raw.status);

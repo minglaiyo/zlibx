@@ -4,6 +4,7 @@
 
 import 'dart:async';
 
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
@@ -116,6 +117,15 @@ class SearchNotifier extends Notifier<SearchState> {
   SearchParams? _lastParams;
   int _requestId = 0;
 
+  /// Live cancel token of the current search session, shared by
+  /// [search]'s first page and [loadMore]'s follow-ups: a new search
+  /// cancels the previous session's in-flight request instead of
+  /// letting it run to completion only for its result to be discarded
+  /// by the [_requestId] guard. The eapi search path honours the
+  /// token (plugin `search(cancelToken:)`); the category HTML path
+  /// relies on the guard alone.
+  CancelToken? _searchToken;
+
   /// Sentinel total while a category list's real total is unknown
   /// (its page carried no `pagerOptions` total): large enough that
   /// [loadMore]'s `currentPage >= totalPages` guard never stops the
@@ -140,7 +150,11 @@ class SearchNotifier extends Notifier<SearchState> {
   }
 
   /// 统一取数入口，search / loadMore 共用。
-  Future<ApiResponse<List<Book>>> _fetch(SearchParams params, int page) async {
+  Future<ApiResponse<List<Book>>> _fetch(
+    SearchParams params,
+    int page,
+    CancelToken? cancelToken,
+  ) async {
     final categoryId = params.categoryId;
     if (categoryId != null) {
       return _fetchCategory(params, categoryId, page);
@@ -155,7 +169,20 @@ class SearchNotifier extends Notifier<SearchState> {
       page: page,
       limit: params.limit,
       exact: params.exact,
+      cancelToken: cancelToken,
     );
+  }
+
+  /// Append [incoming] to [existing], dropping books already present
+  /// (same [Book.id]): the site's result window shifts between page
+  /// fetches and duplicates would otherwise render as repeated cards.
+  List<Book> _mergeBooks(List<Book> existing, List<Book> incoming) {
+    final merged = List.of(existing);
+    final seen = {for (final book in merged) book.id};
+    for (final book in incoming) {
+      if (seen.add(book.id)) merged.add(book);
+    }
+    return merged;
   }
 
   /// The slug for [categoryId]'s search URL, from the browse page's
@@ -368,18 +395,23 @@ class SearchNotifier extends Notifier<SearchState> {
     final requestId = ++_requestId;
     _lastParams = params;
     _categoryPageSize = null;
+    // Kill the previous session's in-flight page (no-op when it has
+    // already completed) before opening a new token for this one.
+    _searchToken?.cancel();
+    _searchToken = CancelToken();
     state = const SearchState(isLoading: true, hasSearched: true);
 
     try {
-      final response = await _fetch(params, 1);
+      final response = await _fetch(params, 1, _searchToken);
       if (requestId != _requestId) return;
       if (!response.success) {
         throw StateError(response.error ?? 'Search failed');
       }
 
       final totalPages = response.meta?['total_pages'] ?? 1;
+      final books = response.data ?? const <Book>[];
       state = SearchState(
-        books: response.data ?? [],
+        books: _mergeBooks(const [], books),
         currentPage: 1,
         totalPages: totalPages is int ? totalPages : 1,
         totalPagesUnknown: response.meta?['total_pages_unknown'] == true,
@@ -404,7 +436,7 @@ class SearchNotifier extends Notifier<SearchState> {
     state = state.copyWith(isLoadingMore: true);
 
     try {
-      final response = await _fetch(_lastParams!, nextPage);
+      final response = await _fetch(_lastParams!, nextPage, _searchToken);
       if (requestId != _requestId) return;
       if (!response.success) {
         throw StateError(response.error ?? 'Search failed');
@@ -412,7 +444,7 @@ class SearchNotifier extends Notifier<SearchState> {
 
       final totalPages = response.meta?['total_pages'];
       state = state.copyWith(
-        books: [...state.books, ...response.data ?? []],
+        books: _mergeBooks(state.books, response.data ?? const <Book>[]),
         currentPage: nextPage,
         totalPages: totalPages is int ? totalPages : state.totalPages,
         totalPagesUnknown: response.meta?['total_pages_unknown'] == true,
@@ -432,6 +464,8 @@ class SearchNotifier extends Notifier<SearchState> {
     _requestId++;
     _lastParams = null;
     _categoryPageSize = null;
+    _searchToken?.cancel();
+    _searchToken = null;
     state = const SearchState();
   }
 }

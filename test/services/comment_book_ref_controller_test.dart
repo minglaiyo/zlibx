@@ -1,4 +1,5 @@
 
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/screens/account/comment_book_ref_controller.dart';
@@ -36,8 +37,10 @@ class _FakeZLibraryApi implements ZLibraryApi {
     int? page,
     int? limit,
     // Kept in sync with ZLibraryApiBase.search (exact-match flag,
-    // added by the search filter page); the fake ignores it.
+    // added by the search filter page; cancel token, added by the
+    // SearchNotifier) — the fake ignores both.
     bool? exact,
+    CancelToken? cancelToken,
   }) async {
     searchCalls++;
     if (delay != null) await Future<void>.delayed(delay!);

@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../../l10n/generated/app_localizations.dart';
@@ -8,6 +10,7 @@ import '../../services/view_history_storage.dart';
 import '../../utils/date_text.dart';
 import '../../widgets/book_list_tile.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/loading_widget.dart';
 import '../../widgets/gradient_app_bar.dart';
 
 /// 浏览历史（本地）：站内书详情页的最近打开记录，每次打开置顶
@@ -50,6 +53,7 @@ class _ViewHistoryScreenState extends State<ViewHistoryScreen> {
           TextButton(
             onPressed: () async {
               Navigator.of(dialogContext).pop();
+              unawaited(HapticFeedback.mediumImpact());
               await ViewHistoryStore.clear();
               if (!mounted) return;
               setState(_reload);
@@ -84,7 +88,7 @@ class _ViewHistoryScreenState extends State<ViewHistoryScreen> {
         future: _entries,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
+            return const LoadingWidget.page();
           }
           if (snapshot.hasError) {
             return EmptyState(

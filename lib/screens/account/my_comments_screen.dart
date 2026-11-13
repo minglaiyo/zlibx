@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zlibx/utils/diagnostics.dart';
 
@@ -218,6 +219,7 @@ class _MyCommentsScreenState extends ConsumerState<MyCommentsScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    unawaited(HapticFeedback.mediumImpact());
     final index = _comments.indexWhere((c) => c.id == comment.id);
     if (index < 0) return;
     final removed = _comments[index];
@@ -417,11 +419,6 @@ class _MyCommentCard extends StatelessWidget {
                                 iconSize: 20,
                                 tooltip: deleteTooltip,
                                 visualDensity: VisualDensity.compact,
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(
-                                  minWidth: 32,
-                                  minHeight: 32,
-                                ),
                                 color: cs.onSurfaceVariant,
                               ),
                             ],

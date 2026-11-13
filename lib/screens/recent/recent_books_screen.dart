@@ -7,6 +7,7 @@ import '../../providers/books_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../widgets/book_card.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/loading_widget.dart';
 import '../../widgets/gradient_app_bar.dart';
 
 /// 最新上架——官网首页"最近添加"栏目的承载页。`/eapi/book/recently`
@@ -29,7 +30,7 @@ class RecentBooksScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(recentBooksProvider),
         child: booksAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const LoadingWidget.page(),
           error: (error, _) => ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             children: [

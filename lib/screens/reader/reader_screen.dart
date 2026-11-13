@@ -338,6 +338,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
             ),
           ],
           IconButton(
+            tooltip: AppLocalizations.of(context)!.refresh,
             icon: const Icon(Icons.refresh),
             onPressed: () => _webViewController?.reload(),
           ),

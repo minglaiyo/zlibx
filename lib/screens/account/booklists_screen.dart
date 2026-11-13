@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:share_plus/share_plus.dart';
@@ -8,6 +10,7 @@ import '../../providers/booklist_detail_provider.dart';
 import '../../providers/booklists_provider.dart';
 import '../../providers/zlibrary_provider.dart';
 import '../../routes/app_routes.dart';
+import '../../theme/app_metrics.dart';
 import '../../widgets/booklist_card.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/loading_widget.dart';
@@ -273,6 +276,7 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    unawaited(HapticFeedback.mediumImpact());
     final messenger = ScaffoldMessenger.of(context);
     final controller = ref.read(booklistsControllerProvider.notifier);
     final response = await controller.deleteBooklist(list);
@@ -404,17 +408,10 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
 
   // Capsule search field + soft shadow, matching the library page.
   Widget _searchBar(AppLocalizations l10n, BooklistsController controller) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(30),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: dark ? 0.2 : 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        boxShadow: AppShadows.elevated(Theme.of(context).brightness),
       ),
       child: ValueListenableBuilder<TextEditingValue>(
         valueListenable: _searchController,

@@ -11,6 +11,7 @@ import '../../../providers/zlibrary_provider.dart';
 import '../../../services/booklist_repository.dart';
 import '../../../utils/app_snack.dart';
 import '../../account/widgets/create_booklist_dialog.dart';
+import '../../../widgets/loading_widget.dart';
 
 /// Picker for the signed-in user's own booklists; adds [bookId] to the
 /// picked list (`GET /papi/booklist/{id}/add-book/{bookId}`).
@@ -142,7 +143,7 @@ class _AddToBooklistDialogState extends ConsumerState<_AddToBooklistDialog> {
       case _PickerPhase.loading:
         return const SizedBox(
           height: 120,
-          child: Center(child: CircularProgressIndicator()),
+          child: Center(child: LoadingWidget.inline(size: 28)),
         );
       case _PickerPhase.loggedOut:
         return Column(
@@ -244,13 +245,7 @@ class _AddToBooklistDialogState extends ConsumerState<_AddToBooklistDialog> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      trailing: busy
-          ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : null,
+      trailing: busy ? const LoadingWidget.inline() : null,
       onTap: busy ? null : () => _toggle(membership),
     );
   }

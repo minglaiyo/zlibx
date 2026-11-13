@@ -14,6 +14,7 @@ import '../../providers/shelf_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../screens/search/search_screen.dart';
 import '../../services/media_store.dart';
+import '../../theme/app_metrics.dart';
 import 'category_actions.dart';
 import 'widgets/shelf_book_sliver.dart';
 import 'widgets/shelf_chip.dart';
@@ -224,17 +225,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
     child: DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(30),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(
-              alpha: Theme.of(context).brightness == Brightness.dark
-                  ? 0.2
-                  : 0.06,
-            ),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        boxShadow: AppShadows.elevated(Theme.of(context).brightness),
       ),
       child: TextField(
         controller: _searchController,

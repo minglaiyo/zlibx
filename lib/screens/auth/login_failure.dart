@@ -1,8 +1,17 @@
 enum LoginFailureKind { credentials, line, unknown }
 
-String safeLoginErrorDetail(String? error, String email, String password) {
+/// The "empty error payload" placeholder is localized by the caller
+/// ([noDetailText], `loginNoErrorDetail` in the ARBs): this file stays
+/// UI-free, and the old hardcoded bilingual literal showed Simplified
+/// Chinese to every locale (UI review finding 3).
+String safeLoginErrorDetail(
+  String? error,
+  String email,
+  String password, {
+  required String noDetailText,
+}) {
   if (error == null || error.trim().isEmpty) {
-    return '无错误详情 / No error details returned';
+    return noDetailText;
   }
 
   var detail = error.trim();

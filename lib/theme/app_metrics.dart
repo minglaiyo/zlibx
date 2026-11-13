@@ -61,3 +61,21 @@ abstract final class AppMotion {
   /// 最长过渡：启动页 logo 入场、书单骨架呼吸（900）。
   static const Duration slowest = Duration(milliseconds: 900);
 }
+
+/// 全 app 悬浮阴影基线。同一颗胶囊的阴影此前明暗模式各自为政：
+/// favorites/booklists 是 dark ? 0.2 : 0.06，home_tab/similar 固定
+/// 0.06 —— 深色模式下同一个组件一个有浮起感一个没有。新代码从这
+/// 取，触碰到的旧代码顺手替换，不做一次性全库替换。
+abstract final class AppShadows {
+  /// 悬浮胶囊 / 圆形快捷按钮（搜索入口、头部分类/最新按钮）：
+  /// 深色模式加深，否则黑影在深色底上几乎不可见。
+  static List<BoxShadow> elevated(Brightness brightness) => [
+        BoxShadow(
+          color: Colors.black.withValues(
+            alpha: brightness == Brightness.dark ? 0.2 : 0.06,
+          ),
+          blurRadius: 16,
+          offset: const Offset(0, 6),
+        ),
+      ];
+}

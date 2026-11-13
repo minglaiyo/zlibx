@@ -65,6 +65,7 @@ class SearchBarField extends StatelessWidget {
                 ),
               if (!isQueryEmpty)
                 IconButton(
+                  tooltip: l10n.clear,
                   icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant),
                   onPressed: onClear,
                 ),

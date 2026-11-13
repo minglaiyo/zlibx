@@ -177,11 +177,6 @@ class _Body extends StatelessWidget {
                       iconSize: 20,
                       tooltip: deleteTooltip,
                       visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 32,
-                        minHeight: 32,
-                      ),
                       color: cs.onSurfaceVariant,
                     ),
                   ],

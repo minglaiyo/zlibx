@@ -48,40 +48,40 @@ class SearchLanguage {
 /// displayed languages first (unchanged order), then the 14 that
 /// were API-only and never shown in the UI.
 const searchLanguageOptions = <String, SearchLanguage>{
-  'all': SearchLanguage(apiValue: null, zh: '所有語言', zhHant: '所有語言', en: '所有語言'),
-  'chinese': SearchLanguage(apiValue: 'chinese', zh: '簡體中文', zhHant: '簡體中文', en: '簡體中文'),
-  'traditional_chinese': SearchLanguage(apiValue: 'traditional chinese', zh: '繁體中文', zhHant: '繁體中文', en: '繁體中文'),
-  'english': SearchLanguage(apiValue: 'english', zh: '英語', zhHant: '英語', en: '英語'),
-  'russian': SearchLanguage(apiValue: 'russian', zh: '俄語', zhHant: '俄語', en: '俄語'),
-  'german': SearchLanguage(apiValue: 'german', zh: '德語', zhHant: '德語', en: '德語'),
-  'spanish': SearchLanguage(apiValue: 'spanish', zh: '西班牙語', zhHant: '西班牙語', en: '西班牙語'),
-  'french': SearchLanguage(apiValue: 'french', zh: '法語', zhHant: '法語', en: '法語'),
-  'italian': SearchLanguage(apiValue: 'italian', zh: '意大利語', zhHant: '意大利語', en: '意大利語'),
-  'portuguese': SearchLanguage(apiValue: 'portuguese', zh: '葡萄牙語', zhHant: '葡萄牙語', en: '葡萄牙語'),
-  'brazilian': SearchLanguage(apiValue: 'brazilian', zh: '巴西葡萄牙語', zhHant: '巴西葡萄牙語', en: '巴西葡萄牙語'),
-  'japanese': SearchLanguage(apiValue: 'japanese', zh: '日語', zhHant: '日語', en: '日語'),
-  'korean': SearchLanguage(apiValue: 'korean', zh: '韓語', zhHant: '韓語', en: '韓語'),
-  'arabic': SearchLanguage(apiValue: 'arabic', zh: '阿拉伯語', zhHant: '阿拉伯語', en: '阿拉伯語'),
-  'turkish': SearchLanguage(apiValue: 'turkish', zh: '土耳其語', zhHant: '土耳其語', en: '土耳其語'),
-  'vietnamese': SearchLanguage(apiValue: 'vietnamese', zh: '越南語', zhHant: '越南語', en: '越南語'),
-  'thai': SearchLanguage(apiValue: 'thai', zh: '泰語', zhHant: '泰語', en: '泰語'),
-  'indonesian': SearchLanguage(apiValue: 'indonesian', zh: '印度尼西亞語', zhHant: '印度尼西亞語', en: '印度尼西亞語'),
-  'polish': SearchLanguage(apiValue: 'polish', zh: '波蘭語', zhHant: '波蘭語', en: '波蘭語'),
-  'ukrainian': SearchLanguage(apiValue: 'ukrainian', zh: '烏克蘭語', zhHant: '烏克蘭語', en: '烏克蘭語'),
-  'dutch': SearchLanguage(apiValue: 'dutch', zh: '荷蘭語', zhHant: '荷蘭語', en: '荷蘭語'),
-  'swedish': SearchLanguage(apiValue: 'swedish', zh: '瑞典語', zhHant: '瑞典語', en: '瑞典語'),
-  'danish': SearchLanguage(apiValue: 'danish', zh: '丹麥語', zhHant: '丹麥語', en: '丹麥語'),
-  'norwegian': SearchLanguage(apiValue: 'norwegian', zh: '挪威語', zhHant: '挪威語', en: '挪威語'),
-  'finnish': SearchLanguage(apiValue: 'finnish', zh: '芬蘭語', zhHant: '芬蘭語', en: '芬蘭語'),
-  'greek': SearchLanguage(apiValue: 'greek', zh: '希臘語', zhHant: '希臘語', en: '希臘語'),
-  'czech': SearchLanguage(apiValue: 'czech', zh: '捷克語', zhHant: '捷克語', en: '捷克語'),
-  'romanian': SearchLanguage(apiValue: 'romanian', zh: '羅馬尼亞語', zhHant: '羅馬尼亞語', en: '羅馬尼亞語'),
-  'hungarian': SearchLanguage(apiValue: 'hungarian', zh: '匈牙利語', zhHant: '匈牙利語', en: '匈牙利語'),
-  'persian': SearchLanguage(apiValue: 'persian', zh: '波斯語', zhHant: '波斯語', en: '波斯語'),
-  'hindi': SearchLanguage(apiValue: 'hindi', zh: '印地語', zhHant: '印地語', en: '印地語'),
-  'bengali': SearchLanguage(apiValue: 'bengali', zh: '孟加拉語', zhHant: '孟加拉語', en: '孟加拉語'),
-  'hebrew': SearchLanguage(apiValue: 'hebrew', zh: '希伯來語', zhHant: '希伯來語', en: '希伯來語'),
-  'latin': SearchLanguage(apiValue: 'latin', zh: '拉丁語', zhHant: '拉丁語', en: '拉丁語'),
+  'all': SearchLanguage(apiValue: null, zh: '所有语言', zhHant: '所有語言', en: 'All languages'),
+  'chinese': SearchLanguage(apiValue: 'chinese', zh: '简体中文', zhHant: '簡體中文', en: 'Chinese (Simplified)'),
+  'traditional_chinese': SearchLanguage(apiValue: 'traditional chinese', zh: '繁体中文', zhHant: '繁體中文', en: 'Chinese (Traditional)'),
+  'english': SearchLanguage(apiValue: 'english', zh: '英语', zhHant: '英語', en: 'English'),
+  'russian': SearchLanguage(apiValue: 'russian', zh: '俄语', zhHant: '俄語', en: 'Russian'),
+  'german': SearchLanguage(apiValue: 'german', zh: '德语', zhHant: '德語', en: 'German'),
+  'spanish': SearchLanguage(apiValue: 'spanish', zh: '西班牙语', zhHant: '西班牙語', en: 'Spanish'),
+  'french': SearchLanguage(apiValue: 'french', zh: '法语', zhHant: '法語', en: 'French'),
+  'italian': SearchLanguage(apiValue: 'italian', zh: '意大利语', zhHant: '意大利語', en: 'Italian'),
+  'portuguese': SearchLanguage(apiValue: 'portuguese', zh: '葡萄牙语', zhHant: '葡萄牙語', en: 'Portuguese'),
+  'brazilian': SearchLanguage(apiValue: 'brazilian', zh: '巴西葡萄牙语', zhHant: '巴西葡萄牙語', en: 'Portuguese (Brazil)'),
+  'japanese': SearchLanguage(apiValue: 'japanese', zh: '日语', zhHant: '日語', en: 'Japanese'),
+  'korean': SearchLanguage(apiValue: 'korean', zh: '韩语', zhHant: '韓語', en: 'Korean'),
+  'arabic': SearchLanguage(apiValue: 'arabic', zh: '阿拉伯语', zhHant: '阿拉伯語', en: 'Arabic'),
+  'turkish': SearchLanguage(apiValue: 'turkish', zh: '土耳其语', zhHant: '土耳其語', en: 'Turkish'),
+  'vietnamese': SearchLanguage(apiValue: 'vietnamese', zh: '越南语', zhHant: '越南語', en: 'Vietnamese'),
+  'thai': SearchLanguage(apiValue: 'thai', zh: '泰语', zhHant: '泰語', en: 'Thai'),
+  'indonesian': SearchLanguage(apiValue: 'indonesian', zh: '印度尼西亚语', zhHant: '印度尼西亞語', en: 'Indonesian'),
+  'polish': SearchLanguage(apiValue: 'polish', zh: '波兰语', zhHant: '波蘭語', en: 'Polish'),
+  'ukrainian': SearchLanguage(apiValue: 'ukrainian', zh: '乌克兰语', zhHant: '烏克蘭語', en: 'Ukrainian'),
+  'dutch': SearchLanguage(apiValue: 'dutch', zh: '荷兰语', zhHant: '荷蘭語', en: 'Dutch'),
+  'swedish': SearchLanguage(apiValue: 'swedish', zh: '瑞典语', zhHant: '瑞典語', en: 'Swedish'),
+  'danish': SearchLanguage(apiValue: 'danish', zh: '丹麦语', zhHant: '丹麥語', en: 'Danish'),
+  'norwegian': SearchLanguage(apiValue: 'norwegian', zh: '挪威语', zhHant: '挪威語', en: 'Norwegian'),
+  'finnish': SearchLanguage(apiValue: 'finnish', zh: '芬兰语', zhHant: '芬蘭語', en: 'Finnish'),
+  'greek': SearchLanguage(apiValue: 'greek', zh: '希腊语', zhHant: '希臘語', en: 'Greek'),
+  'czech': SearchLanguage(apiValue: 'czech', zh: '捷克语', zhHant: '捷克語', en: 'Czech'),
+  'romanian': SearchLanguage(apiValue: 'romanian', zh: '罗马尼亚语', zhHant: '羅馬尼亞語', en: 'Romanian'),
+  'hungarian': SearchLanguage(apiValue: 'hungarian', zh: '匈牙利语', zhHant: '匈牙利語', en: 'Hungarian'),
+  'persian': SearchLanguage(apiValue: 'persian', zh: '波斯语', zhHant: '波斯語', en: 'Persian'),
+  'hindi': SearchLanguage(apiValue: 'hindi', zh: '印地语', zhHant: '印地語', en: 'Hindi'),
+  'bengali': SearchLanguage(apiValue: 'bengali', zh: '孟加拉语', zhHant: '孟加拉語', en: 'Bengali'),
+  'hebrew': SearchLanguage(apiValue: 'hebrew', zh: '希伯来语', zhHant: '希伯來語', en: 'Hebrew'),
+  'latin': SearchLanguage(apiValue: 'latin', zh: '拉丁语', zhHant: '拉丁語', en: 'Latin'),
   'bulgarian': SearchLanguage(apiValue: 'bulgarian', zh: '保加利亚语', zhHant: '保加利亞語', en: 'Bulgarian'),
   'moldavian': SearchLanguage(apiValue: 'moldavian', zh: '摩尔多瓦语', zhHant: '摩爾多瓦語', en: 'Moldavian'),
   'serbian': SearchLanguage(apiValue: 'serbian', zh: '塞尔维亚语', zhHant: '塞爾維亞語', en: 'Serbian'),
@@ -143,7 +143,34 @@ const fulltextSearchOrders = {
 };
 
 /// Localized full-text sort order names.
+/// zh-Hant (zh_Hant / zh_TW / zh_HK / zh_MO) — the sort/extension
+/// label tables below serve Simplified zh by default; Traditional
+/// locales route here so they do not get Simplified text (UI review
+/// finding 1).
+bool _isZhHantLocale(String locale) {
+  final lower = locale.toLowerCase().replaceAll('-', '_');
+  return lower.startsWith('zh_hant') ||
+      lower == 'zh_tw' ||
+      lower.startsWith('zh_tw') ||
+      lower == 'zh_hk' ||
+      lower.startsWith('zh_hk') ||
+      lower == 'zh_mo' ||
+      lower.startsWith('zh_mo');
+}
+
 Map<String, String> getFulltextOrderDisplayNames(String locale) {
+  if (_isZhHantLocale(locale)) {
+    return {
+      'popular': '最受歡迎',
+      'bestmatch': '最佳吻合',
+      'date': '最近新增',
+      'titleA': '按名稱 (A-Z)',
+      'title': '按名稱 (Z-A)',
+      'year': '按年份',
+      'filesize': '檔案大小↓',
+      'filesizeA': '檔案大小↑',
+    };
+  }
   if (locale.startsWith('zh')) {
     return {
       'popular': '最受欢迎',
@@ -170,6 +197,16 @@ Map<String, String> getFulltextOrderDisplayNames(String locale) {
 
 /// Localized sort order names
 Map<String, String> getOrderDisplayNames(String locale) {
+  if (_isZhHantLocale(locale)) {
+    return {
+      'default': '預設順序',
+      'popular': '熱度',
+      'bestmatch': '匹配度',
+      'title': '書名',
+      'date': '上傳日期',
+      'year': '出版日期',
+    };
+  }
   if (locale.startsWith('zh')) {
     return {
       'default': '默认顺序',

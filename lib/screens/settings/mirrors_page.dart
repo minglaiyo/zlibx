@@ -309,6 +309,7 @@ class _MirrorsPageState extends State<MirrorsPage> {
         title: Text(l10n.mirrorsNoMirrors),
         subtitle: Text(l10n.mirrorsNoMirrorsHint),
         trailing: IconButton(
+          tooltip: l10n.refresh,
           icon: const Icon(Icons.refresh),
           onPressed: _refresh,
         ),

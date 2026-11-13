@@ -312,37 +312,40 @@ class HomeTabState extends ConsumerState<HomeTab> {
   }
 
   /// 搜索胶囊（原搜索触发条原样抽出，供首行 Row 与快捷按钮并排）。
+  /// Material+Ink 而不是 GestureDetector：水波纹画在装饰层之上，
+  /// 首页主入口按下要有反馈；阴影从 AppShadows.elevated 取（深色
+  /// 模式加深，与书架/书单的同款胶囊一致）。
   Widget _buildSearchPill(BuildContext context, ColorScheme cs, double height) {
-    return GestureDetector(
-      onTap: () => AppRoutes.openSearch(context),
-      child: Container(
+    return Material(
+      color: Colors.transparent,
+      child: Ink(
         height: height,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
         decoration: BoxDecoration(
           color: cs.surface.withValues(alpha: 0.8),
           borderRadius: BorderRadius.circular(30),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
+          boxShadow: AppShadows.elevated(cs.brightness),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                AppLocalizations.of(context)!.searchForBooks,
-                style: TextStyle(
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.7),
-                  fontSize: 16,
+        child: InkWell(
+          onTap: () => AppRoutes.openSearch(context),
+          borderRadius: BorderRadius.circular(30),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    AppLocalizations.of(context)!.searchForBooks,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                      fontSize: 16,
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 12),
+                Icon(Icons.search, color: cs.onSurfaceVariant),
+              ],
             ),
-            const SizedBox(width: 12),
-            Icon(Icons.search, color: cs.onSurfaceVariant),
-          ],
+          ),
         ),
       ),
     );
@@ -393,23 +396,17 @@ class _HeaderIconButton extends StatelessWidget {
       message: tooltip,
       child: Material(
         color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(27),
-          child: Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: cs.surface.withValues(alpha: 0.8),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
+        child: Ink(
+          width: 54,
+          height: 54,
+          decoration: BoxDecoration(
+            color: cs.surface.withValues(alpha: 0.8),
+            shape: BoxShape.circle,
+            boxShadow: AppShadows.elevated(cs.brightness),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            customBorder: const CircleBorder(),
             child: Icon(icon, color: cs.onSurfaceVariant),
           ),
         ),

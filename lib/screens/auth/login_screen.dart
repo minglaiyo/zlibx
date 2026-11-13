@@ -171,7 +171,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           title: AppLocalizations.of(context)!.loginFailed,
           desc: failureKind == LoginFailureKind.credentials
               ? (AppLocalizations.of(context)!.loginBadCredentials)
-              : (AppLocalizations.of(context)!.loginUnknownFailure(lineName, occurredAt, safeLoginErrorDetail(error, email, password))),
+              : (AppLocalizations.of(context)!.loginUnknownFailure(
+                  lineName,
+                  occurredAt,
+                  safeLoginErrorDetail(
+                    error,
+                    email,
+                    password,
+                    noDetailText:
+                        AppLocalizations.of(context)!.loginNoErrorDetail,
+                  ),
+                )),
           btnOkText: AppLocalizations.of(context)!.confirmOk,
           btnOkColor: Theme.of(context).colorScheme.primary,
           btnOkOnPress: () {},

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import '../../l10n/generated/app_localizations.dart';
@@ -155,6 +156,7 @@ class _BookCommentsScreenState extends ConsumerState<BookCommentsScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    unawaited(HapticFeedback.mediumImpact());
     await _c.deleteComment(comment);
   }
 

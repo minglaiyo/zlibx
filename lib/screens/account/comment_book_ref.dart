@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../../utils/cover_cache.dart';
+import '../../widgets/loading_widget.dart';
 import '../../widgets/cover_placeholder.dart';
 
 /// 一条用户评论背后的书。“我的评论”与用户主页的评论接口都只给
@@ -109,11 +110,7 @@ class CommentBookTile extends StatelessWidget {
           if (busy)
             const Padding(
               padding: EdgeInsets.all(10),
-              child: SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+              child: LoadingWidget.inline(size: 16),
             )
           else
             Icon(

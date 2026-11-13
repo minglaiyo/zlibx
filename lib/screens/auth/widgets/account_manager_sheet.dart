@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
@@ -97,6 +99,7 @@ class _AccountManagerSheetState extends ConsumerState<AccountManagerSheet> {
     );
 
     if (confirmed != true || !mounted) return;
+    unawaited(HapticFeedback.mediumImpact());
 
     await ref
         .read(authProvider.notifier)

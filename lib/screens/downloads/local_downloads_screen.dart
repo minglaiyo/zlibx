@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:share_plus/share_plus.dart';
@@ -520,6 +522,7 @@ class _DownloadItem extends ConsumerWidget {
       ),
     );
     if (confirmed != true) return;
+    unawaited(HapticFeedback.mediumImpact());
     try {
       await ref.read(downloadProvider.notifier).removeTask(task.id);
     } catch (error) {

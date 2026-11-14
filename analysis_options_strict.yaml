@@ -13,14 +13,16 @@
 #
 # Baseline (enforced by the ratchet step from
 # scripts/strict_lint_baseline.txt; 2026-11-14, lib/, fresh gen-l10n
-# output): 262 findings — avoid_catches_without_on_clauses 149,
-# directives_ordering 112 (+1 in the vendor plugin). Batch-1 notes:
+# output): 289 findings — avoid_catches_without_on_clauses 152,
+# directives_ordering 136 (+1 in the vendor plugin). Re-measured
+# 2026-11-14 from the CI ratchet run (43562413562): the review's 262 was
+# counted on an older tree and undercounts by 27. Batch-1 notes:
 #  * avoid_catches_without_on_clauses stays in triage BY DESIGN: the
 #    codebase deliberately catches broadly at network/parse boundaries
-#    and routes through logIgnored; typing all 149 sites would churn
+#    and routes through logIgnored; typing all 152 sites would churn
 #    without adding safety. Revisit only if a typed-catch refactor is
 #    actually planned.
-#  * directives_ordering: mechanical but wide (112 sites); batch it per
+#  * directives_ordering: mechanical but wide (136 sites); batch it per
 #    directory. No dart fix exists for it.
 #  * The 2 SDK-skew artifacts (SizeTransition alignment, cupertino
 #    import) only appear on the local 3.41.8 toolchain — CI (3.44.0) is

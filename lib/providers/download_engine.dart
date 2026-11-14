@@ -14,7 +14,10 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
   void pauseDownload(String id) {
     final token = _cancelTokens[id];
     if (token == null) return;
-    _pauseRequested.add(id);
+    // Keyed by token, not id (O6): a pause-then-resume-then-pause
+    // sequence must not let the old round's finally consume the new
+    // round's pause flag and delete the partial as a "cancel".
+    _pauseRequested.add(token);
     token.cancel();
     _updateTask(id, (t) => t.copyWith(status: DownloadStatus.paused));
     _clearProgressThrottle(id);
@@ -30,6 +33,13 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     unawaited(startDownload(task.book, presetUrl: task.presetUrl));
   }
 
+  /// Running download round per book id (O6). A resume issued while the
+  /// previous round is still settling (stream exit, sink close, finally)
+  /// must wait for it: otherwise the new round reads file.length() /
+  /// bytesWritten before the old sink flushed, and appends at a stale
+  /// offset, duplicating bytes into the book.
+  final Map<String, Future<void>> _runningRounds = {};
+
   /// Start a download.
   ///
   /// 默认走 ZLibraryApi（用户自己账号查 URL + 下载）。
@@ -38,21 +48,69 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
   /// 不支持自定义请求头（S5）：dio 自动跟随重定向时会把自定义头
   /// 带到任意目标主机，这个口子不开。以前留过 LAN 传书的
   /// `presetHeaders`（`X-Olib-Token`），功能无调用方，已删除。
+  ///
+  /// Thin wrapper around [_runDownloadRound]: it records the round so
+  /// a later call for the same book waits for this one to settle
+  /// instead of racing it on the same .part / pending entry.
   Future<void> startDownload(
     Book book, {
     String? presetUrl,
+  }) {
+    final id = book.id.toString();
+    final previous = _runningRounds[id];
+    final round = _runDownloadRound(
+      book,
+      presetUrl: presetUrl,
+      previous: previous,
+    );
+    _runningRounds[id] = round;
+    // Drop the entry when this round settles. `then` with onError
+    // (not whenComplete) so a round that threw does not surface its
+    // error a second time here — the round's own future already
+    // carries it to the caller.
+    unawaited(
+      round.then<void>(
+        (_) => _dropRound(id, round),
+        onError: (_) => _dropRound(id, round),
+      ),
+    );
+    return round;
+  }
+
+  void _dropRound(String id, Future<void> round) {
+    if (identical(_runningRounds[id], round)) _runningRounds.remove(id);
+  }
+
+  /// True when a round for [id] is currently downloading or queued.
+  bool _isDownloadActive(String id) => state.any(
+        (t) =>
+            t.id == id &&
+            (t.status == DownloadStatus.downloading ||
+                t.status == DownloadStatus.pending),
+      );
+
+  Future<void> _runDownloadRound(
+    Book book, {
+    String? presetUrl,
+    Future<void>? previous,
   }) async {
     final id = book.id.toString();
 
-    // Check if already downloading
-    if (state.any(
-      (t) =>
-          t.id == id &&
-          (t.status == DownloadStatus.downloading ||
-              t.status == DownloadStatus.pending),
-    )) {
-      return;
+    // Fast path: a round is already running for this book.
+    if (_isDownloadActive(id)) return;
+    // Wait for the previous round to settle before touching the same
+    // .part / pending entry (O6). A failed previous round must not
+    // fail this one — the error status it left behind is what the
+    // guard below reads.
+    if (previous != null) {
+      try {
+        await previous;
+      } catch (_) {
+        // Previous round already recorded its own error status.
+      }
     }
+    // Re-check: another round may have started while we waited.
+    if (_isDownloadActive(id)) return;
 
     // Add or update task to pending
     final cancelToken = CancelToken();
@@ -77,8 +135,8 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     if (cancelToken.isCancelled) {
       _slotPool.release();
       // 排队期间被暂停：任务已由 pauseDownload 置为 paused，.part 还
-      // 没有开始写，无需清理；只要消费掉暂停标记。
-      _pauseRequested.remove(id);
+      // 没有开始写，无需清理；只要消费掉本轮的暂停标记。
+      _pauseRequested.remove(cancelToken);
       return;
     }
 
@@ -307,8 +365,8 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       // drops it. On success the file was already renamed away.
       if (temporaryPath != null && cancelToken.isCancelled) {
         // 暂停：保留 .part / pendingWriter（下次 resume 从断点继续）；
-        // 用户取消：照旧清理。标记在此消费，只对本轮生效。
-        final wasPauseRequested = _pauseRequested.remove(id);
+        // 用户取消：照旧清理。标记按令牌消费，只对本轮生效（O6）。
+        final wasPauseRequested = _pauseRequested.remove(cancelToken);
         if (!wasPauseRequested) {
           if (pendingWriter != null) {
             await pendingWriter.discard();
@@ -316,6 +374,13 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
           } else {
             await _deletePartial(temporaryPath);
           }
+        } else if (pendingWriter != null) {
+          // 暂停：把写缓冲（不足 1 MB）刷进待发布条目，否则这部分字
+          // 节下次恢复时要重新下载。放在 finally 里刷才对：此时下载
+          // 循环已退出，不会再有 add() 进缓冲；pauseDownload 里刷会
+          // 和在途分块竞态。写失败只记日志，恢复时按条目真实大小重
+          // 新对账，不会因此损坏文件。
+          await _flushPendingWriterQuietly(pendingWriter);
         }
       }
       if (identical(_cancelTokens[id], cancelToken)) _cancelTokens.remove(id);
@@ -351,6 +416,20 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         await _deletePartial(savePath);
       }
       rethrow;
+    }
+  }
+
+  /// Best-effort flush of a pending writer on pause (O6): the writer
+  /// buffers up to ~1 MB before handing a batch to the platform, and
+  /// without a flush those bytes never reach the entry — the resume
+  /// re-downloads them. A write failure is logged only: the resume
+  /// reconciles against the entry's true size, so a failed flush
+  /// cannot corrupt the file.
+  Future<void> _flushPendingWriterQuietly(PendingUriWriter writer) async {
+    try {
+      await writer.flush();
+    } catch (error) {
+      logIgnored('download_pause_flush', error);
     }
   }
 

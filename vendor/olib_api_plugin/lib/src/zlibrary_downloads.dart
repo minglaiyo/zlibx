@@ -22,6 +22,18 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
   /// `If-Range`.
   static String metaPathFor(String savePath) => '$savePath.meta';
 
+  /// Total size from a `Content-Range: bytes */N` header — the form a
+  /// 416 answer carries — or null when the header is absent or does
+  /// not parse. Same helper as `ResumableDownloader` (the external
+  /// path); the two engines must stay in step (O10).
+  static int? _totalFromContentRange(String? contentRange) {
+    if (contentRange == null) return null;
+    final m = RegExp(r'^\s*bytes\s+\*/(\d+)', caseSensitive: false)
+        .firstMatch(contentRange);
+    if (m == null) return null;
+    return int.tryParse(m.group(1)!);
+  }
+
   /// True when [bytes] (the start of a body) look like an ebook file
   /// the app can open. Checked after a download finishes, as a last
   /// line of defence against a silently corrupt file (a mislabelled
@@ -140,9 +152,12 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
   /// A 3xx writes nothing (the caller follows the Location); a 200
   /// restarts the file from zero (the server ignored Range); a 206
   /// appends. A 416 (our partial file is longer than the server's file)
-  /// truncates and restarts once. Progress reports the true position
-  /// (resumed bytes + bytes received in this request) against the full
-  /// size, so a resumed download does not restart the progress bar.
+  /// truncates and restarts once — unless Content-Range says the
+  /// remote file is exactly as big as our partial, in which case the
+  /// download already finished and the file is kept (O5). Progress
+  /// reports the true position (resumed bytes + bytes received in this
+  /// request) against the full size, so a resumed download does not
+  /// restart the progress bar.
   ///
   /// Resume safety (S2): the validator (ETag, else Last-Modified) seen
   /// when the partial file was started is stored next to it
@@ -187,6 +202,10 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
       }
     }
     final reqHeaders = Map<String, String>.from(headers);
+    // File downloads want the raw bytes (see ResumableDownloader):
+    // a gzipped answer would make Content-Length disagree with the
+    // decompressed bytes received (O13).
+    reqHeaders['Accept-Encoding'] = 'identity';
     if (start > 0) {
       reqHeaders['Range'] = 'bytes=$start-';
       reqHeaders['If-Range'] = validator!;
@@ -211,6 +230,31 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
     }
     if (code == 416 && start > 0) {
       await res.data?.stream.drain<void>();
+      // A 416 means the resume offset is at or past the end of the
+      // remote file. When Content-Range reports the remote size is
+      // exactly our partial (N == start), the download already
+      // finished — the process was killed after the stream ended but
+      // before the .meta was removed — so keep the file and finish
+      // normally instead of throwing it away and re-downloading the
+      // whole book (O5). Only N < start (or an unparsable header)
+      // resets and restarts from zero.
+      final remoteSize =
+          _totalFromContentRange(res.headers.value('content-range'));
+      if (remoteSize != null && remoteSize == start) {
+        // Same finished-file header check as a normal completion (the
+        // earlier attempt may have been killed before it ran). The
+        // pending-writer path has no file to check here.
+        if (pendingWriter == null && !await _looksLikeBookFile(file)) {
+          if (await meta.exists()) await meta.delete();
+          throw DownloadHtmlException(
+            'download finished but the file does not look like a book '
+            '(unexpected file header) — the mirror may have served a '
+            'challenge or error page instead of the file',
+          );
+        }
+        if (await meta.exists()) await meta.delete();
+        return res;
+      }
       if (pendingWriter != null) {
         // Recreate the pending entry empty; the recursive call then
         // restarts with start == 0 and no Range header.

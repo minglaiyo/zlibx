@@ -63,10 +63,12 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
     _clearProgressThrottle(id);
   }
 
-  /// 请求暂停的任务 id：engine 的取消清理据此保留 .part（用户取消才
-  /// 删）。请求本身只置一次，engine 的 finally 会把它消费掉。方法在
+  /// 请求暂停的下载轮次，按 CancelToken 记（不按任务 id）：engine 的
+  /// 取消清理据此保留 .part（用户取消才删）。按令牌记，暂停后立即恢
+  /// 复时旧轮次的 finally 不会误消费新轮次的暂停标记（O6）。请求本身
+  /// 只置一次，engine 的 finally 会把它消费掉。方法在
   /// download_engine.dart 的 mixin 里（要调 startDownload）。
-  final Set<String> _pauseRequested = {};
+  final Set<CancelToken> _pauseRequested = {};
 
   void markMissingFile(String id) {
     _updateTask(

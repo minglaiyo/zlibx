@@ -1,6 +1,7 @@
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
+import '../utils/diagnostics.dart';
 import 'webview_challenge_solver.dart';
 
 /// After the WebView challenge solver passes a browser check, copy
@@ -77,4 +78,28 @@ Future<void> installSessionCookies({
     isSecure: true,
     isHttpOnly: true,
   );
+}
+
+/// Delete the `remix_userid` / `remix_userkey` session from the
+/// WebView's CookieManager for [pageUrl]'s host — the counterpart to
+/// [installSessionCookies] (O8). Solver flows call it in a `finally`
+/// so the session only lives for the solve itself; account/line
+/// switches and the reader call it when the session must not outlive
+/// its use.
+///
+/// Best-effort and never throws: a CookieManager failure (WebView
+/// never initialized, test host) must not mask a solve result or a
+/// switch — the cookies are then dropped by the next logout, which
+/// clears the whole store.
+Future<void> deleteSessionCookies({required String pageUrl}) async {
+  final uri = Uri.tryParse(pageUrl);
+  if (uri == null || uri.host.isEmpty) return;
+  final url = WebUri('https://${uri.host}/');
+  try {
+    final manager = CookieManager.instance();
+    await manager.deleteCookie(url: url, name: 'remix_userid');
+    await manager.deleteCookie(url: url, name: 'remix_userkey');
+  } catch (error) {
+    logIgnored('wall_cookie_bridge', error);
+  }
 }

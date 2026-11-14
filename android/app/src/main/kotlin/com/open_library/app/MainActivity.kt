@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -67,6 +68,20 @@ class MainActivity : FlutterFragmentActivity() {
         ioExecutor.shutdown()
         lightExecutor.shutdown()
         super.onDestroy()
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // O9: a share's temp copy lingered until the NEXT share (the old
+        // code only cleaned before a new copy). Drop stale share_ files
+        // at startup too, when no share from this process can be in
+        // flight. One hour, not 24: a share target reads the file
+        // within seconds of the share.
+        try {
+            ioExecutor.execute { cleanupStaleShareFiles(60L * 60L * 1000L) }
+        } catch (e: Exception) {
+            Log.w(TAG, "Share cleanup at startup not scheduled", e)
+        }
     }
 
     /// Runs [block] on the worker thread and replies on the UI thread.
@@ -423,7 +438,20 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    /// O9: the media_store channel must only touch this app's own
+    /// Downloads/zlibx entries: authority `media`, path under
+    /// `/external/downloads`. Anything else (file://, another provider,
+    /// another collection) is refused — the channel is only ever called
+    /// with URIs [publishToDownloads] / [createPendingDownload]
+    /// returned, which always live there.
+    private fun isAllowedDownloadUri(uri: Uri): Boolean {
+        return uri.scheme == "content" &&
+            uri.authority == "media" &&
+            (uri.path?.startsWith("/external/downloads") == true)
+    }
+
     private fun contentExists(uri: Uri): Boolean {
+        if (!isAllowedDownloadUri(uri)) return false
         return try {
             val stream = contentResolver.openInputStream(uri) ?: return false
             stream.close()
@@ -435,6 +463,7 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun openContent(uri: Uri): Boolean {
+        if (!isAllowedDownloadUri(uri)) return false
         val type = contentResolver.getType(uri) ?: "*/*"
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, type)
@@ -451,6 +480,7 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun deleteContent(uri: Uri): Boolean {
+        if (!isAllowedDownloadUri(uri)) return false
         return try {
             contentResolver.delete(uri, null, null) > 0
         } catch (e: Exception) {
@@ -460,13 +490,16 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     /// Delete stale `share_*` temp files from previous shares. Called
-    /// before each new copy; only regular files older than 24 hours are
-    /// removed, and only the `share_` prefix this class creates — nothing
-    /// else in the cache dir is touched. Best-effort: failures are logged
-    /// and never fail the copy. Runs on the IO worker (see [runAsync]),
+    /// before each new copy and at startup (see [onCreate]); only
+    /// regular files older than [maxAgeMillis] are removed, and only
+    /// the `share_` prefix this class creates — nothing else in the
+    /// cache dir is touched. Best-effort: failures are logged and
+    /// never fail the copy. Runs on the IO worker (see [runAsync]),
     /// never on the platform thread.
-    private fun cleanupStaleShareFiles() {
-        val cutoff = System.currentTimeMillis() - 24L * 60L * 60L * 1000L
+    private fun cleanupStaleShareFiles(
+        maxAgeMillis: Long = 24L * 60L * 60L * 1000L,
+    ) {
+        val cutoff = System.currentTimeMillis() - maxAgeMillis
         val files = try {
             cacheDir.listFiles()
         } catch (e: Exception) {
@@ -496,6 +529,9 @@ class MainActivity : FlutterFragmentActivity() {
     /// the OS to reclaim (deleting it right after sharing could
     /// break the receiving app's read).
     private fun copyContentToCache(uri: Uri): String? {
+        // O9: refuse anything outside this app's Downloads/zlibx
+        // entries before touching the ContentResolver.
+        if (!isAllowedDownloadUri(uri)) return null
         cleanupStaleShareFiles()
         return try {
             val displayName = contentResolver.query(

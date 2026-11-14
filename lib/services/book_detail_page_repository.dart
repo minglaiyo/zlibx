@@ -91,20 +91,27 @@ class BookDetailPageRepository {
     String? userId,
     String? userKey,
   }) async {
-    if (userId != null && userKey != null && userKey.isNotEmpty) {
+    final hasSession =
+        userId != null && userKey != null && userKey.isNotEmpty;
+    if (hasSession) {
       await installSessionCookies(
-        userId: userId,
-        userKey: userKey,
+        userId: userId!,
+        userKey: userKey!,
         pageUrl: url,
       );
     }
-    final html = await WebviewChallengeSolver.fetchHtmlAfterChallenge(url);
-    if (html == null ||
-        html.isEmpty ||
-        BooklistSolver.isChallengeHtml(html)) {
-      return null;
+    try {
+      final html = await WebviewChallengeSolver.fetchHtmlAfterChallenge(url);
+      if (html == null ||
+          html.isEmpty ||
+          BooklistSolver.isChallengeHtml(html)) {
+        return null;
+      }
+      await bridgeWallCookies(_api, url);
+      return html;
+    } finally {
+      // O8: the session only lives for this solve (see BooklistSolver).
+      if (hasSession) await deleteSessionCookies(pageUrl: url);
     }
-    await bridgeWallCookies(_api, url);
-    return html;
   }
 }

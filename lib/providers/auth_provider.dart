@@ -7,6 +7,7 @@ import 'package:zlibx/utils/diagnostics.dart';
 import '../services/auth_storage.dart';
 import '../services/challenge_html_cache.dart';
 import '../services/hive_service.dart';
+import '../services/wall_cookie_bridge.dart';
 import 'cache_invalidation.dart';
 import 'domain_provider.dart';
 import 'zlibrary_provider.dart';
@@ -382,6 +383,12 @@ class AuthNotifier extends Notifier<AuthState> {
         // library keeps showing the previous account's books until a
         // manual refresh.
         invalidateAccountScopedProviders(ref);
+        // O8: the WebView may still hold the previous account's
+        // session cookies for this mirror. Solver flows install fresh
+        // ones, but a sign-in page solved without credentials would
+        // silently reuse the old account's — drop them now that the
+        // new session is in place.
+        await deleteSessionCookies(pageUrl: 'https://${_api.domain}/');
       }
       return success;
     }

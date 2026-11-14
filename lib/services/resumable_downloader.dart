@@ -62,6 +62,18 @@ class ResumableDownloader {
         head.startsWith('<body');
   }
 
+  /// Total size from a `Content-Range: bytes */N` header — the form a
+  /// 416 answer carries — or null when the header is absent or does
+  /// not parse. The twin engine (`_downloadOnce` in the vendor plugin)
+  /// has the same helper; the two engines must stay in step (O10).
+  static int? _totalFromContentRange(String? contentRange) {
+    if (contentRange == null) return null;
+    final m = RegExp(r'^\s*bytes\s+\*/(\d+)', caseSensitive: false)
+        .firstMatch(contentRange);
+    if (m == null) return null;
+    return int.tryParse(m.group(1)!);
+  }
+
   /// Downloads [url] into [savePath], resuming from bytes already on disk
   /// when the server honours Range. See the library comment for the
   /// integrity rules. Throws [DownloadContentException],
@@ -133,6 +145,10 @@ class ResumableDownloader {
     }
 
     final reqHeaders = <String, String>{...?headers};
+    // File downloads want the raw bytes: a gzipped answer would make
+    // Content-Length (compressed) disagree with the decompressed bytes
+    // received, skewing progress and the truncation check (O13).
+    reqHeaders['Accept-Encoding'] = 'identity';
     if (start > 0) {
       reqHeaders['Range'] = 'bytes=$start-';
       reqHeaders['If-Range'] = validator!;
@@ -153,6 +169,20 @@ class ResumableDownloader {
     final code = res.statusCode ?? 0;
     if (code == 416) {
       await res.data?.stream.drain<void>();
+      // A 416 means the resume offset is at or past the end of the
+      // remote file. When Content-Range reports the remote size is
+      // exactly our partial (N == start), the download already
+      // finished — the process was killed after the stream ended but
+      // before the .meta was removed — so keep the file and finish
+      // normally instead of throwing it away and re-downloading the
+      // whole book (O5). Only N < start (or an unparsable header)
+      // resets and restarts from zero.
+      final remoteSize =
+          _totalFromContentRange(res.headers.value('content-range'));
+      if (remoteSize != null && remoteSize == start) {
+        if (await meta.exists()) await meta.delete();
+        return false;
+      }
       if (pendingWriter != null) {
         if (!await pendingWriter.reset()) {
           throw const DownloadContentException(

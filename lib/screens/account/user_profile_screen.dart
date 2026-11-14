@@ -248,42 +248,49 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     final fetchedAt = DateTime.now();
     final user = ref.read(authProvider).user;
     final userKey = user?.remixUserkey;
-    if (user != null && userKey != null && userKey.isNotEmpty) {
-      await _installSessionCookies(user.id, userKey, url);
+    final hasSession =
+        user != null && userKey != null && userKey.isNotEmpty;
+    if (hasSession) {
+      await _installSessionCookies(user!.id, userKey!, url);
     }
-    var html = ChallengeHtmlCache.get(url);
-    if (html != null && _isChallengeHtml(html)) {
-      // A stale challenge page must not short-circuit the solve.
-      html = null;
-    }
-    html ??= await WebviewChallengeSolver.fetchHtmlAfterChallenge(url);
-    if (!mounted) return;
-    if (html == null || html.isEmpty || _isChallengeHtml(html)) {
-      if (backgroundRefresh) return;
+    try {
+      var html = ChallengeHtmlCache.get(url);
+      if (html != null && _isChallengeHtml(html)) {
+        // A stale challenge page must not short-circuit the solve.
+        html = null;
+      }
+      html ??= await WebviewChallengeSolver.fetchHtmlAfterChallenge(url);
+      if (!mounted) return;
+      if (html == null || html.isEmpty || _isChallengeHtml(html)) {
+        if (backgroundRefresh) return;
+        setState(() {
+          _booklistsLoading = false;
+          _booklistsError = originalError;
+        });
+        return;
+      }
+      // `html` is a mutable local captured by the setState closure
+      // below, so its null-check promotion does not survive into the
+      // closure — pin it to a final first.
+      final pageHtml = html;
+      // The solve earned wall-clearance cookies — hand them to Dio so
+      // the next HTML load skips the solver. The solved page also goes
+      // into the persistent cache so the next open paints it instantly.
+      await bridgeWallCookies(api, url);
+      if (!mounted) return;
+      BooklistHtmlCache.store(url, pageHtml, fetchedAt: fetchedAt);
       setState(() {
+        _booklists = parseUserProfileBooklists(
+          pageHtml,
+          baseUrl: Uri.parse(url).origin,
+        );
         _booklistsLoading = false;
-        _booklistsError = originalError;
+        _booklistsError = null;
       });
-      return;
+    } finally {
+      // O8: the session only lives for this solve (see BooklistSolver).
+      if (hasSession) await deleteSessionCookies(pageUrl: url);
     }
-    // `html` is a mutable local captured by the setState closure
-    // below, so its null-check promotion does not survive into the
-    // closure — pin it to a final first.
-    final pageHtml = html;
-    // The solve earned wall-clearance cookies — hand them to Dio so
-    // the next HTML load skips the solver. The solved page also goes
-    // into the persistent cache so the next open paints it instantly.
-    await bridgeWallCookies(api, url);
-    if (!mounted) return;
-    BooklistHtmlCache.store(url, pageHtml, fetchedAt: fetchedAt);
-    setState(() {
-      _booklists = parseUserProfileBooklists(
-        pageHtml,
-        baseUrl: Uri.parse(url).origin,
-      );
-      _booklistsLoading = false;
-      _booklistsError = null;
-    });
   }
 
   /// The plugin's short error for a browser-check wall

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/hive_service.dart';
 import '../services/instance_manager.dart';
 import '../services/mirror_trust.dart';
+import '../services/wall_cookie_bridge.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'auth_provider.dart';
 import 'cache_invalidation.dart';
@@ -145,6 +146,11 @@ class DomainNotifier extends Notifier<String> {
   /// trust the domain.
   void setDomain(String domain, {bool reverifySession = true}) {
     if (domain == state) return;
+    // O8: the WebView may hold this line's session cookies (a solver
+    // installed them, or the reader did). The API session is cleared
+    // below; drop the WebView pair for the OLD host too, so a later
+    // anonymous solve cannot silently reuse it.
+    final oldDomain = state;
     // Defence in depth (the UI normally asked already): the stored
     // session never follows the user to a community mirror they have
     // not confirmed — see MirrorTrust.
@@ -158,6 +164,7 @@ class DomainNotifier extends Notifier<String> {
     // (built-in) hosts get it back through reverify() below.
     _api.clearSession();
     _api.setDomain(domain);
+    unawaited(deleteSessionCookies(pageUrl: 'https://$oldDomain/'));
     _refreshAfterSwitch(reverifySession: reverifySession);
   }
 

@@ -12,6 +12,7 @@ import 'package:zlibx/utils/host_utils.dart';
 
 import '../../l10n/generated/app_localizations.dart';
 
+import '../../services/wall_cookie_bridge.dart';
 import '../../utils/app_log.dart';
 import '../../utils/app_snack.dart';
 class ReaderScreen extends StatefulWidget {
@@ -168,6 +169,24 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
+  /// O8: the reader holds the session in the WebView for as long as it
+  /// is open (the site's own pages need it). Drop it when the reader
+  /// goes away so a stale pair never outlives the reading session.
+  /// Same hosts as [_installSessionCookiesOnce]: the reader host and
+  /// its bare host. Best-effort — [deleteSessionCookies] never throws,
+  /// so this is safe to fire from [dispose].
+  Future<void> _clearSessionCookies() async {
+    final uri = Uri.tryParse(widget.url);
+    if (uri == null || uri.host.isEmpty) return;
+    final hosts = <String>{
+      uri.host,
+      if (uri.host.startsWith('reader.')) uri.host.substring('reader.'.length),
+    };
+    for (final host in hosts) {
+      await deleteSessionCookies(pageUrl: 'https://$host/');
+    }
+  }
+
   /// WebView → app 的会话回同步：站内登录（登录墙）或站点轮换密钥
   /// 都会把 WebView CookieStore 里的 remix 对改掉。读回后发现与本次
   /// 安装进来的对不一致，就上报 [ReaderArgs.onSessionChanged]，让
@@ -301,6 +320,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
       _routeAnimation!.removeListener(_routeAnimationListener!);
     }
     unawaited(_webViewController?.stopLoading());
+    // O8: drop the session cookies installed for this reader session.
+    unawaited(_clearSessionCookies());
     super.dispose();
   }
 

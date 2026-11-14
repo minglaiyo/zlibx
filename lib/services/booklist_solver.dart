@@ -50,27 +50,37 @@ class BooklistSolver {
     // while the solve is in flight must make the store below drop
     // the stale page (see BooklistHtmlCache).
     final fetchedAt = DateTime.now();
-    if (userId != null && userKey != null && userKey.isNotEmpty) {
+    final hasSession =
+        userId != null && userKey != null && userKey.isNotEmpty;
+    if (hasSession) {
       await installSessionCookies(
-        userId: userId,
-        userKey: userKey,
+        userId: userId!,
+        userKey: userKey!,
         pageUrl: url,
       );
     }
-    // Always fetch live. ChallengeHtmlCache holds pages captured by
-    // earlier solves (same-request retries), and a page captured before
-    // a write (create/delete) would be served here as a refresh result
-    // — the screen then stays stale until a cold start clears the
-    // in-memory cache. A solver-path refresh must return current data.
-    final html = await WebviewChallengeSolver.fetchHtmlAfterChallenge(url);
-    if (html == null || html.isEmpty || isChallengeHtml(html)) return null;
-    await bridgeWallCookies(api, url);
-    BooklistHtmlCache.store(
-      url,
-      html,
-      accountId: accountId,
-      fetchedAt: fetchedAt,
-    );
-    return html;
+    try {
+      // Always fetch live. ChallengeHtmlCache holds pages captured by
+      // earlier solves (same-request retries), and a page captured before
+      // a write (create/delete) would be served here as a refresh result
+      // — the screen then stays stale until a cold start clears the
+      // in-memory cache. A solver-path refresh must return current data.
+      final html = await WebviewChallengeSolver.fetchHtmlAfterChallenge(url);
+      if (html == null || html.isEmpty || isChallengeHtml(html)) return null;
+      await bridgeWallCookies(api, url);
+      BooklistHtmlCache.store(
+        url,
+        html,
+        accountId: accountId,
+        fetchedAt: fetchedAt,
+      );
+      return html;
+    } finally {
+      // O8: the session only lives for this solve — drop it so a later
+      // anonymous solve cannot silently reuse the old account's
+      // cookies. deleteSessionCookies never throws, so a failure here
+      // cannot mask the solve result.
+      if (hasSession) await deleteSessionCookies(pageUrl: url);
+    }
   }
 }

@@ -10,8 +10,8 @@ import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:meta/meta.dart';
 
-import 'hive_service.dart';
 import '../utils/diagnostics.dart';
+import 'hive_service.dart';
 
 /// settingsBox 里记录"最后一次离开前台的时刻"（毫秒）的键。
 ///
@@ -167,7 +167,7 @@ class AppLockController {
     try {
       return await _auth.canCheckBiometrics ||
           await _auth.isDeviceSupported();
-    } catch (error) {
+    } on Object catch (error) {
       logIgnored('app_lock', error);
       return false;
     }
@@ -212,7 +212,7 @@ class AppLockController {
         // 谎称凭据不存在——按可重试处理，同时留一条日志。
         _ => AppLockAuthResult.retry,
       };
-    } catch (error) {
+    } on Object catch (error) {
       logIgnored('app_lock', error);
       return AppLockAuthResult.error;
     }
@@ -223,7 +223,7 @@ class AppLockController {
   Future<void> cancelPendingAuth() async {
     try {
       await _auth.stopAuthentication();
-    } catch (error) {
+    } on Object catch (error) {
       logIgnored('app_lock', error);
     }
   }
@@ -240,7 +240,7 @@ class AppLockController {
           logIgnored('app_lock', error);
         }),
       );
-    } catch (error) {
+    } on Object catch (error) {
       logIgnored('app_lock', error);
     }
   }
@@ -254,7 +254,7 @@ class AppLockController {
           logIgnored('app_lock', error);
         }),
       );
-    } catch (error) {
+    } on Object catch (error) {
       logIgnored('app_lock', error);
     }
   }

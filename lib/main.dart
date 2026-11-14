@@ -5,23 +5,25 @@ import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'theme/app_theme.dart';
+import 'l10n/generated/app_localizations.dart';
+import 'l10n/locale_resolution.dart';
 import 'providers/auth_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/zlibrary_provider.dart';
 import 'routes/app_routes.dart';
-import 'services/hive_service.dart';
-import 'services/mirror_trust.dart';
-import 'services/booklist_html_cache.dart';
-import 'services/instance_manager.dart';
-import 'services/storage_service.dart';
-import 'services/app_lock_service.dart';
-import 'services/challenge_html_cache.dart';
-import 'services/webview_challenge_solver.dart';
-import 'widgets/app_lock_overlay.dart';
-import 'utils/diagnostics.dart';
 import 'screens/challenge_solver/challenge_solver_screen.dart';
-import 'l10n/generated/app_localizations.dart';
+import 'services/app_lock_service.dart';
+import 'services/booklist_html_cache.dart';
+import 'services/challenge_html_cache.dart';
+import 'services/download_foreground_service.dart';
+import 'services/hive_service.dart';
+import 'services/instance_manager.dart';
+import 'services/mirror_trust.dart';
+import 'services/storage_service.dart';
+import 'services/webview_challenge_solver.dart';
+import 'theme/app_theme.dart';
+import 'utils/diagnostics.dart';
+import 'widgets/app_lock_overlay.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -57,6 +59,10 @@ void main() async {
   };
 
   await HiveService.init();
+  // O1: register the background-download foreground-service bridge and
+  // request the notification permission (Android 13+) up front.
+  DownloadForegroundService.register();
+  unawaited(DownloadForegroundService.requestNotificationPermission());
   // Privacy lock companion: re-apply FLAG_SECURE from the persisted
   // setting (recents blur survives process restarts only if re-set).
   // A throwaway read — the notifier reads the same key later.
@@ -120,6 +126,13 @@ class _MyAppState extends ConsumerState<MyApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // O2: open the heavier, non-first-frame boxes (booklist_html,
+    // view_history) after the first frame paints, so their value
+    // preload does not delay the splash. Fire-and-forget — callers
+    // treat an unopened box as a cache miss until this settles.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(HiveService.initSecondary());
+    });
     // The plugin reports the raw HTML of every booklist page it
     // loads over Dio; persist it so the next open paints from cache
     // first (see BooklistHtmlCache). Registered once here: the
@@ -205,6 +218,12 @@ class _MyAppState extends ConsumerState<MyApp>
           // Localization
           locale: locale,
           supportedLocales: AppLocalizations.supportedLocales,
+          // O11: zh_TW / zh_HK / zh_MO shared the zh_Hant translations
+          // (the three ARBs were byte-identical to zh_Hant apart from
+          // @@locale). Map them to zh_Hant instead of carrying three
+          // duplicate ~25 KB ARB files. Shared with the resolution test
+          // via lib/l10n/locale_resolution.dart.
+          localeListResolutionCallback: resolveAppLocale,
           // The generated list (app delegate + GlobalMaterial +
           // GlobalCupertino + GlobalWidgets). Passing only
           // [AppLocalizations.delegate] would trip the debug-only

@@ -12,6 +12,7 @@ import 'book_detail_extras.dart';
 import 'book_detail_html.dart';
 import 'booklist.dart';
 import 'category.dart';
+import 'download_range.dart';
 import 'download_stats.dart';
 import 'fulltext.dart';
 import 'user.dart';

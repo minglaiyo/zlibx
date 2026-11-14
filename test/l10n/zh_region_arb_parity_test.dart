@@ -1,70 +1,68 @@
-// M6 drift guard: app_zh_TW / app_zh_HK / app_zh_MO must stay value-
-// identical to app_zh_Hant (apart from `@@locale`).
+// O11 drift guard: the zh_TW / zh_HK / zh_MO ARB files are removed and
+// their locales resolve to zh_Hant through `resolveAppLocale`.
 //
-// Why the files must exist and be full copies (reviewed 2026-11-13):
-// gen-l10n resolves `zh_TW` / `zh_HK` / `zh_MO` to the SIMPLIFIED
-// `AppLocalizationsZh` — its fallback never routes through
-// `zh_Hant` (the generated `AppLocalizationsZhTw extends
-// AppLocalizationsZh`, verified by regenerating with the region files
-// removed). The region ARBs ARE the Traditional delivery for those
-// locales, so they cannot be collapsed to overrides. What CAN be
-// enforced is that they do not drift apart: a Traditional string fix
-// must land in all four files, and this test fails loudly when one is
-// missed — silently serving one region Simplified text would otherwise
-// go unnoticed.
-import 'dart:convert';
+// Why the files are gone (reviewed 2026-11-14): they were byte-identical
+// to `app_zh_Hant.arb` apart from `@@locale`, and gen-l10n resolves
+// `zh_TW` / `zh_HK` / `zh_MO` to the SIMPLIFIED `AppLocalizationsZh`
+// when the region files are absent (its fallback never routes through
+// `zh_Hant`). Instead of carrying three duplicate ~25 KB ARB files, the
+// app maps those device locales to zh_Hant via
+// `resolveAppLocale` (lib/l10n/locale_resolution.dart), wired as
+// MaterialApp's `localeListResolutionCallback` in main.dart.
+//
+// This test guards the new invariant:
+//   1. the three region ARB files are absent (the dedup is real — if
+//      someone re-adds them, that's a deliberate change that must also
+//      update this test);
+//   2. `resolveAppLocale` returns zh_Hant for each of TW / HK / MO, so a
+//      Traditional user on those regions still gets Traditional strings
+//      instead of silently falling back to Simplified.
+//
+// `settings` is the discriminator: its zh value ('设置') and zh_Hant
+// value ('設定') differ, so resolving to zh_Hant is observable.
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:zlibx/l10n/locale_resolution.dart';
 
 void main() {
   final arbDir = Directory(p.join('lib', 'l10n'));
-  final base = _readArb(p.join(arbDir.path, 'app_zh_Hant.arb'));
-  base.remove('@@locale');
 
   test('app_zh_Hant.arb exists and has Traditional content', () {
-    expect(base, isNotEmpty);
-    expect(base['about'], '關於');
+    final file = File(p.join(arbDir.path, 'app_zh_Hant.arb'));
+    expect(file.existsSync(), isTrue);
+    expect(file.readAsStringSync(), contains('設定'));
   });
 
   for (final region in const ['zh_TW', 'zh_HK', 'zh_MO']) {
-    test('$region matches zh_Hant value-for-value', () {
+    test('$region ARB is removed (dedup) and resolves to zh_Hant', () {
+      // The region file is gone — the dedup is real.
       final file = File(p.join(arbDir.path, 'app_$region.arb'));
       expect(
         file.existsSync(),
-        isTrue,
-        reason: 'app_$region.arb was deleted: zh_$region devices would '
-            'fall back to SIMPLIFIED zh (gen-l10n does not route the '
-            'fallback through zh_Hant). Restore the file as a full '
-            'copy of app_zh_Hant.arb with only @@locale changed.',
+        isFalse,
+        reason: 'app_$region.arb was re-added: the O11 dedup removed it. '
+            'If this is intentional, update this test to reflect the '
+            'new invariant.',
       );
-      final map = _readArb(file.path);
-      expect(map.remove('@@locale'), region);
-      expect(
-        map.keys.toSet(),
-        base.keys.toSet(),
-        reason: 'Key sets diverged between zh_Hant and $region — add '
-            'the new keys to both (values are identical Traditional '
-            'text; see the file comment in this test).',
-      );
-      for (final key in base.keys) {
-        expect(
-          map[key],
-          base[key],
-          reason: 'Value drift for "$key": fix it in all four '
-              'Traditional files (zh_Hant, zh_TW, zh_HK, zh_MO) so no '
-              'region silently serves different text.',
-        );
-      }
+
+      // The resolution callback maps the device locale to zh_Hant, so
+      // the Traditional strings (not Simplified) are served.
+      final locale = Locale('zh', region.split('_').last);
+      final resolved = resolveAppLocale([locale], const []);
+      expect(resolved, isNotNull);
+      expect(resolved!.languageCode, 'zh');
+      expect(resolved.scriptCode, 'Hant');
     });
   }
-}
 
-Map<String, dynamic> _readArb(String path) {
-  final decoded = jsonDecode(File(path).readAsStringSync());
-  if (decoded is! Map<String, dynamic>) {
-    throw StateError('$path is not a JSON object');
-  }
-  return decoded;
+  test('resolveAppLocale leaves other locales untouched', () {
+    // A non-Traditional zh locale (e.g. zh-CN) and a non-zh locale
+    // must fall through (null) so MaterialApp applies its default.
+    expect(resolveAppLocale([Locale('zh', 'CN')], const []), isNull);
+    expect(resolveAppLocale([Locale('en')], const []), isNull);
+    expect(resolveAppLocale(null, const []), isNull);
+  });
 }

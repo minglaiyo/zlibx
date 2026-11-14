@@ -148,6 +148,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       _networkOk = await _checkNetwork();
     }
 
+    // Current line still unreachable (O3): force a full speed test so
+    // the line picker has fresh data to suggest a working mirror, instead
+    // of leaving every row untested until the user taps Retest.
+    if (!_networkOk) {
+      unawaited(ref.read(speedTestProvider.notifier).runTest(force: true));
+    }
+
     // Still unreachable — prompt user to switch line before continuing.
     while (!_networkOk && mounted) {
       final action = await _showLineUnavailableDialog();

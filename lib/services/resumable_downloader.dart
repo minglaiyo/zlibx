@@ -16,7 +16,6 @@
 // back as `If-Range`. If the remote file changed, the server answers 200
 // with the full body and we restart from zero instead of appending to a
 // stale prefix (which would produce a corrupt book).
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -49,30 +48,18 @@ class ResumableDownloader {
   static String metaPathFor(String savePath) => '$savePath.meta';
 
   /// True when [bytes] (the start of a body) look like an HTML document.
-  static bool looksLikeHtml(List<int> bytes) {
-    if (bytes.isEmpty) return false;
-    final head = utf8
-        .decode(bytes.take(512).toList(), allowMalformed: true)
-        .replaceFirst('\uFEFF', '')
-        .trimLeft()
-        .toLowerCase();
-    return head.startsWith('<!doctype html') ||
-        head.startsWith('<html') ||
-        head.startsWith('<head') ||
-        head.startsWith('<body');
-  }
+  /// Delegates to the shared [DownloadRange.looksLikeHtml] (O10) so the
+  /// two engines cannot drift.
+  static bool looksLikeHtml(List<int> bytes) =>
+      DownloadRange.looksLikeHtml(bytes);
 
   /// Total size from a `Content-Range: bytes */N` header — the form a
   /// 416 answer carries — or null when the header is absent or does
-  /// not parse. The twin engine (`_downloadOnce` in the vendor plugin)
-  /// has the same helper; the two engines must stay in step (O10).
-  static int? _totalFromContentRange(String? contentRange) {
-    if (contentRange == null) return null;
-    final m = RegExp(r'^\s*bytes\s+\*/(\d+)', caseSensitive: false)
-        .firstMatch(contentRange);
-    if (m == null) return null;
-    return int.tryParse(m.group(1)!);
-  }
+  /// not parse. Shared with the twin engine (`_downloadOnce` in the
+  /// vendor plugin) through [DownloadRange.parseContentRangeTotal]
+  /// (O10): the two engines must stay in step.
+  static int? _totalFromContentRange(String? contentRange) =>
+      DownloadRange.parseContentRangeTotal(contentRange);
 
   /// Downloads [url] into [savePath], resuming from bytes already on disk
   /// when the server honours Range. See the library comment for the
@@ -202,10 +189,10 @@ class ResumableDownloader {
     // Content-Range is present and disagrees, restart from zero.
     if (code == 206 && start > 0) {
       final cr = res.headers.value('content-range');
-      final m = cr == null
-          ? null
-          : RegExp(r'^\s*bytes\s+(\d+)-', caseSensitive: false).firstMatch(cr);
-      if (cr != null && (m == null || int.parse(m.group(1)!) != start)) {
+      // O10: the Content-Range parse is shared with the twin engine (the
+      // vendor plugin's `_downloadOnce`), so a rule change lands once.
+      final parsedStart = DownloadRange.parseContentRangeStart(cr);
+      if (cr != null && (parsedStart == null || parsedStart != start)) {
         await res.data?.stream.drain<void>();
         if (pendingWriter != null) {
           if (!await pendingWriter.reset()) {

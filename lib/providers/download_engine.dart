@@ -154,10 +154,13 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
 
       temporaryPath = '$finalPath.part';
 
-      // Update to downloading
+      // Update to downloading. Keep the existing progress: a fresh
+      // download starts at 0 (the task was created with progress 0), and
+      // a resume continues from where it paused — resetting to 0 would
+      // flash the bar back to zero on every resume (O13).
       _updateTask(
         id,
-        (t) => t.copyWith(status: DownloadStatus.downloading, progress: 0.0),
+        (t) => t.copyWith(status: DownloadStatus.downloading),
       );
 
       // Write to a task-specific temporary file so cancellation never leaves
@@ -185,6 +188,9 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
           savePath: temporaryPath,
         );
       }
+      // O1: start (or keep) the foreground service so the download
+      // survives backgrounding; the notification shows progress.
+      await DownloadForegroundService.start();
       if (!alreadyExists && presetUrl != null) {
         // presetUrl 路径（外部源解析链接）：直接 stream 到本地，
         // 用独立 Dio，不带 z站 cookie / auth，也不带任何自定义头 —
@@ -208,6 +214,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
               if (total > 0) {
                 final progress = received / total;
                 _updateProgress(id, progress);
+                _notifyDownloadProgress(progress);
               }
             },
             cancelToken: cancelToken,
@@ -228,6 +235,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
               if (total > 0) {
                 final progress = received / total;
                 _updateProgress(id, progress);
+                _notifyDownloadProgress(progress);
               }
             },
             cancelToken: cancelToken,
@@ -360,6 +368,9 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       // S6: free the slot first, so a cleanup failure below cannot leak
       // it and stall the queue; the next waiter starts immediately.
       _slotPool.release();
+      // O1: this round ended — drop the foreground-service count; the
+      // service stops itself when the last download finishes.
+      await DownloadForegroundService.stop();
       // Keep the partial file after a failure so the next retry resumes
       // from it instead of starting over; only an explicit user cancel
       // drops it. On success the file was already renamed away.

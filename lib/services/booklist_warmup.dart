@@ -109,30 +109,38 @@ class BooklistWarmup {
       if (BooklistHtmlCache.get(url, accountId: accountId) != null) {
         return true;
       }
+      bool installed = false;
       if (needsSession) {
+        installed = true;
         await installSessionCookies(
           userId: user.id,
           userKey: user.remixUserkey,
           pageUrl: url,
         );
       }
-      // When this fetch started, for the invalidation check on the
-      // store below (see BooklistHtmlCache).
-      final fetchedAt = DateTime.now();
-      final html = await WebviewChallengeSolver.fetchHtmlHeadlessOnly(url);
-      if (html == null ||
-          html.isEmpty ||
-          WebviewChallengeSolver.isChallengeHtml(html)) {
-        return false;
+      try {
+        // When this fetch started, for the invalidation check on the
+        // store below (see BooklistHtmlCache).
+        final fetchedAt = DateTime.now();
+        final html = await WebviewChallengeSolver.fetchHtmlHeadlessOnly(url);
+        if (html == null ||
+            html.isEmpty ||
+            WebviewChallengeSolver.isChallengeHtml(html)) {
+          return false;
+        }
+        BooklistHtmlCache.store(
+          url,
+          html,
+          accountId: accountId,
+          fetchedAt: fetchedAt,
+        );
+        await bridgeWallCookies(api, url);
+        return true;
+      } finally {
+        // O8: drop the session cookies once the warm-up is done so they
+        // do not linger in the WebView's CookieManager.
+        if (installed) await deleteSessionCookies(pageUrl: url);
       }
-      BooklistHtmlCache.store(
-        url,
-        html,
-        accountId: accountId,
-        fetchedAt: fetchedAt,
-      );
-      await bridgeWallCookies(api, url);
-      return true;
     } catch (e) {
       _logger.debug(
         'Booklist warm-up failed for page',

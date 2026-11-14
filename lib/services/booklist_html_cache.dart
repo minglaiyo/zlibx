@@ -62,6 +62,11 @@ class BooklistHtmlCache {
     return box;
   }
 
+  /// True when the booklist_html box is open. The box is opened after
+  /// the first frame (O2), so until then every access is a cache miss
+  /// (reads) or a no-op (writes) — see the guards on the public methods.
+  static bool get _ready => Hive.isBoxOpen(boxName);
+
   /// One-time purge of pre-existing cached HTML that still carries the
   /// signed-in user's `user_token` JWT. Older app versions stored the
   /// raw detail HTML verbatim; [store] now strips the token, so any
@@ -198,6 +203,7 @@ class BooklistHtmlCache {
     DateTime? fetchedAt,
   }) {
     if (url.isEmpty || html.isEmpty) return;
+    if (!_ready) return; // O2: box opens after the first frame.
     if (_isStaleWrite(url, accountId, fetchedAt)) return;
     _put(_key(url, accountId), {
       'at': DateTime.now().millisecondsSinceEpoch,
@@ -215,10 +221,14 @@ class BooklistHtmlCache {
   /// page afterwards (see [_invalidatedAt]).
   static void invalidateBooklist(String url, {String? accountId}) {
     if (url.isEmpty) return;
+    // Record the invalidation timestamp even when the box is not yet
+    // open (O2): a fetch in flight must still be dropped when it
+    // resolves, regardless of whether the box is ready.
+    _invalidatedAt[_key(url, accountId)] = DateTime.now();
+    if (!_ready) return;
     final box = _box;
     unawaited(box.delete(_key(url, accountId)));
     invalidateBooklistPages(url, accountId: accountId);
-    _invalidatedAt[_key(url, accountId)] = DateTime.now();
   }
 
   /// Drops the parsed JSON pages (`#json-page=N`) of one booklist,
@@ -229,6 +239,8 @@ class BooklistHtmlCache {
   /// same books, so a stale HTML fetch must not re-store either.
   static void invalidateBooklistPages(String url, {String? accountId}) {
     if (url.isEmpty) return;
+    _invalidatedAt[_key(url, accountId)] = DateTime.now();
+    if (!_ready) return; // O2: box opens after the first frame.
     final box = _box;
     final prefix = '$url#json-page=';
     final suffix = accountId == null ? null : '#account=$accountId';
@@ -240,13 +252,13 @@ class BooklistHtmlCache {
     for (final key in keys) {
       unawaited(box.delete(key));
     }
-    _invalidatedAt[_key(url, accountId)] = DateTime.now();
   }
 
   /// Deletes every entry older than [ttl] (and every entry with no
   /// usable timestamp). Expired entries otherwise linger until the
   /// 50-entry cap evicts them.
   static void pruneExpired() {
+    if (!_ready) return; // O2: box opens after the first frame.
     final box = _box;
     final now = DateTime.now().millisecondsSinceEpoch;
     final keys = box.keys.where((key) {
@@ -268,6 +280,7 @@ class BooklistHtmlCache {
   /// are deleted on read instead of lingering until eviction.
   static String? get(String url, {String? accountId}) {
     if (url.isEmpty) return null;
+    if (!_ready) return null; // O2: box opens after the first frame.
     final box = _box;
     final key = _key(url, accountId);
     final raw = box.get(key);
@@ -307,6 +320,7 @@ class BooklistHtmlCache {
     String? accountId,
   }) {
     if (url.isEmpty) return null;
+    if (!_ready) return null; // O2: box opens after the first frame.
     final box = _box;
     final key = _key('$url#json-page=$page', accountId);
     final raw = box.get(key);
@@ -349,6 +363,7 @@ class BooklistHtmlCache {
     DateTime? fetchedAt,
   }) {
     if (url.isEmpty) return;
+    if (!_ready) return; // O2: box opens after the first frame.
     if (_isStaleWrite(url, accountId, fetchedAt)) return;
     _put(_key('$url#json-page=$page', accountId), {
       'at': DateTime.now().millisecondsSinceEpoch,
@@ -356,7 +371,10 @@ class BooklistHtmlCache {
     });
   }
 
-  static Future<void> clear() => _box.clear();
+  static Future<void> clear() async {
+    if (!_ready) return; // O2: box opens after the first frame.
+    await _box.clear();
+  }
 
   /// Approximate stored size of one entry, in bytes. HTML entries
   /// are measured by their string length (UTF-16 code units ≈ 2

@@ -10,6 +10,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
+import '../services/download_foreground_service.dart';
 import '../services/http_client.dart';
 import '../services/media_store.dart';
 import '../services/pending_uri_writer.dart';
@@ -69,6 +70,10 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
   /// 只置一次，engine 的 finally 会把它消费掉。方法在
   /// download_engine.dart 的 mixin 里（要调 startDownload）。
   final Set<CancelToken> _pauseRequested = {};
+
+  /// O1: last percent pushed to the foreground-service notification,
+  /// to throttle the channel calls (only push on a 5% change).
+  int _lastNotifiedPercent = -1;
 
   void markMissingFile(String id) {
     _updateTask(
@@ -159,6 +164,16 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
     _lastPublishedAt.remove(id);
   }
 
+  /// Push the download progress to the foreground-service notification
+  /// (O1), throttled to a 5% change so the method channel is not
+  /// spammed per chunk.
+  void _notifyDownloadProgress(double progress) {
+    final percent = (progress * 100).round();
+    if ((percent - _lastNotifiedPercent).abs() < 5) return;
+    _lastNotifiedPercent = percent;
+    unawaited(DownloadForegroundService.updateProgress('下载中 $percent%'));
+  }
+
   void _updateTask(String id, DownloadTask Function(DownloadTask) updater) {
     state = state.map((t) {
       if (t.id == id) {
@@ -173,6 +188,21 @@ class DownloadNotifier extends _DownloadNotifierBase
     with _DownloadPathsMixin, _DownloadEngineMixin, _DownloadHistoryMixin {
   @override
   List<DownloadTask> build() {
+    // O1: wire the foreground-service notification's pause/cancel
+    // actions to the engine — pause/cancel every active download.
+    // Re-registered on every invalidate (build() re-runs), but the
+    // assignment is idempotent.
+    DownloadForegroundService.onAction = (action) {
+      if (action == 'pause') {
+        for (final id in _cancelTokens.keys.toList()) {
+          pauseDownload(id);
+        }
+      } else if (action == 'cancel') {
+        for (final id in _cancelTokens.keys.toList()) {
+          cancelDownload(id);
+        }
+      }
+    };
     // Load persisted download history on initialization
     ready = _loadDownloadHistory();
     return [];

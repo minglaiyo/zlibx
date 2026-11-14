@@ -15,6 +15,7 @@ export 'src/book_detail_extras.dart';
 export 'src/book_detail_html.dart';
 export 'src/booklist.dart';
 export 'src/category.dart';
+export 'src/download_range.dart';
 export 'src/download_stats.dart';
 export 'src/fulltext.dart';
 export 'src/user.dart';

@@ -4,6 +4,23 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 import '../utils/diagnostics.dart';
 import 'webview_challenge_solver.dart';
 
+/// Wall-clearance cookies the solver earns and that Dio needs to pass the
+/// same wall on the next request. Only these are copied into Dio (O8):
+/// previously every non-session cookie on the host was copied, which could
+/// carry tracking / non-wall cookies into the request headers. A cookie
+/// missing from this list only means Dio re-solves the wall on the next
+/// request — extend the list if a mirror uses a different clearance
+/// cookie, but never add the session `remix_*` pair here.
+const List<String> wallCookieNames = [
+  '__diamwall',
+  'cf_clearance',
+  '__cf_bm',
+  'ddos_guard',
+  '_dd_',
+  '__ddg1_',
+  '__ddg2_',
+];
+
 /// After the WebView challenge solver passes a browser check, copy
 /// the wall-clearance cookies it earned (`__diamwall`, `cf_clearance`,
 /// ...) from the WebView's CookieManager into the API layer's Dio
@@ -15,12 +32,14 @@ import 'webview_challenge_solver.dart';
 /// the UA it was minted with, so a Dio with a different UA can loop
 /// 403 despite carrying valid cookies.
 ///
-/// Only the page's own host is read, and only non-session cookies are
-/// copied — the plugin already sends the login session from its own
-/// state. The cookies go to the same mirror Dio already talks to;
-/// nothing is sent to any other host (the plugin strips the whole
-/// `Cookie` header for cross-host download links). Callers invoke
-/// this right after a successful solve, before parsing the HTML.
+/// Only the page's own host is read, and only the known wall-clearance
+/// cookies in [wallCookieNames] are copied (O8) — the session
+/// `remix_*` pair is never copied (the plugin sends the login session
+/// from its own state), and neither are tracking / non-wall cookies.
+/// The cookies go to the same mirror Dio already talks to; nothing is
+/// sent to any other host (the plugin strips the whole `Cookie` header
+/// for cross-host download links). Callers invoke this right after a
+/// successful solve, before parsing the HTML.
 Future<void> bridgeWallCookies(ZLibraryApi api, String pageUrl) async {
   final uri = Uri.tryParse(pageUrl);
   if (uri == null || uri.host.isEmpty) return;
@@ -32,8 +51,10 @@ Future<void> bridgeWallCookies(ZLibraryApi api, String pageUrl) async {
     // Cookie.value is dynamic in flutter_inappwebview 6.1.5 — cast once
     // (strict-casts flags the bare bool test / map assignment).
     final value = cookie.value as String?;
-    if (cookie.name == 'remix_userid' ||
-        cookie.name == 'remix_userkey' ||
+    // O8: copy only known wall-clearance cookies, not every non-session
+    // cookie on the host. The session pair is excluded by the allow-list
+    // too (it is never in [wallCookieNames]).
+    if (!wallCookieNames.contains(cookie.name) ||
         value == null ||
         value.isEmpty) {
       continue;

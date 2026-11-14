@@ -850,7 +850,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 opacity: animation,
                 child: SizeTransition(
                   sizeFactor: animation,
-                  alignment: Alignment.topCenter,
+                  // SizeTransition has no `alignment`; "top-anchored" is
+                  // expressed with axis + axisAlignment (-1 = top).
+                  axis: Axis.vertical,
+                  axisAlignment: -1.0,
                   child: child,
                 ),
               ),

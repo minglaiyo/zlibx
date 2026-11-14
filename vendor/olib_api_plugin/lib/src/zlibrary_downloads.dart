@@ -24,15 +24,11 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
 
   /// Total size from a `Content-Range: bytes */N` header — the form a
   /// 416 answer carries — or null when the header is absent or does
-  /// not parse. Same helper as `ResumableDownloader` (the external
-  /// path); the two engines must stay in step (O10).
-  static int? _totalFromContentRange(String? contentRange) {
-    if (contentRange == null) return null;
-    final m = RegExp(r'^\s*bytes\s+\*/(\d+)', caseSensitive: false)
-        .firstMatch(contentRange);
-    if (m == null) return null;
-    return int.tryParse(m.group(1)!);
-  }
+  /// not parse. Delegates to the shared [DownloadRange.parseContentRangeTotal]
+  /// (O10): the twin engine (`ResumableDownloader`, the external path)
+  /// uses the same parser, so the two stay in step.
+  static int? _totalFromContentRange(String? contentRange) =>
+      DownloadRange.parseContentRangeTotal(contentRange);
 
   /// True when [bytes] (the start of a body) look like an ebook file
   /// the app can open. Checked after a download finishes, as a last
@@ -66,21 +62,12 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
   }
 
   /// True when [bytes] (the start of a body) look like an HTML document.
-  /// Same sniff as `ResumableDownloader.looksLikeHtml` (the external
-  /// path): a fresh body that is really an HTML page (mislabelled
-  /// Content-Type) must not touch the disk.
-  static bool looksLikeHtml(List<int> bytes) {
-    if (bytes.isEmpty) return false;
-    final head = utf8
-        .decode(bytes.take(512).toList(), allowMalformed: true)
-        .replaceFirst('\uFEFF', '')
-        .trimLeft()
-        .toLowerCase();
-    return head.startsWith('<!doctype html') ||
-        head.startsWith('<html') ||
-        head.startsWith('<head') ||
-        head.startsWith('<body');
-  }
+  /// Delegates to the shared [DownloadRange.looksLikeHtml] (O10) — the
+  /// same rule as `ResumableDownloader.looksLikeHtml` (the external
+  /// path), so the two engines cannot drift: a fresh body that is really
+  /// an HTML page (mislabelled Content-Type) must not touch the disk.
+  static bool looksLikeHtml(List<int> bytes) =>
+      DownloadRange.looksLikeHtml(bytes);
 
   /// Resolve the file link via `/eapi/book/{id}/{hash}/file` and stream
   /// the file to [savePath]. Throws on failure (the app catches it and
@@ -280,11 +267,10 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
     // Content-Range is present and disagrees, restart from zero.
     if (code == 206 && start > 0) {
       final cr = res.headers.value('content-range');
-      final m = cr == null
-          ? null
-          : RegExp(r'^\s*bytes\s+(\d+)-', caseSensitive: false)
-              .firstMatch(cr);
-      if (cr != null && (m == null || int.parse(m.group(1)!) != start)) {
+      // O10: the Content-Range parse is shared with the twin engine
+      // (`ResumableDownloader`), so a rule change lands once.
+      final parsedStart = DownloadRange.parseContentRangeStart(cr);
+      if (cr != null && (parsedStart == null || parsedStart != start)) {
         await res.data?.stream.drain<void>();
         if (pendingWriter != null) {
           if (!await pendingWriter.reset()) {

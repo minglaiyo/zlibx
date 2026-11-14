@@ -55,6 +55,11 @@ class MainActivity : FlutterFragmentActivity() {
 
     private val pendingStreams = HashMap<String, PendingStream>()
 
+    /// Channel Dart listens on for download pause/cancel actions fired by
+    /// the foreground-service notification (O1). Set when Dart registers
+    /// its action handler.
+    private var _downloadActionChannel: MethodChannel? = null
+
     override fun onDestroy() {
         // Close any held pending streams (entries stay IS_PENDING and
         // resumable), then let queued work drain.
@@ -237,6 +242,66 @@ class MainActivity : FlutterFragmentActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // O1: background download keep-alive. Dart starts/stops the
+        // foreground service, pushes progress, and registers the channel
+        // it listens on for pause/cancel actions from the notification.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zlibx/download_service")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "requestNotificationPermission" -> {
+                        requestNotificationPermission()
+                        result.success(null)
+                    }
+                    "start" -> {
+                        DownloadForegroundService.startDownload(this)
+                        result.success(null)
+                    }
+                    "stop" -> {
+                        DownloadForegroundService.endDownload(this)
+                        result.success(null)
+                    }
+                    "updateProgress" -> {
+                        DownloadForegroundService.updateProgress(
+                            call.argument<String>("text"),
+                        )
+                        result.success(null)
+                    }
+                    "setActionChannel" -> {
+                        _downloadActionChannel = MethodChannel(
+                            flutterEngine.dartExecutor.binaryMessenger,
+                            call.argument<String>()
+                                ?: "zlibx/download_service_action",
+                        )
+                        DownloadForegroundService.onAction = { action ->
+                            _downloadActionChannel?.invokeMethod(action)
+                        }
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    /// O1: request POST_NOTIFICATIONS on Android 13+ so the download
+    /// progress notification is visible. Best-effort — the foreground
+    /// service runs regardless; the notification is only suppressed
+    /// without the grant.
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+            == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        try {
+            requestPermissions(
+                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                0,
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "notification permission request failed", e)
+        }
     }
 
     /// Insert [sourcePath] into the public Downloads/zlibx folder

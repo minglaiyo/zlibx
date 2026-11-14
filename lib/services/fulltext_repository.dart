@@ -142,20 +142,27 @@ class FulltextRepository {
     String? userId,
     String? userKey,
   }) async {
-    if (userId != null && userKey != null && userKey.isNotEmpty) {
+    // O8: the session cookies live only for this solve — install,
+    // solve + bridge, then delete in a `finally` so a failed solve
+    // does not leave them in the WebView's CookieManager (same
+    // pattern as the category/article repositories).
+    final hasSession = userId != null && userKey != null && userKey.isNotEmpty;
+    if (hasSession) {
       await installSessionCookies(
         userId: userId,
         userKey: userKey,
         pageUrl: url,
       );
     }
-    final html = await WebviewChallengeSolver.fetchHtmlAfterChallenge(url);
-    if (html == null ||
-        html.isEmpty ||
-        BooklistSolver.isChallengeHtml(html)) {
-      return null;
+    try {
+      final html = await WebviewChallengeSolver.fetchHtmlAfterChallenge(url);
+      if (html == null || html.isEmpty || BooklistSolver.isChallengeHtml(html)) {
+        return null;
+      }
+      await bridgeWallCookies(_api, url);
+      return html;
+    } finally {
+      if (hasSession) await deleteSessionCookies(pageUrl: url);
     }
-    await bridgeWallCookies(_api, url);
-    return html;
   }
 }

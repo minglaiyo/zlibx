@@ -251,7 +251,7 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     final hasSession =
         user != null && userKey != null && userKey.isNotEmpty;
     if (hasSession) {
-      await _installSessionCookies(user!.id, userKey!, url);
+      await _installSessionCookies(user.id, userKey, url);
     }
     try {
       var html = ChallengeHtmlCache.get(url);

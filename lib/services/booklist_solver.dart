@@ -54,8 +54,8 @@ class BooklistSolver {
         userId != null && userKey != null && userKey.isNotEmpty;
     if (hasSession) {
       await installSessionCookies(
-        userId: userId!,
-        userKey: userKey!,
+        userId: userId,
+        userKey: userKey,
         pageUrl: url,
       );
     }

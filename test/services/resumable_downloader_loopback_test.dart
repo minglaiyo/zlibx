@@ -101,6 +101,7 @@ class _LoopbackOrigin {
 void main() {
   late Directory dir;
   late String path;
+  late String metaPath;
   final book = List<int>.generate(4096, (i) => (i * 7) % 251);
 
   late _LoopbackOrigin origin;
@@ -108,6 +109,7 @@ void main() {
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('resumable-loopback');
     path = '${dir.path}/book.epub.part';
+    metaPath = ResumableDownloader.metaPathFor(path);
     origin = _LoopbackOrigin(book);
     await origin.start();
   });
@@ -117,7 +119,6 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  String get metaPath => ResumableDownloader.metaPathFor(path);
 
   test('206 resume over real HTTP', () async {
     // First pass: truncate so a partial + validator are left behind.

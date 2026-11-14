@@ -31,7 +31,7 @@ class _LoopbackOrigin {
   List<int> body;
   String? etag = '"v1"';
   String contentType = 'application/epub+zip';
-  bool trickle = false; // send the body in 512-byte chunks, 20ms apart
+  bool trickle = false; // send the body in 512-byte chunks, 200ms apart
   int? contentRangeStart; // lie about where a 206 body starts
   int? force416Total; // answer 416 with Content-Range: bytes */N
   bool gzipBody = false; // gzip the body unless the client asked identity
@@ -94,13 +94,15 @@ class _LoopbackOrigin {
       res.contentLength = payload.length;
       if (trickle) {
         // Send the body slowly so a test can cancel mid-stream: on
-        // localhost a full body arrives too fast to cancel reliably.
+        // localhost a full body arrives too fast to cancel reliably,
+        // and a 20ms gap still let the client coalesce the chunks
+        // (the download then completed before the cancel fired).
         const chunkSize = 512;
         for (var i = 0; i < payload.length; i += chunkSize) {
           final end = (i + chunkSize).clamp(0, payload.length);
           res.add(payload.sublist(i, end));
           await res.flush();
-          await Future<void>.delayed(const Duration(milliseconds: 20));
+          await Future<void>.delayed(const Duration(milliseconds: 200));
         }
         await res.close();
         return;
@@ -226,14 +228,16 @@ void main() {
         origin.url.toString(),
         path,
         cancelToken: cancel,
+        // Cancel on the first progress event: the download is
+        // guaranteed to still be in flight (most chunks remain).
         onProgress: (received, total) {
-          if (received >= 2048) cancel.cancel();
+          if (received > 0) cancel.cancel();
         },
       ),
       throwsA(isA<Exception>()),
     );
     final partial = await File(path).readAsBytes();
-    expect(partial.length, greaterThanOrEqualTo(2048));
+    expect(partial.length, greaterThan(0));
     expect(partial.length, lessThan(book.length));
     expect(partial, book.sublist(0, partial.length));
     origin.trickle = false;

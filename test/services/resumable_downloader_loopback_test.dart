@@ -15,13 +15,23 @@ import 'package:zlibx/services/resumable_downloader.dart';
 /// The server honours Range / If-Range the way a real origin does,
 /// with knobs to misbehave. `seen` records every request's headers so
 /// a test can assert what the downloader actually sent.
+///
+/// NOTE: there is deliberately NO server-side "drop the connection
+/// mid-body" knob. Three attempts to simulate one all failed in CI:
+/// advertising a full Content-Length and closing early delivers zero
+/// bytes (dart:io HttpClient discards a partial fixed-length body),
+/// detachSocket() hangs the tests, and flush-before-close still
+/// delivers zero bytes. So a partial left by an interrupted download
+/// is built the same way the other tests build one (write the prefix
+/// + .meta directly), and the interruption itself is driven by a real
+/// CancelToken against a trickling server (see `trickle`).
 class _LoopbackOrigin {
   _LoopbackOrigin(this.body);
 
   List<int> body;
   String? etag = '"v1"';
   String contentType = 'application/epub+zip';
-  bool truncate = false; // advertise full length but send half, then drop
+  bool trickle = false; // send the body in 512-byte chunks, 20ms apart
   int? contentRangeStart; // lie about where a 206 body starts
   int? force416Total; // answer 416 with Content-Range: bytes */N
   bool gzipBody = false; // gzip the body unless the client asked identity
@@ -82,24 +92,24 @@ class _LoopbackOrigin {
       final payload = doGzip ? gzip.encode(out) : out;
       if (doGzip) res.headers.set(HttpHeaders.contentEncodingHeader, 'gzip');
       res.contentLength = payload.length;
-      if (truncate) {
-        // Advertise the full length but drop the connection halfway:
-        // the client sees a transport error, not a clean end. The
-        // partial bytes MUST be flushed first: close() with fewer
-        // bytes than Content-Length can throw on the server before
-        // the buffer is sent, leaving zero bytes delivered (and no
-        // partial file on disk). (detachSocket was tried and made
-        // the tests hang instead — reverted.)
-        res.add(payload.sublist(0, payload.length ~/ 2));
-        await res.flush();
+      if (trickle) {
+        // Send the body slowly so a test can cancel mid-stream: on
+        // localhost a full body arrives too fast to cancel reliably.
+        const chunkSize = 512;
+        for (var i = 0; i < payload.length; i += chunkSize) {
+          final end = (i + chunkSize).clamp(0, payload.length);
+          res.add(payload.sublist(i, end));
+          await res.flush();
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
         await res.close();
         return;
       }
       res.add(payload);
       await res.close();
     } catch (_) {
-      // A dropped/truncated response can surface here on the server
-      // side too; the client-side assertions are what the test checks.
+      // A dropped response can surface here on the server side
+      // too; the client-side assertions are what the test checks.
     }
   }
 }
@@ -127,14 +137,12 @@ void main() {
 
 
   test('206 resume over real HTTP', () async {
-    // First pass: truncate so a partial + validator are left behind.
-    origin.truncate = true;
-    await expectLater(
-      ResumableDownloader.download(Dio(), origin.url.toString(), path),
-      throwsA(isA<Exception>()),
-    );
-    expect(File(path).lengthSync(), book.length ~/ 2);
-    origin.truncate = false;
+    // A partial + validator left behind by an earlier (interrupted)
+    // run — written directly, like the other tests do (a server-side
+    // mid-body drop is not reliably observable, see the class doc).
+    // The resume itself still goes over real HTTP.
+    await File(path).writeAsBytes(book.sublist(0, 2048));
+    await File(metaPath).writeAsString('"v1"');
     await ResumableDownloader.download(Dio(), origin.url.toString(), path);
     expect(await File(path).readAsBytes(), book);
     expect(File(metaPath).existsSync(), isFalse);
@@ -189,36 +197,46 @@ void main() {
   });
 
   test('206 with a wrong Content-Range start restarts from zero', () async {
-    origin.truncate = true;
-    await expectLater(
-      ResumableDownloader.download(Dio(), origin.url.toString(), path),
-      throwsA(isA<Exception>()),
-    );
+    // Partial + validator, as if an earlier run was interrupted.
+    await File(path).writeAsBytes(book.sublist(0, 2048));
+    await File(metaPath).writeAsString('"v1"');
     // Misbehaving proxy: answers 206 but says the body starts at byte 0.
-    origin
-      ..truncate = false
-      ..contentRangeStart = 0;
+    origin.contentRangeStart = 0;
     await ResumableDownloader.download(Dio(), origin.url.toString(), path);
     expect(await File(path).readAsBytes(), book);
-    // Truncated first pass + lying 206 + clean restart.
-    expect(origin.seen.length, 3);
-    expect(origin.seen[1]['range'], 'bytes=2048-');
+    // Lying 206 + clean restart.
+    expect(origin.seen.length, 2);
+    expect(origin.seen.first['range'], 'bytes=2048-');
     expect(origin.seen.last.containsKey('range'), isFalse);
   });
 
   test('dropped connection throws and keeps the partial file', () async {
-    // Over real HTTP a truncation surfaces as a transport error, not
-    // a clean stream end (the clean DownloadTruncatedException path
-    // is covered by the fake-adapter tests); the type is therefore
-    // not pinned here, only that it throws and the partial survives
-    // as a valid resume point.
-    origin.truncate = true;
+    // Interrupt a real download mid-stream: trickle the body so it is
+    // still in flight when the cancel fires (on localhost a full body
+    // arrives too fast to cancel reliably). Cancelling exercises the
+    // same code path as a dropped connection — the stream errors and
+    // the partial must survive as a valid resume point. The exact
+    // partial length is not pinned (chunks may coalesce); only that
+    // it is a non-empty proper prefix of the book.
+    origin.trickle = true;
+    final cancel = CancelToken();
     await expectLater(
-      ResumableDownloader.download(Dio(), origin.url.toString(), path),
+      ResumableDownloader.download(
+        Dio(),
+        origin.url.toString(),
+        path,
+        cancelToken: cancel,
+        onProgress: (received, total) {
+          if (received >= 2048) cancel.cancel();
+        },
+      ),
       throwsA(isA<Exception>()),
     );
-    expect(File(path).lengthSync(), book.length ~/ 2);
-    origin.truncate = false;
+    final partial = await File(path).readAsBytes();
+    expect(partial.length, greaterThanOrEqualTo(2048));
+    expect(partial.length, lessThan(book.length));
+    expect(partial, book.sublist(0, partial.length));
+    origin.trickle = false;
     await ResumableDownloader.download(Dio(), origin.url.toString(), path);
     expect(await File(path).readAsBytes(), book);
   });

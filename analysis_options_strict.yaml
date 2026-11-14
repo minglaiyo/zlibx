@@ -1,17 +1,20 @@
 # Staged, NOT enforced by CI: a stricter lint profile to triage gradually.
 #
-# CI runs this profile as a NON-BLOCKING step ("Strict lint triage") that
-# reports the finding count on every push/PR (dart analyze has no
-# --options override, so CI swaps this file in for that step).
+# CI runs this profile as a BLOCKING ratchet step ("Strict lint ratchet"):
+# the finding count must not rise above the baseline in
+# scripts/strict_lint_baseline.txt — the count may only go down, never
+# up (dart analyze has no --options override, so CI swaps this file in
+# for that step).
 #
 # PROMOTED into analysis_options.yaml (enforced, blocking) after the
 # codebase reached zero findings on them — M8 batch 1, 2026-11-14:
 # strict-casts, strict-raw-types, use_build_context_synchronously,
 # cancel_subscriptions, close_sinks, prefer_final_locals.
 #
-# Baseline 2026-11-14 (lib/, fresh gen-l10n output): 262 findings —
-# avoid_catches_without_on_clauses 149, directives_ordering 112 (+1 in
-# the vendor plugin). Batch-1 notes:
+# Baseline (enforced by the ratchet step from
+# scripts/strict_lint_baseline.txt; 2026-11-14, lib/, fresh gen-l10n
+# output): 262 findings — avoid_catches_without_on_clauses 149,
+# directives_ordering 112 (+1 in the vendor plugin). Batch-1 notes:
 #  * avoid_catches_without_on_clauses stays in triage BY DESIGN: the
 #    codebase deliberately catches broadly at network/parse boundaries
 #    and routes through logIgnored; typing all 149 sites would churn

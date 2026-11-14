@@ -97,4 +97,34 @@ min_version: 1.4.0
       expect(isNewerVersion('1.5.8-rc.1', '1.5.8-beta.9'), isTrue);
     });
   });
+
+  group('[FORCE] must be on its own line (O4)', () {
+    test('an inline mention does not force an update', () {
+      final m = UpdateManifest.parse(
+        '移除了 [FORCE] 标记\n<!-- olib-update\nmin_version: 1.4.0\n-->',
+      );
+      expect(m.forceAll, isFalse);
+      // The inline mention is changelog text: it stays in the notes.
+      expect(m.notes, contains('[FORCE]'));
+    });
+
+    test('a [FORCE] line of its own forces an update', () {
+      final m = UpdateManifest.parse(
+        '更新说明\n[FORCE]\n<!-- olib-update\nmin_version: 1.4.0\n-->',
+      );
+      expect(m.forceAll, isTrue);
+      // The own-line marker is stripped from the notes.
+      expect(m.notes, isNot(contains('[FORCE]')));
+    });
+
+    test('[FORCE_UPDATE] on its own line also forces an update', () {
+      final m = UpdateManifest.parse('[FORCE_UPDATE]');
+      expect(m.forceAll, isTrue);
+    });
+
+    test('a line with extra text around [FORCE] does not force', () {
+      final m = UpdateManifest.parse('请注意 [FORCE] 本次更新');
+      expect(m.forceAll, isFalse);
+    });
+  });
 }

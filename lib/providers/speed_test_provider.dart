@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zlibx/utils/diagnostics.dart';
+import '../services/hive_service.dart';
 import 'domain_provider.dart';
 
 enum DomainLatencyStatus { untested, normal, slow, unavailable }
@@ -61,8 +63,76 @@ class SpeedTestNotifier extends Notifier<SpeedTestState> {
   // documented on DomainNotifier's _api.
   List<String> _domains = const [];
 
-  /// Max concurrent requests to avoid flooding the network.
-  static const int _maxConcurrent = 8;
+  /// Max concurrent requests to avoid flooding the network. Four at a
+  /// time is enough to rank the lines quickly without hammering the
+  /// mirrors (O3: was 8).
+  static const int _maxConcurrent = 4;
+
+  /// Last speed-test result, persisted in the Hive settings box so a
+  /// cold start does not re-test every mirror (O3). The cache is only
+  /// reused while fresh AND while it covers every current domain: a
+  /// new SLUM line (not in the cache) forces a full test, so a new
+  /// line is never hidden behind a stale ranking.
+  static const String _cacheKey = 'speed_test_cache';
+  static const Duration _cacheTtl = Duration(hours: 12);
+
+  /// Restore the cached result into [state] and return true when the
+  /// cache is fresh and covers every current domain. No network is
+  /// touched on the restore path. Returns false (state untouched) when
+  /// there is no cache, it is stale, it does not cover all domains, or
+  /// the stored value is malformed.
+  bool _restoreFromCache() {
+    if (_domains.isEmpty) return false;
+    try {
+      final raw = HiveService.settingsBox.get(_cacheKey);
+      if (raw is! String) return false;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return false;
+      final timestamp = decoded['timestamp'];
+      if (timestamp is! int) return false;
+      final savedAt = DateTime.fromMillisecondsSinceEpoch(timestamp);
+      if (DateTime.now().difference(savedAt) > _cacheTtl) return false;
+      final resultsJson = decoded['results'];
+      if (resultsJson is! Map<String, dynamic>) return false;
+      final cached = <DomainTestResult>[];
+      for (final domain in _domains) {
+        final latency = resultsJson[domain];
+        if (latency is! int) return false;
+        cached.add(DomainTestResult(domain, latencyMs: latency));
+      }
+      // The cache was saved in ranked order (fastest first), so the
+      // picker shows the best lines immediately on cold start.
+      state = SpeedTestState(
+        results: cached,
+        testing: false,
+        testedCount: cached.length,
+      );
+      return true;
+    } on Object catch (e) {
+      // A corrupt cache must never block the speed test — fall through
+      // to a full test (the fresh result overwrites the bad value).
+      logIgnored('speed_test_provider', e);
+      return false;
+    }
+  }
+
+  /// Persist the ranked [results] for the next cold start.
+  void _saveToCache(List<DomainTestResult> results) {
+    try {
+      HiveService.settingsBox.put(
+        _cacheKey,
+        jsonEncode({
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'results': {
+            for (final r in results) r.domain: r.latencyMs ?? -1,
+          },
+        }),
+      );
+    } on Object catch (e) {
+      // Caching is best-effort: a failed write must not fail the test.
+      logIgnored('speed_test_provider', e);
+    }
+  }
 
   @override
   SpeedTestState build() {
@@ -98,8 +168,16 @@ class SpeedTestNotifier extends Notifier<SpeedTestState> {
 
   /// Run speed test with bounded concurrency (semaphore pattern).
   /// Safe to call multiple times — ignores if already running.
-  Future<void> runTest({bool isRetry = false}) async {
+  ///
+  /// Cold start reuses the last result for [_cacheTtl] when it covers
+  /// every current domain (O3) — no network. [force] (the mirror
+  /// page's Retest button) always runs a fresh full test; [isRetry] is
+  /// the internal re-run after the domain list moved mid-test.
+  Future<void> runTest({bool force = false, bool isRetry = false}) async {
     if (state.testing) return;
+
+    // Fresh cache: paint the ranked lines immediately, no network.
+    if (!force && !isRetry && _restoreFromCache()) return;
 
     // Reset results
     final results = _domains.map((d) => DomainTestResult(d)).toList();
@@ -164,6 +242,11 @@ class SpeedTestNotifier extends Notifier<SpeedTestState> {
       );
       return runTest(isRetry: true);
     }
+
+    // Only the final (published) run is cached: the discarded first
+    // run above returns before this line, so a stale ranking never
+    // overwrites a fresh one.
+    _saveToCache(results);
 
     state = SpeedTestState(
       results: List.from(results),

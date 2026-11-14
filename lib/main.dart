@@ -33,11 +33,25 @@ void main() async {
   // "it doesn't work". logIgnored records only the tag + exception
   // TYPE + timestamp (never the message or URL), so nothing sensitive
   // reaches the ring log; Settings can dump it for bug reports.
+  //
+  // Debug: show the full error + stack on the console FIRST — the ring
+  // log only keeps the exception type, which is not enough to debug.
+  // Release: the ring log additionally records the topmost
+  // `package:zlibx` frame (file:line) and, for network errors, the HTTP
+  // status code — both data-free, see [Diagnostics.record].
   FlutterError.onError = (details) {
-    logIgnored('flutter', details.exception);
+    if (kDebugMode) {
+      FlutterError.presentError(details);
+      debugPrint(details.stack.toString());
+    }
+    logIgnored('flutter', details.exception, stack: details.stack);
   };
   PlatformDispatcher.instance.onError = (error, stack) {
-    logIgnored('platform', error);
+    if (kDebugMode) {
+      debugPrint('Uncaught async error: $error');
+      debugPrint(stack.toString());
+    }
+    logIgnored('platform', error, stack: stack);
     return true;
   };
 

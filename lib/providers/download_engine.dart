@@ -134,23 +134,30 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         // 文件，不跟随会把重定向响应本身存成文件；跟随时不带上层
         // 自定义头，所以跨主机跳转没有凭据外泄面（S5）。
         // receiveTimeout: null = 不限接收超时：大文件慢速网络不能被打断。
+        // The Dio is a single-use instance for this one download:
+        // close it in a finally so a failed or cancelled download
+        // does not leak its HttpClient (O13).
         final dio = createDio(receiveTimeout: null);
-        await _downloadResumable(
-          dio,
-          presetUrl,
-          temporaryPath,
-          onProgress: (received, total) {
-            // `total` can be 0 (empty body / CDN without length): only a
-            // positive total yields a valid fraction — 0/0 would push a
-            // NaN into the state and straight into the progress bar.
-            if (total > 0) {
-              final progress = received / total;
-              _updateProgress(id, progress);
-            }
-          },
-          cancelToken: cancelToken,
-          pendingWriter: pendingWriter,
-        );
+        try {
+          await _downloadResumable(
+            dio,
+            presetUrl,
+            temporaryPath,
+            onProgress: (received, total) {
+              // `total` can be 0 (empty body / CDN without length): only a
+              // positive total yields a valid fraction — 0/0 would push a
+              // NaN into the state and straight into the progress bar.
+              if (total > 0) {
+                final progress = received / total;
+                _updateProgress(id, progress);
+              }
+            },
+            cancelToken: cancelToken,
+            pendingWriter: pendingWriter,
+          );
+        } finally {
+          dio.close();
+        }
       } else if (!alreadyExists) {
         // 默认路径：用户自己 z站 账号查 URL + 下载
         try {

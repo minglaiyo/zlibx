@@ -133,27 +133,35 @@ class UpdateNotifier extends Notifier<UpdateState> {
 
       // Cancel the underlying request on timeout: otherwise the
       // releases fetch keeps running in the background after the
-      // check has already fallen back to the cache.
+      // check has already fallen back to the cache. The Dio is a
+      // single-use instance: close it in a finally so a failed or
+      // timed-out request does not leak its HttpClient (O13).
       final cancelToken = CancelToken();
-      final response = await createDio()
-          .getUri(
-            Uri.parse(UpdateState.releaseApiUrl),
-            options: Options(
-              headers: {
-                // 不带 token 走匿名 60 次/小时/IP — 对 24h 检查间隔够用
-                'Accept': 'application/vnd.github+json',
-                'X-GitHub-Api-Version': '2022-11-28',
+      final dio = createDio();
+      final Response<dynamic> response;
+      try {
+        response = await dio
+            .getUri(
+              Uri.parse(UpdateState.releaseApiUrl),
+              options: Options(
+                headers: {
+                  // 不带 token 走匿名 60 次/小时/IP — 对 24h 检查间隔够用
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+                },
+              ),
+              cancelToken: cancelToken,
+            )
+            .timeout(
+              const Duration(seconds: 10),
+              onTimeout: () {
+                cancelToken.cancel();
+                throw TimeoutException('Update check timed out after 10s');
               },
-            ),
-            cancelToken: cancelToken,
-          )
-          .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () {
-              cancelToken.cancel();
-              throw TimeoutException('Update check timed out after 10s');
-            },
-          );
+            );
+      } finally {
+        dio.close();
+      }
 
       if (response.statusCode != 200) {
         final body = response.data?.toString() ?? '';
@@ -222,11 +230,18 @@ class UpdateNotifier extends Notifier<UpdateState> {
 
     // NOTE: releaseUrl is built directly (not via copyWith) because
     // htmlUrl may legitimately be null and copyWith cannot express
-    // "set this field to null".
+    // "set this field to null". The API-returned html_url feeds the
+    // dialog's "GitHub" button, so it goes through the same allow-list
+    // as the manifest links (S7: github.com only under this repo's
+    // path): a compromised Release body cannot point the dialog at
+    // another repo. An invalid URL falls back to null and the button
+    // is hidden; the releases-page downloadUrl default still applies.
     state = UpdateState(
       latestVersion: latest,
       currentVersion: current,
-      releaseUrl: htmlUrl,
+      releaseUrl: htmlUrl != null && UpdateManifest.isAllowedLink(htmlUrl)
+          ? htmlUrl
+          : null,
       changelog: changelog,
       links: manifest.links,
       droppedLinkCount: manifest.droppedLinkCount,

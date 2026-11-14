@@ -179,10 +179,14 @@ class DomainSelectionDialog extends ConsumerWidget {
         ),
       ),
       actions: [
+        // Manual retest always runs a fresh full test (O3): the
+        // cold-start cache is only reused on automatic runs.
         TextButton(
           onPressed: speedState.testing
               ? null
-              : () => ref.read(speedTestProvider.notifier).runTest(),
+              : () => ref
+                  .read(speedTestProvider.notifier)
+                  .runTest(force: true),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

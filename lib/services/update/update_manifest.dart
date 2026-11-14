@@ -12,7 +12,9 @@
 ///
 /// - `min_version`：低于此版本的客户端强制更新（可省略 = 不强制）
 /// - 其余 `名称: 链接` 行：更新对话框里的下载渠道（仅接受 http/https）
-/// - 正文任意位置的 `[FORCE]` / `[FORCE_UPDATE]`：旧版强制更新标记，仍兼容
+/// - 正文独占一行的 `[FORCE]` / `[FORCE_UPDATE]`：旧版强制更新标记，仍兼容
+///   （行内提及，如“移除了 [FORCE] 标记”，不再触发；见 [_forceRe]）。
+///   新版发布优先用 `min_version`。
 ///
 /// 格式说明见 `dev_docs/update-manifest.md`。
 library;
@@ -36,7 +38,7 @@ class UpdateManifest {
   /// How many link lines were dropped (see [droppedLinkNames]).
   int get droppedLinkCount => droppedLinkNames.length;
 
-  /// 正文含 `[FORCE]` 标记：比最新版低的客户端一律强制更新
+  /// 正文有独占一行的 `[FORCE]` 标记：比最新版低的客户端一律强制更新
   final bool forceAll;
 
   /// 去掉清单块与强制标记后的正文，用作更新说明
@@ -98,7 +100,14 @@ class UpdateManifest {
     return p == repo || p.startsWith('$repo/');
   }
   static const _maxNameChars = 20;
-  static final _forceRe = RegExp(r'\[FORCE(_UPDATE)?\]', caseSensitive: false);
+  // [FORCE] 只认独占一行的标记（multiLine + ^...$）：正文里行内提及
+  // “移除了 [FORCE] 标记”之类的措辞不再误触发强制更新。发布时若要
+  // 强制更新，把 [FORCE] 单独写一行（或用 min_version）。
+  static final _forceRe = RegExp(
+    r'^\s*\[FORCE(_UPDATE)?\]\s*$',
+    caseSensitive: false,
+    multiLine: true,
+  );
 
   factory UpdateManifest.parse(String body) {
     String? minVersion;

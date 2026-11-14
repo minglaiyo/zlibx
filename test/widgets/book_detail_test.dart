@@ -5,6 +5,7 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/l10n/generated/app_localizations.dart';
 import 'package:zlibx/models/display_book.dart';
 import 'package:zlibx/providers/download_provider.dart';
+import 'package:zlibx/screens/book_detail/book_detail_screen.dart';
 import 'package:zlibx/screens/book_detail/widgets/book_action_bar.dart';
 import 'package:zlibx/screens/book_detail/widgets/book_detail_content.dart';
 import 'package:zlibx/screens/book_detail/widgets/book_hero_section.dart';
@@ -274,5 +275,81 @@ void main() {
     expect(pushed!.query, book.publisher);
     expect(pushed!.categoryId, isNull);
     expect(tester.takeException(), isNull);
+  });
+  // 详情页要渲染的书本体 = 入参→eapi→附加字段，逐层覆盖。
+  // 2026-11-15 提速后附加字段是独立的一条腿：正文必须在它到达
+  // 之前就是完整的，到达后再补上卷/ISBN/评分。
+  group('bookDetailPayload', () {
+    final eapiBook = Book(
+      id: 7,
+      title: 'A very long title to verify wrapping on a narrow phone',
+      author: 'eapi 作者',
+      description: 'eapi 简介',
+      filesizeString: '9 MB',
+      hash: 'sample',
+      href: '/book/sample/7.html',
+    );
+    const extras = {'volume': '第一卷', 'ratingInterest': '3.0'};
+
+    test('eapi 未到：用入参书本体', () {
+      final payload = bookDetailPayload(
+        initialBook: book,
+        details: const AsyncValue<Book>.loading(),
+        extras: null,
+      );
+      expect(payload.author, book.author);
+      expect(payload.volume, isNull);
+    });
+
+    test('eapi 已到、附加字段未到：正文已完整', () {
+      final payload = bookDetailPayload(
+        initialBook: book,
+        details: AsyncValue<Book>.data(eapiBook),
+        extras: null,
+      );
+      expect(payload.author, 'eapi 作者');
+      expect(payload.description, 'eapi 简介');
+      expect(payload.volume, isNull);
+    });
+
+    test('附加字段后到：只补行，不抹 eapi 已有的字段', () {
+      final payload = bookDetailPayload(
+        initialBook: book,
+        details: AsyncValue<Book>.data(eapiBook),
+        extras: extras,
+      );
+      expect(payload.volume, '第一卷');
+      expect(payload.ratingInterest, '3.0');
+      expect(payload.author, 'eapi 作者');
+      // 附加字段里没有的列（值为 null）不许抹掉 eapi 已有的。
+      expect(payload.filesizeString, '9 MB');
+      expect(payload.ratingQuality, isNull);
+    });
+
+    test('附加字段缺失时评分用 eapi interestScore 兜底', () {
+      final withScore = Book(
+        id: 7,
+        title: book.title,
+        interestScore: '4.2',
+        hash: 'sample',
+      );
+      expect(
+        bookDetailPayload(
+          initialBook: withScore,
+          details: AsyncValue<Book>.data(withScore),
+          extras: null,
+        ).ratingInterest,
+        '4.2',
+      );
+      // HTML 的评分到了就归它说了算。
+      expect(
+        bookDetailPayload(
+          initialBook: withScore,
+          details: AsyncValue<Book>.data(withScore),
+          extras: extras,
+        ).ratingInterest,
+        '3.0',
+      );
+    });
   });
 }

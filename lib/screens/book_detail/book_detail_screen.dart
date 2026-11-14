@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:olib_api_plugin/olib_api_plugin.dart';
 import '../../core/book_description.dart';
 import '../../models/display_book.dart';
 import '../../providers/books_provider.dart';
@@ -12,6 +13,40 @@ import 'widgets/book_action_bar.dart';
 import 'widgets/download_quota_dialog.dart';
 import 'widgets/external_book_action_bar.dart';
 import '../../l10n/generated/app_localizations.dart';
+
+/// 详情页当前该渲染的书本体：入参书本体 → eapi 正文 → 已到达的
+/// 附加字段，后到的覆盖先到的（[applyBookDetailExtras] 的空值语义是
+/// “保留原值”，所以附加字段只补行、不抹行）。
+///
+/// 拆成函数是为了能脱屏测这条合并规则：2026-11-15 提速把附加字段挪
+/// 成了独立的一条腿，"正文不等它、它到了再并进来" 就是这次改动的全
+/// 部意义，值得单独钉住。
+@visibleForTesting
+Book bookDetailPayload({
+  required Book initialBook,
+  required AsyncValue<Book>? details,
+  required Map<String, dynamic>? extras,
+}) {
+  // 加载中沿用入参书本体；失败（valueOrNull == null）同理。
+  final baseBook = details == null || details.isLoading
+      ? initialBook
+      : (details.valueOrNull ?? initialBook);
+  final withExtras = extras == null
+      ? baseBook
+      : applyBookDetailExtras(baseBook, extras);
+  // Rating fallback: when the detail-page HTML fetch failed (slow
+  // link / walled page) the provider book carries no rating, but the
+  // entry book already has the eapi interest score — the same ★ the
+  // search card shows. Use it for the interest side so the tag is
+  // not empty; the HTML value wins whenever it exists. The quality
+  // side has no eapi equivalent and stays HTML-only.
+  final needsRatingFallback =
+      (withExtras.ratingInterest?.isEmpty ?? true) &&
+      (initialBook.interestScore?.isNotEmpty ?? false);
+  return needsRatingFallback
+      ? withExtras.copyWith(ratingInterest: initialBook.interestScore)
+      : withExtras;
+}
 
 class BookDetailScreen extends ConsumerWidget {
   /// Already normalized and validated by the route builder
@@ -47,23 +82,23 @@ class BookDetailScreen extends ConsumerWidget {
     final details = identifier == null
         ? null
         : ref.watch(bookDetailsProvider(identifier));
-    // 详情载荷 = 书本体（eapi + 详情页元数据合并，见 bookDetailsProvider）。
-    // 加载中沿用入参书本体。
-    final resolvedBook = details?.isLoading == true
-        ? initialBook
-        : (details?.valueOrNull ?? initialBook);
-    // Rating fallback: when the detail-page HTML fetch failed (slow
-    // link / walled page) the provider book carries no rating, but the
-    // entry book already has the eapi interest score — the same ★ the
-    // search card shows. Use it for the interest side so the tag is
-    // not empty; the HTML value wins whenever it exists. The quality
-    // side has no eapi equivalent and stays HTML-only.
-    final needsRatingFallback =
-        (resolvedBook.ratingInterest?.isEmpty ?? true) &&
-            (initialBook.interestScore?.isNotEmpty ?? false);
-    final book = needsRatingFallback
-        ? resolvedBook.copyWith(ratingInterest: initialBook.interestScore)
-        : resolvedBook;
+    // 附加字段（卷/ISBN/IPFS/评分）另起一条独立的腿：正文只等 eapi，
+    // 这几行字到了再并进来看（见 bookDetailExtrasProvider）。路由带
+    // 的 href 优先——它第一帧就有，两条腿因此并行；路由没带时用 eapi
+    // 返回的，那一轮才开跑。
+    final routeHref = initialBook.href;
+    final extrasHref = (routeHref != null && routeHref.isNotEmpty)
+        ? routeHref
+        : details?.valueOrNull?.href;
+    final extrasAsync =
+        identifier == null || extrasHref == null || extrasHref.isEmpty
+        ? null
+        : ref.watch(bookDetailExtrasProvider(extrasHref));
+    final book = bookDetailPayload(
+      initialBook: initialBook,
+      details: details,
+      extras: extrasAsync?.valueOrNull,
+    );
     // 只订阅本书的任务：其他书的下载进度变化不再触发本页重建。
     // 账号额度提醒仍在下面用 ref.listen 监听整个列表，不受影响。
     final downloadTask = ref.watch(
@@ -117,11 +152,16 @@ class BookDetailScreen extends ConsumerWidget {
                       ),
                     ),
                     TextButton(
-                      onPressed: () =>
-                          ref.invalidate(bookDetailsProvider(identifier!)),
-                      child: Text(
-                        AppLocalizations.of(context)!.searchRetry,
-                      ),
+                      onPressed: () {
+                        ref.invalidate(bookDetailsProvider(identifier!));
+                        // 附加字段那条腿独立失败（超时/墙），重试也要
+                        // 各试一次——正文成功不代表它成功。
+                        final href = extrasHref;
+                        if (href != null && href.isNotEmpty) {
+                          ref.invalidate(bookDetailExtrasProvider(href));
+                        }
+                      },
+                      child: Text(AppLocalizations.of(context)!.searchRetry),
                     ),
                   ],
                 ),
@@ -129,9 +169,7 @@ class BookDetailScreen extends ConsumerWidget {
             ),
 
           // ── 2. Content Body ──
-          BookInfoSection(
-            book: book,
-          ),
+          BookInfoSection(book: book),
         ],
       ),
     );

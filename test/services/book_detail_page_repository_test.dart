@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/services/book_detail_page_repository.dart';
+import 'package:zlibx/services/webview_challenge_solver.dart';
 
 // Book detail page fetch tests (all data synthetic): the detail page
 // is an HTML route behind the DiamWall, so the repository must (a)
@@ -30,7 +31,10 @@ const _challenge513Html = '''
 ''';
 
 class _WallAdapter implements HttpClientAdapter {
-  _WallAdapter({this.challengeAfterCookieHop = true, this.challengeOnly = false});
+  _WallAdapter({
+    this.challengeAfterCookieHop = true,
+    this.challengeOnly = false,
+  });
 
   /// True: hop 0 answers 307 + `set-cookie: __diamwall`, hop 1 (with
   /// the cookie) answers the page. False: hop 0 answers the page.
@@ -62,7 +66,9 @@ class _WallAdapter implements HttpClientAdapter {
         307,
         headers: {
           Headers.contentTypeHeader: ['text/html'],
-          'set-cookie': ['__diamwall=0x1020627754; Path=/; Domain=.z-library.sk'],
+          'set-cookie': [
+            '__diamwall=0x1020627754; Path=/; Domain=.z-library.sk',
+          ],
           'location': [options.uri.toString()],
         },
       );
@@ -74,7 +80,9 @@ class _WallAdapter implements HttpClientAdapter {
     return ResponseBody.fromString(
       html,
       status,
-      headers: {Headers.contentTypeHeader: ['text/html']},
+      headers: {
+        Headers.contentTypeHeader: ['text/html'],
+      },
     );
   }
 
@@ -117,8 +125,7 @@ void main() {
       expect(adapter.hops, 1);
     });
 
-    test('a 513 challenge answer fails with the browser-check error',
-        () async {
+    test('a 513 challenge answer fails with the browser-check error', () async {
       final adapter = _WallAdapter(challengeOnly: true);
       final repo = _repoWith(adapter);
       final response = await repo.fetch(
@@ -147,6 +154,56 @@ void main() {
       final response = await repo.fetch(href: '/blog/some-post');
       expect(response.success, isFalse);
       expect(adapter.hops, 0);
+    });
+  });
+
+  // 详情页的附加字段是装饰：它命中墙时只许后台求解，不许把可见
+  // 验证页盖在用户正在读的正文上（bookDetailExtrasProvider 传
+  // allowVisibleSolver: false）。这里钉住这个开关本身。
+  group('BookDetailPageRepository.fetch solver visibility', () {
+    late int visibleCalls;
+
+    setUp(() {
+      visibleCalls = 0;
+      // 无插件环境的测试 VM：把求解器伪装成"支持 + 移动端"，并把
+      // 后台那一路关掉，剩下可见那一路就是唯一变量。
+      WebviewChallengeSolver.overrideIsSupported = true;
+      WebviewChallengeSolver.overrideIsMobile = true;
+      WebviewChallengeSolver.headlessEnabled = false;
+      WebviewChallengeSolver.visibleSolverFallback = (url) async {
+        visibleCalls++;
+        return null; // 用户中途退出：可见那一路也没拿到页面。
+      };
+    });
+
+    tearDown(() {
+      WebviewChallengeSolver.overrideIsSupported = null;
+      WebviewChallengeSolver.overrideIsMobile = null;
+      WebviewChallengeSolver.headlessEnabled = true;
+      WebviewChallengeSolver.visibleSolverFallback = null;
+    });
+
+    test('by default a wall escalates to the visible solver', () async {
+      final repo = _repoWith(_WallAdapter(challengeOnly: true));
+      final response = await repo.fetch(
+        href: '/book/8vlDJDmPve/Synthetic-Book.html',
+      );
+
+      expect(response.success, isFalse);
+      expect(visibleCalls, 1);
+    });
+
+    test('allowVisibleSolver: false never pops the challenge page', () async {
+      final repo = _repoWith(_WallAdapter(challengeOnly: true));
+      final response = await repo.fetch(
+        href: '/book/8vlDJDmPve/Synthetic-Book.html',
+        allowVisibleSolver: false,
+        solverTimeout: const Duration(seconds: 1),
+      );
+
+      expect(response.success, isFalse);
+      expect(response.error, 'HTTP 513: browser check page');
+      expect(visibleCalls, 0);
     });
   });
 }

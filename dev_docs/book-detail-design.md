@@ -12,6 +12,8 @@
 
 首页 z站 推荐接口只返回书籍摘要（ID、hash、标题、作者、封面）。打开详情页时按需调用 `/eapi/book/{id}/{hash}` 补全简介、格式与 `readOnlineUrl`，接口返回预览地址时显示预览入口；请求失败时保留摘要并提供重试。切换线路会清除已缓存的详情。
 
+详情页的数据分两条互不等待的腿（2026-11-15）：`/eapi/book/{id}/{hash}` 的小 JSON 是正文（简介、格式、出版信息），详情页 HTML 上的卷/ISBN/IPFS/评分只是装饰。正文由 `bookDetailsProvider` 加载，装饰由 `bookDetailExtrasProvider` 加载，页面用 `bookDetailPayload` 把已到达的部分逐层并进书本体——eapi 一到正文即完整，装饰字段随后补上。装饰这条腿 7 天内命中持久缓存就零请求；未命中只给 25 s 预算，命中墙时只允许后台求解（不弹可见验证页，评分缺着比盖一层 WebView 强），失败或超时退回过期缓存。此前（1.5.8~1.6.0）两条腿在同一个 Future 里 `await`，正文要等那几百 KB 的 HTML 页（最多 5 跳、`receiveTimeout` 300 s，命中墙还要起 WebView 求解），这就是“详情页打开比以前慢”的来源；对应回归见 `test/providers/book_details_provider_test.dart` 的“HTML 卡死：正文照样到位”。
+
 Litera 预览页默认关闭逐资源探针，也不再拦截 Android WebView 的每个请求。需要定位加载耗时时，可用 `flutter run --dart-define=LITERA_PROBE=true` 临时开启资源耗时日志与导出入口；日志仅保留域名和脱敏路由，不包含查询参数、片段、账号标识或请求头。资源总耗时只能说明该资源完成得慢，定位原因仍需结合浏览器网络面板的等待、下载阶段和不同线路的对比。
 
 ```powershell

@@ -33,10 +33,22 @@ class BookDetailPageRepository {
   /// session for the solver stage (the page is public; the session
   /// only personalises it), passed through from the caller's
   /// [UserProfileArgs]-style session pair.
+  ///
+  /// [allowVisibleSolver] / [solverTimeout] steer the challenge stage.
+  /// The default keeps the interactive contract (headless solve, then a
+  /// visible challenge page the user can clear). A caller that fetches
+  /// this page as decoration — the detail screen's metadata rows load
+  /// beside the already-painted body, see `bookDetailExtrasProvider` —
+  /// must not have a full-screen WebView pushed over the page it is
+  /// reading seconds later: pass `allowVisibleSolver: false` with a
+  /// short [solverTimeout] and let the caller fall back to the cached
+  /// (or missing) fields.
   Future<ApiResponse<BookDetailExtras>> fetch({
     required String href,
     String? userId,
     String? userKey,
+    bool allowVisibleSolver = true,
+    Duration? solverTimeout,
   }) async {
     final first = await _api.fetchBookDetailExtras(href);
     if (first.success) return first;
@@ -45,7 +57,13 @@ class BookDetailPageRepository {
     // through the WebView solver (which executes that JS) and parse
     // the solved document.
     final url = pageUrl(href);
-    final html = await fetchViaSolver(url, userId: userId, userKey: userKey);
+    final html = await fetchViaSolver(
+      url,
+      userId: userId,
+      userKey: userKey,
+      allowVisibleSolver: allowVisibleSolver,
+      timeout: solverTimeout,
+    );
     if (html == null) return first;
     final parsed = parsePage(html, baseUrl: Uri.parse(url).origin);
     if (parsed == null) return first;
@@ -72,9 +90,7 @@ class BookDetailPageRepository {
   BookDetailExtras? parsePage(String html, {required String baseUrl}) {
     if (!html.contains('bookDetailsBox')) return null;
     try {
-      return BookDetailExtras(
-        metadata: parseBookDetailProperties(html),
-      );
+      return BookDetailExtras(metadata: parseBookDetailProperties(html));
     } catch (_) {
       return null;
     }
@@ -86,13 +102,21 @@ class BookDetailPageRepository {
   /// the WebView's CookieManager first. Same contract as
   /// [FulltextRepository.fetchViaSolver]: the solved page is NOT
   /// stored in any cache.
+  ///
+  /// [allowVisibleSolver] false (plus [timeout], which bounds the
+  /// headless solve itself) keeps the whole solve invisible: used by
+  /// [BookDetailPageRepository.fetch] for the detail screen's
+  /// decoration-only metadata, where popping a challenge page over a
+  /// book the user is already reading is worse than losing the rating
+  /// rows.
   Future<String?> fetchViaSolver(
     String url, {
     String? userId,
     String? userKey,
+    bool allowVisibleSolver = true,
+    Duration? timeout,
   }) async {
-    final hasSession =
-        userId != null && userKey != null && userKey.isNotEmpty;
+    final hasSession = userId != null && userKey != null && userKey.isNotEmpty;
     if (hasSession) {
       await installSessionCookies(
         userId: userId,
@@ -101,7 +125,15 @@ class BookDetailPageRepository {
       );
     }
     try {
-      final html = await WebviewChallengeSolver.fetchHtmlAfterChallenge(url);
+      final html = allowVisibleSolver
+          ? await WebviewChallengeSolver.fetchHtmlAfterChallenge(
+              url,
+              timeout: timeout,
+            )
+          : await WebviewChallengeSolver.fetchHtmlHeadlessOnly(
+              url,
+              timeout: timeout,
+            );
       if (html == null ||
           html.isEmpty ||
           BooklistSolver.isChallengeHtml(html)) {

@@ -13,6 +13,10 @@ import 'books_provider.dart';
 /// Keep the list here so it can never drift again.
 void invalidateAccountScopedProviders(Ref ref) {
   ref.invalidate(bookDetailsProvider);
+  // 详情页附加字段自 2026-11-15 起是独立的 provider（正文不再携带
+  // 它），账号切换时要一起丢掉——旧会话解出来的那一页不能留给下一个
+  // 账号。
+  ref.invalidate(bookDetailExtrasProvider);
   ref.invalidate(randomBooksProvider);
   ref.invalidate(recommendedBooksProvider);
   ref.invalidate(mostPopularBooksProvider);

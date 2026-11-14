@@ -21,11 +21,22 @@ import 'zlibrary_provider.dart';
 /// （TTL 惯例同 BooklistHtmlCache）。
 const _bookDetailExtrasTtl = Duration(days: 7);
 
-/// 缓存键：详情页的 PATH（每版本稳定）。手动剥掉 query/fragment，
-/// 不走 Uri.parse——它会把这个未编码的中文路径百分号编码，同一个
-/// href 的键就因写法不同而漂移（CI 2026-11-13：测试夹具的中文 slug
-/// 被编码成 %E5%90%88…，缓存全 miss）。
-String _detailExtrasKey(String href) {
+/// 附加信息这一条路的总预算（缓存未命中时的一次抓取，含可能的后台
+/// 求解）。插件里 HTML 的 receiveTimeout 是 300 s——慢链路收完几百 KB
+/// 确实可能要那么久，但那只是几行装饰字段，正文不该陪它等：过这个点
+/// 就放弃本轮，用过期缓存兜底，下次打开再补。
+const _bookDetailExtrasBudget = Duration(seconds: 25);
+
+/// 后台求解的预算：比 [_bookDetailExtrasBudget] 小，好让求解自己先结
+/// 束——外层 timeout 只是放弃等待，WebView 求解仍在背后跑完它自己那
+/// 60 s。
+const _bookDetailExtrasSolverTimeout = Duration(seconds: 15);
+
+/// 详情页缓存键：详情页的 PATH（每版本稳定）。手动剥掉 query/
+/// fragment，不走 Uri.parse——它会把这个未编码的中文路径百分号编
+/// 码，同一个 href 的键就因写法不同而漂移（CI 2026-11-13：测试夹具
+/// 的中文 slug 被编码成 %E5%90%88…，缓存全 miss）。
+String bookDetailExtrasKey(String href) {
   final query = href.indexOf('?');
   final fragment = href.indexOf('#');
   var end = href.length;
@@ -44,20 +55,23 @@ bool _extrasFresh(Map<String, dynamic> extras) {
 /// [BookDetailMetadata] → 可持久化的 JSON（7 个字段；fetchedAt 由
 /// storage 层盖章）。
 Map<String, dynamic> _extrasJsonOf(BookDetailMetadata metadata) => {
-      'volume': metadata.volume,
-      'isbn10': metadata.isbn10,
-      'isbn13': metadata.isbn13,
-      'ipfsCid': metadata.ipfsCid,
-      'ipfsCidBlake2b': metadata.ipfsCidBlake2b,
-      'ratingInterest': metadata.ratingInterest,
-      'ratingQuality': metadata.ratingQuality,
-    };
+  'volume': metadata.volume,
+  'isbn10': metadata.isbn10,
+  'isbn13': metadata.isbn13,
+  'ipfsCid': metadata.ipfsCid,
+  'ipfsCidBlake2b': metadata.ipfsCidBlake2b,
+  'ratingInterest': metadata.ratingInterest,
+  'ratingQuality': metadata.ratingQuality,
+};
 
 /// 缓存 JSON → 合并进书本体。逐字段容错取值：缓存是手改/旧版本的
 /// JSON 时最坏也只是丢字段，绝不让详情页报错。
 String? _extrasString(Object? value) => value is String ? value : null;
 
-Book _applyExtrasJson(Book book, Map<String, dynamic> extras) =>
+/// 附加字段 JSON 并进书本体（[bookDetailsProvider] 的正文 +
+/// [bookDetailExtrasProvider] 的装饰字段）。copyWith 的空值语义是
+/// “保留原值”，所以附加字段只会补行、不会抹掉 eapi 已有的值。
+Book applyBookDetailExtras(Book book, Map<String, dynamic> extras) =>
     book.copyWith(
       volume: _extrasString(extras['volume']),
       isbn10: _extrasString(extras['isbn10']),
@@ -68,115 +82,91 @@ Book _applyExtrasJson(Book book, Map<String, dynamic> extras) =>
       ratingQuality: _extrasString(extras['ratingQuality']),
     );
 
+/// 详情页正文（eapi 的小 JSON：书名/作者/简介/文件信息）。
+///
 /// autoDispose：详情页关掉后无人 watch 即释放缓存。此前常驻内存，
 /// 长会话逐本累积（每本详情是全量 [Book]）；相似书链路中每一页
 /// 详情始终 watch 自己的 identifier，不会产生重复请求。
 ///
-/// 返回书本体（eapi 详情 + 详情页 HTML 合并进来的 卷/ISBN/IPFS/评分
-/// 字段），来自同一次 HTML 抓取（[ZLibraryApi.fetchBookDetailExtras]）。
+/// 只发 eapi 这一个请求，不等详情页 HTML——2026-11-15 拆分。
+/// 此前（1.5.8 起）两者在同一个 Future 里 await：eapi 早到了也要等
+/// 那几百 KB 的 HTML 页（最多 5 跳、receiveTimeout 300 s，命中
+/// DiamWall 还要起 WebView 求解），正文跟着一起卡住——这就是
+/// “详情页比以前的版本慢”的来源（1.5.7 及更早只有 eapi 一个
+/// 请求）。附加字段改由 [bookDetailExtrasProvider] 独立加载，
+/// 到达后由 [BookDetailScreen] 并进本文。
 ///
-/// 加载顺序（2026-11-13 重排；此前 HTML 严格排在 eapi 之后、且每次
-/// 打开都重新下载几百 KB 的详情页）：
-///
-/// 1. 路由参数自带 href（搜索/列表结果都带）且持久缓存新鲜 →
-///    **整段跳过 HTML 下载**，eapi 小 JSON 一到即用缓存字段合并上
-///    屏——重复打开（7 天内）内容体即时完整。
-/// 2. 缓存未命中或过期 → href 已知时 **HTML 与 eapi 并行**发起，
-///    总时延取 max 而非相加；两源都到再合并，新字段回写缓存。
-/// 3. HTML 失败 → 回退用过期缓存字段（比没有强）；都没有才返回
-///    纯 eapi 书。eapi 本身的失败照旧抛出（页面显示错误 + 重试）。
-/// 4. 路由参数没有 href → eapi 之后用其 href 串行抓（旧行为）。
-final bookDetailsProvider =
-    FutureProvider.autoDispose.family<Book, BookIdentifier>(
-  (ref, identifier) async {
-  final api = ref.watch(zlibraryApiProvider);
-  final storage = ref.watch(storageServiceProvider);
-
-  /// 抓 HTML 附加信息，成功时回写缓存并返回字段 JSON；失败返回
-  /// null（异常折进结果——并行启动的这条不能以未处理异常炸掉）。
-  Future<Map<String, dynamic>?> fetchExtrasJson(String href) async {
-    try {
-      final user = ref.read(authProvider).user;
-      final pageRepo = BookDetailPageRepository(api);
-      final result = await pageRepo.fetch(
-        href: href,
-        userId: user?.id,
-        userKey: user?.remixUserkey,
+/// eapi 自己失败照旧抛出：正文没有兜底可退，页面显示错误 + 重试。
+final bookDetailsProvider = FutureProvider.autoDispose
+    .family<Book, BookIdentifier>((ref, identifier) async {
+      final api = ref.watch(zlibraryApiProvider);
+      final response = await api.getBookInfo(
+        identifier.bookId,
+        identifier.hashId,
+        title: identifier.title,
       );
-      if (!result.success || result.data == null) {
+      if (!response.success) {
+        throw StateError(response.error ?? 'Failed to load book details');
+      }
+      final book = response.data;
+      if (book == null) {
+        throw StateError('Book details response did not contain a book');
+      }
+      // 路由带的 href 优先（列表页给的那个）；eapi 自己的 href 也
+      // 认，路由没带时附加字段靠它定位。
+      final routeHref = identifier.href;
+      return (routeHref == null || routeHref.isEmpty)
+          ? book
+          : book.copyWith(href: routeHref);
+    });
+
+/// 详情页 HTML 上的附加字段（卷/ISBN/IPFS/评分），按
+/// [bookDetailExtrasKey] 缓存；并进本文见 [applyBookDetailExtras]。
+///
+/// 与正文彻底独立（互不等待）：
+///  * 持久缓存新鲜 → 直接返回，零请求。
+///  * 未命中/过期 → 抓一次并回写；整段只给
+///    [_bookDetailExtrasBudget] 预算，命中墙时只允许后台求解
+///    （[_bookDetailExtrasSolverTimeout]，不弹可见验证页）——用户
+///    此刻在读的是正文，评分行缺着比被 WebView 盖一层强。
+///  * 失败/超时 → 退回过期缓存（可能为 null），永不抛。
+///
+/// 返回 null 意思是“这一轮拿不到附加字段”，不是错误状态。
+final bookDetailExtrasProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>?, String>((ref, href) async {
+      final key = bookDetailExtrasKey(href);
+      final storage = ref.watch(storageServiceProvider);
+      final cached = storage.getBookDetailExtrasSync(key);
+      if (cached != null && _extrasFresh(cached)) return cached;
+      final api = ref.watch(zlibraryApiProvider);
+      // 会话取快照（同旧行为）：登录态变化由
+      // invalidateAccountScopedProviders 统一重跑，这里不自己转圈。
+      final user = ref.read(authProvider).user;
+      try {
+        final result = await BookDetailPageRepository(api)
+            .fetch(
+              href: href,
+              userId: user?.id,
+              userKey: user?.remixUserkey,
+              allowVisibleSolver: false,
+              solverTimeout: _bookDetailExtrasSolverTimeout,
+            )
+            .timeout(_bookDetailExtrasBudget);
+        if (result.success && result.data != null) {
+          final json = _extrasJsonOf(result.data!.metadata);
+          unawaited(storage.mergeBookDetailExtras(key, json));
+          return json;
+        }
         logIgnored(
           'book_details_metadata',
           StateError(result.error ?? 'book detail page failed'),
         );
-        return null;
+      } on Object catch (error) {
+        // 含 TimeoutException：慢链路/求解卡住时放弃这一轮。
+        logIgnored('book_details_metadata', error);
       }
-      final json = _extrasJsonOf(result.data!.metadata);
-      unawaited(storage.mergeBookDetailExtras(_detailExtrasKey(href), json));
-      return json;
-    } catch (error) {
-      logIgnored('book_details_metadata', error);
-      return null;
-    }
-  }
-
-  // 路由参数的 href 先查缓存：新鲜 → 不发 HTML 请求；否则立即并行
-  // 发出（与下面的 eapi 详情同时跑）。
-  final routeHref = identifier.href;
-  final routeKey = (routeHref == null || routeHref.isEmpty)
-      ? null
-      : _detailExtrasKey(routeHref);
-  final routeExtras =
-      routeKey == null ? null : storage.getBookDetailExtrasSync(routeKey);
-  final routeFresh = routeExtras != null && _extrasFresh(routeExtras);
-  final routeFetch = (routeKey != null && !routeFresh)
-      ? fetchExtrasJson(routeHref!)
-      : null;
-
-  final response = await api.getBookInfo(
-    identifier.bookId,
-    identifier.hashId,
-    title: identifier.title,
-  );
-  if (!response.success) {
-    throw StateError(response.error ?? 'Failed to load book details');
-  }
-  final book = response.data;
-  if (book == null) {
-    throw StateError('Book details response did not contain a book');
-  }
-  final href = routeHref ?? book.href;
-  if (href == null || href.isEmpty) {
-    return book;
-  }
-  final hrefKey = _detailExtrasKey(href);
-  final cached = routeKey == hrefKey
-      ? routeExtras
-      : storage.getBookDetailExtrasSync(hrefKey);
-
-  // 并行抓取在途（缓存未命中或过期）：等它——成功用新值，失败用过
-  // 期缓存兜底，都没有就返回纯 eapi 书。
-  if (routeFetch != null) {
-    final fetched = await routeFetch;
-    if (fetched != null) {
-      return _applyExtrasJson(book.copyWith(href: href), fetched);
-    }
-    if (cached != null) {
-      return _applyExtrasJson(book.copyWith(href: href), cached);
-    }
-    return book.copyWith(href: href);
-  }
-  // 新鲜缓存：整段跳过 HTML 下载，eapi 一到即完整。
-  if (cached != null) {
-    return _applyExtrasJson(book.copyWith(href: href), cached);
-  }
-  // 无缓存且路由没带 href（book.href 才有）：串行抓——旧行为。
-  final fetched = await fetchExtrasJson(href);
-  if (fetched != null) {
-    return _applyExtrasJson(book.copyWith(href: href), fetched);
-  }
-  return book.copyWith(href: href);
-  },
-);
+      return cached;
+    });
 
 class BookIdentifier {
   final String bookId;

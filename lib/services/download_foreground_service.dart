@@ -34,7 +34,7 @@ class DownloadForegroundService {
       return null;
     });
     unawaited(
-      _channel.invokeMethod<void>('setActionChannel', _actionChannel.name),
+      _channel.invokeMethod<void>('setActionChannel', {'name': _actionChannel.name}),
     );
   }
 

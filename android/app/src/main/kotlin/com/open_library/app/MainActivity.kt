@@ -270,11 +270,11 @@ class MainActivity : FlutterFragmentActivity() {
                     "setActionChannel" -> {
                         _downloadActionChannel = MethodChannel(
                             flutterEngine.dartExecutor.binaryMessenger,
-                            call.argument<String>()
+                            call.argument<String>("name")
                                 ?: "zlibx/download_service_action",
                         )
                         DownloadForegroundService.onAction = { action ->
-                            _downloadActionChannel?.invokeMethod(action)
+                            _downloadActionChannel?.invokeMethod(action, null)
                         }
                         result.success(null)
                     }

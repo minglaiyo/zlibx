@@ -89,21 +89,29 @@ jobs:
       - name: Test
         run: flutter test
 
-      # Strict-lint triage (M8): runs the stricter profile
-      # (analysis_options_strict.yaml) and only REPORTS the finding
-      # count — `continue-on-error` keeps it from gating the check.
+      # Strict-lint ratchet (M8 + O12): runs the stricter profile
+      # (analysis_options_strict.yaml) and FAILS the check when the
+      # finding count rises above the baseline in
+      # scripts/strict_lint_baseline.txt — the count may only go down,
+      # never up. To lower the baseline, fix findings first, then drop
+      # the baseline file to the new measured count in the same commit.
       # Fix findings per directory, then promote rules that hit zero
       # into analysis_options.yaml so the blocking step enforces them.
       # dart analyze has no --options override, so the file is swapped
       # in for the duration of this step and restored right after.
-      - name: Strict lint triage (non-blocking)
-        continue-on-error: true
+      - name: Strict lint ratchet
         run: |
           cp analysis_options.yaml analysis_options.base.yaml
           cp analysis_options_strict.yaml analysis_options.yaml
           dart analyze lib vendor/olib_api_plugin/lib | tee strict_lint.log || true
           cp analysis_options.base.yaml analysis_options.yaml
-          echo "Strict-profile findings: $(grep -cE '(info|warning|error) - ' strict_lint.log || echo 0) (baseline: 262 lib/ on 2026-11-14 — avoid_catches_without_on_clauses 149, directives_ordering 112; strict-casts/raw-types/final-locals/use_build_context_synchronously/cancel_subscriptions/close_sinks promoted to the blocking profile in M8 batch 1)"
+          count=$(grep -cE '(info|warning|error) - ' strict_lint.log || echo 0)
+          baseline=$(cat scripts/strict_lint_baseline.txt)
+          echo "Strict-profile findings: $count (baseline: $baseline)"
+          if [ "$count" -gt "$baseline" ]; then
+            echo "::error::Strict-lint findings rose to $count (baseline $baseline). Fix findings to bring the count back down — the baseline only moves down, never up."
+            exit 1
+          fi
 
   build:
     name: Build release APK
@@ -155,12 +163,9 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
 
-      - name: Analyze
-        run: flutter analyze
-
-      - name: Test
-        run: flutter test
-
+      # No Analyze/Test here (O12): the `check` job runs them on the
+      # same commit and `needs: check` gates this build on a green
+      # check, so re-running them only costs time.
       - name: Read version from pubspec
         id: pubspec
         run: |

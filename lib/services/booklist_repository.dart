@@ -118,6 +118,14 @@ class BooklistRepository {
     );
   }
 
+  /// A "when did this fetch start" stamp for [wasInvalidatedAfter].
+  /// Take it from here instead of [DateTime.now] — see
+  /// [BooklistHtmlCache.stamp] for why the ordering needs the monotonic
+  /// generator (a wall clock that only ticks every ~2 ms cannot tell a
+  /// load started after a delete apart from one started before it, and
+  /// the conservative reading drops a fresh page).
+  DateTime stamp() => BooklistHtmlCache.stamp();
+
   /// True when a fetch that started at [fetchedAt] predates a write
   /// (add/remove a book) to this URL family: its data must not be
   /// applied to the visible list nor re-stored.

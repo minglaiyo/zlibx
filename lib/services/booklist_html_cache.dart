@@ -145,14 +145,48 @@ class BooklistHtmlCache {
   /// invalidations are rare user actions so the map stays tiny.
   static final Map<String, DateTime> _invalidatedAt = <String, DateTime>{};
 
+  /// The largest stamp handed out so far (see [stamp]).
+  static DateTime _lastStamp = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// 排序用时间戳：把一次 fetch 和同一 URL 的 invalidation 排进同一条
+  /// 全序链——每发一个值都严格大于上一个，"后发生"和"后比较"从此是同一
+  /// 件事。
+  ///
+  /// 为什么 [DateTime.now] 不够：Windows 上 VM 的墙钟大约 2 ms 才走一格
+  /// （实测连续两次 `DateTime.now()` 1000/1000 次相同），于是"删除之后才
+  /// 开始的加载"也可能拿到和 invalidation 一模一样的时间戳；而
+  /// [wasInvalidatedAfter] 必须把"不严格更晚"当成过期，这一页就被悄悄丢
+  /// 掉了。test/providers/booklist_detail_state_test.dart 之前反复翻脸就
+  /// 是这条：假 API 同步返回，删除和下一次加载永远落在同一个 ~2 ms 里。
+  ///
+  /// 墙钟没动时这里加 1 微秒，保证全序。代价是 stamp 可能比墙钟超前几微
+  /// 秒——无所谓，因为 stamp 只和 stamp 比。TTL / 淘汰照旧用
+  /// [DateTime.now]（见 [store] 写的 `'at'`）。
+  ///
+  /// 只把时间戳交给 [store] 的调用方（WebView solver、个人中心页）可以
+  /// 继续用 [DateTime.now]：那里最坏结果是一次被丢弃的缓存写入，正是
+  /// [_isStaleWrite] 允许的成本。但"要先和 [_invalidatedAt] 比、然后决定
+  /// 要不要画到界面上"的时间戳——详情页 controller 的 `fetchedAt`——必须
+  /// 从这里取。
+  static DateTime stamp() {
+    final now = DateTime.now();
+    final next = now.isAfter(_lastStamp)
+        ? now
+        : _lastStamp.add(const Duration(microseconds: 1));
+    _lastStamp = next;
+    return next;
+  }
+
   /// True when [url] was invalidated after [fetchedAt] — i.e. a fetch
   /// that started at [fetchedAt] predates a write to this URL, so its
   /// data must not be applied or stored. Providers check this before
   /// applying a load's result to the visible list, so a refresh that
   /// started while a remove was still in flight cannot resurrect the
   /// removed book after the remove completed. Same rule as
-  /// [_isStaleWrite]: a fetch from the very same millisecond as the
-  /// invalidation counts as stale.
+  /// [_isStaleWrite]: a fetch whose stamp is not strictly later than the
+  /// invalidation counts as stale — which is exactly why the stamps that
+  /// reach here have to come from [stamp] and not from a raw
+  /// [DateTime.now].
   static bool wasInvalidatedAfter(
     String url,
     DateTime fetchedAt, {
@@ -224,7 +258,7 @@ class BooklistHtmlCache {
     // Record the invalidation timestamp even when the box is not yet
     // open (O2): a fetch in flight must still be dropped when it
     // resolves, regardless of whether the box is ready.
-    _invalidatedAt[_key(url, accountId)] = DateTime.now();
+    _invalidatedAt[_key(url, accountId)] = stamp();
     if (!_ready) return;
     final box = _box;
     unawaited(box.delete(_key(url, accountId)));
@@ -239,7 +273,7 @@ class BooklistHtmlCache {
   /// same books, so a stale HTML fetch must not re-store either.
   static void invalidateBooklistPages(String url, {String? accountId}) {
     if (url.isEmpty) return;
-    _invalidatedAt[_key(url, accountId)] = DateTime.now();
+    _invalidatedAt[_key(url, accountId)] = stamp();
     if (!_ready) return; // O2: box opens after the first frame.
     final box = _box;
     final prefix = '$url#json-page=';

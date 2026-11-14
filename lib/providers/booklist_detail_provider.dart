@@ -177,8 +177,11 @@ class BooklistDetailController
     // When this load's fetch started: a write that invalidates this
     // URL while the load is in flight must make the load's cache
     // stores drop (see BooklistHtmlCache), so the stale page cannot
-    // re-enter the cache after the invalidation.
-    final fetchedAt = DateTime.now();
+    // re-enter the cache after the invalidation. The stamp comes from
+    // the cache's monotonic generator, not DateTime.now — a load that
+    // starts right after a delete has to compare as later, on every
+    // platform's clock.
+    final fetchedAt = _repository.stamp();
     final list = _list;
     final preview = list.previewBooks;
     final accountId = _accountId;
@@ -246,7 +249,7 @@ class BooklistDetailController
         background: hasLocalSnapshot,
         generation: generation,
         accountId: accountId,
-        fetchedAt: DateTime.now(),
+        fetchedAt: _repository.stamp(),
       );
     }
     if (!_isCurrent(generation)) return;
@@ -371,7 +374,7 @@ class BooklistDetailController
     final generation = _generation;
     // See loadFirst: when this load's fetch started, for the
     // invalidation check on its cache store.
-    final fetchedAt = DateTime.now();
+    final fetchedAt = _repository.stamp();
     final list = _list;
     final accountId = _accountId;
     final cachedPage = _repository.cachedBooksPage(

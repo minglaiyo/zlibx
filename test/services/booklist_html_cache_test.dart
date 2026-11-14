@@ -311,4 +311,52 @@ void main() {
       isFalse,
     );
   });
+
+  // The two tests below pin the ordering itself, not a wall-clock gap.
+  // On Windows the VM's DateTime.now advances roughly every 2 ms
+  // (measured: back-to-back calls returned the identical stamp
+  // 1000/1000), so "invalidate, then start a load" can produce two equal
+  // stamps — and wasInvalidatedAfter must read "not strictly later" as
+  // stale. That dropped a perfectly fresh page and made
+  // test/providers/booklist_detail_state_test.dart flip between runs on
+  // this machine. stamp() is monotonic, so the ordering no longer depends
+  // on how coarse the platform clock happens to be; on Linux both the old
+  // and the new code pass, which is exactly why the property needs its own
+  // test instead of relying on the suite going green.
+  test('stamp hands out a strictly increasing sequence back to back', () {
+    DateTime? previous;
+    for (var i = 0; i < 500; i++) {
+      final current = BooklistHtmlCache.stamp();
+      if (previous != null) {
+        expect(
+          current.isAfter(previous),
+          isTrue,
+          reason: 'stamp #${i + 1} did not beat the previous one — the '
+              'generator is reading the raw wall clock again',
+        );
+      }
+      previous = current;
+    }
+  });
+
+  test('a load stamped after an invalidation is not treated as stale', () {
+    const url = 'https://example.com/booklist/monotonic/h/s.html';
+    // Delete completes, THEN the next page load starts: the load must win,
+    // even when nothing but a microsecond of work separates the two.
+    BooklistHtmlCache.invalidateBooklist(url);
+    final startedAfter = BooklistHtmlCache.stamp();
+    expect(
+      BooklistHtmlCache.wasInvalidatedAfter(url, startedAfter),
+      isFalse,
+      reason: 'a fetch that started after the write was classified stale',
+    );
+    // And the guard still guards: a fetch that predates the write loses.
+    final startedBefore = BooklistHtmlCache.stamp();
+    BooklistHtmlCache.invalidateBooklist(url);
+    expect(
+      BooklistHtmlCache.wasInvalidatedAfter(url, startedBefore),
+      isTrue,
+      reason: 'a stale fetch would have resurrected the removed book',
+    );
+  });
 }

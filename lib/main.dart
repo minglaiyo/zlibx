@@ -70,6 +70,23 @@ void main() async {
   if (secureRecents is bool && secureRecents) {
     unawaited(AppLockController.applySecureFlag(true));
   }
+  // 隐私锁：冷启动也要锁，而且必须在 runApp 之前判定。
+  //
+  // 之前锁的判定只挂在 didChangeAppLifecycleState 上，而内存里的
+  // "离开前台时间" 一起进程就没了——Android 杀掉后台 app 是常态，用户
+  // 切出去再回来往往是一次冷启动，resumed 回调里 backgroundedAt == null
+  // 直接判成"不用锁"。结果是开着隐私锁也能上滑杀掉再打开绕过。
+  // 这里读盘上记录的最后一次离开前台时刻，按同样档位重判一次。
+  // 直接读 settingsBox：providers 还没建，且这个判定不参与任何 UI 订阅。
+  final appLockEnabled = HiveService.settingsBox.get('appLockEnabled');
+  final appLockTimeout = HiveService.settingsBox.get('appLockTimeoutSeconds');
+  final leftForegroundAt =
+      HiveService.settingsBox.get(appLockLeftForegroundKey);
+  AppLockController.instance.restoreOnStartup(
+    enabled: appLockEnabled is bool && appLockEnabled,
+    timeoutSeconds: appLockTimeout is int ? appLockTimeout : 0,
+    leftForegroundAtMs: leftForegroundAt is int ? leftForegroundAt : null,
+  );
   // Existing installs keep their current line without a trust prompt.
   await MirrorTrust.grandfatherCurrent();
 

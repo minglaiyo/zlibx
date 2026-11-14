@@ -26,9 +26,15 @@ class _PrivacySectionState extends ConsumerState<PrivacySection> {
     if (value) {
       final can = await AppLockController.instance.canAuthenticate();
       if (!can) {
-        if (mounted) {
-          showAppSnack(context, l10n.unlockFailed);
-        }
+        if (!mounted) return;
+        // 专用文案：这里根本没走到验证那一步，提示"解锁失败"只会让人
+        // 以为是手指没认出来。真实原因是机器上没有任何可用凭据（没设
+        // 锁屏密码也没录生物识别），硬开等于把门焊死。
+        showAppSnack(context, l10n.appLockNoAuthenticator, error: true);
+        // 开关是受控组件，但 setEnabled 没被调用 → provider 状态没变
+        // → 不会 rebuild。Switch 内部已经按点击乐观地翻到位了，于是
+        // 出现"看着开着、其实没开"。强制重建一次，让它回到持久化真值。
+        setState(() {});
         return;
       }
     }

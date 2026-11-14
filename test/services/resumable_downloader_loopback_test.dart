@@ -81,14 +81,22 @@ class _LoopbackOrigin {
       final doGzip = gzipBody && !acceptEncoding.contains('identity');
       final payload = doGzip ? gzip.encode(out) : out;
       if (doGzip) res.headers.set(HttpHeaders.contentEncodingHeader, 'gzip');
-      res.contentLength = payload.length;
       if (truncate) {
-        // Advertise the full length but drop the connection halfway:
-        // the client sees a transport error, not a clean end.
+        // Deliver half the body, then drop the connection abruptly.
+        // No Content-Length (so the response is chunked): flush the
+        // partial chunk, detach the socket and close it without the
+        // terminating chunk, so the client sees a transport error —
+        // not a clean end. (Advertising the full Content-Length and
+        // closing early left no partial file on disk: the connection
+        // drops before any byte is delivered, so the resume tests
+        // saw PathNotFound instead of a 2048-byte partial.)
         res.add(payload.sublist(0, payload.length ~/ 2));
-        await res.close();
+        await res.flush();
+        final socket = await res.detachSocket();
+        await socket.close();
         return;
       }
+      res.contentLength = payload.length;
       res.add(payload);
       await res.close();
     } catch (_) {

@@ -850,9 +850,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 opacity: animation,
                 child: SizeTransition(
                   sizeFactor: animation,
-                  // SizeTransition has no `alignment`; "top-anchored" is
-                  // expressed with axis + axisAlignment (-1 = top).
+                  // "Top-anchored" is expressed with axis + axisAlignment
+                  // (-1 = top). `alignment` does not exist on the local
+                  // 3.41.8 toolchain (that is the original error this
+                  // fixes), while 3.44 deprecates `axisAlignment` — so
+                  // keep the 3.41-compatible form and suppress the
+                  // newer toolchain's deprecation notice.
                   axis: Axis.vertical,
+                  // ignore: deprecated_member_use
                   axisAlignment: -1.0,
                   child: child,
                 ),

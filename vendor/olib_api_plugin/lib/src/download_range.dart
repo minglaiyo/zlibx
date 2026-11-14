@@ -38,6 +38,30 @@ class DownloadRange {
     return m == null ? null : int.tryParse(m.group(1)!);
   }
 
+  /// True when a `206` answer to our `Range: bytes=[start]-` may be
+  /// appended to the bytes already on disk.
+  ///
+  /// There are two possible proofs. `Content-Range` is the direct one:
+  /// a server that echoes a range starting anywhere other than [start] -
+  /// or a proxy that mangles the header - must not get its bytes stitched
+  /// onto the partial, or two different files end up spliced at one byte
+  /// offset. When the header is absent or unparsable the offset is still
+  /// trustworthy if [ifRangeAccepted] is set: we sent an `If-Range`
+  /// validator and the server answered 206 rather than falling back to
+  /// the full body, which means it served the same file it described on
+  /// the first request. With neither proof the caller restarts from zero.
+  ///
+  /// Shared by both engines (O10) so a resume-safety rule lands once.
+  static bool canAppendPartialRange(
+    String? contentRange,
+    int start, {
+    required bool ifRangeAccepted,
+  }) {
+    final parsedStart = parseContentRangeStart(contentRange);
+    if (parsedStart != null) return parsedStart == start;
+    return ifRangeAccepted;
+  }
+
   /// Parses the total from a `Content-Range: bytes */total` header — the
   /// form a 416 answer uses — or null when absent / unparseable. Used by
   /// the 416 branch (O5) to tell "the .part is already complete"

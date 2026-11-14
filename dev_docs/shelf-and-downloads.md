@@ -17,3 +17,13 @@
 - 任务保存下载时间和实际文件大小供列表显示；既有历史记录从 `downloadTime` 和本地文件读取这些信息。
 - 普通账号下载可在保留完整书籍信息时重试。使用一次性签名链接的下载需要回原书页重新获取链接；从历史恢复但文件缺失的记录只支持移除。
 - 新下载先写入临时文件，成功后移到最终文件名；取消或失败后清理临时文件。删除已完成任务会删除设备上的文件和下载记录。
+## 断点续传与下载提速（2026-11-15）
+
+两条下载线共用 `DownloadRange` 的判定：外部直链走 `ResumableDownloader`，z 站走插件里的 `ZLibraryDownloads._downloadOnce`。能不能接着已经落地的字节继续写，按下面顺序决定：
+
+- 首次下载把响应里的 ETag（没有则 Last-Modified）记在 `<part>.meta`，续传时当 `If-Range` 发回去；远端换了文件会答 200 全量，于是从头重写。
+- 没记到验证符（线路两个头都不发，或者 .part 早于 1.6.0）照样续传：只发 `Range`，偏移由响应自己证明——206 的 `Content-Range` 必须正好从我们的偏移开始；这个头缺失或读不出时，只有 `If-Range` 被服务器接受才算证明。1.6.0 曾把“没有验证符”当成不可信而丢掉偏移，而 MediaStore 条目只能重建，于是暂停、重试、重启 App 都要重下整本书——这就是“下载变得好慢”的来源。
+- 下载收尾不再要求文件头必须是 PK / `%PDF` / `BOOKMOBI`，只否掉两样确定的东西：HTML 验证页或错误页，以及与扩展名签名对不上（epub/zip、pdf、mobi/azw、fb2、djvu）。txt、rtf 这类没有固定魔数的格式一律放行——误判会把已经传完的书整本扔掉重来，代价比放过一个坏文件大得多。
+- 416 且 `Content-Range: bytes */N` 的 N 等于偏移时，说明上一次其实已经下完（只是没来得及删 .meta），保留文件收尾；N 小于偏移才清空重来。
+
+回归见 `test/services/plugin_network_test.dart`（download engine 一组）、`test/services/resumable_downloader_test.dart` 和 `test/services/download_range_test.dart`。

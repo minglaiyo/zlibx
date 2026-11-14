@@ -86,6 +86,10 @@ class _FakeAdapter implements HttpClientAdapter {
   // When set, the link request answers 206 with this Content-Range
   // instead of the correct `bytes <start>-…`.
   String? linkWrongContentRange;
+
+  /// Answer a 206 with no `Content-Range` header at all (a proxy that
+  /// strips it): the resume offset then has no proof of its own.
+  bool linkNoContentRange = false;
   // When set, the link request answers 206 (a resume) instead of 200.
   bool linkResume = false;
   // The ETag the link answers with (recorded into the `.meta` sidecar
@@ -173,10 +177,11 @@ class _FakeAdapter implements HttpClientAdapter {
           headers: {
             Headers.contentTypeHeader: [linkContentType],
             HttpHeaders.contentLengthHeader: ['${_epubRest.length}'],
-            HttpHeaders.contentRangeHeader: [
-              linkWrongContentRange ??
-                  'bytes $start-${_epubBytes.length - 1}/${_epubBytes.length}',
-            ],
+            if (!linkNoContentRange)
+              HttpHeaders.contentRangeHeader: [
+                linkWrongContentRange ??
+                    'bytes $start-${_epubBytes.length - 1}/${_epubBytes.length}',
+              ],
             if (linkEtag != null) HttpHeaders.etagHeader: [linkEtag!],
           },
         );
@@ -459,14 +464,15 @@ void main() {
       expect(headers['If-Range'], '"etag-1"');
     });
 
-    test('resume without a recorded validator restarts from zero',
+    // The perf rule (2026-11-15): a missing validator is not permission
+    // to re-download the book. The offset is proven by the answer instead.
+    test('resume without a recorded validator keeps the bytes on disk',
         () async {
-      final adapter = _FakeAdapter();
+      final adapter = _FakeAdapter()..linkResume = true;
       final api = await _loggedInApi(adapter);
       final path = savePath('book.epub');
-      // A partial file with no `.meta` sidecar: the prefix cannot be
-      // trusted to belong to this remote file, so no Range is sent
-      // and the file is overwritten from the start.
+      // A partial with no `.meta` sidecar: a mirror that sent neither
+      // ETag nor Last-Modified (or a file left by a pre-1.6.0 build).
       await File(path).writeAsBytes(_epubPrefix);
 
       await api.downloadBook(_bookId, _bookHash, path);
@@ -475,7 +481,57 @@ void main() {
       final linkHop = adapter.requestedUris.indexWhere(
         (u) => u.host == _linkHost,
       );
-      expect(adapter.requestedHeaders[linkHop]['Range'], isNull);
+      final headers = adapter.requestedHeaders[linkHop];
+      expect(headers['Range'], 'bytes=${_epubPrefix.length}-');
+      expect(headers['If-Range'], isNull);
+      // One link request: the resume never fell back to the full body.
+      expect(adapter.linkCalls, 1);
+    });
+
+    test('a 206 without Content-Range is trusted only past an If-Range',
+        () async {
+      // (a) no validator recorded, no Content-Range proof: restart.
+      final blind = _FakeAdapter()
+        ..linkResume = true
+        ..linkNoContentRange = true;
+      final blindApi = await _loggedInApi(blind);
+      final blindPath = savePath('blind.epub');
+      await File(blindPath).writeAsBytes(_epubPrefix);
+
+      await blindApi.downloadBook(_bookId, _bookHash, blindPath);
+
+      expect(await File(blindPath).readAsBytes(), _epubBytes);
+      expect(blind.linkCalls, 2, reason: 'the unproven 206 was discarded');
+
+      // (b) same server, but If-Range was accepted: append, no restart.
+      final proven = _FakeAdapter()
+        ..linkResume = true
+        ..linkNoContentRange = true;
+      final provenApi = await _loggedInApi(proven);
+      final provenPath = savePath('proven.epub');
+      await File(provenPath).writeAsBytes(_epubPrefix);
+      await File('$provenPath.meta').writeAsString('"etag-1"');
+
+      await provenApi.downloadBook(_bookId, _bookHash, provenPath);
+
+      expect(await File(provenPath).readAsBytes(), _epubBytes);
+      expect(proven.linkCalls, 1);
+    });
+
+    test('a format with no fixed magic is not rejected at the finish line',
+        () async {
+      // The old positive check demanded PK / %PDF / BOOKMOBI, so a txt,
+      // fb2 or djvu book was thrown away *after* the full transfer and
+      // restarted from zero forever.
+      final adapter = _FakeAdapter()
+        ..linkBody = _textBytes
+        ..linkContentType = 'application/octet-stream';
+      final api = await _loggedInApi(adapter);
+      final path = savePath('book.txt');
+
+      await api.downloadBook(_bookId, _bookHash, path);
+
+      expect(await File(path).readAsBytes(), _textBytes);
     });
 
     test('206 with a wrong Content-Range restarts from zero', () async {

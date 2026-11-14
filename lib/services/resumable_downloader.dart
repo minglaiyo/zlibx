@@ -108,19 +108,18 @@ class ResumableDownloader {
   }) async {
     final file = File(savePath);
     final meta = File(metaPathFor(savePath));
-    var start = pendingWriter != null
+    final start = pendingWriter != null
         ? pendingWriter.bytesWritten
         : await file.exists()
             ? await file.length()
             : 0;
+    // Only decorates the request now (see the twin rule in
+    // `ZLibraryDownloads._downloadOnce`): a mirror with neither ETag nor
+    // Last-Modified has no validator to record, and its partials must
+    // still resume instead of starting the book over.
     final validator = start > 0 ? await _readValidator(meta) : null;
-    if (start > 0 && validator == null) {
-      // A partial file with no recorded validator cannot be trusted to
-      // belong to the same remote file: restart instead of appending.
-      start = 0;
-    }
-    // A pending entry cannot be truncated, only recreated: when the
-    // resume offset is dropped, reset the writer before the request.
+    // A pending entry cannot be truncated, only recreated: if the resume
+    // offset ever is dropped, reset the writer before the request.
     if (pendingWriter != null &&
         start == 0 &&
         pendingWriter.bytesWritten > 0) {
@@ -138,7 +137,9 @@ class ResumableDownloader {
     reqHeaders['Accept-Encoding'] = 'identity';
     if (start > 0) {
       reqHeaders['Range'] = 'bytes=$start-';
-      reqHeaders['If-Range'] = validator!;
+      // Only with a real validator — an unrecognised `If-Range` value is
+      // answered with the full body, losing the resume either way.
+      if (validator != null) reqHeaders['If-Range'] = validator;
     }
 
     final res = await dio.get<ResponseBody>(
@@ -185,14 +186,16 @@ class ResumableDownloader {
 
     // A 206 must continue exactly where our partial file ends. A server
     // (or proxy) that answers a different range would otherwise get its
-    // bytes appended at the wrong offset: a silently corrupt book. When
-    // Content-Range is present and disagrees, restart from zero.
+    // bytes appended at the wrong offset: a silently corrupt book.
     if (code == 206 && start > 0) {
       final cr = res.headers.value('content-range');
-      // O10: the Content-Range parse is shared with the twin engine (the
+      // O10: the Content-Range rule is shared with the twin engine (the
       // vendor plugin's `_downloadOnce`), so a rule change lands once.
-      final parsedStart = DownloadRange.parseContentRangeStart(cr);
-      if (cr != null && (parsedStart == null || parsedStart != start)) {
+      if (!DownloadRange.canAppendPartialRange(
+        cr,
+        start,
+        ifRangeAccepted: validator != null,
+      )) {
         await res.data?.stream.drain<void>();
         if (pendingWriter != null) {
           if (!await pendingWriter.reset()) {

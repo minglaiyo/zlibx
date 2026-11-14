@@ -31,14 +31,12 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
       DownloadRange.parseContentRangeTotal(contentRange);
 
   /// True when [bytes] (the start of a body) look like an ebook file
-  /// the app can open. Checked after a download finishes, as a last
-  /// line of defence against a silently corrupt file (a mislabelled
-  /// challenge page, or a resume that stitched two different files
-  /// together): epub/zip start with `PK`, PDF with `%PDF`, MOBI
-  /// carries `BOOKMOBI` at offset 60. A file too short to check (or
-  /// an unknown format) passes — the length check in [_downloadOnce]
-  /// is the primary guard, this only rejects content that is provably
-  /// not a book.
+  /// the app can open: epub/zip start with `PK`, PDF with `%PDF`, MOBI
+  /// carries `BOOKMOBI` at offset 60. A file too short to check, or one
+  /// in a format with another magic (fb2, djvu, txt, rtf), also answers
+  /// true — this is the accept fast path of the finish-line check, not an
+  /// allow-list: see [_badBookFileHead] for why rejecting a book this
+  /// function does not recognise would cost a fully transferred file.
   static bool looksLikeBook(List<int> bytes) {
     if (bytes.length >= 2 && bytes[0] == 0x50 && bytes[1] == 0x4B) {
       return true; // PK — epub / zip.
@@ -151,13 +149,16 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
   /// (`<part>.meta`, see [metaPathFor]) and sent back as `If-Range`.
   /// If the remote file changed, the server answers 200 with the full
   /// body and we restart from zero instead of appending to a stale
-  /// prefix (which would produce a corrupt book). A partial file with
-  /// no recorded validator cannot be trusted to belong to the same
-  /// remote file, so it restarts too. A 206 whose `Content-Range`
-  /// starts anywhere but [start] also restarts — a server (or proxy)
-  /// that answers a different range would otherwise get its bytes
-  /// appended at the wrong offset. Same contract as the external path
-  /// (`ResumableDownloader`); the two engines must stay in step.
+  /// prefix (which would produce a corrupt book). A partial with no
+  /// recorded validator — a mirror that sends neither ETag nor
+  /// Last-Modified, or a file left by a pre-1.6.0 build — still sends
+  /// its Range and keeps the bytes already on disk; the offset is then
+  /// proven by the answer instead, see [DownloadRange.canAppendPartialRange].
+  /// A 206 whose `Content-Range` starts anywhere but [start] restarts —
+  /// a server (or proxy) that answers a different range would otherwise
+  /// get its bytes appended at the wrong offset. Same contract as the
+  /// external path (`ResumableDownloader`); the two engines must stay in
+  /// step.
   Future<Response<ResponseBody>> _downloadOnce(
     String link,
     String savePath,
@@ -168,19 +169,20 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
   }) async {
     final file = File(savePath);
     final meta = File(metaPathFor(savePath));
-    var start = pendingWriter != null
+    final start = pendingWriter != null
         ? pendingWriter.bytesWritten
         : await file.exists()
             ? await file.length()
             : 0;
+    // Absent whenever the mirror sent neither ETag nor Last-Modified (or
+    // the partial predates the sidecar). It only ever decorates the
+    // request now: dropping the resume offset because it was missing used
+    // to re-transfer a whole book on every pause / retry / cold start,
+    // because a pending entry can only be recreated - that is what the
+    // 206 trust check below replaced (2026-11-15 perf).
     final validator = start > 0 ? await _readValidator(meta) : null;
-    if (start > 0 && validator == null) {
-      // A partial file with no recorded validator cannot be trusted to
-      // belong to the same remote file: restart instead of appending.
-      start = 0;
-    }
-    // A pending entry cannot be truncated, only recreated: when the
-    // resume offset is dropped, reset the writer before the request.
+    // A pending entry cannot be truncated, only recreated: if the resume
+    // offset ever is dropped, reset the writer before the request.
     if (pendingWriter != null &&
         start == 0 &&
         pendingWriter.bytesWritten > 0) {
@@ -195,7 +197,11 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
     reqHeaders['Accept-Encoding'] = 'identity';
     if (start > 0) {
       reqHeaders['Range'] = 'bytes=$start-';
-      reqHeaders['If-Range'] = validator!;
+      // Only with a real validator: an `If-Range` value the server cannot
+      // recognise makes it answer 200 with the whole body, which throws
+      // the resume away anyway. Without one the 206 is judged by its
+      // Content-Range below.
+      if (validator != null) reqHeaders['If-Range'] = validator;
     }
     final res = await _dio.get<ResponseBody>(
       link,
@@ -231,12 +237,11 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
         // Same finished-file header check as a normal completion (the
         // earlier attempt may have been killed before it ran). The
         // pending-writer path has no file to check here.
-        if (pendingWriter == null && !await _looksLikeBookFile(file)) {
+        if (pendingWriter == null && await _badBookFileHead(file)) {
           if (await meta.exists()) await meta.delete();
           throw DownloadHtmlException(
-            'download finished but the file does not look like a book '
-            '(unexpected file header) — the mirror may have served a '
-            'challenge or error page instead of the file',
+            'download finished but the file is not the book it claims to '
+            'be — the mirror served a challenge or error page',
           );
         }
         if (await meta.exists()) await meta.delete();
@@ -263,14 +268,16 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
     }
     // A 206 must continue exactly where our partial file ends. A server
     // (or proxy) that answers a different range would otherwise get its
-    // bytes appended at the wrong offset: a silently corrupt book. When
-    // Content-Range is present and disagrees, restart from zero.
+    // bytes appended at the wrong offset: a silently corrupt book.
     if (code == 206 && start > 0) {
       final cr = res.headers.value('content-range');
-      // O10: the Content-Range parse is shared with the twin engine
+      // O10: the Content-Range rule is shared with the twin engine
       // (`ResumableDownloader`), so a rule change lands once.
-      final parsedStart = DownloadRange.parseContentRangeStart(cr);
-      if (cr != null && (parsedStart == null || parsedStart != start)) {
+      if (!DownloadRange.canAppendPartialRange(
+        cr,
+        start,
+        ifRangeAccepted: validator != null,
+      )) {
         await res.data?.stream.drain<void>();
         if (pendingWriter != null) {
           if (!await pendingWriter.reset()) {
@@ -375,21 +382,27 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
         'download truncated: received $received of $total bytes',
       );
     }
-    // File-header check: the finished file must look like a book
-    // (epub/zip `PK`, PDF `%PDF`, MOBI `BOOKMOBI`). A mislabelled
-    // challenge page or a resume that stitched two different files
-    // together is caught here instead of being recorded as a
-    // successful download. The partial file is kept so a retry can
-    // resume; the validator is dropped so the retry restarts from
-    // zero instead of appending to the bad prefix. The pending
-    // writer path has no file to check here — its bytes are checked
-    // by the same rule in the app layer when the entry is published.
-    if (pendingWriter == null && !await _looksLikeBookFile(file)) {
+    // File-header check: a finished download must not be an HTML
+    // challenge/error page wearing a file name. The rule used to be
+    // positive ("the head must be PK, %PDF or BOOKMOBI"), which rejected
+    // every format whose magic is not one of those three — fb2 (`<?xml`),
+    // djvu (`AT&TFORM`), txt, rtf — *after* the whole book had already
+    // been transferred, and the retry then restarted from zero: a
+    // download that never finishes, however fast the line is. The
+    // negative form catches what this guard is for, plus the signature of
+    // the format the file claims to be - and nothing else. A stitched
+    // resume is already caught by the Content-Range check above. The
+    // partial file
+    // is kept so a retry can resume; the validator is dropped so the
+    // retry restarts from zero instead of appending to the bad prefix.
+    // The pending writer path has no file to check here — its bytes are
+    // checked when the entry is published.
+    if (pendingWriter == null && await _badBookFileHead(file)) {
       if (await meta.exists()) await meta.delete();
       throw DownloadHtmlException(
-        'download finished but the file does not look like a book '
-        '(unexpected file header) — the mirror may have served a '
-        'challenge or error page instead of the file',
+        'download finished but the file is not the book it claims to be '
+        '(HTML challenge/error page, or the wrong signature for its '
+        'extension) — the mirror did not serve the file',
       );
     }
     if (await meta.exists()) {
@@ -414,22 +427,88 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
     }
   }
 
-  /// True when the file at [file] looks like a book (see [looksLikeBook]).
-  /// Reads at most the first 68 bytes (the MOBI marker offset). A file
-  /// too short to check passes — the length check in [_downloadOnce] is
-  /// the primary guard. False when the file cannot be read.
-  static Future<bool> _looksLikeBookFile(File file) async {
+  /// True when the finished file at [file] must not be recorded as a
+  /// book: an HTML challenge/error page under any name, or bytes that do
+  /// not carry the signature of the extension the book was saved as.
+  ///
+  /// The rule is deliberately negative. The old one was "the head must be
+  /// one of three magics", which rejected fb2 (`<?xml`), djvu
+  /// (`AT&TFORM`), txt, rtf and everything else it did not know *after*
+  /// the whole book had been transferred — and the retry restarted from
+  /// zero, so the download never finished. A false rejection is therefore
+  /// the expensive error here: an extension with no definite signature is
+  /// never checked, and an unreadable file passes (the length check in
+  /// [_downloadOnce] is the guard for that).
+  static Future<bool> _badBookFileHead(File file) async {
+    List<int> head;
     try {
       final raf = await file.open();
       try {
-        final bytes = await raf.read(68);
-        return looksLikeBook(bytes);
+        head = await raf.read(512);
       } finally {
         await raf.close();
       }
     } on FileSystemException {
       return false;
     }
+    if (looksLikeBook(head)) return false; // the fast path for known books
+    if (DownloadRange.looksLikeHtml(head)) return true;
+    return _signatureMismatch(file.path, head);
+  }
+
+  /// True when the file named [path] claims a format whose signature is
+  /// definite and [head] does not carry it. Formats with no fixed magic
+  /// (txt, rtf, chm, lit, htmlz, an extensionless save path) answer false:
+  /// there is nothing to check them against.
+  static bool _signatureMismatch(String path, List<int> head) {
+    switch (_extensionOf(path)) {
+      case 'epub':
+      case 'zip':
+      case 'cbz':
+        return !_startsWithAscii(head, 'PK');
+      case 'pdf':
+        return !_startsWithAscii(head, '%PDF');
+      case 'mobi':
+      case 'azw':
+      case 'azw3':
+        // looksLikeBook already tested the PK/%PDF magics, so reach for
+        // the container marker at offset 60.
+        return !_startsWithAsciiAt(head, 60, 'BOOKMOBI');
+      case 'fb2':
+        return !_startsWithAny(head, const ['<?xml', '<FictionBook']);
+      case 'djvu':
+      case 'djv':
+        return !_startsWithAscii(head, 'AT&TFORM');
+      default:
+        return false;
+    }
+  }
+
+  /// Lower-case extension of [path] without the dot, or '' when the file
+  /// name has none.
+  static String _extensionOf(String path) {
+    final slash = path.replaceAll(r'\', '/').lastIndexOf('/');
+    final name = slash < 0 ? path : path.substring(slash + 1);
+    final dot = name.lastIndexOf('.');
+    return dot < 1 ? '' : name.substring(dot + 1).toLowerCase();
+  }
+
+  static bool _startsWithAscii(List<int> head, String text) =>
+      _startsWithAsciiAt(head, 0, text);
+
+  static bool _startsWithAsciiAt(List<int> head, int at, String text) {
+    if (head.length < at + text.length) return false;
+    for (var i = 0; i < text.length; i++) {
+      if (head[at + i] != text.codeUnitAt(i)) return false;
+    }
+    return true;
+  }
+
+  static bool _startsWithAny(List<int> head, List<String> prefixes) {
+    for (final p in prefixes) {
+      if (_startsWithAscii(head, p)) return true;
+    }
+    return false;
   }
 
   Future<String> _resolveDownloadLink(

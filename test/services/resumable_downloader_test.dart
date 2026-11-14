@@ -17,6 +17,7 @@ class _Origin implements HttpClientAdapter {
   String contentType = 'application/epub+zip';
   bool truncate = false; // advertise full length but send half
   int? contentRangeStart; // lie about where a 206 body starts
+  bool omitContentRange = false; // answer a 206 with no Content-Range
   final List<Map<String, dynamic>> seen = [];
 
   @override
@@ -44,9 +45,11 @@ class _Origin implements HttpClientAdapter {
       }
       out = body.sublist(start);
       status = 206;
-      h['content-range'] = [
-        'bytes ${contentRangeStart ?? start}-${body.length - 1}/${body.length}',
-      ];
+      if (!omitContentRange) {
+        h['content-range'] = [
+          'bytes ${contentRangeStart ?? start}-${body.length - 1}/${body.length}',
+        ];
+      }
     }
     h[Headers.contentLengthHeader] = ['${out.length}'];
     final sent = truncate ? out.sublist(0, out.length ~/ 2) : out;
@@ -145,13 +148,42 @@ void main() {
     expect(await File(path).readAsBytes(), o.body);
   });
 
-  test('a partial file without a recorded validator is not appended to',
-      () async {
-    await File(path).writeAsBytes(List<int>.filled(100, 9));
+  // The perf rule (2026-11-15, shared with the Z-Library engine): a
+  // missing validator no longer drops the resume offset — a mirror that
+  // sends neither ETag nor Last-Modified has none to record, and wiping
+  // the partial re-transferred the whole book on every pause / retry.
+  test('resumes a partial whose validator was never recorded', () async {
+    await File(path).writeAsBytes(book.sublist(0, 100));
     final o = _Origin(book);
     await ResumableDownloader.download(dioFor(o), 'https://x/f', path);
     expect(await File(path).readAsBytes(), book);
-    expect(o.seen.first.containsKey('Range'), isFalse);
+    expect(o.seen.length, 1);
+    expect(o.seen.first['Range'], 'bytes=100-');
+    expect(o.seen.first.containsKey('If-Range'), isFalse);
+  });
+
+  test('an unproven 206 restarts instead of appending', () async {
+    // No Content-Range and no If-Range: nothing says these bytes belong
+    // at this offset, so stitching them onto the partial is not allowed.
+    await File(path).writeAsBytes(book.sublist(0, 100));
+    final o = _Origin(book)..omitContentRange = true;
+    await ResumableDownloader.download(dioFor(o), 'https://x/f', path);
+    expect(await File(path).readAsBytes(), book);
+    expect(o.seen.length, 2);
+  });
+
+  test('an If-Range the server accepted proves the offset', () async {
+    final o = _Origin(book)..truncate = true;
+    await expectLater(
+      ResumableDownloader.download(dioFor(o), 'https://x/f', path),
+      throwsA(isA<DownloadTruncatedException>()),
+    );
+    o
+      ..truncate = false
+      ..omitContentRange = true;
+    await ResumableDownloader.download(dioFor(o), 'https://x/f', path);
+    expect(await File(path).readAsBytes(), book);
+    expect(o.seen.length, 2, reason: 'the resume was kept, not restarted');
   });
 
   test('looksLikeHtml ignores BOM/whitespace and real binaries', () {

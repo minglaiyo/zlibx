@@ -1,5 +1,8 @@
 # Sensitive — do not track
 reference/*
+# 一次性探测脚本与它们的本地会话文件（zl_session.txt 存过会话 cookie，
+# 跑完已清空，但目录里随时可能再落临时凭据），一律不入库。
+_scratch/
 
 # Miscellaneous
 *.class

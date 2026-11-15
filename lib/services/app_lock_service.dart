@@ -1,8 +1,7 @@
-// Privacy lock (隐私锁): biometric / device-credential gate on app resume,
-// plus the FLAG_SECURE recents-blur companion. Android-native via
-// local_auth (BiometricPrompt) and the `zlibx/media_store` channel's
-// setSecureFlag (see MainActivity — FlutterFragmentActivity is a
-// local_auth requirement).
+// Privacy lock (隐私锁): biometric / device-credential gate on app resume.
+// Android-native via local_auth (BiometricPrompt) and the `zlibx/media_store`
+// channel (see MainActivity — FlutterFragmentActivity is a local_auth
+// requirement).
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' show ValueNotifier;
@@ -255,18 +254,6 @@ class AppLockController {
         }),
       );
     } on Object catch (error) {
-      logIgnored('app_lock', error);
-    }
-  }
-
-  /// FLAG_SECURE：最近任务模糊 + 阻止截屏。走 MainActivity 的
-  /// setSecureFlag（主线程改窗口旗标）；通道失败不抛——隐私增强
-  /// 项，坏了不能挡住 app 其它功能。
-  static Future<void> applySecureFlag(bool enabled) async {
-    try {
-      const channel = MethodChannel('zlibx/media_store');
-      await channel.invokeMethod<bool>('setSecureFlag', {'enabled': enabled});
-    } on PlatformException catch (error) {
       logIgnored('app_lock', error);
     }
   }

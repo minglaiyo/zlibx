@@ -179,8 +179,6 @@
   "lockImmediately": "切后台立即锁定",
   "lockAfter1Min": "切后台 1 分钟后",
   "lockAfter5Min": "切后台 5 分钟后",
-  "secureRecents": "最近任务遮蔽",
-  "secureRecentsDesc": "系统最近任务里模糊本应用画面，并阻止截屏",
   "unlock": "解锁",
   "unlockFailed": "解锁失败，请重试",
   "appLockAuthReason": "解锁 zlibx",

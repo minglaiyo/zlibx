@@ -8,8 +8,8 @@ import '../../../utils/app_snack.dart';
 import 'section_header.dart';
 import 'settings_card.dart';
 
-/// 隐私锁设置区（用户批 2026-11-14 功能）：生物识别 / 设备凭据解锁 +
-/// 最近任务遮蔽。锁定逻辑在 [AppLockController]，生命周期钩子在
+/// 隐私锁设置区（用户批 2026-11-14 功能）：生物识别 / 设备凭据解锁。
+/// 锁定逻辑在 [AppLockController]，生命周期钩子在
 /// main.dart；这里只管开关与参数。
 class PrivacySection extends ConsumerStatefulWidget {
   const PrivacySection({super.key});
@@ -80,7 +80,6 @@ class _PrivacySectionState extends ConsumerState<PrivacySection> {
     final l10n = AppLocalizations.of(context)!;
     final enabled = ref.watch(appLockEnabledProvider);
     final timeoutSeconds = ref.watch(appLockTimeoutProvider);
-    final secureRecents = ref.watch(secureFlagProvider);
     final cs = Theme.of(context).colorScheme;
 
     final timeoutLabel = switch (timeoutSeconds) {
@@ -134,22 +133,6 @@ class _PrivacySectionState extends ConsumerState<PrivacySection> {
                   ),
                   onTap: () => _pickTimeout(timeoutSeconds),
                 ),
-              SwitchListTile(
-                title: Text(l10n.secureRecents),
-                subtitle: Text(
-                  l10n.secureRecentsDesc,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                ),
-                value: secureRecents,
-                isThreeLine: true,
-                activeThumbColor: cs.primary,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                onChanged: (value) {
-                  ref.read(secureFlagProvider.notifier).setEnabled(value);
-                },
-              ),
             ],
           ),
         ),

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../services/app_lock_service.dart';
 import '../services/storage_service.dart';
 import '../services/hive_service.dart';
 import '../utils/diagnostics.dart';
@@ -249,9 +248,8 @@ final randomRecommendProvider =
 
 /// ── 隐私锁（用户批 2026-11-14 功能）─────────────────────────────
 ///
-/// 三个持久化设置：启用开关、锁定时机（秒）、最近任务遮蔽（
-/// FLAG_SECURE）。锁定状态本身是运行时状态，见
-/// `lib/services/app_lock_service.dart` 的 AppLockController。
+/// 两个持久化设置：启用开关、锁定时机（秒）。锁定状态本身是运行时
+/// 状态，见 `lib/services/app_lock_service.dart` 的 AppLockController。
 class AppLockEnabledNotifier extends Notifier<bool> {
   @override
   bool build() => _load();
@@ -294,27 +292,6 @@ final appLockTimeoutProvider =
     NotifierProvider<AppLockTimeoutNotifier, int>(
       AppLockTimeoutNotifier.new,
     );
-
-class SecureFlagNotifier extends Notifier<bool> {
-  @override
-  bool build() => _load();
-
-  bool _load() {
-    final v = HiveService.settingsBox.get('secureRecents');
-    if (v is bool) return v;
-    return false;
-  }
-
-  Future<void> setEnabled(bool value) async {
-    state = value;
-    await HiveService.settingsBox.put('secureRecents', value);
-    // 窗口旗标跟着开关走；失败只记录（旗标是隐私增强，不是功能闸）。
-    await AppLockController.applySecureFlag(value);
-  }
-}
-
-final secureFlagProvider =
-    NotifierProvider<SecureFlagNotifier, bool>(SecureFlagNotifier.new);
 
 /// 无痕模式：开启后不记录浏览历史（app_routes 的详情入口）和搜索
 /// 记录（search_screen 的最近搜索）。历史/记录页照常显示旧内容，

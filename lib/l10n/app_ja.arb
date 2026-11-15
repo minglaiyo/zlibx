@@ -179,8 +179,6 @@
   "lockImmediately": "バックグラウンドですぐロック",
   "lockAfter1Min": "1 分後",
   "lockAfter5Min": "5 分後",
-  "secureRecents": "最近使用のタスクをぼかす",
-  "secureRecentsDesc": "システムの最近使用画面でこのアプリをぼかし、スクリーンショットを防ぎます",
   "unlock": "ロック解除",
   "unlockFailed": "ロック解除に失敗しました。再試行してください",
   "appLockAuthReason": "zlibx をロック解除",

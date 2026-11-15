@@ -63,13 +63,6 @@ void main() async {
   // request the notification permission (Android 13+) up front.
   DownloadForegroundService.register();
   unawaited(DownloadForegroundService.requestNotificationPermission());
-  // Privacy lock companion: re-apply FLAG_SECURE from the persisted
-  // setting (recents blur survives process restarts only if re-set).
-  // A throwaway read — the notifier reads the same key later.
-  final secureRecents = HiveService.settingsBox.get('secureRecents');
-  if (secureRecents is bool && secureRecents) {
-    unawaited(AppLockController.applySecureFlag(true));
-  }
   // 隐私锁：冷启动也要锁，而且必须在 runApp 之前判定。
   //
   // 之前锁的判定只挂在 didChangeAppLifecycleState 上，而内存里的

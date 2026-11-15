@@ -145,30 +145,6 @@ class MainActivity : FlutterFragmentActivity() {
                         val uri = call.argument<String>("uri")?.let(Uri::parse)
                         result.success(uri != null && openContent(uri))
                     }
-                    "setSecureFlag" -> {
-                        // Privacy lock companion: FLAG_SECURE blurs this
-                        // app in the recents screen and blocks screenshots.
-                        // Main thread — a window flag change must run there.
-                        val enabled = call.argument<Boolean>("enabled") ?: false
-                        runOnUiThread {
-                            try {
-                                if (enabled) {
-                                    window.setFlags(
-                                        android.view.WindowManager.LayoutParams.FLAG_SECURE,
-                                        android.view.WindowManager.LayoutParams.FLAG_SECURE,
-                                    )
-                                } else {
-                                    window.clearFlags(
-                                        android.view.WindowManager.LayoutParams.FLAG_SECURE,
-                                    )
-                                }
-                                result.success(true)
-                            } catch (e: Exception) {
-                                Log.w(TAG, "setSecureFlag failed", e)
-                                result.success(false)
-                            }
-                        }
-                    }
                     "deleteContent" -> {
                         val uri = call.argument<String>("uri")?.let(Uri::parse)
                         if (uri == null) {

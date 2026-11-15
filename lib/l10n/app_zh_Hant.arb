@@ -179,8 +179,6 @@
   "lockImmediately": "切後台立即鎖定",
   "lockAfter1Min": "切後台 1 分鐘後",
   "lockAfter5Min": "切後台 5 分鐘後",
-  "secureRecents": "最近工作遮蔽",
-  "secureRecentsDesc": "系統最近工作裡模糊本應用畫面，並阻止截屏",
   "unlock": "解鎖",
   "unlockFailed": "解鎖失敗，請重試",
   "appLockAuthReason": "解鎖 zlibx",

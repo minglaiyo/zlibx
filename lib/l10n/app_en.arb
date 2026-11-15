@@ -179,8 +179,6 @@
   "lockImmediately": "Immediately on background",
   "lockAfter1Min": "After 1 minute",
   "lockAfter5Min": "After 5 minutes",
-  "secureRecents": "Blur in Recents",
-  "secureRecentsDesc": "Blur this app in the system Recents screen and block screenshots",
   "unlock": "Unlock",
   "unlockFailed": "Unlock failed, please retry",
   "appLockAuthReason": "Unlock zlibx",

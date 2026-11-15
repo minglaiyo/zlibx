@@ -23,9 +23,9 @@ import 'package:zlibx/widgets/expressive_loading_indicator.dart';
 /// `LoadingWidget.page()`，接口慢 / 被墙时页面一直停在这一档，下拉完全没
 /// 反应，等于"刷新不了"。
 ///
-/// 2026-11-15 晚上另一条：app bar 的显式刷新按钮已去掉，下拉白圈也被置成
-/// 透明，两页剩下的唯一加载视觉是星型 blob，所以这里只测下拉一条路径；
-/// 末尾那条用例把"只剩星型"钉住，防止以后又叠一个圈回来。
+/// 2026-11-15 晚上：app bar 的显式刷新按钮已去掉，刷新只保留下拉一条路径；
+/// 下拉过程中可见的圆弧指示器（那时被置成透明，后来加回来了）和加载档的
+/// 星型 blob 分别负责手势反馈与请求反馈。末尾那条用例把两者都钉住。
 class _NoHiveAdaptive extends AdaptiveGridNotifier {
   _NoHiveAdaptive(this._value);
 
@@ -256,7 +256,7 @@ void main() {
   });
 
   for (final (title, isRecent) in [('热门', false), ('最新上架', true)]) {
-    testWidgets('$title：加载档只剩星型一种加载视觉', (tester) async {
+    testWidgets('$title：加载档的星型与下拉刷新动画都在', (tester) async {
       await _pumpStuckLoading(
         tester,
         screen: isRecent
@@ -266,10 +266,10 @@ void main() {
             ? recentBooksProvider
             : mostPopularBooksProvider,
       );
-      // 星型在，而且只此一个。
+      // 加载档的星型 blob。
       expect(find.byType(ExpressiveLoadingIndicator), findsOneWidget);
-      // 右上角那个刷新按钮（看着像个转圈的）已经拿掉。错误档里的重试
-      // 按钮仍带 Icons.refresh，那是入口不是加载动画，不在这条断言范围。
+      // 右上角那个刷新按钮仍然没有：刷新入口只保留下拉一条路径。错误档
+      // 里的重试按钮仍带 Icons.refresh，那是入口不是加载动画，不在此列。
       expect(
         find.descendant(
           of: find.byType(AppBar),
@@ -278,18 +278,27 @@ void main() {
         findsNothing,
         reason: '$title 的 app bar 又长出刷新按钮了',
       );
-      // 下拉白圈：弧线、底色、阴影三样都得是"画不出来"的值，否则刷新时
-      // 星型上面还会叠一个圆圈（截图里那个）。
+      // 下拉刷新动画必须画得出来：弧线、底色、阴影都得回到主题默认值。
+      // 这三样被置成透明 + elevation 0 的时候，下拉全程没有任何可见反馈，
+      // 用户不知道手势有没有被接住。
       final indicator = tester.widget<RefreshIndicator>(
         find.byType(RefreshIndicator),
       );
-      expect(indicator.color, Colors.transparent, reason: '下拉弧线又可见了');
+      expect(
+        indicator.color,
+        isNot(Colors.transparent),
+        reason: '下拉弧线被藏起来了',
+      );
       expect(
         indicator.backgroundColor,
-        Colors.transparent,
-        reason: '下拉白圈又可见了',
+        isNot(Colors.transparent),
+        reason: '下拉白圈被藏起来了',
       );
-      expect(indicator.elevation, 0, reason: '圈看不见但阴影还在');
+      expect(
+        indicator.elevation,
+        greaterThan(0),
+        reason: '下拉指示器没有阴影，等于看不见',
+      );
     });
   }
 }

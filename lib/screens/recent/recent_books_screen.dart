@@ -22,8 +22,9 @@ import '../../widgets/gradient_app_bar.dart';
 ///
 /// 刷新与热门页同构：下拉走 [_RecentBooksScreenState._refresh] 里的翻页
 /// 路径，加载 / 错误 / 空 / 数据四档都能下拉（每档都给一个可越界滚动的
-/// 外壳）。右上角的显式刷新按钮与下拉白圈已去掉，页面唯一的加载视觉是
-/// 星型 blob；错误档仍留着重试按钮兜底。
+/// 外壳）。右上角没有显式刷新按钮，下拉时 RefreshIndicator 的圆弧指示器
+/// 先给手势反馈，松手后再由加载档的星型 blob 表示请求还在跑；错误档仍留
+/// 着重试按钮兜底。
 ///
 /// 翻页（1→2→3→1 循环）：回退到 date 排序搜索时之前永远打第 1 页
 /// limit 20，刷新后内容不变。改成按页码分页（[recentBooksProvider] 是
@@ -71,13 +72,6 @@ class _RecentBooksScreenState extends ConsumerState<RecentBooksScreen> {
       appBar: GradientAppBar(title: l10n.recentlyAdded),
       body: RefreshIndicator(
         onRefresh: _refresh,
-        // 加载视觉全 App 只留星型 blob 一种：这里把默认那个白底圆圈 +
-        // 弧线指示器整体透明化，并把 elevation 归零，否则圆圈虽然看不见、
-        // 阴影还在。下拉手势、翻页逻辑、语义提示都不动——刷新时用户看到的
-        // 是加载档的星型（invalidate 后 AsyncValue 就回到 loading）。
-        color: Colors.transparent,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
         child: booksAsync.when(
           // 加载档也必须能下拉：RefreshIndicator 的手势靠子组件越界滚动
           // 触发，而 LoadingWidget.page() 是个 Center(Column)，滚不动。接口

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../providers/settings_provider.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../models/grid_columns_mode.dart';
+import '../../../providers/settings_provider.dart';
 import 'section_header.dart';
 import 'settings_card.dart';
 
@@ -59,8 +60,9 @@ class ThemeSection extends ConsumerWidget {
   }
 }
 
-/// Appearance bottom sheet — the five switches (follow system, dark mode,
-/// blur effect, floating bar, hide on scroll), in the same bottom-sheet
+/// Appearance bottom sheet — the look-and-feel switches (follow system, dark
+/// mode, blur effect, floating bar, hide on scroll, collapse description)
+/// plus the home grid's column-count chips, in the same bottom-sheet
 /// style as the language picker (drag handle, centred bold title,
 /// divider). Dismiss by dragging down or tapping outside; no Close button.
 class AppearanceSheet extends ConsumerWidget {
@@ -72,7 +74,7 @@ class AppearanceSheet extends ConsumerWidget {
     final blurEnabled = ref.watch(blurEnabledProvider);
     final floatingNav = ref.watch(floatingNavProvider);
     final hideNavOnScroll = ref.watch(hideNavOnScrollProvider);
-    final homeGridFourColumns = ref.watch(homeGridFourColumnsProvider);
+    final gridMode = ref.watch(homeGridColumnsModeProvider);
     final collapseDetailDescription = ref.watch(
       detailQuickActionsUpProvider,
     );
@@ -158,16 +160,38 @@ class AppearanceSheet extends ConsumerWidget {
                 }
               : null,
         ),
-        SwitchListTile(
-          title: Text(t.recommendationFourColumns),
-          value: homeGridFourColumns,
-          activeThumbColor: cs.primary,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-          onChanged: (value) {
-            ref
-                .read(homeGridFourColumnsProvider.notifier)
-                .setFourColumns(value);
-          },
+        // 推荐页列数：四档选择塞不进一个开关，所以这里用"标签 + 一排
+        // ChoiceChip"，和上下那些开关共用 16 的左右内边距。
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              t.recommendationGridColumns,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final mode in GridColumnsMode.values)
+                ChoiceChip(
+                  label: Text(_gridModeLabel(t, mode)),
+                  selected: mode == gridMode,
+                  // 已选中的那颗再点一次不反选——四档里没有"空"态。
+                  onSelected: (selected) {
+                    if (!selected) return;
+                    ref
+                        .read(homeGridColumnsModeProvider.notifier)
+                        .setMode(mode);
+                  },
+                ),
+            ],
+          ),
         ),
         SwitchListTile(
           title: Text(t.collapseDetailDescription),
@@ -192,3 +216,12 @@ class AppearanceSheet extends ConsumerWidget {
     );
   }
 }
+
+/// 四档列数的芯片文案。枚举顺序就是芯片顺序：自适应 → 2 → 3 → 4。
+String _gridModeLabel(AppLocalizations t, GridColumnsMode mode) =>
+    switch (mode) {
+      GridColumnsMode.auto => t.recommendationGridAuto,
+      GridColumnsMode.two => t.recommendationGridTwo,
+      GridColumnsMode.three => t.recommendationGridThree,
+      GridColumnsMode.four => t.recommendationGridFour,
+    };

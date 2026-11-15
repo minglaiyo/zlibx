@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/grid_columns_mode.dart';
 import '../services/storage_service.dart';
 import '../services/hive_service.dart';
 import '../utils/diagnostics.dart';
@@ -189,31 +190,46 @@ final hideNavOnScrollProvider =
       HideNavOnScrollNotifier.new,
     );
 
-/// 推荐页四列布局 — whether the home recommendation grid renders a
-/// fixed four-column layout (on) or the width-adaptive layout (off,
-/// default). Appearance setting; lives in the appearance sheet.
-class HomeGridFourColumnsNotifier extends Notifier<bool> {
+/// 推荐页列数 — 自适应（默认，手机 3 列、平板 4–8 列）/ 两列 / 三列 /
+/// 四列（官方 App 那种纯封面密排格）。外观设置，放在外观弹层里。
+///
+/// Hive key 是 `homeGridColumnsMode`（存枚举名）。上一版这里只有一个
+/// 布尔 `homeGridFourColumns`（开 = 四列密排），迁移时它仍然映射到
+/// [GridColumnsMode.four]；关掉的状态不再当成"手动选了两列"保留——
+/// 旧实现是按 maxCardWidth 估算列数（手机上实际只有 2 列），而新的
+/// auto 在手机上给 3 列，这正是这次改动要的可见变化。
+class HomeGridColumnsNotifier extends Notifier<GridColumnsMode> {
+  static const String _key = 'homeGridColumnsMode';
+
   @override
-  bool build() => _load();
+  GridColumnsMode build() => _load();
 
   /// Sync Hive read; returns the persisted value as the initial state
   /// instead of assigning it (see LocaleNotifier).
-  bool _load() {
-    final v = HiveService.settingsBox.get('homeGridFourColumns');
-    if (v is bool) return v;
-    return false;
+  GridColumnsMode _load() {
+    final v = HiveService.settingsBox.get(_key);
+    if (v is String) {
+      for (final mode in GridColumnsMode.values) {
+        if (mode.name == v) return mode;
+      }
+    }
+    // 旧键：只在用户真的打开过四列时才保留成手动档。没存过 = auto。
+    if (HiveService.settingsBox.get('homeGridFourColumns') == true) {
+      return GridColumnsMode.four;
+    }
+    return GridColumnsMode.auto;
   }
 
-  Future<void> setFourColumns(bool value) async {
-    state = value;
-    await HiveService.settingsBox.put('homeGridFourColumns', value);
+  Future<void> setMode(GridColumnsMode mode) async {
+    state = mode;
+    await HiveService.settingsBox.put(_key, mode.name);
   }
 }
 
-/// 推荐页四列布局 provider
-final homeGridFourColumnsProvider =
-    NotifierProvider<HomeGridFourColumnsNotifier, bool>(
-      HomeGridFourColumnsNotifier.new,
+/// 推荐页列数 provider
+final homeGridColumnsModeProvider =
+    NotifierProvider<HomeGridColumnsNotifier, GridColumnsMode>(
+      HomeGridColumnsNotifier.new,
     );
 
 /// 首页随机推荐 — whether the home feed shows random-category

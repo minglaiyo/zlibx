@@ -5,6 +5,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../routes/app_routes.dart';
+import '../../../theme/app_layout.dart';
 import '../../../utils/cover_cache.dart';
 import '../../../widgets/book_quick_actions_sheet.dart';
 import '../../../widgets/book_card.dart';
@@ -39,9 +40,9 @@ class HomeBookGrid extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 外观设置里的"推荐页四列布局"：开 = 固定 4 列；关（默认）= 按
-    // 卡片最大宽度自适应列数。
-    final fourColumns = ref.watch(homeGridFourColumnsProvider);
+    // 外观设置里的"推荐页列数"：自适应（默认）= 手机 3 列、平板按宽度
+    // 加列；两列 / 三列是手动档；四列 = 纯封面密排格。
+    final mode = ref.watch(homeGridColumnsModeProvider);
     // topPadding reserves the floating glass header's height inside the
     // scrollable, so the grid scrolls underneath the header (blurred)
     // instead of starting below it.
@@ -66,25 +67,23 @@ class HomeBookGrid extends ConsumerWidget {
 
           return LayoutBuilder(
             builder: (context, constraints) {
-              const maxCardWidth = 220.0;
-              const columnSpacing = 16.0;
-              const horizontalPadding = 20.0;
-              final gridWidth = (constraints.maxWidth - horizontalPadding * 2)
-                  .clamp(0.0, double.infinity);
-              final columnCount = fourColumns
-                  ? 4
-                  : (gridWidth / (maxCardWidth + columnSpacing)).ceil().clamp(
-                      1,
-                      double.infinity,
-                    );
-              final cardWidth =
-                  ((gridWidth - columnSpacing * (columnCount - 1)) /
-                          columnCount)
-                      .clamp(0.0, double.infinity);
+              // 列数和左右留白都问 AppLayout：手机 3 列，平板按宽度加列，
+              // 手动档直接给列数。传进来的是网格盒子自身的宽度，留白在
+              // 公式里扣。
+              final columns = AppLayout.gridColumns(
+                mode,
+                constraints.maxWidth,
+              );
+              final gutter = AppLayout.pageGutter(constraints.maxWidth);
+              final gridWidth = (constraints.maxWidth - gutter * 2).clamp(
+                0.0,
+                double.infinity,
+              );
 
-              // 四列模式 = 官方 App 风格的纯封面密排网格：无边框卡片、
-              // 无徽标、封面铺满、小间距。
-              if (fourColumns) {
+              // 四列档 = 官方 App 风格的纯封面密排网格：无边框卡片、
+              // 无徽标、封面铺满、小间距。它故意不走 AppLayout 的卡片
+              // 栅格参数（留白 12、间距 8、封面 2:3），只借用列数。
+              if (mode.coverTiles) {
                 final cellWidth = ((gridWidth - 8 * 3) / 4).clamp(
                   0.0,
                   double.infinity,
@@ -113,12 +112,17 @@ class HomeBookGrid extends ConsumerWidget {
                 );
               }
 
+              const columnSpacing = AppLayout.gridSpacing;
+              final cardWidth =
+                  ((gridWidth - columnSpacing * (columns - 1)) / columns)
+                      .clamp(0.0, double.infinity);
+
               return GridView.builder(
                 controller: scrollController,
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: EdgeInsets.fromLTRB(20, topPadding, 20, 96),
-                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: maxCardWidth,
+                padding: EdgeInsets.fromLTRB(gutter, topPadding, gutter, 96),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
                   mainAxisExtent: BookCard.compactHeightFor(cardWidth),
                   crossAxisSpacing: columnSpacing,
                   mainAxisSpacing: 12,

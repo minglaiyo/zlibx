@@ -9,7 +9,6 @@ import '../../routes/app_routes.dart';
 import '../../theme/app_layout.dart';
 import '../../widgets/book_card.dart';
 import '../../widgets/empty_state.dart';
-import '../../widgets/loading_widget.dart';
 import '../../widgets/entrance.dart';
 import '../../widgets/book_quick_actions_sheet.dart';
 import '../../utils/error_text.dart';
@@ -23,8 +22,8 @@ import '../../widgets/gradient_app_bar.dart';
 /// 刷新与热门页同构：下拉走 [_RecentBooksScreenState._refresh] 里的翻页
 /// 路径，加载 / 错误 / 空 / 数据四档都能下拉（每档都给一个可越界滚动的
 /// 外壳）。右上角没有显式刷新按钮，下拉时 RefreshIndicator 的圆弧指示器
-/// 先给手势反馈，松手后再由加载档的星型 blob 表示请求还在跑；错误档仍留
-/// 着重试按钮兜底。
+/// 先给手势反馈；加载档不再放任何指示器（星型 blob 已去掉），松手后页面
+/// 是空白的，等数据到了再出内容；错误档仍留着重试按钮兜底。
 ///
 /// 翻页（1→2→3→1 循环）：回退到 date 排序搜索时之前永远打第 1 页
 /// limit 20，刷新后内容不变。改成按页码分页（[recentBooksProvider] 是
@@ -74,14 +73,14 @@ class _RecentBooksScreenState extends ConsumerState<RecentBooksScreen> {
         onRefresh: _refresh,
         child: booksAsync.when(
           // 加载档也必须能下拉：RefreshIndicator 的手势靠子组件越界滚动
-          // 触发，而 LoadingWidget.page() 是个 Center(Column)，滚不动。接口
-          // 慢或这条线被墙时页面就停在这一档，既不能下拉也没有重试按钮，
-          // 整页没有任何刷新入口（首页三档状态用 _StatePane 包着）。
+          // 触发，所以这里给一个可滚的 ListView 外壳（星型 blob 已去掉，
+          // 里面只有一段空白）。接口慢或这条线被墙时页面就停在这一档，
+          // 只能下拉刷新，等数据到了再出内容（首页三档状态用 _StatePane
+          // 包着）。
           loading: () => ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             children: [
               SizedBox(height: MediaQuery.of(context).size.height * 0.2),
-              const LoadingWidget.page(),
             ],
           ),
           error: (error, _) => ListView(

@@ -13,7 +13,6 @@ import '../../widgets/book_quick_actions_sheet.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/entrance.dart';
 import '../../widgets/gradient_app_bar.dart';
-import '../../widgets/loading_widget.dart';
 
 /// 热门——官网首页"最受欢迎"栏目的承载页。`/eapi/book/most_popular`
 /// 的一次快照（约 20 本；接口回 404 / success:0 / 空列表时插件自动
@@ -22,8 +21,9 @@ import '../../widgets/loading_widget.dart';
 /// 刷新走下拉一条路径（[_PopularBooksScreenState._refresh] 里的翻页），
 /// AsyncValue 的加载 / 错误 / 空 / 数据四档都能触发下拉——手势靠子组件
 /// 越界滚动，所以四档各给一个可滚的外壳。右上角没有显式刷新按钮，下拉时
-/// RefreshIndicator 的圆弧指示器先给手势反馈（悬挂在顶部），松手后再由
-/// 加载档的星型 blob 表示请求还在跑。
+/// RefreshIndicator 的圆弧指示器先给手势反馈（悬挂在顶部）；加载档不再
+/// 放任何指示器（星型 blob 已去掉），松手后页面是空白的，等数据到了再
+/// 出内容。
 ///
 /// 翻页（1→2→3→1 循环）：热门与最新两页的接口回退到 search 时，之前
 /// 永远打第 1 页 limit 20，刷新后内容完全不变，用户看到的就是"加载
@@ -80,15 +80,14 @@ class _PopularBooksScreenState extends ConsumerState<PopularBooksScreen> {
         onRefresh: _refresh,
         child: booksAsync.when(
           // 加载档也必须能下拉：RefreshIndicator 的手势靠子组件越界滚动
-          // 触发，而 LoadingWidget.page() 是个 Center(Column)，滚不动。接口
-          // 慢或这条线被墙时页面就停在这一档，既不能下拉也没有重试按钮，
-          // 整页没有任何刷新入口（首页三档状态用 _StatePane 包着，同一个
-          // 道理，见 home_book_grid.dart）。
+          // 触发，所以这里给一个可滚的 ListView 外壳（星型 blob 已去掉，
+          // 里面只有一段空白）。接口慢或这条线被墙时页面就停在这一档，
+          // 只能下拉刷新，等数据到了再出内容（首页三档状态用 _StatePane
+          // 包着，同一个道理，见 home_book_grid.dart）。
           loading: () => ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             children: [
               SizedBox(height: MediaQuery.of(context).size.height * 0.2),
-              const LoadingWidget.page(),
             ],
           ),
           error: (error, _) => ListView(

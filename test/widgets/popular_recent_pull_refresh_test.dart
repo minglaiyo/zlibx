@@ -24,8 +24,9 @@ import 'package:zlibx/widgets/expressive_loading_indicator.dart';
 /// 反应，等于"刷新不了"。
 ///
 /// 2026-11-15 晚上：app bar 的显式刷新按钮已去掉，刷新只保留下拉一条路径；
-/// 下拉过程中可见的圆弧指示器（那时被置成透明，后来加回来了）和加载档的
-/// 星型 blob 分别负责手势反馈与请求反馈。末尾那条用例把两者都钉住。
+/// 下拉过程中可见的圆弧指示器（那时被置成透明，后来加回来了）负责手势反馈，
+/// 加载档的星型 blob 已去掉（2026-11-15 深夜），加载时页面是空白的。末尾
+/// 那条用例把“没有星型 + 下拉动画还在”钉住。
 class _NoHiveAdaptive extends AdaptiveGridNotifier {
   _NoHiveAdaptive(this._value);
 
@@ -256,7 +257,7 @@ void main() {
   });
 
   for (final (title, isRecent) in [('热门', false), ('最新上架', true)]) {
-    testWidgets('$title：加载档的星型与下拉刷新动画都在', (tester) async {
+    testWidgets('$title：加载档没有星型，下拉刷新动画还在', (tester) async {
       await _pumpStuckLoading(
         tester,
         screen: isRecent
@@ -266,8 +267,8 @@ void main() {
             ? recentBooksProvider
             : mostPopularBooksProvider,
       );
-      // 加载档的星型 blob。
-      expect(find.byType(ExpressiveLoadingIndicator), findsOneWidget);
+      // 加载档的星型 blob 已去掉：这里不能再有任何加载视觉。
+      expect(find.byType(ExpressiveLoadingIndicator), findsNothing);
       // 右上角那个刷新按钮仍然没有：刷新入口只保留下拉一条路径。错误档
       // 里的重试按钮仍带 Icons.refresh，那是入口不是加载动画，不在此列。
       expect(

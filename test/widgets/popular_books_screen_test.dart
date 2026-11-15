@@ -119,7 +119,7 @@ void main() {
       create: (ref) => Future.error(StateError('synthetic boom')),
     );
     expect(find.byType(BookCard), findsNothing);
-    // 右上角 app bar 的刷新按钮已去掉（加载视觉只留星型一种），本页
+    // 右上角 app bar 的刷新按钮已去掉（加载档现在没有任何视觉），本页
     // 剩下的唯一 Icons.refresh 是错误态的重试按钮。
     expect(find.byIcon(Icons.refresh), findsOneWidget);
     // 重试按钮触发 invalidate：新的 provider 构建再次失败也只刷新

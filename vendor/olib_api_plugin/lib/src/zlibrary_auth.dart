@@ -313,20 +313,39 @@ mixin ZLibraryAuth on ZLibraryApiBase {
   Future<ApiResponse<User>> getProfile() async {
     final raw = await _get('/eapi/user/profile');
     if (raw.json == null) {
-      return ApiResponse.fail(raw.error ?? 'profile failed',
-          statusCode: raw.status);
+      // Nothing parsed: the transport said something about the LINE (wall
+      // page, 5xx, 429, empty or non-JSON body, cancelled request). Only a
+      // bare 401 may blame the credentials from here.
+      return ApiResponse.fail(
+        raw.error ?? 'profile failed',
+        statusCode: raw.status,
+        authRejected: raw.authRejected,
+      );
     }
     final json = raw.json!;
     if (!ZLibraryApiBase._isSuccess(json)) {
+      // A JSON answer IS the server speaking — but `success: 0` covers
+      // "slow down" and "solve the challenge" as well, and a message-less
+      // one says nothing at all. Wiping credentials on those is the
+      // 重进 App 掉登录 this replaced (2026-11-15), so a rejection needs the
+      // server's own words about the session.
+      final message = (json['error'] ?? json['message'])?.toString().trim();
       return ApiResponse.fail(
-        (json['error'] ?? json['message'])?.toString() ?? 'profile failed',
+        (message == null || message.isEmpty) ? 'profile failed' : message,
         statusCode: raw.status,
+        authRejected:
+            raw.authRejected || ZLibraryApiBase.rejectsSessionMessage(message),
       );
     }
     final userJson = ZLibraryApiBase._userJson(json);
     if (userJson == null) {
-      return ApiResponse.fail('profile response had no user',
-          statusCode: raw.status);
+      // success:1 with a payload we cannot read: a broken or half-served
+      // answer, not a rejected login.
+      return ApiResponse.fail(
+        'profile response had no user',
+        statusCode: raw.status,
+        authRejected: raw.authRejected,
+      );
     }
     return ApiResponse.ok(_withSessionKey(User.fromJson(userJson)));
   }

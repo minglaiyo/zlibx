@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../services/hive_service.dart';
+import 'auth_provider.dart';
 
 /// Default mirror host.
 const defaultDomain = 'bookroom.lifestyle';
@@ -48,5 +49,15 @@ String resolveInitialDomain() {
 /// initialized in main() before runApp, so settingsBox is open by the
 /// time any provider can be created.
 final zlibraryApiProvider = Provider<ZLibraryApi>((ref) {
-  return ZLibraryApi(domain: resolveInitialDomain());
+  final api = ZLibraryApi(domain: resolveInitialDomain());
+  // Mid-session credential rejection (401 / the server's own words about
+  // the session) has to reach the auth state: without it the app just shows
+  // empty screens and keeps sending the refused pair until the next cold
+  // boot. Wired here, at the one place the real client is built — tests
+  // override this provider with fakes that carry no such field — and read
+  // lazily inside the callback, so the two providers do not form a cycle
+  // (AuthNotifier reads this one while building).
+  api.onSessionRejected =
+      () => ref.read(authProvider.notifier).handleSessionRejected();
+  return api;
 });

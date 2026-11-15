@@ -545,7 +545,56 @@ abstract class ZLibraryApiBase {
     return parts.join('&');
   }
 
+  /// Called at most once per rejection episode when the line refuses the
+  /// session pair this client carries: an HTTP 401, or a JSON error body
+  /// whose own message rejects the session.
+  ///
+  /// Without a hook the app only sees the empty or failing screens a
+  /// dead session produces — mid-session nothing ever reached the auth
+  /// state, so a rejected pair stayed in place until the next cold boot
+  /// (2026-11-15, module 2: “401 不续期”). The app answers by re-verifying the
+  /// pair once: a proxy that 401s a still-valid session then costs one
+  /// profile call, and a genuinely rejected pair ends in a deliberate
+  /// logout with a message instead of silent breakage.
+  ///
+  /// Only fired while a pair is installed, and only again after some
+  /// call succeeded — a page of failing requests must not start one
+  /// re-verification per request.
+  void Function()? onSessionRejected;
+
+  bool _sessionRejectionReported = false;
+
+  /// Single funnel for every answer: [_rawFromResponse] and
+  /// [_rawFromError] are what all the request helpers return, so the
+  /// rejection bookkeeping lives in one place.
   _Raw _fromResponse(Response<String> res) {
+    final raw = _rawFromResponse(res);
+    _noticeSessionRejection(raw);
+    return raw;
+  }
+
+  _Raw _fromError(DioException e) {
+    final raw = _rawFromError(e);
+    _noticeSessionRejection(raw);
+    return raw;
+  }
+
+  void _noticeSessionRejection(_Raw raw) {
+    // An anonymous request that 401s says nothing about a stored pair.
+    if (_userId == null || _userKey == null) return;
+    if (!raw.authRejected) {
+      // A usable answer with this pair: arm the notice again, so a
+      // later rejection counts as a new episode. A transport failure
+      // (no JSON at all) must not re-arm while we are mid-retry.
+      if (raw.json != null) _sessionRejectionReported = false;
+      return;
+    }
+    if (_sessionRejectionReported) return;
+    _sessionRejectionReported = true;
+    onSessionRejected?.call();
+  }
+
+  _Raw _rawFromResponse(Response<String> res) {
     final body = res.data ?? '';
     final status = res.statusCode;
     final cookies = res.headers['set-cookie'] ?? const <String>[];
@@ -562,7 +611,19 @@ abstract class ZLibraryApiBase {
     try {
       final decoded = jsonDecode(body);
       if (decoded is Map<String, dynamic>) {
-        return _Raw(status: status, json: decoded, cookies: cookies);
+        // A JSON failure that answers HTTP 200 (eapi says `success: 0`
+        // with the reason in the body) is the same kind of verdict as a
+        // JSON failure that answers 400 — including about the session.
+        // Without this the 401-in-a-200 case would set `authRejected` in
+        // `getProfile` but never reach the rejection hook below, so the
+        // two paths would disagree about the same answer.
+        return _Raw(
+          status: status,
+          json: decoded,
+          cookies: cookies,
+          rejectedByMessage: !_isSuccess(decoded) &&
+              rejectsSessionMessage(_jsonErrorMessage(decoded)),
+        );
       }
       return _Raw(status: status, error: 'unexpected response format');
     } on FormatException {
@@ -582,7 +643,7 @@ abstract class ZLibraryApiBase {
     }
   }
 
-  _Raw _fromError(DioException e) {
+  _Raw _rawFromError(DioException e) {
     final res = e.response;
     final status = res?.statusCode;
     final body = res?.data?.toString() ?? '';
@@ -621,10 +682,8 @@ abstract class ZLibraryApiBase {
           try {
             final decoded = jsonDecode(body);
             if (decoded is Map<String, dynamic>) {
-              final msg = (decoded['error'] ?? decoded['message'])
-                  ?.toString()
-                  .trim();
-              if (msg != null && msg.isNotEmpty) {
+              final msg = _jsonErrorMessage(decoded);
+              if (msg != null) {
                 // Server error texts carry HTML markup (e.g. the
                 // "Some errors occured" 500 wraps its identifier in
                 // <b>…</b><br>); strip it here, at the source, so no
@@ -632,7 +691,11 @@ abstract class ZLibraryApiBase {
                 // is the path the booklist remove/delete 500s take —
                 // the JSON success:0 branch already strips, this one
                 // did not.
-                return _Raw(status: status, error: _plainError(msg, msg));
+                return _Raw(
+                  status: status,
+                  error: _plainError(msg, msg),
+                  rejectedByMessage: rejectsSessionMessage(msg),
+                );
               }
             }
           } on FormatException {
@@ -698,6 +761,60 @@ abstract class ZLibraryApiBase {
         lower.contains('cf-challenge') ||
         lower.contains('just a moment') ||
         lower.contains('attention required');
+  }
+
+  /// Words that mean "this session pair is not acceptable".
+  ///
+  /// Deliberately a narrow POSITIVE list, and the only place besides
+  /// `getProfile` where a server string may decide something about the
+  /// credentials: callers use it to choose a destructive action (drop the
+  /// stored pair, re-verify the session), so an unrecognised message costs a
+  /// retry while a false hit costs the user their password.
+  static const _sessionRejectionWords = <String>[
+    'invalid user',
+    'invalid key',
+    'invalid token',
+    'userkey',
+    'user key',
+    'unauthorized',
+    'unauthenticated',
+    'not authorized',
+    'not logged in',
+    'login required',
+    'wrong password',
+    'bad login',
+    'expired',
+    'permission denied',
+  ];
+
+  /// Rejections of the REQUEST, not of the session. They win over the list
+  /// above: a busy mirror answering "too many requests, try again" must not
+  /// read as a bad password.
+  static const _notASessionRejection = <String>[
+    'too many',
+    'frequent',
+    'rate limit',
+    'captcha',
+    'try again',
+    'temporarily',
+    'maintenance',
+    'slow down',
+  ];
+
+  /// The server's own words in a JSON error body: eapi uses `error`,
+  /// papi-style payloads use `message`. Null when the object carries
+  /// neither (or only blanks).
+  static String? _jsonErrorMessage(Map<String, dynamic> json) {
+    final msg = (json['error'] ?? json['message'])?.toString().trim();
+    return (msg == null || msg.isEmpty) ? null : msg;
+  }
+
+  /// True when a server-supplied error message rejects the stored session.
+  static bool rejectsSessionMessage(String? message) {
+    if (message == null) return false;
+    final m = message.toLowerCase();
+    if (_notASessionRejection.any(m.contains)) return false;
+    return _sessionRejectionWords.any(m.contains);
   }
 
   /// eapi success is `success: 1` (sometimes `true`); some list endpoints
@@ -868,12 +985,24 @@ class _Raw {
   /// (fetched with `Accept: text/html`).
   final String? body;
 
+  /// HTTP 401, or a JSON error body whose own message rejects the session:
+  /// the line looked at the `remix_*` pair this call carried and refused it.
+  /// The only answers that say something about the credentials — a wall
+  /// page, a 5xx, a 429 or a non-JSON body say something about the LINE,
+  /// which is why they are not here. See `ApiResponse.authRejected`.
+  bool get authRejected => status == 401 || rejectedByMessage;
+
+  /// Set by [_fromError] when a JSON error body's message rejects the
+  /// session (see [rejectsSessionMessage]).
+  final bool rejectedByMessage;
+
   const _Raw({
     this.status,
     this.json,
     this.error,
     this.cookies = const <String>[],
     this.body,
+    this.rejectedByMessage = false,
   });
 }
 

@@ -268,6 +268,17 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     // line error); the wait is bounded by the API client's own timeouts.
     await ref.read(authProvider.notifier).ready;
     if (!mounted) return;
+    if (ref.read(authProvider).storageUnavailable) {
+      // The local key store would not answer, so nothing was known about a
+      // session that is still on disk. AuthStorage already retried the read;
+      // one more whole attempt here costs a Keystore round trip and keeps a
+      // blip from putting a signed-in user on the login page (which reads
+      // exactly like 掉登录, and tempts them to retype a password).
+      // Bounded: a second failure routes normally instead of looping.
+      ref.invalidate(authProvider);
+      await ref.read(authProvider.notifier).ready;
+      if (!mounted) return;
+    }
     if (ref.read(authProvider).isAuthenticated) {
       _goHome();
     } else {

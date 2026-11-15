@@ -138,6 +138,12 @@ class _FakeAdapter implements HttpClientAdapter {
       'remixUserkey': _sessionUserKey,
     },
   };
+  // The status the profile endpoint answers with (the session-verdict
+  // tests drive 401 / 429 / 503 through it).
+  int profileStatusCode = 200;
+  // When set, the profile answers with this body verbatim instead of
+  // [profilePayload] — a wall page or any other non-JSON answer.
+  String? profileRawBody;
 
   @override
   Future<ResponseBody> fetch(
@@ -150,7 +156,15 @@ class _FakeAdapter implements HttpClientAdapter {
     requestedHeaders.add(Map<String, dynamic>.from(options.headers));
     final uri = options.uri;
     if (uri.path == _profilePath) {
-      return _json(profilePayload);
+      final raw = profileRawBody;
+      if (raw != null) {
+        return ResponseBody.fromString(
+          raw,
+          profileStatusCode,
+          headers: {Headers.contentTypeHeader: ['text/html']},
+        );
+      }
+      return _json(profilePayload, statusCode: profileStatusCode);
     }
     if (uri.path == _filePath) {
       fileCalls++;
@@ -600,6 +614,116 @@ void main() {
 
       expect(await File(path).readAsBytes(), _epubBytes);
       expect(adapter.linkCalls, 2);
+    });
+  });
+
+  // Which answers may blame the stored credentials — the verdict the app
+  // needs before it dares to delete anything (module 2).
+  group('session-rejection verdicts', () {
+    test('a bare 401 blames the session', () async {
+      final adapter = _FakeAdapter();
+      final api = await _loggedInApi(adapter);
+      var notices = 0;
+      api.onSessionRejected = () => notices++;
+
+      adapter.profileStatusCode = 401;
+      final res = await api.getProfile();
+
+      expect(res.success, isFalse);
+      expect(res.authRejected, isTrue);
+      expect(notices, 1);
+    });
+
+    test('an HTTP 200 whose payload rejects the key blames the session too',
+        () async {
+      // eapi answers a dead session as `success: 0` with the reason in the
+      // body, on a 200. The 401 case and this one must not disagree.
+      final adapter = _FakeAdapter();
+      final api = await _loggedInApi(adapter);
+      var notices = 0;
+      api.onSessionRejected = () => notices++;
+
+      adapter.profilePayload = const {
+        'success': 0,
+        'error': 'Invalid userkey',
+      };
+      final res = await api.getProfile();
+
+      expect(res.success, isFalse);
+      expect(res.authRejected, isTrue);
+      expect(notices, 1);
+    });
+
+    test('a rate limit is not a rejected session', () async {
+      final adapter = _FakeAdapter();
+      final api = await _loggedInApi(adapter);
+      var notices = 0;
+      api.onSessionRejected = () => notices++;
+
+      adapter
+        ..profileStatusCode = 429
+        ..profilePayload = const {
+          'success': 0,
+          'error': 'Too many requests, please try again later',
+        };
+      final res = await api.getProfile();
+
+      // The one false-positive class this verdict cannot afford: a busy
+      // line would otherwise delete a good password.
+      expect(res.success, isFalse);
+      expect(res.authRejected, isFalse);
+      expect(notices, 0);
+    });
+
+    test('a wall page is not a rejected session', () async {
+      final adapter = _FakeAdapter();
+      final api = await _loggedInApi(adapter);
+      var notices = 0;
+      api.onSessionRejected = () => notices++;
+
+      adapter
+        ..profileStatusCode = 503
+        ..profileRawBody = '<html>Sorry, Cloudflare 503: Attention Required'
+            '</html>';
+      final res = await api.getProfile();
+
+      expect(res.error, 'cf_blocked');
+      expect(res.authRejected, isFalse);
+      expect(notices, 0);
+    });
+
+    test('a page of rejections starts one notice, and a good answer re-arms',
+        () async {
+      final adapter = _FakeAdapter();
+      final api = await _loggedInApi(adapter);
+      var notices = 0;
+      api.onSessionRejected = () => notices++;
+
+      adapter.profileStatusCode = 401;
+      await api.getProfile();
+      await api.getProfile();
+      await api.getProfile();
+      expect(notices, 1, reason: 'one re-verification, not one per request');
+
+      adapter.profileStatusCode = 200;
+      await api.getProfile();
+      adapter.profileStatusCode = 401;
+      await api.getProfile();
+      expect(notices, 2, reason: 'a new episode gets a new notice');
+    });
+
+    test('an anonymous 401 says nothing about a stored pair', () async {
+      // Nothing is installed, so there is no session to re-verify: firing
+      // here would wake the auth layer on every public page that 401s.
+      final adapter = _FakeAdapter()..profileStatusCode = 401;
+      final api = _apiWith(adapter);
+      var notices = 0;
+      api.onSessionRejected = () => notices++;
+
+      final res = await api.getProfile();
+
+      expect(res.authRejected, isTrue);
+      expect(notices, 0);
     });
   });
 

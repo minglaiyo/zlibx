@@ -37,6 +37,13 @@ class AuthStorage {
 
   static Future<void>? _migration;
 
+  /// Attempts [getCredentials] makes before giving up on the key store.
+  static const int _credentialReadAttempts = 3;
+
+  /// Growth step between attempts (100 ms, 200 ms, 300 ms): long enough for
+  /// a busy Keystore to free up, short enough to stay inside the splash.
+  static const Duration _credentialReadBackoff = Duration(milliseconds: 100);
+
   /// One-time move of legacy plaintext Hive credentials into secure
   /// storage. Single-flight: concurrent callers all await the same run, so
   /// nobody reads an empty secure store while the move is in progress. On
@@ -128,14 +135,35 @@ class AuthStorage {
   }
 
   /// Retrieve stored credentials.
+  ///
+  /// The Android Keystore / iOS Keychain occasionally refuses a read
+  /// (`GenericIOException` / `BadPaddingException` after an update, a busy
+  /// keystore), and a second attempt usually succeeds. Retrying locally is
+  /// the difference between a slow boot and a user who looks logged out with
+  /// a valid session on disk, so this retries the whole batch — a partial
+  /// read is never returned. When every attempt fails the caller gets a
+  /// [CredentialStorageUnavailable] it can distinguish from "no
+  /// credentials", and nothing here deletes anything.
   Future<Map<String, String?>> getCredentials() async {
-    await _migrateLegacyIfNeeded();
-    return {
-      'userId': await SecureStorage.read(_keyUserId),
-      'userKey': await SecureStorage.read(_keyUserKey),
-      'email': await SecureStorage.read(_keyUserEmail),
-      'name': await SecureStorage.read(_keyUserName),
-    };
+    Object? lastError;
+    for (var attempt = 1; attempt <= _credentialReadAttempts; attempt++) {
+      if (attempt > 1) {
+        await Future<void>.delayed(_credentialReadBackoff * attempt);
+      }
+      try {
+        await _migrateLegacyIfNeeded();
+        return {
+          'userId': await SecureStorage.read(_keyUserId),
+          'userKey': await SecureStorage.read(_keyUserKey),
+          'email': await SecureStorage.read(_keyUserEmail),
+          'name': await SecureStorage.read(_keyUserName),
+        };
+      } on Object catch (e) {
+        lastError = e;
+        logIgnored('auth_storage', e);
+      }
+    }
+    throw CredentialStorageUnavailable(lastError!);
   }
 
   /// Clear all stored credentials, including the saved-accounts list:
@@ -220,4 +248,20 @@ class AuthStorage {
       await SecureStorage.write(_keyAccounts, jsonEncode(accounts));
     });
   }
+}
+
+/// The local key store did not answer [AuthStorage.getCredentials] after its
+/// retries.
+///
+/// This is neither "no session stored" nor "the session was rejected": the
+/// credentials are still on disk and untouched, so the caller must not route
+/// the user to the login page as an anonymous visitor — surface a retry
+/// instead (see `AuthState.storageUnavailable`).
+class CredentialStorageUnavailable implements Exception {
+  const CredentialStorageUnavailable(this.cause);
+
+  final Object cause;
+
+  @override
+  String toString() => 'CredentialStorageUnavailable: $cause';
 }

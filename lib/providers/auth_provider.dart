@@ -21,11 +21,17 @@ class AuthState {
   /// User is treated as logged in via cached credentials, but UI should suggest switching.
   final bool lineUnavailable;
 
+  /// The local key store refused to answer at boot (Keystore error). The
+  /// stored session says nothing either way, so it is left untouched and
+  /// this is NOT "signed out": the UI should offer a retry.
+  final bool storageUnavailable;
+
   AuthState({
     this.user,
     this.isLoading = false,
     this.error,
     this.lineUnavailable = false,
+    this.storageUnavailable = false,
   });
 
   bool get isAuthenticated => user != null;
@@ -35,12 +41,14 @@ class AuthState {
     bool? isLoading,
     String? error,
     bool? lineUnavailable,
+    bool? storageUnavailable,
   }) {
     return AuthState(
       user: user ?? this.user,
       isLoading: isLoading ?? this.isLoading,
       error: error ?? this.error,
       lineUnavailable: lineUnavailable ?? this.lineUnavailable,
+      storageUnavailable: storageUnavailable ?? this.storageUnavailable,
     );
   }
 }
@@ -84,7 +92,19 @@ class AuthNotifier extends Notifier<AuthState> {
     final epoch = _epoch;
     final completer = _readyCompleter;
     try {
-      final credentials = await _storage.getCredentials();
+      final Map<String, String?> credentials;
+      try {
+        credentials = await _storage.getCredentials();
+      } on CredentialStorageUnavailable catch (e) {
+        if (!_isCurrent(epoch)) return;
+        // The local key store would not answer — after AuthStorage retried.
+        // That says nothing about the stored pair, so nothing is cleared and
+        // the caller can retry; reporting it as "signed out" sent users to
+        // the login page with a perfectly good session on disk.
+        logIgnored('auth_provider', e);
+        state = AuthState(storageUnavailable: true, error: e.toString());
+        return;
+      }
       if (!_isCurrent(epoch)) return;
       final userId = credentials['userId'];
       final userKey = credentials['userKey'];
@@ -121,17 +141,25 @@ class AuthNotifier extends Notifier<AuthState> {
 
         if (response.success && response.data != null) {
           state = AuthState(user: response.data);
-        } else if (response.error == 'cf_blocked' ||
-            _isTransientError(response.error)) {
-          // Line is unreachable — keep credentials, suggest switching.
-          state = AuthState(user: cachedUser(), lineUnavailable: true);
-        } else {
-          // Real auth failure (e.g. invalid token) — drop creds, and make
-          // sure the plugin instance no longer holds the rejected pair.
+        } else if (response.authRejected) {
+          // The line read the pair itself and said no (401, or the server's
+          // own message about the session) — drop creds, and make sure the
+          // plugin instance no longer holds the rejected pair. This is the
+          // ONLY branch allowed to delete anything at boot.
           _api.clearSession();
           await _storage.clearCredentials();
+          unawaited(_dropWebViewSession());
           if (!_isCurrent(epoch)) return;
           state = AuthState();
+        } else {
+          // No verdict about the credentials: a wall page, a 5xx / 429, an
+          // empty or non-JSON body, a success:0 that only says "slow down",
+          // a payload without a user object, a cancelled call. Keep the
+          // pair and suggest another line — clearing it here is what the
+          // substring table used to do to every one of those, and it is the
+          // reported 重进 App 掉登录: `clearCredentials` also deletes the
+          // saved-accounts list, so a bad network day cost the password.
+          state = AuthState(user: cachedUser(), lineUnavailable: true);
         }
       } catch (e) {
         if (!_isCurrent(epoch)) return;
@@ -149,12 +177,16 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
-  /// Heuristic: treat connection/timeout errors as transient line problems,
-  /// not auth failures. We don't want to wipe credentials over a network blip.
+  /// Heuristic: the LINE failed, the credentials said nothing. Connection
+  /// errors and the wall pages are line problems — we don't wipe credentials
+  /// over a network blip, and we don't blame the session either. This is now
+  /// only the hint that marks the line unavailable in [reverify]; the
+  /// destructive verdict comes from `ApiResponse.authRejected` alone.
   bool _isTransientError(String? error) {
     if (error == null) return false;
     final e = error.toLowerCase();
-    return e.contains('line_error') ||
+    return e.contains('cf_blocked') ||
+        e.contains('line_error') ||
         e.contains('timeout') ||
         e.contains('socket') ||
         e.contains('connection') ||
@@ -164,6 +196,15 @@ class AuthNotifier extends Notifier<AuthState> {
         e.contains('failed host lookup') ||
         e.contains('request failed');
   }
+
+  /// The WebView cookie jar is the second holder of the same pair: a solve
+  /// flow or the online reader installs `remix_userid` / `remix_userkey`
+  /// there, and that store is plain on-disk SQLite. A logout that only
+  /// cleared the API and the Keystore left the refused pair sitting in the
+  /// jar for the current line, so every path that decides a pair is dead
+  /// drops it here too (best effort — [deleteSessionCookies] never throws).
+  Future<void> _dropWebViewSession() =>
+      deleteSessionCookies(pageUrl: 'https://${_api.domain}/');
 
   Future<bool> login(String email, String password) async {
     ChallengeHtmlCache.clear();
@@ -332,11 +373,58 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  /// The plugin just watched the current line refuse the pair it carries
+  /// (see `ZLibraryApiBase.onSessionRejected`): an HTTP 401, or a `success: 0`
+  /// whose message is about the session. Nothing in the app used to react —
+  /// the pair stayed in memory and on disk, so every later request failed the
+  /// same way while the UI still showed a signed-in avatar.
+  ///
+  /// Re-verify once against the real profile endpoint instead of trusting one
+  /// 401 from an endpoint in front of the account API:
+  ///
+  ///  * the profile loads again → the refusal came from something upstream
+  ///    (a proxy, a half-cleared cookie jar, an endpoint that 401s for other
+  ///    reasons) and the session stays exactly where it was;
+  ///  * the profile refuses the pair too → [reverify] logs out with the
+  ///    server's reason, which is the honest end of a session the server
+  ///    killed (key rotation, password change, "log out everywhere");
+  ///  * the line gives no verdict → [reverify] keeps the user and marks the
+  ///    line unavailable.
+  ///
+  /// Guarded so a page whose dozen requests all 401 starts exactly one check,
+  /// and so the check's own rejection cannot recurse into itself.
+  bool _sessionRecheckRunning = false;
+
+  Future<void> handleSessionRejected() async {
+    if (_sessionRecheckRunning) return;
+    // Nothing to heal while the app does not believe it is signed in: the
+    // user is already on the login page, and wiping here would also race a
+    // login flow that is mid-flight.
+    if (!state.isAuthenticated) return;
+    _sessionRecheckRunning = true;
+    try {
+      await reverify();
+    } finally {
+      _sessionRecheckRunning = false;
+    }
+  }
+
   /// Re-verify the current line/credentials. Used after the user switches
-  /// network line to refresh the lineUnavailable flag and pick up real profile.
+  /// network line, and after the plugin reports a refusal, to refresh the
+  /// lineUnavailable flag and pick up the real profile.
   Future<void> reverify() async {
     final epoch = _epoch;
-    final credentials = await _storage.getCredentials();
+    final Map<String, String?> credentials;
+    try {
+      credentials = await _storage.getCredentials();
+    } on CredentialStorageUnavailable catch (error) {
+      if (!_isCurrent(epoch)) return;
+      logIgnored('auth_provider', error);
+      // Same rule as boot: a key store that will not answer is not a logout,
+      // and there is nothing to re-send anyway.
+      state = state.copyWith(storageUnavailable: true);
+      return;
+    }
     if (!_isCurrent(epoch)) return;
     final userId = credentials['userId'];
     final userKey = credentials['userKey'];
@@ -347,13 +435,23 @@ class AuthNotifier extends Notifier<AuthState> {
       if (!_isCurrent(epoch)) return;
       if (response.success && response.data != null) {
         state = AuthState(user: response.data);
-      } else if (response.error == 'cf_blocked' ||
-          _isTransientError(response.error)) {
+      } else if (response.authRejected) {
+        // The line read the pair and said no — and this call asked it twice
+        // (the refusal is what started the re-check). Clearing here is what a
+        // dead session actually needs: keeping it would fail every request
+        // while the UI still claimed a signed-in user.
+        _api.clearSession();
+        await _storage.clearCredentials();
+        await _dropWebViewSession();
+        if (!_isCurrent(epoch)) return;
+        invalidateAccountScopedProviders(ref);
+        state = AuthState(error: response.error ?? 'session rejected');
+      } else if (_isTransientError(response.error)) {
         // Still unreachable — keep current user but mark line unavailable.
         state = state.copyWith(lineUnavailable: true);
       }
       // Other errors: leave existing state alone; user can logout manually.
-    } catch (error) {
+    } on Object catch (error) {
       if (!_isCurrent(epoch)) return;
       logIgnored('auth_provider', error);
       state = state.copyWith(lineUnavailable: true);

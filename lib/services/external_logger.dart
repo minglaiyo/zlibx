@@ -122,7 +122,15 @@ Dio createDioWithLogging({BaseOptions? options}) {
     ),
   );
   if (kDebugMode) {
-    dio.interceptors.add(LogInterceptor(responseBody: false));
+    // URL, method, status lines only. Dio prints both header sets by
+    // default (bodies are already off): that is the slum participation key
+    // on the way out and a `set-cookie` with a session pair on the way back,
+    // in a logcat any app on the device — and every bug report — can read.
+    // Singular spellings: dio 5.9.2's LogInterceptor uses `requestHeader` /
+    // `responseHeader`.
+    dio.interceptors.add(
+      LogInterceptor(requestHeader: false, responseHeader: false),
+    );
   }
   return dio;
 }

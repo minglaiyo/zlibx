@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../models/grid_columns_mode.dart';
 import '../../../providers/settings_provider.dart';
 import 'section_header.dart';
 import 'settings_card.dart';
@@ -61,10 +60,10 @@ class ThemeSection extends ConsumerWidget {
 }
 
 /// Appearance bottom sheet — the look-and-feel switches (follow system, dark
-/// mode, blur effect, floating bar, hide on scroll, collapse description)
-/// plus the home grid's column-count chips, in the same bottom-sheet
-/// style as the language picker (drag handle, centred bold title,
-/// divider). Dismiss by dragging down or tapping outside; no Close button.
+/// mode, blur effect, floating bar, hide on scroll, book-grid layout,
+/// collapse description) in the same bottom-sheet style as the language
+/// picker (drag handle, centred bold title, divider). Dismiss by dragging
+/// down or tapping outside; no Close button.
 class AppearanceSheet extends ConsumerWidget {
   const AppearanceSheet({super.key});
 
@@ -74,7 +73,8 @@ class AppearanceSheet extends ConsumerWidget {
     final blurEnabled = ref.watch(blurEnabledProvider);
     final floatingNav = ref.watch(floatingNavProvider);
     final hideNavOnScroll = ref.watch(hideNavOnScrollProvider);
-    final gridMode = ref.watch(homeGridColumnsModeProvider);
+    final adaptiveGrid = ref.watch(adaptiveGridProvider);
+    final homeFourColumns = ref.watch(homeGridFourColumnsProvider);
     final collapseDetailDescription = ref.watch(
       detailQuickActionsUpProvider,
     );
@@ -160,38 +160,35 @@ class AppearanceSheet extends ConsumerWidget {
                 }
               : null,
         ),
-        // 推荐页列数：四档选择塞不进一个开关，所以这里用"标签 + 一排
-        // ChoiceChip"，和上下那些开关共用 16 的左右内边距。
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              t.recommendationGridColumns,
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final mode in GridColumnsMode.values)
-                ChoiceChip(
-                  label: Text(_gridModeLabel(t, mode)),
-                  selected: mode == gridMode,
-                  // 已选中的那颗再点一次不反选——四档里没有"空"态。
-                  onSelected: (selected) {
-                    if (!selected) return;
-                    ref
-                        .read(homeGridColumnsModeProvider.notifier)
-                        .setMode(mode);
-                  },
+        // 书籍网格的排布方式，两个独立开关：自适应列数管全站网格的列数
+        // 与留白（默认关，关掉就是 1.6.0 之前的样子），四列布局只把首页
+        // 推荐换成纯封面密排格。
+        SwitchListTile(
+          title: Text(t.adaptiveGridColumns),
+          subtitle: Text(
+            t.adaptiveGridColumnsDesc,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
                 ),
-            ],
           ),
+          value: adaptiveGrid,
+          activeThumbColor: cs.primary,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          isThreeLine: true,
+          onChanged: (value) {
+            ref.read(adaptiveGridProvider.notifier).setAdaptive(value);
+          },
+        ),
+        SwitchListTile(
+          title: Text(t.recommendationFourColumns),
+          value: homeFourColumns,
+          activeThumbColor: cs.primary,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          onChanged: (value) {
+            ref
+                .read(homeGridFourColumnsProvider.notifier)
+                .setFourColumns(value);
+          },
         ),
         SwitchListTile(
           title: Text(t.collapseDetailDescription),
@@ -216,12 +213,3 @@ class AppearanceSheet extends ConsumerWidget {
     );
   }
 }
-
-/// 四档列数的芯片文案。枚举顺序就是芯片顺序：自适应 → 2 → 3 → 4。
-String _gridModeLabel(AppLocalizations t, GridColumnsMode mode) =>
-    switch (mode) {
-      GridColumnsMode.auto => t.recommendationGridAuto,
-      GridColumnsMode.two => t.recommendationGridTwo,
-      GridColumnsMode.three => t.recommendationGridThree,
-      GridColumnsMode.four => t.recommendationGridFour,
-    };

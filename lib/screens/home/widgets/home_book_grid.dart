@@ -40,9 +40,13 @@ class HomeBookGrid extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 外观设置里的"推荐页列数"：自适应（默认）= 手机 3 列、平板按宽度
-    // 加列；两列 / 三列是手动档；四列 = 纯封面密排格。
-    final mode = ref.watch(homeGridColumnsModeProvider);
+    // 外观设置里的两个独立开关。四列纯封面那一档优先：它自己定死 4 列，
+    // "自适应列数"对它没有意义（两个开关都开时以四列为准）。
+    final fourColumns = ref.watch(homeGridFourColumnsProvider);
+    // 自适应列数（默认关）。关掉时首页走 1.6.0 之前的老规则：左右留白
+    // 固定 20、列数按卡片最大宽度 220 估——手机上就是 2 列，逐像素和
+    // 旧版一致。
+    final adaptive = ref.watch(adaptiveGridProvider);
     // topPadding reserves the floating glass header's height inside the
     // scrollable, so the grid scrolls underneath the header (blurred)
     // instead of starting below it.
@@ -67,23 +71,17 @@ class HomeBookGrid extends ConsumerWidget {
 
           return LayoutBuilder(
             builder: (context, constraints) {
-              // 列数和左右留白都问 AppLayout：手机 3 列，平板按宽度加列，
-              // 手动档直接给列数。传进来的是网格盒子自身的宽度，留白在
-              // 公式里扣。
-              final columns = AppLayout.gridColumns(
-                mode,
-                constraints.maxWidth,
-              );
-              final gutter = AppLayout.pageGutter(constraints.maxWidth);
-              final gridWidth = (constraints.maxWidth - gutter * 2).clamp(
-                0.0,
-                double.infinity,
-              );
+              final width = constraints.maxWidth;
 
               // 四列档 = 官方 App 风格的纯封面密排网格：无边框卡片、
               // 无徽标、封面铺满、小间距。它故意不走 AppLayout 的卡片
-              // 栅格参数（留白 12、间距 8、封面 2:3），只借用列数。
-              if (mode.coverTiles) {
+              // 栅格参数（留白 12、间距 8、封面 2:3），列数也定死 4。
+              if (fourColumns) {
+                const fourPadding = 12.0;
+                final gridWidth = (width - fourPadding * 2).clamp(
+                  0.0,
+                  double.infinity,
+                );
                 final cellWidth = ((gridWidth - 8 * 3) / 4).clamp(
                   0.0,
                   double.infinity,
@@ -91,7 +89,12 @@ class HomeBookGrid extends ConsumerWidget {
                 return GridView.builder(
                   controller: scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: EdgeInsets.fromLTRB(12, topPadding, 12, 96),
+                  padding: EdgeInsets.fromLTRB(
+                    fourPadding,
+                    topPadding,
+                    fourPadding,
+                    96,
+                  ),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 4,
                     crossAxisSpacing: 8,
@@ -112,7 +115,21 @@ class HomeBookGrid extends ConsumerWidget {
                 );
               }
 
+              // 列数和左右留白都问 AppLayout，传的都是网格盒子自身的宽度
+              // （留白在公式里扣）。自适应开 = 手机 3 列、平板按宽度加列、
+              // 留白随断点走；关 = 老规则，留白固定 20、列数按卡片最大宽度
+              // 220 估，与 1.6.0 之前的首页逐像素一致。
               const columnSpacing = AppLayout.gridSpacing;
+              final gutter = adaptive
+                  ? AppLayout.pageGutter(width)
+                  : AppLayout.legacyGutter;
+              final gridWidth = (width - gutter * 2).clamp(
+                0.0,
+                double.infinity,
+              );
+              final columns = adaptive
+                  ? AppLayout.gridColumns(width)
+                  : AppLayout.legacyGridColumns(gridWidth);
               final cardWidth =
                   ((gridWidth - columnSpacing * (columns - 1)) / columns)
                       .clamp(0.0, double.infinity);

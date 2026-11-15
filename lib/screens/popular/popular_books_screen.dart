@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../models/display_book.dart';
 import '../../providers/books_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../routes/app_routes.dart';
+import '../../theme/app_layout.dart';
 import '../../utils/error_text.dart';
 import '../../widgets/book_card.dart';
 import '../../widgets/book_quick_actions_sheet.dart';
@@ -27,6 +29,9 @@ class PopularBooksScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context)!;
     final booksAsync = ref.watch(mostPopularBooksProvider);
+    // 外观设置里的"书籍网格自适应列数"（默认关）：关掉时本页维持固定
+    // 两列、左右 16 的原样；打开时列数与留白都按窗口宽度算。
+    final adaptive = ref.watch(adaptiveGridProvider);
 
     return Scaffold(
       appBar: GradientAppBar(title: l10n.popularBooks),
@@ -66,30 +71,45 @@ class PopularBooksScreen extends ConsumerWidget {
                 ],
               );
             }
-            return GridView.builder(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              gridDelegate:
-                  const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 0.65,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-              itemCount: books.length,
-              itemBuilder: (context, index) {
-                final book = books[index];
-                return EntranceSlideFade(
-                  index: index,
-                  child: BookCard(
-                    book: book.toDisplay(),
-                    // 长按封面：收藏 / 加入书单快捷面板（与最新上架一致）。
-                    onLongPress: () =>
-                        showBookQuickActionsSheet(context, book.toDisplay()),
-                    onTap: () {
-                      AppRoutes.openBookDetailForBook(context, book);
-                    },
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                final columns = adaptive
+                    ? AppLayout.fullCardGridColumns(width)
+                    : 2;
+                final gutter = adaptive
+                    ? AppLayout.pageGutter(width)
+                    : 16.0;
+                return GridView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(gutter, 12, gutter, 24),
+                  gridDelegate:
+                      SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columns,
+                    childAspectRatio: 0.65,
+                    // 12 = AppLayout.listGridSpacing：自适应公式假设的就是
+                    // 这个间距，改动其中一边会让卡片宽度偏离 168 的下限。
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
                   ),
+                  itemCount: books.length,
+                  itemBuilder: (context, index) {
+                    final book = books[index];
+                    return EntranceSlideFade(
+                      index: index,
+                      child: BookCard(
+                        book: book.toDisplay(),
+                        // 长按封面：收藏 / 加入书单快捷面板（与最新上架一致）。
+                        onLongPress: () => showBookQuickActionsSheet(
+                          context,
+                          book.toDisplay(),
+                        ),
+                        onTap: () {
+                          AppRoutes.openBookDetailForBook(context, book);
+                        },
+                      ),
+                    );
+                  },
                 );
               },
             );

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zlibx/l10n/generated/app_localizations.dart';
 import 'package:zlibx/models/display_book.dart';
-import 'package:zlibx/models/grid_columns_mode.dart';
 import 'package:zlibx/providers/settings_provider.dart';
 import 'package:zlibx/screens/home/widgets/home_book_grid.dart';
 import 'package:zlibx/widgets/book_card.dart';
@@ -17,11 +16,16 @@ import 'package:zlibx/widgets/book_card.dart';
 /// 多少次都不会重新拉取，错误态又没有重试按钮，首页等于关死在错误页上。
 /// 这条测试守的就是"每一档都拉得动"，因为它出问题时整站照跑，只有真机
 /// 下拉才看得出来。
-class _NoHiveGridMode extends HomeGridColumnsNotifier {
+class _NoHiveAdaptive extends AdaptiveGridNotifier {
   /// 列数设置默认走 Hive 同步读；测试里不初始化 Hive，直接给默认那一档
-  /// （自适应）。
+  /// （自适应关掉 = 旧版排布）。
   @override
-  GridColumnsMode build() => GridColumnsMode.auto;
+  bool build() => false;
+}
+
+class _NoHiveFourColumns extends HomeGridFourColumnsNotifier {
+  @override
+  bool build() => false;
 }
 
 List<DisplayBook> _books(int n) => [
@@ -49,7 +53,8 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        homeGridColumnsModeProvider.overrideWith(_NoHiveGridMode.new),
+        adaptiveGridProvider.overrideWith(_NoHiveAdaptive.new),
+        homeGridFourColumnsProvider.overrideWith(_NoHiveFourColumns.new),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,

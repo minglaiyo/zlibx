@@ -3,6 +3,7 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
+import '../../../theme/app_layout.dart';
 import '../../../widgets/book_card.dart';
 import '../../../widgets/book_quick_actions_sheet.dart';
 import '../../../widgets/book_list_tile.dart';
@@ -45,7 +46,12 @@ class SearchResultsView extends StatelessWidget {
     this.isLoadingMore = false,
     this.isFullTextMode = false,
     this.isArticleMode = false,
+    this.adaptiveGridColumns = false,
   });
+
+  /// 外观设置里的"书籍网格自适应列数"（默认关），由 search_screen 读
+  /// provider 后传进来；只影响书本网格那一支，列表 / 全文 / 文章分支不动。
+  final bool adaptiveGridColumns;
 
   final AppLocalizations l10n;
 
@@ -240,33 +246,54 @@ class SearchResultsView extends StatelessWidget {
   }
 
   Widget _bookGrid(BuildContext context) {
-    return GridView.builder(
-      key: const ValueKey('grid'),
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 220,
-        childAspectRatio: 0.60,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-      ),
-      itemCount: books.length + (isLoadingMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index >= books.length) {
-          return const LoadingWidget.more();
-        }
-        final book = books[index];
-        return EntranceSlideFade(
-          index: index,
-          child: BookCard(
-            book: book,
-            searchResult: true,
-            // 搜索结果同屏同 id 重复极罕见（不同 edition id 不同），
-            // 可安全开 Hero。
-            heroEnabled: true,
-            onTap: () => onOpenBook(book),
-            // 长按封面：收藏 / 加入书单快捷面板（功能 2）。
-            onLongPress: () => showBookQuickActionsSheet(context, book),
-          ),
+    // 外观设置里的"书籍网格自适应列数"（默认关）。关 = 原本那套按最大卡宽
+    // 220 估列数的委托，逐像素不变；开 = 与热门 / 最新上架 / 同类共用的列数
+    // 规则。骨架网格（search_skeleton_grid.dart）走同样的分支，两处必须一起
+    // 改，否则加载完会看到列数跳一下。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final gutter = adaptiveGridColumns
+            ? AppLayout.pageGutter(width)
+            : 16.0;
+        return GridView.builder(
+          key: const ValueKey('grid'),
+          padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 16),
+          gridDelegate: adaptiveGridColumns
+              ? SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: AppLayout.fullCardGridColumns(width),
+                  childAspectRatio: 0.60,
+                  // 12 = AppLayout.listGridSpacing：自适应公式假设的就是
+                  // 这个间距。
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                )
+              : const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 220,
+                  childAspectRatio: 0.60,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                ),
+          itemCount: books.length + (isLoadingMore ? 1 : 0),
+          itemBuilder: (context, index) {
+            if (index >= books.length) {
+              return const LoadingWidget.more();
+            }
+            final book = books[index];
+            return EntranceSlideFade(
+              index: index,
+              child: BookCard(
+                book: book,
+                searchResult: true,
+                // 搜索结果同屏同 id 重复极罕见（不同 edition id 不同），
+                // 可安全开 Hero。
+                heroEnabled: true,
+                onTap: () => onOpenBook(book),
+                // 长按封面：收藏 / 加入书单快捷面板（功能 2）。
+                onLongPress: () => showBookQuickActionsSheet(context, book),
+              ),
+            );
+          },
         );
       },
     );

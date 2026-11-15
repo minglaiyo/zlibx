@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/zlibrary_provider.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import '../../models/display_book.dart';
+import '../../providers/settings_provider.dart';
 import '../../widgets/book_card.dart';
 import '../../widgets/book_quick_actions_sheet.dart';
 import '../../widgets/book_list_tile.dart';
@@ -10,6 +11,7 @@ import '../../widgets/loading_widget.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/gradient_app_bar.dart';
 import '../../routes/app_routes.dart';
+import '../../theme/app_layout.dart';
 import '../../l10n/generated/app_localizations.dart';
 
 /// Arguments for SimilarBooksScreen
@@ -88,6 +90,10 @@ class _SimilarBooksScreenState extends ConsumerState<SimilarBooksScreen> {
   Widget build(BuildContext context) {
     final args = widget.args;
     final l10n = AppLocalizations.of(context)!;
+    // 外观设置里的"书籍网格自适应列数"（默认关）：关掉时本页维持固定
+    // 两列、左右 16 的原样；打开时列数与留白都按网格宽度算（见下面
+    // LayoutBuilder 那一支）。
+    final adaptiveGrid = ref.watch(adaptiveGridProvider);
 
     return Scaffold(
       appBar: GradientAppBar(
@@ -204,38 +210,62 @@ class _SimilarBooksScreenState extends ConsumerState<SimilarBooksScreen> {
                                           );
                                         },
                                       )
-                                    : GridView.builder(
-                                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                          crossAxisCount: 2,
-                                          childAspectRatio: 0.65,
-                                          crossAxisSpacing: 12,
-                                          mainAxisSpacing: 12,
-                                        ),
-                                        itemCount: _books.length,
-                                        itemBuilder: (context, index) {
-                                          final book = _books[index];
-                                          return BookCard(
-                                            book: book.toDisplay(),
-                                            // 相似书列表同屏同 id 重复
-                                            // 几乎不可能，可安全开 Hero。
-                                            heroEnabled: true,
-                                            // 长按封面：收藏 / 加入书单
-                                            // 快捷面板（功能 2 推广）。
-                                            onLongPress: () =>
-                                                showBookQuickActionsSheet(
-                                              context,
-                                              book.toDisplay(),
-                                            ),
-                                            onTap: () {
-                                              AppRoutes.openBookDetailForBook(
+                                    : LayoutBuilder(
+                                      builder: (context, constraints) {
+                                        final width = constraints.maxWidth;
+                                        // 外观设置里的"书籍网格自适应列数"（默认关）：关掉时维持固定
+                                        // 两列、左右 16 的原样。列数问的是网格盒子自身的宽度，所以用
+                                        // LayoutBuilder 取约束而不是窗口宽——两者在测试里不等价。
+                                        final gridColumns = adaptiveGrid
+                                            ? AppLayout.fullCardGridColumns(
+                                                width,
+                                              )
+                                            : 2;
+                                        final gridGutter = adaptiveGrid
+                                            ? AppLayout.pageGutter(width)
+                                            : 16.0;
+                                        return GridView.builder(
+                                          padding: EdgeInsets.fromLTRB(
+                                            gridGutter,
+                                            0,
+                                            gridGutter,
+                                            16,
+                                          ),
+                                          gridDelegate:
+                                            SliverGridDelegateWithFixedCrossAxisCount(
+                                            crossAxisCount: gridColumns,
+                                            childAspectRatio: 0.65,
+                                            // 12 = AppLayout.listGridSpacing：
+                                            // 自适应公式假设的就是这个间距。
+                                            crossAxisSpacing: 12,
+                                            mainAxisSpacing: 12,
+                                          ),
+                                          itemCount: _books.length,
+                                          itemBuilder: (context, index) {
+                                            final book = _books[index];
+                                            return BookCard(
+                                              book: book.toDisplay(),
+                                              // 相似书列表同屏同 id 重复
+                                              // 几乎不可能，可安全开 Hero。
+                                              heroEnabled: true,
+                                              // 长按封面：收藏 / 加入书单
+                                              // 快捷面板（功能 2 推广）。
+                                              onLongPress: () =>
+                                                  showBookQuickActionsSheet(
                                                 context,
-                                                book,
-                                              );
-                                            },
-                                          );
-                                        },
-                                      ),
+                                                book.toDisplay(),
+                                              ),
+                                              onTap: () {
+                                                AppRoutes.openBookDetailForBook(
+                                                  context,
+                                                  book,
+                                                );
+                                              },
+                                            );
+                                          },
+                                        );
+                                      },
+                                    ),
                               ),
                             ],
                           ),

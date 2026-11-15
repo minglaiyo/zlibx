@@ -741,6 +741,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         : getOrderDisplayNames(locale);
     final extensionNames = getExtensionDisplayNames(locale);
     final isExternal = _source != BookSource.zlibrary;
+    // 外观设置里的"书籍网格自适应列数"（默认关）。结果网格和它的加载
+    // 骨架共用同一个值。
+    final adaptiveGrid = ref.watch(adaptiveGridProvider);
 
     final searchState = ref.watch(searchProvider);
     final externalState = ref.watch(externalSearchProvider);
@@ -930,7 +933,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       message: l10n.enterSearchHint,
                     )
                   : isLoading
-                  ? const SearchSkeletonGrid()
+                  ? SearchSkeletonGrid(adaptiveGridColumns: adaptiveGrid)
                   : loginRequired
                   ? EmptyState(
                       icon: Icons.login_rounded,
@@ -961,6 +964,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   : NotificationListener<ScrollNotification>(
                       onNotification: _onScrollNotification,
                       child: SearchResultsView(
+                        adaptiveGridColumns: adaptiveGrid,
                         l10n: l10n,
                         resultCount: resultCount,
                         currentPage: currentPage,

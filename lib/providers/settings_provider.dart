@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/grid_columns_mode.dart';
 import '../services/storage_service.dart';
 import '../services/hive_service.dart';
 import '../utils/diagnostics.dart';
@@ -190,46 +189,89 @@ final hideNavOnScrollProvider =
       HideNavOnScrollNotifier.new,
     );
 
-/// 推荐页列数 — 自适应（默认，手机 3 列、平板 4–8 列）/ 两列 / 三列 /
-/// 四列（官方 App 那种纯封面密排格）。外观设置，放在外观弹层里。
-///
-/// Hive key 是 `homeGridColumnsMode`（存枚举名）。上一版这里只有一个
-/// 布尔 `homeGridFourColumns`（开 = 四列密排），迁移时它仍然映射到
-/// [GridColumnsMode.four]；关掉的状态不再当成"手动选了两列"保留——
-/// 旧实现是按 maxCardWidth 估算列数（手机上实际只有 2 列），而新的
-/// auto 在手机上给 3 列，这正是这次改动要的可见变化。
-class HomeGridColumnsNotifier extends Notifier<GridColumnsMode> {
-  static const String _key = 'homeGridColumnsMode';
+/// 上一版（只活了两个提交）这里存的是枚举名，迁移时它是权威：认得的
+/// 名字直接决定两个开关，不再回头看更老的键。
+const List<String> _legacyGridModeKeys = <String>[
+  'auto',
+  'two',
+  'three',
+  'four',
+];
 
+/// 推荐页四列布局 — 官方 App 风格的纯封面密排格（无边框卡片、无徽标、
+/// 封面铺满）。只作用于首页推荐网格；开着时列数固定 4，"自适应列数"
+/// 在它之上不生效。
+class HomeGridFourColumnsNotifier extends Notifier<bool> {
   @override
-  GridColumnsMode build() => _load();
+  bool build() => _load();
 
   /// Sync Hive read; returns the persisted value as the initial state
   /// instead of assigning it (see LocaleNotifier).
-  GridColumnsMode _load() {
-    final v = HiveService.settingsBox.get(_key);
-    if (v is String) {
-      for (final mode in GridColumnsMode.values) {
-        if (mode.name == v) return mode;
-      }
+  ///
+  /// 当前键优先：上一版那个枚举键只是一次性迁移的来源，一旦读过新键就
+  /// 该让位，否则用户在这个版本里把开关关掉，旧枚举值会在下次启动时把
+  /// 它顶回去。
+  bool _load() {
+    final v = HiveService.settingsBox.get('homeGridFourColumns');
+    if (v is bool) return v;
+    final mode = HiveService.settingsBox.get('homeGridColumnsMode');
+    if (mode is String && _legacyGridModeKeys.contains(mode)) {
+      return mode == 'four';
     }
-    // 旧键：只在用户真的打开过四列时才保留成手动档。没存过 = auto。
-    if (HiveService.settingsBox.get('homeGridFourColumns') == true) {
-      return GridColumnsMode.four;
-    }
-    return GridColumnsMode.auto;
+    return false;
   }
 
-  Future<void> setMode(GridColumnsMode mode) async {
-    state = mode;
-    await HiveService.settingsBox.put(_key, mode.name);
+  Future<void> setFourColumns(bool value) async {
+    state = value;
+    await HiveService.settingsBox.put('homeGridFourColumns', value);
   }
 }
 
-/// 推荐页列数 provider
-final homeGridColumnsModeProvider =
-    NotifierProvider<HomeGridColumnsNotifier, GridColumnsMode>(
-      HomeGridColumnsNotifier.new,
+/// 推荐页四列布局 provider
+final homeGridFourColumnsProvider =
+    NotifierProvider<HomeGridFourColumnsNotifier, bool>(
+      HomeGridFourColumnsNotifier.new,
+    );
+
+/// 自适应列数 — 全站书籍网格的排布开关，首页 / 最新上架 / 热门 / 同类 /
+/// 搜索结果共用（书架本来就是按宽度排布的，不受它影响）。
+///
+/// 开 = 列数、左右留白都按窗口宽度算（见 theme/app_layout.dart）。
+/// **关（默认）** = 各页面 1.6.0 之前那套：首页按卡片最大宽度估列数、
+/// 手机 2 列，其余列表页固定 2 列——也就是说默认态与旧版逐像素一致，
+/// 升级上去看不到变化。
+///
+/// Hive key `adaptiveGridColumns`，它排在最前面读：旧键（中间版本写过
+/// 的 `homeGridAdaptive`、更早那版存枚举名的 `homeGridColumnsMode`）只
+/// 是一次性迁移的来源，用户在本版本里改过开关之后就不能再把旧值顶上来。
+/// 枚举值里 `auto` 才是开，`two` / `three` / `four` 都落到"关"——关闭态
+/// 本来就是按最大宽度估列数或固定 2 列，没必要再单独保留手动档。
+class AdaptiveGridNotifier extends Notifier<bool> {
+  @override
+  bool build() => _load();
+
+  bool _load() {
+    final v = HiveService.settingsBox.get('adaptiveGridColumns');
+    if (v is bool) return v;
+    final home = HiveService.settingsBox.get('homeGridAdaptive');
+    if (home is bool) return home;
+    final mode = HiveService.settingsBox.get('homeGridColumnsMode');
+    if (mode is String && _legacyGridModeKeys.contains(mode)) {
+      return mode == 'auto';
+    }
+    return false;
+  }
+
+  Future<void> setAdaptive(bool value) async {
+    state = value;
+    await HiveService.settingsBox.put('adaptiveGridColumns', value);
+  }
+}
+
+/// 自适应列数 provider
+final adaptiveGridProvider =
+    NotifierProvider<AdaptiveGridNotifier, bool>(
+      AdaptiveGridNotifier.new,
     );
 
 /// 首页随机推荐 — whether the home feed shows random-category

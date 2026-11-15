@@ -190,7 +190,7 @@ final hideNavOnScrollProvider =
     );
 
 /// 上一版（只活了两个提交）这里存的是枚举名，迁移时它是权威：认得的
-/// 名字直接决定两个开关，不再回头看更老的键。
+/// 名字直接决定开关，不再回头看更老的键。
 const List<String> _legacyGridModeKeys = <String>[
   'auto',
   'two',
@@ -198,54 +198,22 @@ const List<String> _legacyGridModeKeys = <String>[
   'four',
 ];
 
-/// 推荐页四列布局 — 官方 App 风格的纯封面密排格（无边框卡片、无徽标、
-/// 封面铺满）。只作用于首页推荐网格；开着时列数固定 4，"自适应列数"
-/// 在它之上不生效。
-class HomeGridFourColumnsNotifier extends Notifier<bool> {
-  @override
-  bool build() => _load();
-
-  /// Sync Hive read; returns the persisted value as the initial state
-  /// instead of assigning it (see LocaleNotifier).
-  ///
-  /// 当前键优先：上一版那个枚举键只是一次性迁移的来源，一旦读过新键就
-  /// 该让位，否则用户在这个版本里把开关关掉，旧枚举值会在下次启动时把
-  /// 它顶回去。
-  bool _load() {
-    final v = HiveService.settingsBox.get('homeGridFourColumns');
-    if (v is bool) return v;
-    final mode = HiveService.settingsBox.get('homeGridColumnsMode');
-    if (mode is String && _legacyGridModeKeys.contains(mode)) {
-      return mode == 'four';
-    }
-    return false;
-  }
-
-  Future<void> setFourColumns(bool value) async {
-    state = value;
-    await HiveService.settingsBox.put('homeGridFourColumns', value);
-  }
-}
-
-/// 推荐页四列布局 provider
-final homeGridFourColumnsProvider =
-    NotifierProvider<HomeGridFourColumnsNotifier, bool>(
-      HomeGridFourColumnsNotifier.new,
-    );
-
 /// 自适应列数 — 全站书籍网格的排布开关，首页 / 最新上架 / 热门 / 同类 /
 /// 搜索结果共用（书架本来就是按宽度排布的，不受它影响）。
 ///
-/// 开 = 列数、左右留白都按窗口宽度算（见 theme/app_layout.dart）。
+/// 开 = 列数、左右留白、格高都按窗口宽度算，全站同一套规则
+/// （见 theme/app_layout.dart）。
 /// **关（默认）** = 各页面 1.6.0 之前那套：首页按卡片最大宽度估列数、
 /// 手机 2 列，其余列表页固定 2 列——也就是说默认态与旧版逐像素一致，
 /// 升级上去看不到变化。
 ///
 /// Hive key `adaptiveGridColumns`，它排在最前面读：旧键（中间版本写过
-/// 的 `homeGridAdaptive`、更早那版存枚举名的 `homeGridColumnsMode`）只
-/// 是一次性迁移的来源，用户在本版本里改过开关之后就不能再把旧值顶上来。
-/// 枚举值里 `auto` 才是开，`two` / `three` / `four` 都落到"关"——关闭态
-/// 本来就是按最大宽度估列数或固定 2 列，没必要再单独保留手动档。
+/// 的 `homeGridAdaptive`、更早那版存枚举名的 `homeGridColumnsMode`、
+/// 以及已经删掉的"推荐页四列布局"开关 `homeGridFourColumns`）只是一次
+/// 性迁移的来源，用户在本版本里改过开关之后就不能再把旧值顶上来。
+/// 枚举里的 `auto` / `four` 和四列开关的 `true` 都算开——那正是"我要更密
+/// 的自动网格"的意思；`two` / `three` 落到关，关闭态本来就是原来的 2 列
+/// 排布，没必要再单独保留手动档。
 class AdaptiveGridNotifier extends Notifier<bool> {
   @override
   bool build() => _load();
@@ -257,8 +225,12 @@ class AdaptiveGridNotifier extends Notifier<bool> {
     if (home is bool) return home;
     final mode = HiveService.settingsBox.get('homeGridColumnsMode');
     if (mode is String && _legacyGridModeKeys.contains(mode)) {
-      return mode == 'auto';
+      return mode == 'auto' || mode == 'four';
     }
+    // "推荐页四列布局"开关在 1.6.0 里发布过，这个版本被删掉了：开过的
+    // 人升级后落到自适应档，而不是掉回他没选过的两列。
+    final four = HiveService.settingsBox.get('homeGridFourColumns');
+    if (four is bool) return four;
     return false;
   }
 

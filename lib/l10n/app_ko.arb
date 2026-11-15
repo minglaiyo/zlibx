@@ -483,7 +483,6 @@
   },
   "readerSessionWriteFailed": "리더 세션을 기록하지 못했습니다. 다시 로그인한 후 시도하세요.",
   "recentAccount": "최근 사용한 계정",
-  "recommendationFourColumns": "추천 4열 레이아웃",
   "adaptiveGridColumns": "도서 격자 열 자동 조정",
   "adaptiveGridColumnsDesc": "홈, 최신, 인기, 유사, 검색 결과의 도서 격자를 창 너비에 맞게 배치합니다. 끄면 이전 레이아웃(휴대폰 2열)을 유지합니다.",
   "recommendationRandom": "무작위 추천",

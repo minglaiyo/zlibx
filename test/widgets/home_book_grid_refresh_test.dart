@@ -23,11 +23,6 @@ class _NoHiveAdaptive extends AdaptiveGridNotifier {
   bool build() => false;
 }
 
-class _NoHiveFourColumns extends HomeGridFourColumnsNotifier {
-  @override
-  bool build() => false;
-}
-
 List<DisplayBook> _books(int n) => [
   for (var i = 1; i <= n; i++)
     DisplayBook(
@@ -54,7 +49,6 @@ Future<void> _pump(
     ProviderScope(
       overrides: [
         adaptiveGridProvider.overrideWith(_NoHiveAdaptive.new),
-        homeGridFourColumnsProvider.overrideWith(_NoHiveFourColumns.new),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,

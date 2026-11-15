@@ -216,11 +216,6 @@ class _SimilarBooksScreenState extends ConsumerState<SimilarBooksScreen> {
                                         // 外观设置里的"书籍网格自适应列数"（默认关）：关掉时维持固定
                                         // 两列、左右 16 的原样。列数问的是网格盒子自身的宽度，所以用
                                         // LayoutBuilder 取约束而不是窗口宽——两者在测试里不等价。
-                                        final gridColumns = adaptiveGrid
-                                            ? AppLayout.fullCardGridColumns(
-                                                width,
-                                              )
-                                            : 2;
                                         final gridGutter = adaptiveGrid
                                             ? AppLayout.pageGutter(width)
                                             : 16.0;
@@ -231,15 +226,21 @@ class _SimilarBooksScreenState extends ConsumerState<SimilarBooksScreen> {
                                             gridGutter,
                                             16,
                                           ),
-                                          gridDelegate:
-                                            SliverGridDelegateWithFixedCrossAxisCount(
-                                            crossAxisCount: gridColumns,
-                                            childAspectRatio: 0.65,
-                                            // 12 = AppLayout.listGridSpacing：
-                                            // 自适应公式假设的就是这个间距。
-                                            crossAxisSpacing: 12,
-                                            mainAxisSpacing: 12,
-                                          ),
+                                          // 自适应档：列数 / 留白 / 间距 /
+                                          // 格高走 BookCard 那个工厂，和首页
+                                          // 同一套（手机 3 列）。关掉时是本页
+                                          // 原来的固定委托：两列、0.65。
+                                          gridDelegate: adaptiveGrid
+                                              ? BookCard.adaptiveGridDelegate(
+                                                  context,
+                                                  width,
+                                                )
+                                              : const SliverGridDelegateWithFixedCrossAxisCount(
+                                                  crossAxisCount: 2,
+                                                  childAspectRatio: 0.65,
+                                                  crossAxisSpacing: 12,
+                                                  mainAxisSpacing: 12,
+                                                ),
                                           itemCount: _books.length,
                                           itemBuilder: (context, index) {
                                             final book = _books[index];

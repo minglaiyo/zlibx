@@ -16,26 +16,15 @@ abstract final class AppBreakpoints {
 ///
 /// 一切都从当前宽度算（[LayoutBuilder] 的 constraints），所以 7 寸竖屏
 /// 平板、平板横屏、折叠屏半开、桌面自由窗口都能得到合理的列数。首页、
-/// 最新上架、热门、同类、搜索结果共用这一套规则，同一宽度下各页列数
-/// 保持一致，差别只在卡片本身（封面卡 vs 带书名信息的卡）能接受多窄。
+/// 最新上架、热门、同类、搜索结果共用同一套列数与间距；卡片种类的不同
+/// （纯封面 vs 带书名信息）只体现在一格多高上，见 `BookCard.gridHeightFor`。
 abstract final class AppLayout {
-  /// 自适应档：纯封面卡（首页网格、书架）格与格之间的水平间距。
+  /// 自适应档：格与格之间的水平间距。
   static const double gridSpacing = 16;
 
-  /// 自适应档：纯封面卡最窄能到多少，再窄就减一列。手机保持设计上的
-  /// 3 列密度（411dp 宽的屏 ≈ 113dp 一张卡）。
+  /// 自适应档：卡片最窄能到多少，再窄就减一列。手机保持设计上的 3 列
+  /// 密度（411dp 宽的屏 ≈ 113dp 一张卡）。
   static const double minCardWidth = 112;
-
-  /// 自适应档：带书名/作者/大小信息的那种卡（最新上架、热门、同类、
-  /// 搜索结果）最窄能到多少。
-  ///
-  /// 这类卡片不是纯封面：信息区按内容占掉 ~118dp 竖排高度，宽度再往下
-  /// 压封面就塌成一条。取 168 是为了让手机两列时的那张卡（411dp 屏
-  /// ≈ 183dp）在平板上原样复现，而不是排到 3 列把卡挤扁。
-  static const double fullCardMinCardWidth = 168;
-
-  /// 自适应档：带信息那种卡的格间距，沿用这些页面原本的 12。
-  static const double listGridSpacing = 12;
 
   /// 自适应档：列数上限，窗口再宽也不让封面缩成邮票。
   static const int maxGridColumns = 8;
@@ -53,38 +42,20 @@ abstract final class AppLayout {
     return 20;
   }
 
-  /// 自适应档：纯封面卡（首页网格）该排几列。
+  /// 自适应档：该排几列。全站书籍网格共用这一个规则——首页的纯封面卡和
+  /// 最新上架 / 热门 / 同类 / 搜索结果的带信息卡都是同样的列数与同样的
+  /// 16dp 间距，差别只在格子多高：前者按封面比例，后者用
+  /// `BookCard.gridHeightFor` 把信息区算进去，所以窄格不会把封面裁成
+  /// 一条横带。
   ///
-  /// 下限 3 列：360dp 的机器算术上只塞得下 2 张 112dp 的卡，但设计从
-  /// 头到尾就是 3 列，不能因为屏幕略窄就自己掉到 2 列。真正需要自适应
-  /// 的是宽度富余之后——那里多出来的宽度确实装得下更多列。
-  static int gridColumns(double availableWidth) => _columnsFor(
-    availableWidth,
-    minCardWidth: minCardWidth,
-    spacing: gridSpacing,
-    minColumns: 3,
-  );
-
-  /// 自适应档：带书名信息的卡（最新上架 / 热门 / 同类 / 搜索结果）该排
-  /// 几列。手机上恒为 2 列（和旧版一致），平板按 [fullCardMinCardWidth]
-  /// 往上加列。
-  static int fullCardGridColumns(double availableWidth) => _columnsFor(
-    availableWidth,
-    minCardWidth: fullCardMinCardWidth,
-    spacing: listGridSpacing,
-    minColumns: 2,
-  );
-
-  static int _columnsFor(
-    double availableWidth, {
-    required double minCardWidth,
-    required double spacing,
-    required int minColumns,
-  }) {
+  /// 下限 3 列：360dp 的机器算术上只塞得下 2 张 112dp 的卡，但设计从头
+  /// 到尾就是 3 列，不能因为屏幕略窄就自己掉到 2 列。真正需要自适应的是
+  /// 宽度富余之后——那里多出来的宽度确实装得下更多列。
+  static int gridColumns(double availableWidth) {
     final contentWidth = availableWidth - 2 * pageGutter(availableWidth);
     final fitting =
-        ((contentWidth + spacing) / (minCardWidth + spacing)).floor();
-    return fitting.clamp(minColumns, maxGridColumns).toInt();
+        ((contentWidth + gridSpacing) / (minCardWidth + gridSpacing)).floor();
+    return fitting.clamp(3, maxGridColumns).toInt();
   }
 
   /// 老规则：按 [contentWidth]（已扣掉左右留白的网格宽度）估列数——

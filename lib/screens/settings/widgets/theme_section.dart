@@ -74,7 +74,6 @@ class AppearanceSheet extends ConsumerWidget {
     final floatingNav = ref.watch(floatingNavProvider);
     final hideNavOnScroll = ref.watch(hideNavOnScrollProvider);
     final adaptiveGrid = ref.watch(adaptiveGridProvider);
-    final homeFourColumns = ref.watch(homeGridFourColumnsProvider);
     final collapseDetailDescription = ref.watch(
       detailQuickActionsUpProvider,
     );
@@ -160,9 +159,8 @@ class AppearanceSheet extends ConsumerWidget {
                 }
               : null,
         ),
-        // 书籍网格的排布方式，两个独立开关：自适应列数管全站网格的列数
-        // 与留白（默认关，关掉就是 1.6.0 之前的样子），四列布局只把首页
-        // 推荐换成纯封面密排格。
+        // 书籍网格的排布方式：一个开关管全站网格的列数、留白与格高
+        // （默认关，关掉就是 1.6.0 之前的样子）。
         SwitchListTile(
           title: Text(t.adaptiveGridColumns),
           subtitle: Text(
@@ -177,17 +175,6 @@ class AppearanceSheet extends ConsumerWidget {
           isThreeLine: true,
           onChanged: (value) {
             ref.read(adaptiveGridProvider.notifier).setAdaptive(value);
-          },
-        ),
-        SwitchListTile(
-          title: Text(t.recommendationFourColumns),
-          value: homeFourColumns,
-          activeThumbColor: cs.primary,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-          onChanged: (value) {
-            ref
-                .read(homeGridFourColumnsProvider.notifier)
-                .setFourColumns(value);
           },
         ),
         SwitchListTile(

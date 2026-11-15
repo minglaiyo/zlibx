@@ -2,11 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/display_book.dart';
+import '../theme/app_layout.dart';
 import '../theme/app_metrics.dart';
 import '../theme/app_colors.dart';
 import '../utils/cover_cache.dart';
 import 'book_cover_backdrop.dart';
 import 'cover_placeholder.dart';
+
+/// 网格卡片书名槽位：字号 / 行高倍数 / 行数。
+///
+/// 这个乘积只是**下限**（见 _buildGridInfo 里的 ConstrainedBox），
+/// 不是定高：Skia 会把 14×1.2=16.8 的行盒进位成 17.0，两行真实需要
+/// 34.0，用 SizedBox 钉死 33.6 就会把末行再裁掉零点几像素。留下限
+/// 的话，两行书名按真实高度排，单行书名补足到同一档，同屏卡片版式
+/// 依旧对齐。
+///
+/// 放在文件顶层（而不是 [_BookCardState] 里）：[BookCard.gridHeightFor]
+/// 算一格多高时要把这块信息区算进去，两边读的必须是同一个数。
+const double _titleFontSize = 14;
+const double _titleLineHeight = 1.2;
+const int _titleMaxLines = 2;
+double get _titleSlotHeight =>
+    _titleFontSize * _titleLineHeight * _titleMaxLines;
 
 class BookCard extends StatefulWidget {
   final DisplayBook book;
@@ -36,6 +53,53 @@ class BookCard extends StatefulWidget {
   static double compactHeightFor(double width) =>
       BookCoverBackdrop.heightFor(width);
 
+  /// 网格卡片信息区（[_titleSlotHeight] 两行书名 + 分类行 + 作者行 +
+  /// 大小行 + 内边距）在 1 倍字号下的内容高度，按系统字号缩放。
+  static const double _gridInfoHeight = 116;
+
+  /// 封面宽高比，与 [BookCoverBackdrop] 保持一致。
+  static const double _gridCoverAspectRatio = 0.7;
+
+  /// 带信息区的网格卡（最新上架 / 热门 / 同类 / 搜索结果）在自适应档下
+  /// 一格该多高。
+  ///
+  /// 这些页面原本用固定的 `childAspectRatio`（0.65 / 0.60）：两列时卡片
+  /// ≈183dp 宽，信息区之外还剩 ~164dp 封面，够用；一旦按首页的密度排到
+  /// 三列（≈113dp 宽），同样的比例只给封面留下 192-116 ≈ 76dp，封面被
+  /// 裁成一条横带。比例改成"封面按 0.7 给足 + 信息区按内容"，格子就长
+  /// 高了，列数可以和首页一致而封面不塌。关掉开关时这些页面仍走各自
+  /// 原来的固定比例，一格都不差。
+  static double gridHeightFor(BuildContext context, double width) =>
+      width / _gridCoverAspectRatio +
+      _gridInfoHeight *
+          MediaQuery.textScalerOf(context).scale(_titleFontSize) /
+          _titleFontSize;
+
+  /// 列表页网格（最新上架 / 热门 / 同类 / 搜索结果及其骨架）在自适应档
+  /// 下共用的委托。列数、留白、间距都问 [AppLayout]，和首页同一套规则，
+  /// 所以那个开关一开就是整站一起变；格高按 [gridHeightFor] 算。
+  ///
+  /// 做成一个工厂而不是五处抄写：这几页必须逐像素同步，搜索结果还有一
+  /// 份骨架要跟着它，抄一遍就多一处会漏的地方。关掉开关时各页仍用自己
+  /// 那份固定 delegate，不进这里。
+  static SliverGridDelegate adaptiveGridDelegate(
+    BuildContext context,
+    double width,
+  ) {
+    final columns = AppLayout.gridColumns(width);
+    final gutter = AppLayout.pageGutter(width);
+    final gridWidth = (width - gutter * 2).clamp(0.0, double.infinity);
+    final cellWidth =
+        ((gridWidth - AppLayout.gridSpacing * (columns - 1)) / columns)
+            .clamp(0.0, double.infinity);
+    return SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: columns,
+      crossAxisSpacing: AppLayout.gridSpacing,
+      mainAxisSpacing: 12,
+      mainAxisExtent: gridHeightFor(context, cellWidth),
+    );
+  }
+
   @override
   State<BookCard> createState() => _BookCardState();
 }
@@ -43,19 +107,6 @@ class BookCard extends StatefulWidget {
 class _BookCardState extends State<BookCard> {
   // Press feedback
   double _scale = 1.0;
-
-  /// 网格卡片书名槽位：字号 / 行高倍数 / 行数。
-  ///
-  /// 这个乘积只是**下限**（见 _buildGridInfo 里的 ConstrainedBox），
-  /// 不是定高：Skia 会把 14×1.2=16.8 的行盒进位成 17.0，两行真实需要
-  /// 34.0，用 SizedBox 钉死 33.6 就会把末行再裁掉零点几像素。留下限
-  /// 的话，两行书名按真实高度排，单行书名补足到同一档，同屏卡片版式
-  /// 依旧对齐。
-  static const double _titleFontSize = 14;
-  static const double _titleLineHeight = 1.2;
-  static const int _titleMaxLines = 2;
-  static double get _titleSlotHeight =>
-      _titleFontSize * _titleLineHeight * _titleMaxLines;
 
   bool get _hasCover => widget.book.cover?.isNotEmpty ?? false;
 
@@ -456,12 +507,20 @@ class _BookCardState extends State<BookCard> {
           ),
         if (hasTag && hasTagExtra)
           const SizedBox(width: 4),
+        // 两边都得是 Flexible：自适应三列把卡片压到 ~100dp，字号再放大
+        // 一档（系统字体 1.5×）时"分类 + 年份"这行的自然宽度就超过格子，
+        // 后半段不包 Flexible 就是整行溢出（黄黑斜条）。包上之后按内容
+        // 分宽度、挤不下各自省略号。
         if (hasTagExtra)
-          Text(
-            hasTag ? '• ${widget.book.tagExtra}' : widget.book.tagExtra!,
-            style: TextStyle(
-              color: cs.onSurfaceVariant,
-              fontSize: 10,
+          Flexible(
+            child: Text(
+              hasTag ? '• ${widget.book.tagExtra}' : widget.book.tagExtra!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontSize: 10,
+              ),
             ),
           ),
       ],
@@ -479,12 +538,20 @@ class _BookCardState extends State<BookCard> {
     }
 
     final cs = Theme.of(context).colorScheme;
+    // 靠右对齐用 mainAxisAlignment 而不是 Spacer()：Spacer 是 flex 1 的
+    // 空块，格子窄 + 字号大的时候它照样要吃掉一半宽度，右边那个文件大小
+    // 就溢出到卡片外。end 对齐下文案短时贴右、长时占满并可省略号。
     return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        const Spacer(),
-        Text(
-          widget.book.meta!,
-          style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+        Flexible(
+          child: Text(
+            widget.book.meta!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.end,
+            style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+          ),
         ),
       ],
     );

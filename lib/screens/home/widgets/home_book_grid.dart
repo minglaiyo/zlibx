@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../l10n/generated/app_localizations.dart';
@@ -6,7 +5,6 @@ import '../../../models/display_book.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../routes/app_routes.dart';
 import '../../../theme/app_layout.dart';
-import '../../../utils/cover_cache.dart';
 import '../../../widgets/book_quick_actions_sheet.dart';
 import '../../../widgets/book_card.dart';
 import '../../../widgets/empty_state.dart';
@@ -40,12 +38,9 @@ class HomeBookGrid extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 外观设置里的两个独立开关。四列纯封面那一档优先：它自己定死 4 列，
-    // "自适应列数"对它没有意义（两个开关都开时以四列为准）。
-    final fourColumns = ref.watch(homeGridFourColumnsProvider);
-    // 自适应列数（默认关）。关掉时首页走 1.6.0 之前的老规则：左右留白
-    // 固定 20、列数按卡片最大宽度 220 估——手机上就是 2 列，逐像素和
-    // 旧版一致。
+    // 外观设置里的"书籍网格自适应列数"（默认关）。关掉时首页走 1.6.0
+    // 之前的老规则：左右留白固定 20、列数按卡片最大宽度 220 估——手机上
+    // 就是 2 列，逐像素和旧版一致。
     final adaptive = ref.watch(adaptiveGridProvider);
     // topPadding reserves the floating glass header's height inside the
     // scrollable, so the grid scrolls underneath the header (blurred)
@@ -72,48 +67,6 @@ class HomeBookGrid extends ConsumerWidget {
           return LayoutBuilder(
             builder: (context, constraints) {
               final width = constraints.maxWidth;
-
-              // 四列档 = 官方 App 风格的纯封面密排网格：无边框卡片、
-              // 无徽标、封面铺满、小间距。它故意不走 AppLayout 的卡片
-              // 栅格参数（留白 12、间距 8、封面 2:3），列数也定死 4。
-              if (fourColumns) {
-                const fourPadding = 12.0;
-                final gridWidth = (width - fourPadding * 2).clamp(
-                  0.0,
-                  double.infinity,
-                );
-                final cellWidth = ((gridWidth - 8 * 3) / 4).clamp(
-                  0.0,
-                  double.infinity,
-                );
-                return GridView.builder(
-                  controller: scrollController,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: EdgeInsets.fromLTRB(
-                    fourPadding,
-                    topPadding,
-                    fourPadding,
-                    96,
-                  ),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                    childAspectRatio: 2 / 3,
-                  ),
-                  itemCount: itemCount,
-                  itemBuilder: (context, index) {
-                    final book = books[index];
-                    return _CoverTile(
-                      book: book,
-                      cellWidth: cellWidth,
-                      onTap: () {
-                        AppRoutes.openBookDetailForDisplayBook(context, book);
-                      },
-                    );
-                  },
-                );
-              }
 
               // 列数和左右留白都问 AppLayout，传的都是网格盒子自身的宽度
               // （留白在公式里扣）。自适应开 = 手机 3 列、平板按宽度加列、
@@ -208,50 +161,6 @@ class _StatePane extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(20, topPadding + 40, 20, 40),
       children: [child],
-    );
-  }
-}
-
-/// 四列模式的一个纯封面格（官方 App 风格）：无边框、无徽标、封面
-/// 铺满 2:3 格子，点按进详情。封面按格宽解码（[coverCacheWidth]），
-/// 长列表滑动不掉帧。
-class _CoverTile extends StatelessWidget {
-  const _CoverTile({
-    required this.book,
-    required this.cellWidth,
-    required this.onTap,
-  });
-
-  final DisplayBook book;
-  final double cellWidth;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    // 要图与解码同宽：列表给的是 covers100 缩略图，按格宽直接解码
-    // 会糊；按解码宽度要高清版（coverUrlAtWidth）。
-    final cacheWidth = coverCacheWidth(cellWidth, context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
-        child: AspectRatio(
-          aspectRatio: 2 / 3,
-          child: CachedNetworkImage(
-            imageUrl: coverUrlAtWidth(book.cover ?? '', cacheWidth),
-            fit: BoxFit.cover,
-            memCacheWidth: cacheWidth,
-            placeholder: (context, url) =>
-                ColoredBox(color: cs.surfaceContainerHighest),
-            errorWidget: (context, url, error) => ColoredBox(
-              color: cs.surfaceContainerHighest,
-              child: Icon(Icons.menu_book_outlined, color: cs.outline),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

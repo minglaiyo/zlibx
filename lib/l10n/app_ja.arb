@@ -483,7 +483,6 @@
   },
   "readerSessionWriteFailed": "リーダーセッションの書き込みに失敗しました。再度ログインしてお試しください。",
   "recentAccount": "最近使用したアカウント",
-  "recommendationFourColumns": "おすすめを4列で表示",
   "adaptiveGridColumns": "ブックグリッドの自動列数",
   "adaptiveGridColumnsDesc": "ホーム・最新・人気・類似・検索結果のブックグリッドをウィンドウ幅に合わせて配置します。オフにすると従来のレイアウト（スマートフォンでは2列）を維持します。",
   "recommendationRandom": "ランダムなおすすめ",

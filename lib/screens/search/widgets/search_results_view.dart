@@ -247,9 +247,10 @@ class SearchResultsView extends StatelessWidget {
 
   Widget _bookGrid(BuildContext context) {
     // 外观设置里的"书籍网格自适应列数"（默认关）。关 = 原本那套按最大卡宽
-    // 220 估列数的委托，逐像素不变；开 = 与热门 / 最新上架 / 同类共用的列数
-    // 规则。骨架网格（search_skeleton_grid.dart）走同样的分支，两处必须一起
-    // 改，否则加载完会看到列数跳一下。
+    // 220 估列数的委托，逐像素不变；开 = 与首页 / 热门 / 最新上架 / 同类
+    // 共用的那一个 [BookCard.adaptiveGridDelegate]。骨架网格
+    // （search_skeleton_grid.dart）走同样的分支，两处必须一起改，否则加载
+    // 完会看到列数跳一下。
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
@@ -260,14 +261,7 @@ class SearchResultsView extends StatelessWidget {
           key: const ValueKey('grid'),
           padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 16),
           gridDelegate: adaptiveGridColumns
-              ? SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: AppLayout.fullCardGridColumns(width),
-                  childAspectRatio: 0.60,
-                  // 12 = AppLayout.listGridSpacing：自适应公式假设的就是
-                  // 这个间距。
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                )
+              ? BookCard.adaptiveGridDelegate(context, width)
               : const SliverGridDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: 220,
                   childAspectRatio: 0.60,

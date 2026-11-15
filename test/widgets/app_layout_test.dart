@@ -15,8 +15,9 @@ import 'package:zlibx/widgets/book_card.dart';
 ///   `SliverGridDelegateWithMaxCrossAxisExtent` 内部那个 ceil 公式，所以
 ///   升级上去看不到任何变化——把公式改回 floor，下面那两条 legacy 断言
 ///   立刻变红。
-/// * 开 = 按窗口宽度排布：纯封面卡（首页）手机 3 列起，带书名信息的卡
-///   （最新上架 / 热门 / 同类 / 搜索）恒 2 列起、平板才加列。
+/// * 开 = 全站一套规则：列数、留白、间距都问 [AppLayout]，首页的纯封面
+///   卡和列表页带书名信息的卡排同样的列数（手机 3 列起），只有格高按
+///   卡片种类分开——见 [BookCard.gridHeightFor]。
 /// 列数错了不会崩，只是整站看起来不对，所以公式和渲染两头都要钉住。
 class _NoHiveAdaptive extends AdaptiveGridNotifier {
   _NoHiveAdaptive(this._value);
@@ -24,15 +25,6 @@ class _NoHiveAdaptive extends AdaptiveGridNotifier {
   final bool _value;
 
   /// 列数设置默认走 Hive 同步读；测试里不初始化 Hive，直接给要验的那一档。
-  @override
-  bool build() => _value;
-}
-
-class _NoHiveFourColumns extends HomeGridFourColumnsNotifier {
-  _NoHiveFourColumns(this._value);
-
-  final bool _value;
-
   @override
   bool build() => _value;
 }
@@ -56,7 +48,6 @@ Future<int> _pumpGrid(
   WidgetTester tester, {
   required Size surface,
   required bool adaptive,
-  bool fourColumns = false,
   int count = 6,
 }) async {
   await tester.binding.setSurfaceSize(surface);
@@ -65,9 +56,6 @@ Future<int> _pumpGrid(
     ProviderScope(
       overrides: [
         adaptiveGridProvider.overrideWith(() => _NoHiveAdaptive(adaptive)),
-        homeGridFourColumnsProvider.overrideWith(
-          () => _NoHiveFourColumns(fourColumns),
-        ),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -96,8 +84,62 @@ Future<int> _pumpGrid(
   return delegate.crossAxisCount;
 }
 
+/// 渲染一屏"带书名信息"的网格卡（最新上架 / 热门 / 同类 / 搜索结果共用
+/// 的那种），用的就是那些页面自适应档的那个委托。首页之外的那几页没有
+/// 独立的列数规则了，所以这里验的就是它们真实的排布。
+Future<SliverGridDelegateWithFixedCrossAxisCount> _pumpFullCardGrid(
+  WidgetTester tester, {
+  required Size surface,
+  bool searchResult = false,
+  double? textScaler,
+}) async {
+  await tester.binding.setSurfaceSize(surface);
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(
+    MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          disableAnimations: true,
+          textScaler: textScaler == null
+              ? null
+              : TextScaler.linear(textScaler),
+        ),
+        child: child!,
+      ),
+      home: Scaffold(
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final delegate = BookCard.adaptiveGridDelegate(
+              context,
+              constraints.maxWidth,
+            );
+            return GridView.builder(
+              padding: EdgeInsets.all(
+                AppLayout.pageGutter(constraints.maxWidth),
+              ),
+              gridDelegate: delegate,
+              itemCount: 6,
+              itemBuilder: (context, index) => BookCard(
+                book: _books(6)[index],
+                searchResult: searchResult,
+              ),
+            );
+          },
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 200));
+  return tester
+      .widget<GridView>(find.byType(GridView))
+      .gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
+}
+
 void main() {
-  group('AppLayout.gridColumns（纯封面卡：首页）', () {
+  group('AppLayout.gridColumns（全站唯一一条列数规则）', () {
     test('手机上恒为三列', () {
       // 360dp 的机器算术上只塞得下 2 张 112dp 的卡，但设计上手机就是
       // 三列，下限钉死在 3。
@@ -121,41 +163,6 @@ void main() {
       // 1280dp：留白变宽后仍能排九列，但封顶在八。
       expect(AppLayout.gridColumns(1280), 8);
       expect(AppLayout.gridColumns(2400), 8);
-    });
-  });
-
-  group('AppLayout.fullCardGridColumns（带书名信息的卡：列表页）', () {
-    test('手机上保持两列', () {
-      // 这类卡片的信息区按内容占掉 ~118dp，卡片压到 168dp 以下封面就塌
-      // 成一条，所以手机不许因为"自适应"就排成三列。
-      expect(AppLayout.fullCardGridColumns(360), 2);
-      expect(AppLayout.fullCardGridColumns(411), 2);
-      expect(AppLayout.fullCardGridColumns(500), 2);
-    });
-
-    test('平板起按 168dp 的下限加列', () {
-      expect(AppLayout.fullCardGridColumns(600), 3);
-      expect(AppLayout.fullCardGridColumns(800), 4);
-      expect(AppLayout.fullCardGridColumns(840), 4);
-      expect(AppLayout.fullCardGridColumns(1000), 5);
-      expect(AppLayout.fullCardGridColumns(1280), 6);
-      expect(AppLayout.fullCardGridColumns(2400), 8);
-    });
-
-    test('加列时每格仍不低于 168dp', () {
-      // 列数公式和间距是一对：间距改了这里就会红。
-      for (final width in <double>[600, 800, 1000, 1280, 1600, 2400]) {
-        final columns = AppLayout.fullCardGridColumns(width);
-        final contentWidth = width - 2 * AppLayout.pageGutter(width);
-        final cellWidth =
-            (contentWidth - AppLayout.listGridSpacing * (columns - 1)) /
-            columns;
-        expect(
-          cellWidth,
-          greaterThanOrEqualTo(AppLayout.fullCardMinCardWidth),
-          reason: '${width}dp 排 $columns 列只剩 ${cellWidth}dp 宽',
-        );
-      }
     });
   });
 
@@ -229,17 +236,64 @@ void main() {
       expect(columns, 6);
       expect(tester.takeException(), isNull);
     });
+  });
 
-    testWidgets('四列布局是独立开关，且压过自适应', (tester) async {
-      final columns = await _pumpGrid(
+  group('带书名信息的网格卡也走同一条规则', () {
+    // 信息区再怎么改版也不会低过 100dp：两行书名 34 + 分类行 14 +
+    // 作者行 15 + 大小行 14 + 上下内边距 24 ≈ 101。这个下限写在测试里
+    // 而不是抄 [BookCard] 的那个数——它钉的是"封面必须拿到 0.7 比例之外
+    // 还剩整块信息区"，格子按老的 childAspectRatio（0.60/0.65）排时
+    // 三列密度下封面被压成一条横带，这条就红。
+    const minInfoHeight = 100.0;
+
+    testWidgets('360dp：三列，且封面没被压成一条横带', (tester) async {
+      final delegate = await _pumpFullCardGrid(
+        tester,
+        surface: const Size(360, 800),
+      );
+      expect(delegate.crossAxisCount, 3);
+      expect(delegate.crossAxisSpacing, AppLayout.gridSpacing);
+      final cellWidth =
+          (360 -
+              2 * AppLayout.pageGutter(360) -
+              AppLayout.gridSpacing * 2) /
+          3;
+      expect(
+        delegate.mainAxisExtent,
+        greaterThanOrEqualTo(cellWidth / 0.7 + minInfoHeight),
+        reason:
+            '三列密度（格宽 ${cellWidth.toStringAsFixed(1)}dp）下'
+            '一格只有 ${(delegate.mainAxisExtent ?? 0).toStringAsFixed(1)}dp 高',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('411dp 搜索结果卡：同样三列，不溢出', (tester) async {
+      final delegate = await _pumpFullCardGrid(
         tester,
         surface: const Size(411, 900),
-        adaptive: true,
-        fourColumns: true,
+        searchResult: true,
       );
-      expect(columns, 4);
-      // 四列档换的是渲染方式：纯封面格，不再有带信息区的卡片。
-      expect(find.byType(BookCard), findsNothing);
+      expect(delegate.crossAxisCount, 3);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('系统字号放大时格子跟着长高', (tester) async {
+      // 信息区是格子里唯一按内容定高的一块，它随字号缩放；把
+      // gridHeightFor 里的缩放拿掉（当成 1 倍算），这条就红。
+      final normal = await _pumpFullCardGrid(
+        tester,
+        surface: const Size(411, 900),
+      );
+      final big = await _pumpFullCardGrid(
+        tester,
+        surface: const Size(411, 900),
+        textScaler: 1.5,
+      );
+      expect(
+        big.mainAxisExtent!,
+        greaterThan(normal.mainAxisExtent!),
+      );
       expect(tester.takeException(), isNull);
     });
   });

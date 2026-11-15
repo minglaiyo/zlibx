@@ -483,7 +483,6 @@
   },
   "readerSessionWriteFailed": "Failed to write reader session. Please log in again and retry.",
   "recentAccount": "Recent account",
-  "recommendationFourColumns": "Four-column recommendations",
   "adaptiveGridColumns": "Adaptive grid columns",
   "adaptiveGridColumnsDesc": "Size the book grids on the home, latest, popular, similar and search pages to the window width. Off keeps the classic layout — 2 columns on phones.",
   "recommendationRandom": "Random recommendations",

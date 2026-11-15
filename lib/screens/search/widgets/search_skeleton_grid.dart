@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_layout.dart';
+import '../../../widgets/book_card.dart';
 import '../../../widgets/cover_placeholder.dart';
 
 /// 从 search_screen 抽出的零状态段：搜索加载骨架网格。
@@ -11,7 +12,8 @@ class SearchSkeletonGrid extends StatelessWidget {
   });
 
   /// 与 SearchResultsView 的书本网格同一开关、同一分支：加载完成后
-  /// 列数不能跳一下。两个文件的 delegate 参数要改就一起改。
+  /// 列数不能跳一下。两个文件的 delegate 参数要改就一起改（自适应档直接
+  /// 共用 [BookCard.adaptiveGridDelegate]，不会各写一份跑偏）。
   final bool adaptiveGridColumns;
 
   @override
@@ -29,14 +31,7 @@ class SearchSkeletonGrid extends StatelessWidget {
           physics: const NeverScrollableScrollPhysics(),
           padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 16),
           gridDelegate: adaptiveGridColumns
-              ? SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: AppLayout.fullCardGridColumns(width),
-                  childAspectRatio: 0.60,
-                  // 12 = AppLayout.listGridSpacing：自适应公式假设的就是
-                  // 这个间距，改动其中一边会让卡片宽度偏离 168 的下限。
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                )
+              ? BookCard.adaptiveGridDelegate(context, width)
               : const SliverGridDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: 220,
                   childAspectRatio: 0.60,

@@ -30,7 +30,7 @@ class PopularBooksScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context)!;
     final booksAsync = ref.watch(mostPopularBooksProvider);
     // 外观设置里的"书籍网格自适应列数"（默认关）：关掉时本页维持固定
-    // 两列、左右 16 的原样；打开时列数与留白都按窗口宽度算。
+    // 两列、左右 16 的原样；打开时列数、留白、格高都和首页同一套规则。
     final adaptive = ref.watch(adaptiveGridProvider);
 
     return Scaffold(
@@ -74,24 +74,23 @@ class PopularBooksScreen extends ConsumerWidget {
             return LayoutBuilder(
               builder: (context, constraints) {
                 final width = constraints.maxWidth;
-                final columns = adaptive
-                    ? AppLayout.fullCardGridColumns(width)
-                    : 2;
                 final gutter = adaptive
                     ? AppLayout.pageGutter(width)
                     : 16.0;
                 return GridView.builder(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(gutter, 12, gutter, 24),
-                  gridDelegate:
-                      SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: columns,
-                    childAspectRatio: 0.65,
-                    // 12 = AppLayout.listGridSpacing：自适应公式假设的就是
-                    // 这个间距，改动其中一边会让卡片宽度偏离 168 的下限。
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                  ),
+                  // 自适应档：列数 / 留白 / 间距 / 格高全部走 BookCard 那一
+                  // 个工厂，和首页同一套规则（手机上就是 3 列）。关掉时保
+                  // 持本页原来的固定委托：两列、0.65、间距 12。
+                  gridDelegate: adaptive
+                      ? BookCard.adaptiveGridDelegate(context, width)
+                      : const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          childAspectRatio: 0.65,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                        ),
                   itemCount: books.length,
                   itemBuilder: (context, index) {
                     final book = books[index];

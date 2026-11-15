@@ -43,8 +43,9 @@ Future<void> _pump(
   WidgetTester tester, {
   required FutureOr<List<Book>> Function(Ref ref) create,
   bool adaptive = false,
+  Size surface = const Size(800, 1600),
 }) async {
-  await tester.binding.setSurfaceSize(const Size(800, 1600));
+  await tester.binding.setSurfaceSize(surface);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     ProviderScope(
@@ -83,11 +84,26 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('自适应列数打开：800dp 上排四列，卡片不溢出', (tester) async {
+  testWidgets('自适应列数打开：800dp 上排五列，卡片不溢出', (tester) async {
     final books = _fakeBooks();
     await _pump(tester, create: (ref) async => books, adaptive: true);
-    // 800dp：内容 736dp，按 168dp 的下限排四列（每格 ≈175dp）。
-    expect(_gridColumns(tester), 4);
+    // 与首页同一条规则：800dp 内容 736dp，按 112dp 的下限排五列
+    // （每格 ≈134dp）。
+    expect(_gridColumns(tester), 5);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('自适应列数打开：360dp 手机上也是三列', (tester) async {
+    // 这类带书名信息的卡以前在手机上恒 2 列（怕窄格把封面压成一条）；
+    // 现在格高按"封面 0.7 + 信息区"算，密度和首页对齐，三列不溢出。
+    final books = _fakeBooks();
+    await _pump(
+      tester,
+      create: (ref) async => books,
+      adaptive: true,
+      surface: const Size(360, 800),
+    );
+    expect(_gridColumns(tester), 3);
     expect(tester.takeException(), isNull);
   });
 

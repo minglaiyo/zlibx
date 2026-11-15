@@ -19,9 +19,10 @@ import '../../widgets/loading_widget.dart';
 /// 的一次快照（约 20 本；接口回 404 / success:0 / 空列表时插件自动
 /// 回退 popular 排序搜索），下拉刷新翻到下一页，拿到不同批次。
 ///
-/// 刷新走下拉或右上角按钮同一条路径（[_PopularBooksScreenState._refresh]
-/// 里的翻页），AsyncValue 的加载 / 错误 / 空 / 数据四档都能触发下拉——
-/// 手势靠子组件越界滚动，所以四档各给一个可滚的外壳。
+/// 刷新走下拉一条路径（[_PopularBooksScreenState._refresh] 里的翻页），
+/// AsyncValue 的加载 / 错误 / 空 / 数据四档都能触发下拉——手势靠子组件
+/// 越界滚动，所以四档各给一个可滚的外壳。右上角的显式刷新按钮与下拉白圈
+/// 已去掉，页面唯一的加载视觉是星型 blob。
 ///
 /// 翻页（1→2→3→1 循环）：热门与最新两页的接口回退到 search 时，之前
 /// 永远打第 1 页 limit 20，刷新后内容完全不变，用户看到的就是"加载
@@ -47,7 +48,7 @@ class _PopularBooksScreenState extends ConsumerState<PopularBooksScreen> {
 
   int _page = 1;
 
-  /// 下拉与右上角刷新按钮走同一条路径：翻到下一页，invalidate 这一页
+  /// 下拉与错误档的重试按钮走同一条路径：翻到下一页，invalidate 这一页
   /// 再等这一轮请求真的跑完。之前写的是 `() async => ref.invalidate(...)`
   ///——invalidate 只把 provider 标脏就返回，指示器立刻收起，慢线 / 被墙
   /// 时看着就像"拉了没反应"。
@@ -73,20 +74,16 @@ class _PopularBooksScreenState extends ConsumerState<PopularBooksScreen> {
     final adaptive = ref.watch(adaptiveGridProvider);
 
     return Scaffold(
-      appBar: GradientAppBar(
-        title: l10n.popularBooks,
-        // 显式刷新入口：本页是从首页"最受欢迎 →"推进来的二级页，下拉
-        // 手势只有在内容能滚的时候才看得见，按钮放在这里四档状态都能刷。
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: l10n.refresh,
-            onPressed: _refresh,
-          ),
-        ],
-      ),
+      appBar: GradientAppBar(title: l10n.popularBooks),
       body: RefreshIndicator(
         onRefresh: _refresh,
+        // 加载视觉全 App 只留星型 blob 一种：这里把默认那个白底圆圈 +
+        // 弧线指示器整体透明化，并把 elevation 归零，否则圆圈虽然看不见、
+        // 阴影还在。下拉手势、翻页逻辑、语义提示都不动——刷新时用户看到的
+        // 是加载档的星型（invalidate 后 AsyncValue 就回到 loading）。
+        color: Colors.transparent,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         child: booksAsync.when(
           // 加载档也必须能下拉：RefreshIndicator 的手势靠子组件越界滚动
           // 触发，而 LoadingWidget.page() 是个 Center(Column)，滚不动。接口

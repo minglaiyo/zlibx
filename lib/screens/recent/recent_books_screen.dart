@@ -20,9 +20,10 @@ import '../../widgets/gradient_app_bar.dart';
 /// 空列表时插件自动回退到 date 排序搜索），下拉刷新翻到下一页，拿到
 /// 不同批次。
 ///
-/// 刷新与热门页同构：下拉或右上角按钮走同一条 [_RecentBooksScreenState._refresh]
-/// 里的翻页路径，加载 / 错误 / 空 / 数据四档都能下拉（每档都给一个
-/// 可越界滚动的外壳）。
+/// 刷新与热门页同构：下拉走 [_RecentBooksScreenState._refresh] 里的翻页
+/// 路径，加载 / 错误 / 空 / 数据四档都能下拉（每档都给一个可越界滚动的
+/// 外壳）。右上角的显式刷新按钮与下拉白圈已去掉，页面唯一的加载视觉是
+/// 星型 blob；错误档仍留着重试按钮兜底。
 ///
 /// 翻页（1→2→3→1 循环）：回退到 date 排序搜索时之前永远打第 1 页
 /// limit 20，刷新后内容不变。改成按页码分页（[recentBooksProvider] 是
@@ -43,7 +44,7 @@ class _RecentBooksScreenState extends ConsumerState<RecentBooksScreen> {
 
   int _page = 1;
 
-  /// 与热门页同构：下拉和右上角刷新按钮都走这条路径，翻到下一页，
+  /// 与热门页同构：下拉和错误档的重试按钮都走这条路径，翻到下一页，
   /// invalidate 之后等这一轮请求跑完，指示器的时长就是网络时长。
   Future<void> _refresh() async {
     final next = _page >= _maxPage ? 1 : _page + 1;
@@ -67,20 +68,16 @@ class _RecentBooksScreenState extends ConsumerState<RecentBooksScreen> {
     final adaptive = ref.watch(adaptiveGridProvider);
 
     return Scaffold(
-      appBar: GradientAppBar(
-        title: l10n.recentlyAdded,
-        // 显式刷新入口，理由同热门页：本页也是首页推进来的二级页，
-        // 下拉只在内容能滚时才有，按钮保证四档状态都能刷。
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: l10n.refresh,
-            onPressed: _refresh,
-          ),
-        ],
-      ),
+      appBar: GradientAppBar(title: l10n.recentlyAdded),
       body: RefreshIndicator(
         onRefresh: _refresh,
+        // 加载视觉全 App 只留星型 blob 一种：这里把默认那个白底圆圈 +
+        // 弧线指示器整体透明化，并把 elevation 归零，否则圆圈虽然看不见、
+        // 阴影还在。下拉手势、翻页逻辑、语义提示都不动——刷新时用户看到的
+        // 是加载档的星型（invalidate 后 AsyncValue 就回到 loading）。
+        color: Colors.transparent,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         child: booksAsync.when(
           // 加载档也必须能下拉：RefreshIndicator 的手势靠子组件越界滚动
           // 触发，而 LoadingWidget.page() 是个 Center(Column)，滚不动。接口

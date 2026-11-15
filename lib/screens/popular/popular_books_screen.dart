@@ -42,10 +42,10 @@ class PopularBooksScreen extends ConsumerStatefulWidget {
 }
 
 class _PopularBooksScreenState extends ConsumerState<PopularBooksScreen> {
-  /// 翻页上限：热门回退搜索翻 1→2→3→1，每页约 20 本，三页已够刷新
-  /// 看到不同批次。再大容易抽到冷门页，被墙线路上每次请求都可能落到
-  /// 无头 WebView solver，拖慢刷新。
-  static const int _maxPage = 3;
+  /// 翻页上限：热门回退搜索翻 1→2→…→9→1，每页约 20 本，九页让多轮
+  /// 刷新都能看到不同批次。注意：popular 排序越往后越冷门，且被墙
+  /// 线路上每页请求都可能落到无头 WebView solver，深页会变慢。
+  static const int _maxPage = 9;
 
   int _page = 1;
 

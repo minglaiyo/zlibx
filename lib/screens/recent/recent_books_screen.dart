@@ -40,8 +40,8 @@ class RecentBooksScreen extends ConsumerStatefulWidget {
 }
 
 class _RecentBooksScreenState extends ConsumerState<RecentBooksScreen> {
-  /// 翻页上限：最新回退搜索翻 1→2→3→1，理由同热门页。
-  static const int _maxPage = 3;
+  /// 翻页上限：最新回退搜索翻 1→2→…→9→1，理由同热门页。
+  static const int _maxPage = 9;
 
   int _page = 1;
 

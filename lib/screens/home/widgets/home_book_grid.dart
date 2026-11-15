@@ -13,6 +13,16 @@ import '../../../widgets/entrance.dart';
 import '../../../widgets/loading_widget.dart';
 
 /// The recommendation grid plus its empty / loading / error states.
+///
+/// 下拉刷新在所有状态下都要能用，所以 RefreshIndicator 只包在最外层，
+/// 四档内容各给一个可越界滚动的子组件（网格自带，空态 / 加载 / 错误
+/// 用 ListView + AlwaysScrollableScrollPhysics）。
+///
+/// 这不是多余的讲究：错误态和空态在个性化推荐接口失败 / 返回空列表时
+/// 就会碰到（2026-11-15 去掉热门兜底之后，这两档从"几乎到不了"变成
+/// 首页的常态之一），而 RefreshIndicator 的手势要靠子组件的越界滚动
+/// 触发——一个既不能滚动、又没有下拉层的 Padding，用户怎么拉都没反应，
+/// 又没有重试按钮，等于把首页关死在错误页上。
 class HomeBookGrid extends ConsumerWidget {
   const HomeBookGrid({
     super.key,
@@ -35,50 +45,55 @@ class HomeBookGrid extends ConsumerWidget {
     // topPadding reserves the floating glass header's height inside the
     // scrollable, so the grid scrolls underneath the header (blurred)
     // instead of starting below it.
-    return booksAsync.when(
-      data: (books) {
-        if (books.isEmpty) {
-          return Padding(
-            padding: EdgeInsets.fromLTRB(40, topPadding + 40, 40, 40),
-            child: EmptyState(
-              icon: Icons.book_outlined,
-              title: AppLocalizations.of(context)!.noBooksFound,
-            ),
-          );
-        }
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      // The spinner must appear below the floating glass header,
+      // not behind it (the header paints on top of the grid).
+      edgeOffset: topPadding,
+      child: booksAsync.when(
+        data: (books) {
+          if (books.isEmpty) {
+            return _StatePane(
+              topPadding: topPadding,
+              child: EmptyState(
+                icon: Icons.book_outlined,
+                title: AppLocalizations.of(context)!.noBooksFound,
+              ),
+            );
+          }
 
-        final itemCount = books.length;
+          final itemCount = books.length;
 
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            const maxCardWidth = 220.0;
-            const columnSpacing = 16.0;
-            const horizontalPadding = 20.0;
-            final gridWidth = (constraints.maxWidth - horizontalPadding * 2)
-                .clamp(0.0, double.infinity);
-            final columnCount = fourColumns
-                ? 4
-                : (gridWidth / (maxCardWidth + columnSpacing))
-                    .ceil()
-                    .clamp(1, double.infinity);
-            final cardWidth =
-                ((gridWidth - columnSpacing * (columnCount - 1)) / columnCount)
-                    .clamp(0.0, double.infinity);
-
-            // 四列模式 = 官方 App 风格的纯封面密排网格：无边框卡片、
-            // 无徽标、封面铺满、小间距。
-            if (fourColumns) {
-              final cellWidth = ((gridWidth - 8 * 3) / 4)
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              const maxCardWidth = 220.0;
+              const columnSpacing = 16.0;
+              const horizontalPadding = 20.0;
+              final gridWidth = (constraints.maxWidth - horizontalPadding * 2)
                   .clamp(0.0, double.infinity);
-              return RefreshIndicator(
-                onRefresh: onRefresh,
-                edgeOffset: topPadding,
-                child: GridView.builder(
+              final columnCount = fourColumns
+                  ? 4
+                  : (gridWidth / (maxCardWidth + columnSpacing)).ceil().clamp(
+                      1,
+                      double.infinity,
+                    );
+              final cardWidth =
+                  ((gridWidth - columnSpacing * (columnCount - 1)) /
+                          columnCount)
+                      .clamp(0.0, double.infinity);
+
+              // 四列模式 = 官方 App 风格的纯封面密排网格：无边框卡片、
+              // 无徽标、封面铺满、小间距。
+              if (fourColumns) {
+                final cellWidth = ((gridWidth - 8 * 3) / 4).clamp(
+                  0.0,
+                  double.infinity,
+                );
+                return GridView.builder(
                   controller: scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(12, topPadding, 12, 96),
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 4,
                     crossAxisSpacing: 8,
                     mainAxisSpacing: 8,
@@ -95,16 +110,10 @@ class HomeBookGrid extends ConsumerWidget {
                       },
                     );
                   },
-                ),
-              );
-            }
+                );
+              }
 
-            return RefreshIndicator(
-              onRefresh: onRefresh,
-              // The spinner must appear below the floating glass header,
-              // not behind it (the header paints on top of the grid).
-              edgeOffset: topPadding,
-              child: GridView.builder(
+              return GridView.builder(
                 controller: scrollController,
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: EdgeInsets.fromLTRB(20, topPadding, 20, 96),
@@ -128,32 +137,56 @@ class HomeBookGrid extends ConsumerWidget {
                       },
                       // 长按封面：收藏 / 加入书单快捷面板（功能 2 推广）。
                       // 非外部源书（无 z 站收藏体系）面板自身不弹。
-                      onLongPress: () => showBookQuickActionsSheet(
-                        context,
-                        book,
-                      ),
+                      onLongPress: () =>
+                          showBookQuickActionsSheet(context, book),
                     ),
                   );
                 },
-              ),
-            );
-          },
-        );
-      },
-      loading: () => Padding(
-        padding: EdgeInsets.only(top: topPadding + 40, bottom: 40),
-        child: LoadingWidget(
-          message: AppLocalizations.of(context)!.loadingTrendingBooks,
+              );
+            },
+          );
+        },
+        loading: () => _StatePane(
+          topPadding: topPadding,
+          child: LoadingWidget(
+            message: AppLocalizations.of(context)!.loadingTrendingBooks,
+          ),
+        ),
+        error: (error, stack) => _StatePane(
+          topPadding: topPadding,
+          child: EmptyState(
+            icon: Icons.error_outline,
+            title: AppLocalizations.of(context)!.couldNotLoadBooks,
+            message: AppLocalizations.of(context)!.checkYourConnection,
+            // 显式重试入口：除了下拉，点按钮也要能重新拉一次——与
+            // 热门 / 最新上架两页同构（那两页错误态就有这个按钮）。
+            action: TextButton.icon(
+              onPressed: onRefresh,
+              icon: const Icon(Icons.refresh),
+              label: Text(AppLocalizations.of(context)!.retry),
+            ),
+          ),
         ),
       ),
-      error: (error, stack) => Padding(
-        padding: EdgeInsets.fromLTRB(20, topPadding + 20, 20, 20),
-        child: EmptyState(
-          icon: Icons.error_outline,
-          title: AppLocalizations.of(context)!.couldNotLoadBooks,
-          message: AppLocalizations.of(context)!.checkYourConnection,
-        ),
-      ),
+    );
+  }
+}
+
+/// 空态 / 加载 / 错误三档的外壳：一个可越界滚动的 ListView，让外层
+/// RefreshIndicator 在这些状态下也收得到下拉手势（网格分支自带
+/// GridView，不走这里）。内容顶部留出悬浮头部的空间。
+class _StatePane extends StatelessWidget {
+  const _StatePane({required this.topPadding, required this.child});
+
+  final double topPadding;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(20, topPadding + 40, 20, 40),
+      children: [child],
     );
   }
 }

@@ -17,40 +17,60 @@ import '../../widgets/loading_widget.dart';
 
 /// 热门——官网首页"最受欢迎"栏目的承载页。`/eapi/book/most_popular`
 /// 的一次快照（约 20 本；接口回 404 / success:0 / 空列表时插件自动
-/// 回退 popular 排序搜索），下拉刷新重新拉取。
+/// 回退 popular 排序搜索），下拉刷新翻到下一页，拿到不同批次。
 ///
-/// 刷新走下拉或右上角按钮同一条路径（[PopularBooksScreen.build] 里的
-/// `refresh`），AsyncValue 的加载 / 错误 / 空 / 数据四档都能触发下拉——
+/// 刷新走下拉或右上角按钮同一条路径（[_PopularBooksScreenState._refresh]
+/// 里的翻页），AsyncValue 的加载 / 错误 / 空 / 数据四档都能触发下拉——
 /// 手势靠子组件越界滚动，所以四档各给一个可滚的外壳。
+///
+/// 翻页（1→2→3→1 循环）：热门与最新两页的接口回退到 search 时，之前
+/// 永远打第 1 页 limit 20，刷新后内容完全不变，用户看到的就是"加载
+/// 没用还是那几本"。改成按页码分页（[mostPopularBooksProvider] 是
+/// family），刷新时翻页 + invalidate，每轮拿到不同批次。
 ///
 /// 与最新上架（RecentBooksScreen）同构：卡片、错误/重试入口、空态都
 /// 一致。mostPopularBooksProvider 是账号维度缓存的一员（换号/换线时
 /// 随 invalidateAccountScopedProviders 一起失效），这里不重复管理。
-class PopularBooksScreen extends ConsumerWidget {
+class PopularBooksScreen extends ConsumerStatefulWidget {
   const PopularBooksScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PopularBooksScreen> createState() =>
+      _PopularBooksScreenState();
+}
+
+class _PopularBooksScreenState extends ConsumerState<PopularBooksScreen> {
+  /// 翻页上限：热门回退搜索翻 1→2→3→1，每页约 20 本，三页已够刷新
+  /// 看到不同批次。再大容易抽到冷门页，被墙线路上每次请求都可能落到
+  /// 无头 WebView solver，拖慢刷新。
+  static const int _maxPage = 3;
+
+  int _page = 1;
+
+  /// 下拉与右上角刷新按钮走同一条路径：翻到下一页，invalidate 这一页
+  /// 再等这一轮请求真的跑完。之前写的是 `() async => ref.invalidate(...)`
+  ///——invalidate 只把 provider 标脏就返回，指示器立刻收起，慢线 / 被墙
+  /// 时看着就像"拉了没反应"。
+  Future<void> _refresh() async {
+    final next = _page >= _maxPage ? 1 : _page + 1;
+    setState(() => _page = next);
+    ref.invalidate(mostPopularBooksProvider(_page));
+    try {
+      await ref.read(mostPopularBooksProvider(_page).future);
+    } on Object catch (_) {
+      // 失败不往外抛：AsyncError 会让下面走错误分支，那里有重试按钮。
+      // on Object 而不是 Exception——接口层是 throw StateError(...)，
+      // StateError 属于 Error。
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final booksAsync = ref.watch(mostPopularBooksProvider);
+    final booksAsync = ref.watch(mostPopularBooksProvider(_page));
     // 外观设置里的"书籍网格自适应列数"（默认关）：关掉时本页维持固定
     // 两列、左右 16 的原样；打开时列数、留白、格高都和首页同一套规则。
     final adaptive = ref.watch(adaptiveGridProvider);
-
-    // 下拉与右上角刷新按钮走同一条路径：先 invalidate，再等这一轮请求真的
-    // 跑完。之前写的是 `() async => ref.invalidate(...)`——invalidate 只把
-    // provider 标脏就返回，指示器立刻收起，慢线 / 被墙时看着就像"拉了没
-    // 反应"。
-    Future<void> refresh() async {
-      ref.invalidate(mostPopularBooksProvider);
-      try {
-        await ref.read(mostPopularBooksProvider.future);
-      } on Object catch (_) {
-        // 失败不往外抛：AsyncError 会让下面走错误分支，那里有重试按钮。
-        // on Object 而不是 Exception——接口层是 throw StateError(...)，
-        // StateError 属于 Error。
-      }
-    }
 
     return Scaffold(
       appBar: GradientAppBar(
@@ -61,12 +81,12 @@ class PopularBooksScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: l10n.refresh,
-            onPressed: refresh,
+            onPressed: _refresh,
           ),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: refresh,
+        onRefresh: _refresh,
         child: booksAsync.when(
           // 加载档也必须能下拉：RefreshIndicator 的手势靠子组件越界滚动
           // 触发，而 LoadingWidget.page() 是个 Center(Column)，滚不动。接口
@@ -91,7 +111,7 @@ class PopularBooksScreen extends ConsumerWidget {
               ),
               Center(
                 child: TextButton.icon(
-                  onPressed: refresh,
+                  onPressed: _refresh,
                   icon: const Icon(Icons.refresh),
                   label: Text(l10n.retry),
                 ),
@@ -125,13 +145,13 @@ class PopularBooksScreen extends ConsumerWidget {
                   // 个工厂，和首页同一套规则（手机上就是 3 列）。关掉时保
                   // 持本页原来的固定委托：两列、0.65、间距 12。
                   gridDelegate: adaptive
-                      ? BookCard.adaptiveGridDelegate(context, width)
-                      : const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          childAspectRatio: 0.65,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                        ),
+                          ? BookCard.adaptiveGridDelegate(context, width)
+                          : const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              childAspectRatio: 0.65,
+                              crossAxisSpacing: 12,
+                              mainAxisSpacing: 12,
+                            ),
                   itemCount: books.length,
                   itemBuilder: (context, index) {
                     final book = books[index];

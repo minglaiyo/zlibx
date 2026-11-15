@@ -179,8 +179,11 @@ mixin ZLibrarySearch on ZLibraryApiBase {
   /// success:0 / an empty payload instead of 404, so a 404-only
   /// fallback leaves the home screen blank — device-verified 2026-11-05
   /// on the run #6 package.)
-  Future<ApiResponse<List<Book>>> getMostPopular() async {
-    final raw = await _get('/eapi/book/most_popular');
+  Future<ApiResponse<List<Book>>> getMostPopular({int? page}) async {
+    final raw = await _get(
+      '/eapi/book/most_popular',
+      query: page != null ? {'page': page} : null,
+    );
     // A blocked line would make the search fallback fail too — chaining
     // it only burns 2×15s more of timeouts before surfacing the same
     // "cf_blocked". The device-verified fallback for success:0/empty
@@ -189,17 +192,17 @@ mixin ZLibrarySearch on ZLibraryApiBase {
       return ApiResponse.fail('cf_blocked', statusCode: raw.status);
     }
     if (raw.status == 404) {
-      return search(order: 'popular', limit: 20);
+      return search(order: 'popular', limit: 20, page: page);
     }
     if (raw.json == null) {
-      return search(order: 'popular', limit: 20);
+      return search(order: 'popular', limit: 20, page: page);
     }
     if (!ZLibraryApiBase._isSuccess(raw.json!)) {
-      return search(order: 'popular', limit: 20);
+      return search(order: 'popular', limit: 20, page: page);
     }
     final books = ZLibraryApiBase._booksOf(raw.json!);
     if (books.isEmpty) {
-      return search(order: 'popular', limit: 20);
+      return search(order: 'popular', limit: 20, page: page);
     }
     return ApiResponse.ok(books, meta: ZLibraryApiBase._metaOf(raw.json!));
   }
@@ -252,15 +255,18 @@ mixin ZLibrarySearch on ZLibraryApiBase {
   /// falling back on empty. `date` is the server's real "Recently
   /// added" sort value; `newest` is not a valid order (an invalid
   /// value silently degrades to popular).
-  Future<ApiResponse<List<Book>>> getRecently() async {
-    final raw = await _get('/eapi/book/recently');
+  Future<ApiResponse<List<Book>>> getRecently({int? page}) async {
+    final raw = await _get(
+      '/eapi/book/recently',
+      query: page != null ? {'page': page} : null,
+    );
     // Same cf_blocked short-circuit as [getMostPopular]: the search
     // fallback cannot succeed on a blocked line either.
     if (raw.error == 'cf_blocked') {
       return ApiResponse.fail('cf_blocked', statusCode: raw.status);
     }
     if (raw.status == 404) {
-      return search(order: 'date', limit: 20);
+      return search(order: 'date', limit: 20, page: page);
     }
     if (raw.json == null) {
       return ApiResponse.fail(raw.error ?? 'recently failed',
@@ -275,7 +281,7 @@ mixin ZLibrarySearch on ZLibraryApiBase {
     }
     final books = ZLibraryApiBase._booksOf(raw.json!);
     if (books.isEmpty) {
-      return search(order: 'date', limit: 20);
+      return search(order: 'date', limit: 20, page: page);
     }
     return ApiResponse.ok(books, meta: ZLibraryApiBase._metaOf(raw.json!));
   }

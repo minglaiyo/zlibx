@@ -56,7 +56,7 @@ enum _Via {
 Future<int> _pullAndCountBuilds(
   WidgetTester tester, {
   required Widget screen,
-  required FutureProvider<List<Book>> provider,
+  required FutureProviderFamily<List<Book>, int> provider,
   required _Create create,
   _Via via = _Via.grid,
   bool adaptive = false,
@@ -66,7 +66,7 @@ Future<int> _pullAndCountBuilds(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final container = ProviderContainer(
     overrides: [
-      provider.overrideWith((ref) {
+      provider.overrideWith((ref, page) {
         builds++;
         return create(builds);
       }),
@@ -183,7 +183,7 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final container = ProviderContainer(
         overrides: [
-          provider.overrideWith((ref) {
+          provider.overrideWith((ref, page) {
             calls++;
             return calls == 1 ? first.future : second.future;
           }),

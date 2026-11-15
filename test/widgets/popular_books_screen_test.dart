@@ -50,7 +50,7 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        mostPopularBooksProvider.overrideWith(create),
+        mostPopularBooksProvider.overrideWith((ref, page) => create(ref)),
         adaptiveGridProvider.overrideWith(() => _NoHiveAdaptive(adaptive)),
       ],
       child: MaterialApp(

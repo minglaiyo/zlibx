@@ -20,9 +20,13 @@ import 'zlibrary_provider.dart';
 
 // ── Book Lists ──────────────────────────────────────────────────────
 
-final mostPopularBooksProvider = FutureProvider<List<Book>>((ref) async {
+/// 热门页数据，按页码分页。回退 search 时透传 [page]，让下拉刷新翻到
+/// 下一页拿到不同批次——之前永远打第 1 页（limit 20），刷新后内容不变，
+/// 用户看到的就是"加载没用还是那几本"。
+final mostPopularBooksProvider =
+    FutureProvider.family<List<Book>, int>((ref, int page) async {
   final api = ref.watch(zlibraryApiProvider);
-  final response = await api.getMostPopular();
+  final response = await api.getMostPopular(page: page);
   if (!response.success) {
     // Surface the failure as AsyncError so the UI shows its error/retry
     // branch — an API failure and a genuinely empty list must not look
@@ -390,9 +394,12 @@ final homeRecommendedProvider = Provider<AsyncValue<List<DisplayBook>>>((ref) {
   );
 });
 
-final recentBooksProvider = FutureProvider<List<Book>>((ref) async {
+/// 最新上架页数据，按页码分页。回退 search 时透传 [page]，刷新翻页拿到
+/// 不同批次——之前永远打第 1 页，刷新后内容不变。
+final recentBooksProvider =
+    FutureProvider.family<List<Book>, int>((ref, int page) async {
   final api = ref.watch(zlibraryApiProvider);
-  final response = await api.getRecently();
+  final response = await api.getRecently(page: page);
   if (!response.success) {
     throw StateError(response.error ?? 'Failed to load recent books');
   }

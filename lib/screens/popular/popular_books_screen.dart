@@ -21,8 +21,9 @@ import '../../widgets/loading_widget.dart';
 ///
 /// 刷新走下拉一条路径（[_PopularBooksScreenState._refresh] 里的翻页），
 /// AsyncValue 的加载 / 错误 / 空 / 数据四档都能触发下拉——手势靠子组件
-/// 越界滚动，所以四档各给一个可滚的外壳。右上角的显式刷新按钮与下拉白圈
-/// 已去掉，页面唯一的加载视觉是星型 blob。
+/// 越界滚动，所以四档各给一个可滚的外壳。右上角没有显式刷新按钮，下拉时
+/// RefreshIndicator 的圆弧指示器先给手势反馈（悬挂在顶部），松手后再由
+/// 加载档的星型 blob 表示请求还在跑。
 ///
 /// 翻页（1→2→3→1 循环）：热门与最新两页的接口回退到 search 时，之前
 /// 永远打第 1 页 limit 20，刷新后内容完全不变，用户看到的就是"加载
@@ -77,13 +78,6 @@ class _PopularBooksScreenState extends ConsumerState<PopularBooksScreen> {
       appBar: GradientAppBar(title: l10n.popularBooks),
       body: RefreshIndicator(
         onRefresh: _refresh,
-        // 加载视觉全 App 只留星型 blob 一种：这里把默认那个白底圆圈 +
-        // 弧线指示器整体透明化，并把 elevation 归零，否则圆圈虽然看不见、
-        // 阴影还在。下拉手势、翻页逻辑、语义提示都不动——刷新时用户看到的
-        // 是加载档的星型（invalidate 后 AsyncValue 就回到 loading）。
-        color: Colors.transparent,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
         child: booksAsync.when(
           // 加载档也必须能下拉：RefreshIndicator 的手势靠子组件越界滚动
           // 触发，而 LoadingWidget.page() 是个 Center(Column)，滚不动。接口

@@ -44,6 +44,19 @@ class _BookCardState extends State<BookCard> {
   // Press feedback
   double _scale = 1.0;
 
+  /// 网格卡片书名槽位：字号 / 行高倍数 / 行数。
+  ///
+  /// 这个乘积只是**下限**（见 _buildGridInfo 里的 ConstrainedBox），
+  /// 不是定高：Skia 会把 14×1.2=16.8 的行盒进位成 17.0，两行真实需要
+  /// 34.0，用 SizedBox 钉死 33.6 就会把末行再裁掉零点几像素。留下限
+  /// 的话，两行书名按真实高度排，单行书名补足到同一档，同屏卡片版式
+  /// 依旧对齐。
+  static const double _titleFontSize = 14;
+  static const double _titleLineHeight = 1.2;
+  static const int _titleMaxLines = 2;
+  static double get _titleSlotHeight =>
+      _titleFontSize * _titleLineHeight * _titleMaxLines;
+
   bool get _hasCover => widget.book.cover?.isNotEmpty ?? false;
 
   void _onTapDown(TapDownDetails details) {
@@ -95,63 +108,97 @@ class _BookCardState extends State<BookCard> {
               child: InkWell(
                 onTap: widget.onTap,
                 onLongPress: widget.onLongPress,
-                child: widget.compact ? _buildCoverBackdrop() : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 1. Cover Image (Expanded)
-                    Expanded(flex: 3, child: _buildFullCover()),
-
-                    // 2. Info Content
-                    Expanded(
-                      flex: 2,
-                      child: widget.searchResult ? _buildSearchInfo() : Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Level 2: Category/Tag (Orange, Small) - ABOVE Title
-                            _buildMetaRow(),
-
-                            const SizedBox(height: 4),
-
-                            // Level 1: Title (Black, Bold, Large)
-                            Expanded(
-                              child: Text(
-                                widget.book.title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  height: 1.2,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-
-                            // Level 3: Author (Grey, Secondary)
-                            if (widget.book.author != null && widget.book.author!.isNotEmpty)
-                              Text(
-                                widget.book.author!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  fontSize: 11,
-                                ),
-                              ),
-
-                            const SizedBox(height: 8),
-
-                            // Level 3: Bottom row (Stars/Size)
-                            _buildBottomRow(),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                child: widget.compact
+                    ? _buildCoverBackdrop()
+                    : _buildGridCard(),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// 网格卡片（最新上架 / 热门 / 同类 / 搜索结果共用）：封面与信息区
+  /// 的分配。
+  ///
+  /// 非搜索分支里，信息区不再包 Expanded——之前是固定一档
+  /// （flex 2 / 5），窄屏（360dp，卡片宽 ~158）上那档只有 ~97px，
+  /// 扣掉内边距、格式行、作者、大小行，留给两行书名只剩 ~18px，
+  /// 第二行只露半截（2026-11-15 用户截图：最新上架"阶级与话语之间——
+  /// 左翼…"）。书名是内容、封面是装饰，余量该由封面吸收；书名槽位
+  /// 按 [_titleSlotHeight] 的两行下限排，同屏卡片版式依旧对齐。
+  ///
+  /// 搜索分支保持原样：它的信息区本来就按内容排，flex 2 那档
+  /// （0.60 比例下 ~108px）装得下，动它只会改搜索结果页的封面高度。
+  Widget _buildGridCard() {
+    if (widget.searchResult) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(flex: 3, child: _buildFullCover()),
+          Expanded(flex: 2, child: _buildSearchInfo()),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. Cover Image（吃掉信息区之外的全部高度）
+        Expanded(child: _buildFullCover()),
+
+        // 2. Info Content（按内容定高）
+        _buildGridInfo(),
+      ],
+    );
+  }
+
+  Widget _buildGridInfo() {
+    // 槽位随系统字号缩放：Text 的行高是按缩放后的字号算的，
+    // 固定 33.6 在 1.5 倍字号下又变成裁半截——正是要修的那个毛病。
+    final titleScale =
+        MediaQuery.textScalerOf(context).scale(_titleFontSize) /
+        _titleFontSize;
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Level 2: Category/Tag (Orange, Small) - ABOVE Title
+          _buildMetaRow(),
+
+          const SizedBox(height: 4),
+
+          // Level 1: Title (Black, Bold, Large)
+          ConstrainedBox(
+            constraints: BoxConstraints(minHeight: _titleSlotHeight * titleScale),
+            child: Text(
+              widget.book.title,
+              maxLines: _titleMaxLines,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                height: _titleLineHeight,
+                fontSize: _titleFontSize,
+              ),
+            ),
+          ),
+
+          // Level 3: Author (Grey, Secondary)
+          if (widget.book.author != null && widget.book.author!.isNotEmpty)
+            Text(
+              widget.book.author!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontSize: 11,
+              ),
+            ),
+
+          const SizedBox(height: 8),
+
+          // Level 3: Bottom row (Stars/Size)
+          _buildBottomRow(),
+        ],
       ),
     );
   }

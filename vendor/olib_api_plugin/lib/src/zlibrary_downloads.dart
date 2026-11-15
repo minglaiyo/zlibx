@@ -542,10 +542,16 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
   /// PDF decoded as UTF-8 spikes memory and can OOM a low-end phone,
   /// and the bytes are then downloaded a second time anyway. The
   /// response is streamed instead: a JSON Content-Type is read and
-  /// parsed, anything else is drained unread and the endpoint is
+  /// parsed, anything else is cancelled after at most the first chunk
+  /// of body (the probe only needs headers) and the endpoint is then
   /// treated as the file URL itself.
   Future<String> _fetchDownloadLink(String bookId, String hash) async {
     final path = '/eapi/book/$bookId/$hash/file';
+    // Header-only probe: when this endpoint turns out to stream the
+    // file itself, the same URL is requested again for the actual
+    // download (with its own Range / If-Range), so the token below
+    // is cancelled instead of the body being read.
+    final probe = CancelToken();
     try {
       final res = await _dio.get<ResponseBody>(
         '$_base$path',
@@ -554,6 +560,7 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
           responseType: ResponseType.stream,
           followRedirects: false,
         ),
+        cancelToken: probe,
       );
       final contentType =
           (res.headers.value(HttpHeaders.contentTypeHeader) ?? '')
@@ -582,9 +589,19 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
       // the payload really is a binary/ebook response. An HTML answer
       // is a wall or error page: treating it as a "file stream" makes
       // downloadBook fetch the same page a second time and save the
-      // HTML as the book. Drain the stream unread (the body was never
-      // buffered) and answer from the headers alone.
-      await res.data?.stream.drain<void>();
+      // HTML as the book.
+      //
+      // Answer from the headers alone, and abort the response
+      // instead of draining it: `drain` reads a stream to its end,
+      // so the lookup transferred the whole book over the wire
+      // before the download asked for it again (2026-11-15 perf).
+      // Cancelling tears the connection down right there (dio pipes
+      // an adapter stream as soon as the answer arrives, so at most
+      // the chunk already in flight lands), and the download still
+      // gets to send Range / If-Range - a reused probe stream (a
+      // plain 200, no Range asked for) could never resume a paused
+      // book.
+      probe.cancel('download link lookup is header-only');
       if (res.statusCode == 200 &&
           !contentType.contains('text/html')) {
         return '$_base$path';

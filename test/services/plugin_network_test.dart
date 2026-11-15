@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -65,6 +66,13 @@ final _htmlBytes = Uint8List.fromList(
 // is provably not a book).
 final _textBytes = Uint8List.fromList(List.filled(100, 0x78));
 
+/// 4 KB with a real zip header: big enough that reading a couple of
+/// chunks and reading the whole thing are far apart (the lookup
+/// perf test).
+final _bigEpub = Uint8List.fromList(
+  [..._epubBytes, ...List<int>.filled(4096 - _epubBytes.length, 0x20)],
+);
+
 /// Serves canned network answers so the calls run without a network.
 /// Records every request's method, URI and headers.
 class _FakeAdapter implements HttpClientAdapter {
@@ -114,6 +122,12 @@ class _FakeAdapter implements HttpClientAdapter {
   int fileCalls = 0;
   int linkCalls = 0;
   int deleteCalls = 0;
+  // Bytes the file endpoint handed over, one entry per call.
+  // A lookup that cancels its token stops after a chunk or two;
+  // one that waits for a drain reads the whole body.
+  final List<int> fileBytesDelivered = [];
+  // File-endpoint responses the client aborted instead of reading.
+  int fileAborts = 0;
 
   Map<String, dynamic> profilePayload = const {
     'success': 1,
@@ -141,8 +155,28 @@ class _FakeAdapter implements HttpClientAdapter {
     if (uri.path == _filePath) {
       fileCalls++;
       if (fileRawBody != null) {
-        return ResponseBody.fromBytes(
-          fileRawBody!,
+        // Serve the body in 128-byte pieces, one per timer tick: dio
+        // pipes an adapter stream eagerly (response_stream_handler
+        // subscribes even for ResponseType.stream), so "cancelled"
+        // only means "stopped early" — counting chunks is what makes
+        // a drain observable.
+        final idx = fileBytesDelivered.length;
+        fileBytesDelivered.add(0);
+        cancelFuture?.then((_) => fileAborts++).ignore();
+        const chunkSize = 128;
+        final chunks = <Uint8List>[];
+        for (var at = 0; at < fileRawBody!.length; at += chunkSize) {
+          final end = at + chunkSize < fileRawBody!.length
+              ? at + chunkSize
+              : fileRawBody!.length;
+          chunks.add(Uint8List.sublistView(fileRawBody!, at, end));
+        }
+        return ResponseBody(
+          Stream<Uint8List>.fromIterable(chunks).asyncMap((chunk) async {
+            await Future<void>.delayed(const Duration(milliseconds: 1));
+            fileBytesDelivered[idx] += chunk.length;
+            return chunk;
+          }),
           fileStatusCode,
           headers: {Headers.contentTypeHeader: [fileContentType]},
         );
@@ -610,6 +644,30 @@ void main() {
       expect(adapter.fileCalls, 2);
       expect(adapter.linkCalls, 0);
       expect(await File(path).readAsBytes(), _epubBytes);
+    });
+
+    test('the link lookup does not transfer the book twice', () async {
+      final adapter = _FakeAdapter()
+        ..fileRawBody = _bigEpub
+        ..fileContentType = 'application/epub+zip';
+      final api = await _loggedInApi(adapter);
+      final path = '${tempDir.path}/b.epub';
+
+      await api.downloadBook(_bookId, _bookHash, path);
+
+      // Call 1 is the lookup, call 2 the download. dio pipes an
+      // adapter stream eagerly, so the lookup cannot simply ignore
+      // the body: it has to cancel, which stops the flow after at
+      // most a chunk or two. Draining it (the old behaviour) moved
+      // the whole 4 KB and only then asked for the file again.
+      expect(adapter.fileBytesDelivered[1], _bigEpub.length);
+      expect(
+        adapter.fileBytesDelivered[0],
+        lessThan(_bigEpub.length ~/ 4),
+        reason: 'the lookup must abandon the body, not read it',
+      );
+      expect(adapter.fileAborts, 1, reason: 'the probe was cancelled');
+      expect(await File(path).readAsBytes(), _bigEpub);
     });
 
     test('JSON error response fails with the server message', () async {

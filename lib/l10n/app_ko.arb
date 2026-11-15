@@ -458,6 +458,8 @@
   "password": "비밀번호",
   "passwordMinLength": "비밀번호는 6자 이상이어야 합니다",
   "path": "경로",
+  "popularBooks": "인기",
+  "popularBooksEmpty": "인기 있는 책이 없습니다",
   "preview": "미리보기",
   "publicationInfo": "출판 정보",
   "publisher": "출판사",

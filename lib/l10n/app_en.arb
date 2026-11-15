@@ -458,6 +458,8 @@
   "password": "Password",
   "passwordMinLength": "Password must be at least 6 characters",
   "path": "Path",
+  "popularBooks": "Popular",
+  "popularBooksEmpty": "No popular books right now",
   "preview": "Preview",
   "publicationInfo": "Publication Details",
   "publisher": "Publisher",

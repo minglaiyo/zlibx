@@ -458,6 +458,8 @@
   "password": "密碼",
   "passwordMinLength": "密碼至少需 6 個字元",
   "path": "路徑",
+  "popularBooks": "熱門",
+  "popularBooksEmpty": "暫時沒有熱門的書籍",
   "preview": "預覽",
   "publicationInfo": "出版資訊",
   "publisher": "出版社",

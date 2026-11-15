@@ -13,9 +13,6 @@ import '../../routes/app_routes.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../theme/app_metrics.dart';
 import '../../utils/app_snack.dart';
-import '../search/search_screen.dart';
-import '../search/widgets/category_picker_dialog.dart';
-import '../search/widgets/search_filter_dialog.dart';
 import 'widgets/home_book_grid.dart';
 import 'widgets/home_line_unavailable_banner.dart';
 
@@ -225,21 +222,23 @@ class HomeTabState extends ConsumerState<HomeTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Search Bar Trigger + quick links (category browse /
+            // Search Bar Trigger + quick links (most popular /
             // recently added). The pill keeps the full search gesture;
             // the two round buttons mirror its surface style.
+            // 分类浏览从这里挪走了：搜索筛选里有同一个 CategoryPickerDialog
+            // 入口，不算丢功能。
             Row(
               children: [
                 Expanded(child: _buildSearchPill(context, cs, searchBarHeight)),
                 const SizedBox(width: 10),
                 _HeaderIconButton(
-                  icon: Icons.category_outlined,
-                  tooltip: AppLocalizations.of(context)!.categoriesBrowse,
-                  onTap: () => _openCategoryBrowse(context),
+                  label: 'HOT',
+                  tooltip: AppLocalizations.of(context)!.popularBooks,
+                  onTap: () => AppRoutes.openPopularBooks(context),
                 ),
                 const SizedBox(width: 8),
                 _HeaderIconButton(
-                  icon: Icons.fiber_new_rounded,
+                  label: 'NEW',
                   tooltip: AppLocalizations.of(context)!.recentlyAdded,
                   onTap: () => AppRoutes.openRecentBooks(context),
                 ),
@@ -354,41 +353,18 @@ class HomeTabState extends ConsumerState<HomeTab> {
       ),
     );
   }
-
-  /// 分类浏览：复用搜索筛选的分类树弹窗（841 项目录，本地化名 +
-  /// 本地搜索），选中后直接进入该分类的浏览页（搜索屏的空查询
-  /// 分类模式，含挑战墙回退）。选"全部分类"就是普通搜索。
-  Future<void> _openCategoryBrowse(BuildContext context) async {
-    final picked = await showDialog<PickedCategory?>(
-      context: context,
-      builder: (_) => const CategoryPickerDialog(currentId: null),
-    );
-    if (picked == null || !context.mounted) return;
-    final id = picked.id;
-    if (id == null) {
-      await AppRoutes.openSearch(context);
-      return;
-    }
-    await AppRoutes.openSearchWithCategory(
-      context,
-      SearchScreenArgs(
-        categoryId: id,
-        // 选中的分类一定带名字；类型上可空，兜底空串。
-        categoryName: picked.name ?? '',
-      ),
-    );
-  }
 }
 
 /// 首页头部的圆形快捷按钮：外观与搜索胶囊同款（surface 底 + 同色
-/// 图标），用于分类浏览 / 最新上架两个入口。
+/// 内容），用于热门 / 最新上架两个入口。徽标是英文字母（HOT / NEW），
+/// 与 Material 的 fiber_new 字形同一路子，两个按钮看起来是一对。
 class _HeaderIconButton extends StatelessWidget {
-  final IconData icon;
+  final String label;
   final String tooltip;
   final VoidCallback onTap;
 
   const _HeaderIconButton({
-    required this.icon,
+    required this.label,
     required this.tooltip,
     required this.onTap,
   });
@@ -414,7 +390,17 @@ class _HeaderIconButton extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             customBorder: const CircleBorder(),
-            child: Center(child: Icon(icon, color: cs.onSurfaceVariant)),
+            child: Center(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
           ),
         ),
       ),

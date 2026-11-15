@@ -458,6 +458,8 @@
   "password": "密码",
   "passwordMinLength": "密码至少6个字符",
   "path": "路径",
+  "popularBooks": "热门",
+  "popularBooksEmpty": "暂时没有热门的书籍",
   "preview": "预览",
   "publicationInfo": "出版信息",
   "publisher": "出版社",

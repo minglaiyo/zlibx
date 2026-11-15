@@ -23,6 +23,7 @@ import '../screens/book_detail/book_detail_screen.dart';
 import '../screens/comments/book_comments_screen.dart';
 import '../screens/favorites/favorites_screen.dart';
 import '../screens/home/home_screen.dart';
+import '../screens/popular/popular_books_screen.dart';
 import '../screens/reader/reader_screen.dart';
 import '../screens/recent/recent_books_screen.dart';
 import '../screens/search/search_screen.dart';
@@ -41,6 +42,7 @@ class AppRoutes {
   static const String history = '/history';
   static const String viewHistory = '/view-history';
   static const String recentBooks = '/recent-books';
+  static const String popularBooks = '/popular-books';
   static const String similarBooks = '/similar-books';
   static const String bookComments = '/book-comments';
   static const String booklists = '/booklists';
@@ -209,6 +211,12 @@ class AppRoutes {
     BuildContext context,
   ) => Navigator.of(context).pushNamed<T>(recentBooks);
 
+  /// The most-popular books page (the site homepage's "most popular"
+  /// section).
+  static Future<T?> openPopularBooks<T extends Object?>(
+    BuildContext context,
+  ) => Navigator.of(context).pushNamed<T>(popularBooks);
+
   /// After a successful sign-in, or "skip login": replace the login page
   /// with the home page.
   static Future<T?> goHomeAfterLogin<T extends Object?>(
@@ -317,6 +325,7 @@ Map<String, WidgetBuilder> buildAppRoutes() {
     ),
     AppRoutes.viewHistory: (context) => const ViewHistoryScreen(),
     AppRoutes.recentBooks: (context) => const RecentBooksScreen(),
+    AppRoutes.popularBooks: (context) => const PopularBooksScreen(),
     AppRoutes.similarBooks: (context) {
       final args = ModalRoute.of(context)!.settings.arguments;
       if (args is SimilarBooksArgs) {

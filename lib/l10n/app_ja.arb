@@ -458,6 +458,8 @@
   "password": "パスワード",
   "passwordMinLength": "パスワードは6文字以上で入力してください",
   "path": "パス",
+  "popularBooks": "人気",
+  "popularBooksEmpty": "現在、人気のある本はありません",
   "preview": "プレビュー",
   "publicationInfo": "出版情報",
   "publisher": "出版社",

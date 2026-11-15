@@ -20,6 +20,9 @@ import '../../widgets/gradient_app_bar.dart';
 /// 空列表时插件自动回退到 date 排序搜索），下拉刷新重新拉取。
 /// 卡片与首页推荐一致（BookCard）。
 ///
+/// 刷新与热门页同构：下拉或右上角按钮走同一条 `refresh`，加载 / 错误 /
+/// 空 / 数据四档都能下拉（每档都给一个可越界滚动的外壳）。
+///
 /// recentBooksProvider 是账号维度缓存的一员（换号/换线时随
 /// invalidateAccountScopedProviders 一起失效），这里不重复管理。
 class RecentBooksScreen extends ConsumerWidget {
@@ -33,12 +36,46 @@ class RecentBooksScreen extends ConsumerWidget {
     // 两列、左右 16 的原样；打开时列数与留白都按窗口宽度算。
     final adaptive = ref.watch(adaptiveGridProvider);
 
+    // 与热门页同构：下拉和右上角刷新按钮都走这条路径，invalidate 之后
+    // 再等这一轮请求跑完，指示器的时长就是网络时长。
+    Future<void> refresh() async {
+      ref.invalidate(recentBooksProvider);
+      try {
+        await ref.read(recentBooksProvider.future);
+      } on Object catch (_) {
+        // 失败不往外抛：AsyncError 会让下面走错误分支，那里有重试按钮。
+        // on Object 而不是 Exception——接口层是 throw StateError(...)，
+        // StateError 属于 Error。
+      }
+    }
+
     return Scaffold(
-      appBar: GradientAppBar(title: l10n.recentlyAdded),
+      appBar: GradientAppBar(
+        title: l10n.recentlyAdded,
+        // 显式刷新入口，理由同热门页：本页也是首页推进来的二级页，
+        // 下拉只在内容能滚时才有，按钮保证四档状态都能刷。
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: l10n.refresh,
+            onPressed: refresh,
+          ),
+        ],
+      ),
       body: RefreshIndicator(
-        onRefresh: () async => ref.invalidate(recentBooksProvider),
+        onRefresh: refresh,
         child: booksAsync.when(
-          loading: () => const LoadingWidget.page(),
+          // 加载档也必须能下拉：RefreshIndicator 的手势靠子组件越界滚动
+          // 触发，而 LoadingWidget.page() 是个 Center(Column)，滚不动。接口
+          // 慢或这条线被墙时页面就停在这一档，既不能下拉也没有重试按钮，
+          // 整页没有任何刷新入口（首页三档状态用 _StatePane 包着）。
+          loading: () => ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+              const LoadingWidget.page(),
+            ],
+          ),
           error: (error, _) => ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             children: [
@@ -50,7 +87,7 @@ class RecentBooksScreen extends ConsumerWidget {
               ),
               Center(
                 child: TextButton.icon(
-                  onPressed: () => ref.invalidate(recentBooksProvider),
+                  onPressed: refresh,
                   icon: const Icon(Icons.refresh),
                   label: Text(l10n.retry),
                 ),

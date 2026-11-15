@@ -19,6 +19,10 @@ import '../../widgets/loading_widget.dart';
 /// 的一次快照（约 20 本；接口回 404 / success:0 / 空列表时插件自动
 /// 回退 popular 排序搜索），下拉刷新重新拉取。
 ///
+/// 刷新走下拉或右上角按钮同一条路径（[PopularBooksScreen.build] 里的
+/// `refresh`），AsyncValue 的加载 / 错误 / 空 / 数据四档都能触发下拉——
+/// 手势靠子组件越界滚动，所以四档各给一个可滚的外壳。
+///
 /// 与最新上架（RecentBooksScreen）同构：卡片、错误/重试入口、空态都
 /// 一致。mostPopularBooksProvider 是账号维度缓存的一员（换号/换线时
 /// 随 invalidateAccountScopedProviders 一起失效），这里不重复管理。
@@ -33,12 +37,49 @@ class PopularBooksScreen extends ConsumerWidget {
     // 两列、左右 16 的原样；打开时列数、留白、格高都和首页同一套规则。
     final adaptive = ref.watch(adaptiveGridProvider);
 
+    // 下拉与右上角刷新按钮走同一条路径：先 invalidate，再等这一轮请求真的
+    // 跑完。之前写的是 `() async => ref.invalidate(...)`——invalidate 只把
+    // provider 标脏就返回，指示器立刻收起，慢线 / 被墙时看着就像"拉了没
+    // 反应"。
+    Future<void> refresh() async {
+      ref.invalidate(mostPopularBooksProvider);
+      try {
+        await ref.read(mostPopularBooksProvider.future);
+      } on Object catch (_) {
+        // 失败不往外抛：AsyncError 会让下面走错误分支，那里有重试按钮。
+        // on Object 而不是 Exception——接口层是 throw StateError(...)，
+        // StateError 属于 Error。
+      }
+    }
+
     return Scaffold(
-      appBar: GradientAppBar(title: l10n.popularBooks),
+      appBar: GradientAppBar(
+        title: l10n.popularBooks,
+        // 显式刷新入口：本页是从首页"最受欢迎 →"推进来的二级页，下拉
+        // 手势只有在内容能滚的时候才看得见，按钮放在这里四档状态都能刷。
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: l10n.refresh,
+            onPressed: refresh,
+          ),
+        ],
+      ),
       body: RefreshIndicator(
-        onRefresh: () async => ref.invalidate(mostPopularBooksProvider),
+        onRefresh: refresh,
         child: booksAsync.when(
-          loading: () => const LoadingWidget.page(),
+          // 加载档也必须能下拉：RefreshIndicator 的手势靠子组件越界滚动
+          // 触发，而 LoadingWidget.page() 是个 Center(Column)，滚不动。接口
+          // 慢或这条线被墙时页面就停在这一档，既不能下拉也没有重试按钮，
+          // 整页没有任何刷新入口（首页三档状态用 _StatePane 包着，同一个
+          // 道理，见 home_book_grid.dart）。
+          loading: () => ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+              const LoadingWidget.page(),
+            ],
+          ),
           error: (error, _) => ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             children: [
@@ -50,7 +91,7 @@ class PopularBooksScreen extends ConsumerWidget {
               ),
               Center(
                 child: TextButton.icon(
-                  onPressed: () => ref.invalidate(mostPopularBooksProvider),
+                  onPressed: refresh,
                   icon: const Icon(Icons.refresh),
                   label: Text(l10n.retry),
                 ),

@@ -119,10 +119,16 @@ void main() {
       create: (ref) => Future.error(StateError('synthetic boom')),
     );
     expect(find.byType(BookCard), findsNothing);
-    expect(find.byIcon(Icons.refresh), findsOneWidget);
+    // 现在有两个刷新入口：右上角 app bar 的刷新按钮 + 错误态的重试按钮。
+    expect(find.byIcon(Icons.refresh), findsNWidgets(2));
     // 重试按钮触发 invalidate：新的 provider 构建再次失败也只刷新
     // 错误信息，不抛出。
-    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(TextButton),
+        matching: find.byIcon(Icons.refresh),
+      ),
+    );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
     expect(tester.takeException(), isNull);

@@ -191,20 +191,18 @@ mixin ZLibrarySearch on ZLibraryApiBase {
     if (raw.error == 'cf_blocked') {
       return ApiResponse.fail('cf_blocked', statusCode: raw.status);
     }
-    if (raw.status == 404) {
+    // 404 / 无 body / success:0 / 空列表：四种情况都回退 popular 排序
+    // 搜索（社区镜像常用 success:0 或空 payload 回答本接口，回退是常态）。
+    final json = raw.json;
+    final books =
+        json == null ? const <Book>[] : ZLibraryApiBase._booksOf(json);
+    if (raw.status == 404 ||
+        json == null ||
+        !ZLibraryApiBase._isSuccess(json) ||
+        books.isEmpty) {
       return search(order: 'popular', limit: 20, page: page);
     }
-    if (raw.json == null) {
-      return search(order: 'popular', limit: 20, page: page);
-    }
-    if (!ZLibraryApiBase._isSuccess(raw.json!)) {
-      return search(order: 'popular', limit: 20, page: page);
-    }
-    final books = ZLibraryApiBase._booksOf(raw.json!);
-    if (books.isEmpty) {
-      return search(order: 'popular', limit: 20, page: page);
-    }
-    return ApiResponse.ok(books, meta: ZLibraryApiBase._metaOf(raw.json!));
+    return ApiResponse.ok(books, meta: ZLibraryApiBase._metaOf(json));
   }
 
   /// Personalised home recommendations.

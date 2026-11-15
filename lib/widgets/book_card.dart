@@ -33,6 +33,13 @@ class BookCard extends StatefulWidget {
   final bool showSourceBadge;
   final bool searchResult;
 
+  /// 纯封面卡：封面 + 封面右下角那一枚评分，不带下面的书名 / 作者 /
+  /// 格式 / 大小信息区。热门、最新上架两页用它，观感和首页推荐一致。
+  /// 与 [compact] 的区别只有评分角标：compact 走 [BookCoverBackdrop]
+  /// 那套带模糊底 + z 站角标的首页卡，这里保留 `_buildFullCover` 的
+  /// 直接铺封面 + score 角标。
+  final bool coverOnly;
+
   /// 是否启用封面共享元素转场（Hero，tag `cover-<book.id>`，与
   /// 详情页 [BookHeroSection] 配对）。默认关闭——同一屏可能同屏
   /// 重复 id 的调用方（如首页多个分区）不要开，避免 Hero 冲突。
@@ -46,6 +53,7 @@ class BookCard extends StatefulWidget {
     this.compact = false,
     this.showSourceBadge = false,
     this.searchResult = false,
+    this.coverOnly = false,
     this.heroEnabled = false,
   });
 
@@ -57,8 +65,10 @@ class BookCard extends StatefulWidget {
   /// 大小行 + 内边距）在 1 倍字号下的内容高度，按系统字号缩放。
   static const double _gridInfoHeight = 116;
 
-  /// 封面宽高比，与 [BookCoverBackdrop] 保持一致。
-  static const double _gridCoverAspectRatio = 0.7;
+  /// 封面宽高比，与 [BookCoverBackdrop] 保持一致。纯封面那两页（热门 /
+  /// 最新上架）关掉自适应时那份固定 delegate 也读这个数，比例只有一个
+  /// 来源。
+  static const double coverAspectRatio = 0.7;
 
   /// 带信息区的网格卡（最新上架 / 热门 / 同类 / 搜索结果）在自适应档下
   /// 一格该多高。
@@ -70,7 +80,7 @@ class BookCard extends StatefulWidget {
   /// 高了，列数可以和首页一致而封面不塌。关掉开关时这些页面仍走各自
   /// 原来的固定比例，一格都不差。
   static double gridHeightFor(BuildContext context, double width) =>
-      width / _gridCoverAspectRatio +
+      width / coverAspectRatio +
       _gridInfoHeight *
           MediaQuery.textScalerOf(context).scale(_titleFontSize) /
           _titleFontSize;
@@ -82,10 +92,16 @@ class BookCard extends StatefulWidget {
   /// 做成一个工厂而不是五处抄写：这几页必须逐像素同步，搜索结果还有一
   /// 份骨架要跟着它，抄一遍就多一处会漏的地方。关掉开关时各页仍用自己
   /// 那份固定 delegate，不进这里。
+  ///
+  /// [coverOnly] 给的是纯封面那两页（最新上架 / 热门）：列数、留白、间距
+  /// 一个字不改，只把格高从"封面 + 信息区"换成首页那条 `width / 0.7`
+  /// （[compactHeightFor]），信息区没了，格子自然矮下来。同类和搜索结果
+  /// 仍要书名信息，走默认的那档。
   static SliverGridDelegate adaptiveGridDelegate(
     BuildContext context,
-    double width,
-  ) {
+    double width, {
+    bool coverOnly = false,
+  }) {
     final columns = AppLayout.gridColumns(width);
     final gutter = AppLayout.pageGutter(width);
     final gridWidth = (width - gutter * 2).clamp(0.0, double.infinity);
@@ -96,7 +112,9 @@ class BookCard extends StatefulWidget {
       crossAxisCount: columns,
       crossAxisSpacing: AppLayout.gridSpacing,
       mainAxisSpacing: 12,
-      mainAxisExtent: gridHeightFor(context, cellWidth),
+      mainAxisExtent: coverOnly
+          ? compactHeightFor(cellWidth)
+          : gridHeightFor(context, cellWidth),
     );
   }
 
@@ -125,8 +143,11 @@ class _BookCardState extends State<BookCard> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // 纯封面两种卡（首页 compact、列表页 coverOnly）共用首页那套小圆角
+    // + 浅投影，否则热门/最新上架换成封面卡后圆角还是 20，和推荐对不上。
+    final flatCover = widget.compact || widget.coverOnly;
     final borderRadius = BorderRadius.circular(
-      widget.compact ? 4 : (widget.searchResult ? 12 : 20),
+      flatCover ? 4 : (widget.searchResult ? 12 : 20),
     );
 
     // Soft Card UI with press-scale feedback
@@ -141,10 +162,10 @@ class _BookCardState extends State<BookCard> {
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(
-                alpha: widget.compact ? (isDark ? 0.08 : 0.025) : (isDark ? 0.2 : 0.05),
+                alpha: flatCover ? (isDark ? 0.08 : 0.025) : (isDark ? 0.2 : 0.05),
               ),
-              blurRadius: widget.compact ? 4 : 10,
-              offset: Offset(0, widget.compact ? 2 : 4),
+              blurRadius: flatCover ? 4 : 10,
+              offset: Offset(0, flatCover ? 2 : 4),
             ),
           ],
         ),
@@ -159,7 +180,9 @@ class _BookCardState extends State<BookCard> {
               child: InkWell(
                 onTap: widget.onTap,
                 onLongPress: widget.onLongPress,
-                child: widget.compact
+                child: widget.coverOnly
+                    ? _buildCoverOnly()
+                    : widget.compact
                     ? _buildCoverBackdrop()
                     : _buildGridCard(),
               ),
@@ -326,6 +349,24 @@ class _BookCardState extends State<BookCard> {
   Widget _maybeHero(Widget cover) {
     if (!widget.heroEnabled) return cover;
     return Hero(tag: 'cover-${widget.book.id}', child: cover);
+  }
+
+  /// 纯封面卡（热门 / 最新上架）：视觉上只有封面 + 封面上那枚评分，但
+  /// 读屏还得念得出书名——信息区被拿掉，这块语义不能跟着一起丢。首页
+  /// compact 卡由 [BookCoverBackdrop] 自己的 Semantics 兜住，这里同一条
+  /// 道理，label 用书名、作者、评分拼的逗号串，不含需要翻译的词。
+  Widget _buildCoverOnly() {
+    final author = widget.book.author;
+    final score = widget.book.score;
+    return Semantics(
+      label: [
+        widget.book.title,
+        if (author != null && author.isNotEmpty) author,
+        if (score != null && score.isNotEmpty) score,
+      ].join(', '),
+      excludeSemantics: true,
+      child: _buildFullCover(),
+    );
   }
 
   Widget _buildFullCover() {

@@ -8,6 +8,7 @@ import 'package:zlibx/l10n/generated/app_localizations.dart';
 import 'package:zlibx/providers/books_provider.dart';
 import 'package:zlibx/providers/settings_provider.dart';
 import 'package:zlibx/screens/popular/popular_books_screen.dart';
+import 'package:zlibx/theme/app_layout.dart';
 import 'package:zlibx/widgets/book_card.dart';
 
 /// [PopularBooksScreen] 的三态渲染：数据网格、空态、错误态。
@@ -30,6 +31,8 @@ List<Book> _fakeBooks() => [
       title: 'Synthetic Popular $i',
       author: 'Author $i',
       cover: 'https://example.invalid/covers/$i.jpg',
+      // 纯封面卡上唯一会显示的文字就是这枚评分，不给它就没得验。
+      interestScore: '5.0',
     ),
 ];
 
@@ -74,7 +77,67 @@ void main() {
     final books = _fakeBooks();
     await _pump(tester, create: (ref) async => books);
     expect(find.byType(BookCard), findsNWidgets(6));
-    expect(find.text('Synthetic Popular 1'), findsOneWidget);
+    // 卡片换成纯封面那一档（和首页推荐同款）：书名、作者都不再进格子，
+    // 封面上只留评分角标。这条钉死"只保留评分和封面"，信息区哪天被
+    // 加回来它就红。
+    expect(find.text('Synthetic Popular 1'), findsNothing);
+    expect(find.text('Author 1'), findsNothing);
+    expect(find.byIcon(Icons.star_rounded), findsNWidgets(6));
+    // 文字从格子里拿掉了，读屏那一份不能一起丢：每张卡自己的 Semantics
+    // label 还是"书名, 作者, 评分"（excludeSemantics 把封面角标那几块
+    // 原始文字盖掉，念出来的就是这条）。
+    expect(
+      tester.widgetList<Semantics>(
+        find.descendant(
+          of: find.byType(BookCard),
+          matching: find.byType(Semantics),
+        ),
+      ).where(
+        (w) => w.properties.label == 'Synthetic Popular 1, Author 1, 5.0',
+      ),
+      hasLength(1),
+    );
+  });
+
+  testWidgets('关掉自适应：格比例就是封面 0.7，没有信息区那一档', (tester) async {
+    final books = _fakeBooks();
+    await _pump(tester, create: (ref) async => books);
+    final fixed =
+        tester.widget<GridView>(find.byType(GridView)).gridDelegate
+            as SliverGridDelegateWithFixedCrossAxisCount;
+    expect(fixed.childAspectRatio, BookCard.coverAspectRatio);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('打开自适应：格高换成首页纯封面那档，不再带信息区', (tester) async {
+    final books = _fakeBooks();
+    await _pump(
+      tester,
+      create: (ref) async => books,
+      adaptive: true,
+      surface: const Size(411, 900),
+    );
+    final adaptive =
+        tester.widget<GridView>(find.byType(GridView)).gridDelegate
+            as SliverGridDelegateWithFixedCrossAxisCount;
+    final columns = AppLayout.gridColumns(411);
+    final cellWidth =
+        (411 -
+                2 * AppLayout.pageGutter(411) -
+                AppLayout.gridSpacing * (columns - 1)) /
+            columns;
+    expect(adaptive.mainAxisExtent, BookCard.compactHeightFor(cellWidth));
+    expect(
+      adaptive.mainAxisExtent,
+      lessThan(
+        BookCard.gridHeightFor(
+          tester.element(find.byType(GridView)),
+          cellWidth,
+        ),
+      ),
+      reason: '格高还带着信息区，说明封面卡没换成',
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('自适应列数关掉（默认）：800dp 上仍是两列', (tester) async {
@@ -94,8 +157,8 @@ void main() {
   });
 
   testWidgets('自适应列数打开：360dp 手机上也是三列', (tester) async {
-    // 这类带书名信息的卡以前在手机上恒 2 列（怕窄格把封面压成一条）；
-    // 现在格高按"封面 0.7 + 信息区"算，密度和首页对齐，三列不溢出。
+    // 这类卡片以前在手机上恒 2 列（怕窄格把封面压成一条）；现在整页就是
+    // 纯封面 + 评分，格高按封面 0.7 算，密度和首页对齐，三列不溢出。
     final books = _fakeBooks();
     await _pump(
       tester,

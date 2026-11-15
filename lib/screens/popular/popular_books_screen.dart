@@ -131,14 +131,19 @@ class _PopularBooksScreenState extends ConsumerState<PopularBooksScreen> {
                 return GridView.builder(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(gutter, 12, gutter, 24),
-                  // 自适应档：列数 / 留白 / 间距 / 格高全部走 BookCard 那一
-                  // 个工厂，和首页同一套规则（手机上就是 3 列）。关掉时保
-                  // 持本页原来的固定委托：两列、0.65、间距 12。
+                  // 自适应档：列数 / 留白 / 间距走 BookCard 那一个工厂，
+                  // 和首页同一套规则（手机上就是 3 列），格高只给封面
+                  // （coverOnly），信息区不再占高度。关掉时保持本页原来
+                  // 的固定委托：两列、间距 12，比例换成纯封面的 0.7。
                   gridDelegate: adaptive
-                          ? BookCard.adaptiveGridDelegate(context, width)
+                          ? BookCard.adaptiveGridDelegate(
+                              context,
+                              width,
+                              coverOnly: true,
+                            )
                           : const SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: 2,
-                              childAspectRatio: 0.65,
+                              childAspectRatio: BookCard.coverAspectRatio,
                               crossAxisSpacing: 12,
                               mainAxisSpacing: 12,
                             ),
@@ -149,6 +154,9 @@ class _PopularBooksScreenState extends ConsumerState<PopularBooksScreen> {
                       index: index,
                       child: BookCard(
                         book: book.toDisplay(),
+                        // 与首页推荐同款观感：只有封面和封面上的评分，
+                        // 书名 / 作者 / 格式 / 大小那几行不再占格子。
+                        coverOnly: true,
                         // 长按封面：收藏 / 加入书单快捷面板（与最新上架一致）。
                         onLongPress: () => showBookQuickActionsSheet(
                           context,

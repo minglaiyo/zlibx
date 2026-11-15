@@ -204,10 +204,16 @@ mixin ZLibrarySearch on ZLibraryApiBase {
     return ApiResponse.ok(books, meta: ZLibraryApiBase._metaOf(raw.json!));
   }
 
-  /// Personalised home recommendations. Falls back to most-popular when
-  /// the personalised endpoint 404s, fails, or returns an empty list:
-  /// a wrong guess here must not blank the home screen (a fresh account
-  /// has no history, so the endpoint legitimately returns nothing).
+  /// Personalised home recommendations.
+  ///
+  /// There is deliberately no most-popular fallback here (用户 2026-11-15
+  /// 定：与热门页冲突了）。之前 404 / 空 / success:0 全都会静默改走
+  /// [getMostPopular]，首页拿到的是热门推荐却显示成"为你推荐"，跟独立
+  /// 的热门页内容一模一样。现在两类分开：
+  /// - 请求本身没成（cf_blocked / 404 / 无 body / success:0）→ 失败，
+  ///   首页显示错误 + 重试入口。
+  /// - 请求成功但列表为空 → 空列表（新账号没有历史，这是合法结果），
+  ///   首页显示空状态，不报错也不兜底。
   Future<ApiResponse<List<Book>>> getUserRecommended() async {
     // Path verified against heartleo/zlib's eapi_feed.go (2026-11-12):
     // the personalised feed lives under /eapi/user/book/recommended.
@@ -218,31 +224,24 @@ mixin ZLibrarySearch on ZLibraryApiBase {
     if (raw.error == 'cf_blocked') {
       return ApiResponse.fail('cf_blocked', statusCode: raw.status);
     }
-    if (raw.status == 404) return _recommendedFallback('http-404');
-    if (raw.json == null) return _recommendedFallback('null-body');
-    if (!ZLibraryApiBase._isSuccess(raw.json!)) {
-      return _recommendedFallback('success-false');
+    if (raw.status == 404 || raw.json == null) {
+      return ApiResponse.fail(
+        raw.error ?? 'recommendations failed',
+        statusCode: raw.status,
+      );
     }
-    final books = ZLibraryApiBase._booksOf(raw.json!);
-    if (books.isEmpty) return _recommendedFallback('empty');
+    if (!ZLibraryApiBase._isSuccess(raw.json!)) {
+      return ApiResponse.fail(
+        (raw.json!['error'] ?? raw.json!['message'])?.toString() ??
+            'recommendations failed',
+        statusCode: raw.status,
+      );
+    }
+    // success:1 with no books — an empty personalised feed, not a
+    // failure. Returned as-is so the UI can tell the two apart.
     return ApiResponse.ok(
-      books,
-      meta: <String, dynamic>{
-        ...?ZLibraryApiBase._metaOf(raw.json!),
-      },
-    );
-  }
-
-  /// Wraps the most-popular fallback for [getUserRecommended]. A failed
-  /// fallback is returned unchanged — the error itself is the signal.
-  Future<ApiResponse<List<Book>>> _recommendedFallback(String reason) async {
-    final fallback = await getMostPopular();
-    if (!fallback.success) return fallback;
-    return ApiResponse.ok(
-      fallback.data ?? <Book>[],
-      meta: <String, dynamic>{
-        ...?fallback.meta,
-      },
+      ZLibraryApiBase._booksOf(raw.json!),
+      meta: <String, dynamic>{...?ZLibraryApiBase._metaOf(raw.json!)},
     );
   }
 

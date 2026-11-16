@@ -6,6 +6,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../constants/search_filters.dart';
 import '../models/display_book.dart';
 import '../services/annas_archieve.dart';
 import '../services/external_search.dart';
@@ -65,6 +66,7 @@ class ExternalSearchNotifier extends Notifier<ExternalSearchState> {
   late SearchProvider _provider;
   late BookSource _source;
   String? _lastQuery;
+  SearchField? _lastField;
   int _requestId = 0;
 
   @override
@@ -84,15 +86,42 @@ class ExternalSearchNotifier extends Notifier<ExternalSearchState> {
       ? book.toLibgenDisplayBook()
       : book.toAnnaDisplayBook();
 
-  Future<void> search(String query, BookSource source) async {
+  /// Field-scoped [SearchQuery]: a detail-page author/publisher tap
+  /// carries [SearchField], which the providers turn into their
+  /// backend's field-scoped search (Anna's `author:"…"` /
+  /// `publisher:"…"` terms, LibGen's `columns[]=a|p`) so the name is
+  /// not matched against every field. A null field is the plain query.
+  SearchQuery _searchQuery(
+    String query,
+    SearchField? field, {
+    required int page,
+  }) {
+    return SearchQuery(
+      text: query,
+      page: page,
+      author: field == SearchField.author ? query : '',
+      publisher: field == SearchField.publisher ? query : '',
+      // Providers apply their field restriction only when
+      // filtersEnabled AND a field value is present, so a plain query
+      // is unaffected.
+      filtersEnabled: field != null,
+    );
+  }
+
+  Future<void> search(
+    String query,
+    BookSource source, {
+    SearchField? field,
+  }) async {
     final requestId = ++_requestId;
     _lastQuery = query;
+    _lastField = field;
     _source = source;
     _provider = _providerFor(source);
     state = const ExternalSearchState(isLoading: true, hasSearched: true);
 
     try {
-      final books = await _provider.search(SearchQuery(text: query, page: 1));
+      final books = await _provider.search(_searchQuery(query, field, page: 1));
       if (requestId != _requestId) return;
       state = ExternalSearchState(
         books: books.map<DisplayBook>(_toDisplay).toList(),
@@ -122,7 +151,7 @@ class ExternalSearchNotifier extends Notifier<ExternalSearchState> {
 
     try {
       final books = await _provider.search(
-        SearchQuery(text: _lastQuery!, page: nextPage),
+        _searchQuery(_lastQuery!, _lastField, page: nextPage),
       );
       if (requestId != _requestId) return;
       state = state.copyWith(

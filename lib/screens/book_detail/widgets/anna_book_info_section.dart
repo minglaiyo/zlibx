@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../constants/search_filters.dart';
 import '../../../core/book_description.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
@@ -53,11 +54,14 @@ class AnnaBookInfoSection extends StatelessWidget {
             BookDetailHeading(
               book: displayBook,
               // Tapping the author searches for that author on
-              // z站 (the search screen's default source).
+              // z站 (the search screen's default source). Field-
+              // scoped so the name is matched against the author
+              // field only.
               onAuthorTap: displayBook.author?.isNotEmpty ?? false
                   ? () => AppRoutes.openSearchWithQuery(
                       context,
                       displayBook.author!,
+                      field: SearchField.author,
                     )
                   : null,
             ),
@@ -78,6 +82,7 @@ class AnnaBookInfoSection extends StatelessWidget {
                         l10n.publisher: () => AppRoutes.openSearchWithQuery(
                           context,
                           info.publisher!,
+                          field: SearchField.publisher,
                         ),
                       }
                     : null,

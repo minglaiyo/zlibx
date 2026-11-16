@@ -1,6 +1,16 @@
 /// Search filter constants for book search API
 library;
 
+/// Which field a search is scoped to. The book-detail page's
+/// author/publisher taps pass one of these so the search is
+/// field-scoped instead of a plain full-text query: a plain query
+/// matches the name in ANY field (title, other authors, publisher,
+/// description), which is why author searches returned books by
+/// other authors and publisher searches returned other publishers.
+///
+/// `null` means an unscoped general search (typed in the box).
+enum SearchField { author, publisher }
+
 /// One language entry in the search filter: the API value sent to
 /// Z-Library plus its display name in each shipped locale.
 ///
@@ -114,22 +124,31 @@ Map<String, String> getLanguageDisplayNames(String locale) {
   };
 }
 
-/// Sort order options
+/// Sort order options for the general (eapi) search. The values are
+/// the site's sort vocabulary, verified against the live eapi:
+/// `titleA` is A–Z and `title` is Z–A, `filesize` is biggest-first
+/// and `filesizeA` smallest-first, `date` is newest upload first and
+/// `year` newest publish year first (site semantics, do not swap).
+/// The pairs give the web version's ascending/descending sort
+/// capability (Issue #8's sort request).
 const searchOrders = {
   'default': null,
   'popular': 'popular',
   'bestmatch': 'bestmatch',
+  'titleA': 'titleA',
   'title': 'title',
   'date': 'date',
   'year': 'year',
+  'filesize': 'filesize',
+  'filesizeA': 'filesizeA',
 };
 
 /// Sort order options for full-text search ONLY. The site's
-/// `/fulltext` sort has 8 values; the three missing from
-/// [searchOrders] are `titleA`, `filesize` and `filesizeA`. These
-/// must never be sent to the eapi search — the general-search UI
-/// only ever offers [searchOrders], and the search screen switches
-/// the sheet's sort list (and resets the selection) with the mode.
+/// `/fulltext` sort has 8 values, the same vocabulary as
+/// [searchOrders]; this map exists so the full-text UI can offer its
+/// own order list (with the mode's own default) without coupling to
+/// the general-search selection. The search screen switches the
+/// sheet's sort list (and resets the selection) with the mode.
 /// Site semantics, do not swap: `titleA` is A–Z, `title` is Z–A.
 const fulltextSearchOrders = {
   'popular': 'popular',
@@ -202,9 +221,12 @@ Map<String, String> getOrderDisplayNames(String locale) {
       'default': '預設順序',
       'popular': '熱度',
       'bestmatch': '匹配度',
-      'title': '書名',
+      'titleA': '書名 (A-Z)',
+      'title': '書名 (Z-A)',
       'date': '上傳日期',
       'year': '出版日期',
+      'filesize': '檔案大小↓',
+      'filesizeA': '檔案大小↑',
     };
   }
   if (locale.startsWith('zh')) {
@@ -212,18 +234,24 @@ Map<String, String> getOrderDisplayNames(String locale) {
       'default': '默认顺序',
       'popular': '热度',
       'bestmatch': '匹配度',
-      'title': '书名',
+      'titleA': '书名 (A-Z)',
+      'title': '书名 (Z-A)',
       'date': '上传日期',
       'year': '出版日期',
+      'filesize': '文件大小↓',
+      'filesizeA': '文件大小↑',
     };
   }
   return {
     'default': 'Default',
     'popular': 'Popular',
     'bestmatch': 'Best Match',
-    'title': 'Title',
+    'titleA': 'Title (A-Z)',
+    'title': 'Title (Z-A)',
     'date': 'Upload Date',
     'year': 'Publish Year',
+    'filesize': 'File Size ↓',
+    'filesizeA': 'File Size ↑',
   };
 }
 

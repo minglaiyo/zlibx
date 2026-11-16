@@ -47,10 +47,16 @@ class SearchScreenArgs {
   /// tap). Null means no preset query.
   final String? query;
 
+  /// Field the query is scoped to when it comes from a detail-page
+  /// author/publisher tap (`author` / `publisher`); null is an
+  /// unscoped general search. See [SearchField].
+  final SearchField? field;
+
   const SearchScreenArgs({
     this.categoryId,
     this.categoryName,
     this.query,
+    this.field,
   });
 }
 
@@ -68,12 +74,17 @@ class SearchScreen extends ConsumerStatefulWidget {
   /// preset query.
   final String? initialQuery;
 
+  /// Field the [initialQuery] is scoped to (detail-page
+  /// author/publisher tap). Null is an unscoped general search.
+  final SearchField? initialField;
+
   const SearchScreen({
     super.key,
     this.initialSource,
     this.initialCategoryId,
     this.initialCategoryName,
     this.initialQuery,
+    this.initialField,
   });
 
   @override
@@ -161,6 +172,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   String _lastSubmittedQuery = '';
 
+  /// Field the current query is scoped to (detail-page author/
+  /// publisher tap). Null = unscoped general search. Cleared on
+  /// clear / source switch / mode switch, the same way the category
+  /// scope is.
+  SearchField? _field;
+
   late BookSource _source;
 
   int get _activeFilterCount {
@@ -223,6 +240,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       _searchController.text = initialQuery;
       _isQueryEmpty = false;
     }
+    // Field scope from a detail-page author/publisher tap: survives
+    // until the query is cleared, the source or the mode switches.
+    _field = widget.initialField;
     _searchController.addListener(_onQueryChanged);
     // Opened with a category (detail-page chip): browse it
     // immediately — an empty query plus a category is a browse, not
@@ -312,7 +332,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   void _clearSearch() {
     _searchController.clear();
-    setState(() => _lastSubmittedQuery = '');
+    setState(() {
+      _lastSubmittedQuery = '';
+      _field = null;
+    });
     ref.read(searchProvider.notifier).reset();
     ref.read(fulltextSearchProvider.notifier).reset();
     ref.read(articleSearchProvider.notifier).reset();
@@ -506,7 +529,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
     final query = _searchController.text.trim();
     if (_source != BookSource.zlibrary) {
-      ref.read(externalSearchProvider.notifier).search(query, _source);
+      ref
+          .read(externalSearchProvider.notifier)
+          .search(query, _source, field: _field);
       return true;
     }
 
@@ -582,6 +607,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 : null,
             order: searchOrders[_selectedOrder],
             exact: _generalExact,
+            // Field scope from a detail-page author/publisher tap:
+            // the eapi search has no server-side field parameter, so
+            // the provider filters the returned books client-side.
+            field: _field,
           ),
         );
     return true;
@@ -592,6 +621,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     setState(() {
       _source = source;
       _lastSubmittedQuery = '';
+      _field = null;
     });
     ref.read(searchProvider.notifier).reset();
     ref.read(fulltextSearchProvider.notifier).reset();
@@ -622,6 +652,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       _selectedCategoryName = null;
       _selectedContentType = null;
       _lastSubmittedQuery = '';
+      _field = null;
     });
     ref.read(searchProvider.notifier).reset();
     ref.read(fulltextSearchProvider.notifier).reset();

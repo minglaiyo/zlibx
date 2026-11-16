@@ -6,6 +6,7 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../services/hive_service.dart';
 import '../utils/diagnostics.dart';
+import '../constants/search_filters.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/display_book.dart';
 import '../providers/auth_provider.dart';
@@ -174,13 +175,16 @@ class AppRoutes {
 
   /// The search page, pre-filled with a query: it runs the search
   /// immediately. This is what the book-detail author/publisher taps
-  /// navigate to.
+  /// navigate to. [field] scopes the search to the author or
+  /// publisher field (so the name is not matched against every
+  /// field); null is an unscoped general search.
   static Future<T?> openSearchWithQuery<T extends Object?>(
     BuildContext context,
-    String query,
-  ) => Navigator.of(context).pushNamed<T>(
+    String query, {
+    SearchField? field,
+  }) => Navigator.of(context).pushNamed<T>(
     search,
-    arguments: SearchScreenArgs(query: query),
+    arguments: SearchScreenArgs(query: query, field: field),
   );
 
   /// The favorites page.
@@ -277,6 +281,7 @@ Map<String, WidgetBuilder> buildAppRoutes() {
           initialCategoryId: args.categoryId,
           initialCategoryName: args.categoryName,
           initialQuery: args.query,
+          initialField: args.field,
         );
       }
       return const SearchScreen();

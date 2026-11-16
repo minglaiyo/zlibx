@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
+import '../../../constants/search_filters.dart';
 import '../../../core/book_description.dart';
 import '../../../models/display_book.dart';
 import '../../../l10n/generated/app_localizations.dart';
@@ -116,9 +117,15 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
               subtitle: book.series,
               // Tapping the author searches for that author (the
               // heading only shows the author when it is non-empty,
-              // so the callback can only fire then).
+              // so the callback can only fire then). The field is
+              // scoped so the name is matched against the author
+              // field only, not every field.
               onAuthorTap: book.author?.isNotEmpty ?? false
-                  ? () => AppRoutes.openSearchWithQuery(context, book.author!)
+                  ? () => AppRoutes.openSearchWithQuery(
+                      context,
+                      book.author!,
+                      field: SearchField.author,
+                    )
                   : null,
             ),
             if (tags.isNotEmpty) ...[
@@ -153,12 +160,14 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
                 fields: fields,
                 // Tapping the publisher searches for that publisher
                 // (the key is the same localized label used for the
-                // row above, so it can only match that row).
+                // row above, so it can only match that row). Field-
+                // scoped for the same reason as the author tap above.
                 onFieldTap: book.publisher?.isNotEmpty ?? false
                     ? {
                         l10n.publisher: () => AppRoutes.openSearchWithQuery(
                           context,
                           book.publisher!,
+                          field: SearchField.publisher,
                         ),
                       }
                     : null,

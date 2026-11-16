@@ -8,6 +8,7 @@ import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
+import '../constants/search_filters.dart';
 import '../services/category_repository.dart';
 import 'auth_provider.dart';
 import 'zlibrary_provider.dart';
@@ -35,6 +36,12 @@ class SearchParams {
   /// only sent on the category path.
   final List<String>? contentTypes;
 
+  /// Field the query is scoped to (detail-page author/publisher
+  /// tap). The eapi search has no server-side field parameter (its
+  /// `message` matches every field), so the returned books are
+  /// filtered client-side; null = unscoped general search.
+  final SearchField? field;
+
   SearchParams({
     this.query,
     this.yearFrom,
@@ -46,6 +53,7 @@ class SearchParams {
     this.exact = false,
     this.categoryId,
     this.contentTypes,
+    this.field,
   });
 }
 
@@ -159,7 +167,7 @@ class SearchNotifier extends Notifier<SearchState> {
     if (categoryId != null) {
       return _fetchCategory(params, categoryId, page);
     }
-    return _api.search(
+    final response = await _api.search(
       message: params.query,
       yearFrom: params.yearFrom,
       yearTo: params.yearTo,
@@ -171,6 +179,34 @@ class SearchNotifier extends Notifier<SearchState> {
       exact: params.exact,
       cancelToken: cancelToken,
     );
+    if (!response.success || response.data == null) return response;
+    return ApiResponse.ok(
+      _filterByField(response.data!, params.field, params.query ?? ''),
+      meta: response.meta,
+    );
+  }
+
+  /// Client-side field scoping for the eapi search: the endpoint's
+  /// `message` matches every field, so a detail-page author/publisher
+  /// tap (which carries [SearchField]) filters the returned books down
+  /// to those whose author/publisher actually contains the query.
+  /// Applied per page, so pagination keeps the scope. The site's own
+  /// total page count is kept as-is: the scope can only reduce what is
+  /// shown, never the server's paging.
+  static List<Book> _filterByField(
+    List<Book> books,
+    SearchField? field,
+    String query,
+  ) {
+    if (field == null || query.trim().isEmpty) return books;
+    final needle = query.trim().toLowerCase();
+    return books
+        .where((book) {
+          final value =
+              field == SearchField.author ? book.author : book.publisher;
+          return value != null && value.toLowerCase().contains(needle);
+        })
+        .toList();
   }
 
   /// Append [incoming] to [existing], dropping books already present

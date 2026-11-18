@@ -51,11 +51,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _checkForUpdates() async {
-    final hasUpdate =
-        await ref.read(updateProvider.notifier).checkForUpdate(force: true);
+    final hasUpdate = await ref
+        .read(updateProvider.notifier)
+        .checkForUpdate(force: true);
 
     if (!hasUpdate || !mounted) return;
-
 
     if (ref.read(updateProvider).forceUpdate) {
       // Force update - non-dismissable dialog with download channels
@@ -67,9 +67,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         context,
         SnackBar(
           content: Text(
-            AppLocalizations.of(context)!.newVersionFound(
-              ref.read(updateProvider).latestVersion ?? '',
-            ),
+            AppLocalizations.of(
+              context,
+            )!.newVersionFound(ref.read(updateProvider).latestVersion ?? ''),
           ),
           action: SnackBarAction(
             label: AppLocalizations.of(context)!.update,
@@ -137,7 +137,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _navigateAfterAuthentication();
     } else {
       final error = ref.read(authProvider).error;
-      final occurredAt = DateTime.now().toLocal().toIso8601String().split('.').first;
+      final occurredAt = DateTime.now()
+          .toLocal()
+          .toIso8601String()
+          .split('.')
+          .first;
 
       final failureKind = classifyLoginFailure(error);
       if (failureKind == LoginFailureKind.line) {
@@ -145,30 +149,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await _showLineFailureDialog(error == 'cf_blocked');
       } else {
         final l10n = AppLocalizations.of(context)!;
-        unawaited(showDialog<void>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: Text(l10n.loginFailed),
-            content: Text(failureKind == LoginFailureKind.credentials
-                ? l10n.loginBadCredentials
-                : l10n.loginUnknownFailure(
-                    lineName,
-                    occurredAt,
-                    safeLoginErrorDetail(
-                      error,
-                      email,
-                      password,
-                      noDetailText: l10n.loginNoErrorDetail,
-                    ),
-                  )),
-            actions: [
-              FilledButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: Text(l10n.confirmOk),
+        unawaited(
+          showDialog<void>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: Text(l10n.loginFailed),
+              content: Text(
+                failureKind == LoginFailureKind.credentials
+                    ? l10n.loginBadCredentials
+                    : l10n.loginUnknownFailure(
+                        lineName,
+                        occurredAt,
+                        safeLoginErrorDetail(
+                          error,
+                          email,
+                          password,
+                          noDetailText: l10n.loginNoErrorDetail,
+                        ),
+                      ),
               ),
-            ],
+              actions: [
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(l10n.confirmOk),
+                ),
+              ],
+            ),
           ),
-        ));
+        );
       }
     }
   }
@@ -198,10 +206,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ),
     );
     if (!mounted) return;
-    unawaited(showDialog(
-      context: context,
-      builder: (_) => const DomainSelectionDialog(),
-    ));
+    unawaited(
+      showDialog(
+        context: context,
+        builder: (_) => const DomainSelectionDialog(),
+      ),
+    );
   }
 
   Future<void> _showSavedAccounts() async {
@@ -354,19 +364,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             focusNode: _emailFocusNode,
                             keyboardType: TextInputType.emailAddress,
                             decoration: InputDecoration(
-                              labelText: AppLocalizations.of(
-                                context,
-                              )!.email,
+                              labelText: AppLocalizations.of(context)!.email,
                               prefixIcon: const Icon(Icons.email_outlined),
                             ),
                             validator: (value) {
                               if (value == null || value.isEmpty) {
-                                return AppLocalizations.of(context)!
-                                    .enterEmail;
+                                return AppLocalizations.of(context)!.enterEmail;
                               }
                               if (!value.contains('@')) {
-                                return AppLocalizations.of(context)!
-                                    .validEmail;
+                                return AppLocalizations.of(context)!.validEmail;
                               }
                               return null;
                             },
@@ -378,9 +384,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             controller: _passwordController,
                             obscureText: _obscurePassword,
                             decoration: InputDecoration(
-                              labelText: AppLocalizations.of(
-                                context,
-                              )!.password,
+                              labelText: AppLocalizations.of(context)!.password,
                               prefixIcon: const Icon(Icons.lock_outlined),
                               suffixIcon: IconButton(
                                 icon: Icon(
@@ -397,12 +401,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                             validator: (value) {
                               if (value == null || value.isEmpty) {
-                                return AppLocalizations.of(context)!
-                                    .enterPassword;
+                                return AppLocalizations.of(
+                                  context,
+                                )!.enterPassword;
                               }
                               if (value.length < 6) {
-                                return AppLocalizations.of(context)!
-                                    .passwordMinLength;
+                                return AppLocalizations.of(
+                                  context,
+                                )!.passwordMinLength;
                               }
                               return null;
                             },
@@ -415,19 +421,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             child: ElevatedButton(
                               onPressed: _isLoading ? null : _handleLogin,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Theme.of(context).colorScheme.primary,
-                                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.primary,
+                                foregroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.onPrimary,
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 16,
                                 ),
                               ),
                               child: _isLoading
                                   ? LoadingWidget.inline(
-                                      color: Theme.of(context).colorScheme.onPrimary,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onPrimary,
                                     )
-                                  : Text(
-                                      AppLocalizations.of(context)!.login,
-                                    ),
+                                  : Text(AppLocalizations.of(context)!.login),
                             ),
                           ),
                           if (_savedAccounts.isNotEmpty) ...[
@@ -436,9 +446,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               onPressed: _isLoading ? null : _showSavedAccounts,
                               icon: const Icon(Icons.manage_accounts_outlined),
                               label: Text(
-                                AppLocalizations.of(
-                                  context,
-                                )!.manageAccounts,
+                                AppLocalizations.of(context)!.manageAccounts,
                               ),
                             ),
                           ],
@@ -471,9 +479,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final cs = Theme.of(context).colorScheme;
     final name = account['name']?.toString().trim();
     final email = account['email']?.toString().trim();
-    final displayName = name == null || name.isEmpty
-        ? l10n.unknown
-        : name;
+    final displayName = name == null || name.isEmpty ? l10n.unknown : name;
 
     return Material(
       color: cs.primaryContainer.withValues(alpha: 0.45),
@@ -527,7 +533,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Widget _buildAccountHint(BuildContext context) {
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -576,7 +581,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Widget _buildSkipLogin(BuildContext context) {
-
     return TextButton(
       onPressed: () {
         AppRoutes.goHomeAfterLogin(context);
@@ -592,7 +596,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Widget _buildBadges(BuildContext context) {
-
     return Wrap(
       alignment: WrapAlignment.center,
       spacing: 8,

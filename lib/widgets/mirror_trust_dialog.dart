@@ -21,9 +21,7 @@ Future<bool> confirmMirrorTrust(
     builder: (ctx) => AlertDialog(
       icon: const Icon(Icons.shield_outlined),
       title: Text(l10n.mirrorTrustTitle),
-      content: Text(
-        l10n.mirrorTrustBody(host),
-      ),
+      content: Text(l10n.mirrorTrustBody(host)),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),

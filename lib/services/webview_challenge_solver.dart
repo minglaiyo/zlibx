@@ -169,8 +169,11 @@ class WebviewChallengeSolver {
     // Merge concurrent solves of the SAME url into one webview run.
     final existing = _inFlightSolves[url];
     if (existing != null) {
-      _logger.debug('Joining in-flight challenge solve',
-          tag: 'ChallengeSolver', metadata: {'url': url});
+      _logger.debug(
+        'Joining in-flight challenge solve',
+        tag: 'ChallengeSolver',
+        metadata: {'url': url},
+      );
       return existing;
     }
     final future = _fetchHtmlAfterChallengeUncancelable(url, timeout);
@@ -178,9 +181,7 @@ class WebviewChallengeSolver {
     // Remove on completion — whenComplete returns a NEW future, so the
     // map entry must point at `future`, and unawaited cleanup keeps the
     // map bounded.
-    unawaited(
-      future.whenComplete(() => _inFlightSolves.remove(url)),
-    );
+    unawaited(future.whenComplete(() => _inFlightSolves.remove(url)));
     return future;
   }
 
@@ -194,8 +195,11 @@ class WebviewChallengeSolver {
     var html = tryHeadless ? await _solveHeadless(url, effectiveTimeout) : null;
 
     if (html == null && _isMobile && visibleSolverFallback != null) {
-      _logger.info('Headless solve failed, using visible fallback',
-          tag: 'ChallengeSolver', metadata: {'url': url});
+      _logger.info(
+        'Headless solve failed, using visible fallback',
+        tag: 'ChallengeSolver',
+        metadata: {'url': url},
+      );
       html = await visibleSolverFallback!(url);
     }
 
@@ -291,12 +295,17 @@ class WebviewChallengeSolver {
         onLoadStop: (controller, loadedUrl) async {
           try {
             final title = (await controller.getTitle()) ?? '';
-            final bodySnippet = (await _js(controller,
-                    "document.body ? document.body.innerHTML.slice(0, 3000) : ''")) ??
+            final bodySnippet =
+                (await _js(
+                  controller,
+                  "document.body ? document.body.innerHTML.slice(0, 3000) : ''",
+                )) ??
                 '';
-            _logger.debug('Headless load stopped',
-                tag: 'ChallengeSolver',
-                metadata: {'title': title, 'url': loadedUrl.toString()});
+            _logger.debug(
+              'Headless load stopped',
+              tag: 'ChallengeSolver',
+              metadata: {'title': title, 'url': loadedUrl.toString()},
+            );
             if (isChallengePage(title: title, bodySnippet: bodySnippet)) {
               return; // challenge page; wait for next load
             }
@@ -309,8 +318,11 @@ class WebviewChallengeSolver {
               completer.complete(html);
             }
           } catch (e) {
-            _logger.debug('Headless onLoadStop check failed',
-                tag: 'ChallengeSolver', metadata: {'error': e.toString()});
+            _logger.debug(
+              'Headless onLoadStop check failed',
+              tag: 'ChallengeSolver',
+              metadata: {'error': e.toString()},
+            );
           }
         },
         onWebViewCreated: (controller) {
@@ -332,8 +344,7 @@ class WebviewChallengeSolver {
           // Record this WebView's UA as soon as the controller exists:
           // the UA is fixed per WebView, and whatever clearance this
           // run earns was minted against it.
-          if (controller != null &&
-              _wallUserAgents[_hostOf(url)] == null) {
+          if (controller != null && _wallUserAgents[_hostOf(url)] == null) {
             await _rememberWallUserAgent(controller, url);
           }
           if (controller != null) {
@@ -341,8 +352,11 @@ class WebviewChallengeSolver {
             // Same check as onLoadStop: a wall page whose title carries
             // no challenge marker must not complete the solve — check
             // the body too, not the title alone.
-            final bodySnippet = (await _js(controller,
-                    "document.body ? document.body.innerHTML.slice(0, 3000) : ''")) ??
+            final bodySnippet =
+                (await _js(
+                  controller,
+                  "document.body ? document.body.innerHTML.slice(0, 3000) : ''",
+                )) ??
                 '';
             if (title.isNotEmpty &&
                 !isChallengePage(title: title, bodySnippet: bodySnippet)) {
@@ -352,7 +366,9 @@ class WebviewChallengeSolver {
               }
             }
           }
-        } catch (error) { logIgnored('webview_challenge_solver', error); }
+        } catch (error) {
+          logIgnored('webview_challenge_solver', error);
+        }
         await Future.delayed(const Duration(milliseconds: 1000));
       }
 
@@ -360,18 +376,25 @@ class WebviewChallengeSolver {
       if (!completer.isCompleted) completer.complete(null);
       return await completer.future;
     } catch (e, st) {
-      _logger.error('Headless challenge solver failed',
-          tag: 'ChallengeSolver', error: e, stackTrace: st);
+      _logger.error(
+        'Headless challenge solver failed',
+        tag: 'ChallengeSolver',
+        error: e,
+        stackTrace: st,
+      );
       return null;
     } finally {
       try {
         await headless?.dispose();
-      } catch (error) { logIgnored('webview_challenge_solver', error); }
+      } catch (error) {
+        logIgnored('webview_challenge_solver', error);
+      }
     }
   }
 
   static Future<InAppWebViewController?> _waitForController(
-      Completer<InAppWebViewController> completer) async {
+    Completer<InAppWebViewController> completer,
+  ) async {
     if (completer.isCompleted) return await completer.future;
     // Poll the completer without a typed onTimeout closure.
     final deadline = DateTime.now().add(const Duration(seconds: 5));
@@ -400,16 +423,19 @@ class WebviewChallengeSolver {
     var previous = -1;
     for (var i = 0; i < 6; i++) {
       await Future.delayed(const Duration(milliseconds: 500));
-      final len = int.tryParse(
-            await _js(controller, "document.documentElement.outerHTML.length") ??
+      final len =
+          int.tryParse(
+            await _js(
+                  controller,
+                  "document.documentElement.outerHTML.length",
+                ) ??
                 '',
           ) ??
           -1;
       if (i >= 1 && len > 0 && len == previous) break;
       previous = len;
     }
-    final html =
-        await _js(controller, "document.documentElement.outerHTML");
+    final html = await _js(controller, "document.documentElement.outerHTML");
     // The poll loop used to check only the title before capturing: a
     // wall page whose title carries no challenge marker would be
     // captured here as solved. Reject a captured challenge page
@@ -422,7 +448,10 @@ class WebviewChallengeSolver {
   /// Uses the flutter_inappwebview 6.x API (`evaluateJavascript`, named
   /// `source:`) — upstream's v5-spelled `evaluateJavaScript` does not
   /// exist in v6.
-  static Future<String?> _js(InAppWebViewController controller, String script) async {
+  static Future<String?> _js(
+    InAppWebViewController controller,
+    String script,
+  ) async {
     try {
       final result = await controller.evaluateJavascript(source: script);
       if (result == null) return null;
@@ -433,7 +462,9 @@ class WebviewChallengeSolver {
         try {
           final decoded = json.decode(s);
           if (decoded is String) return decoded;
-        } catch (error) { logIgnored('webview_challenge_solver', error); }
+        } catch (error) {
+          logIgnored('webview_challenge_solver', error);
+        }
         return s.substring(1, s.length - 1);
       }
       return s;

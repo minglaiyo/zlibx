@@ -167,8 +167,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       case _HistorySort.year:
         return [...books]..sort(_compareYear);
       case _HistorySort.sizeDesc:
-        return [...books]
-          ..sort((a, b) => _compareSize(a, b, descending: true));
+        return [...books]..sort((a, b) => _compareSize(a, b, descending: true));
       case _HistorySort.sizeAsc:
         return [...books]
           ..sort((a, b) => _compareSize(a, b, descending: false));
@@ -195,16 +194,15 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return descending ? y.compareTo(x) : x.compareTo(y);
   }
 
-  String _sortLabel(AppLocalizations l10n, _HistorySort sort) =>
-      switch (sort) {
-        _HistorySort.dateDesc => l10n.historySortDateDesc,
-        _HistorySort.dateAsc => l10n.historySortDateAsc,
-        _HistorySort.titleAsc => l10n.historySortTitleAsc,
-        _HistorySort.titleDesc => l10n.historySortTitleDesc,
-        _HistorySort.year => l10n.year,
-        _HistorySort.sizeDesc => l10n.historySortSizeDesc,
-        _HistorySort.sizeAsc => l10n.historySortSizeAsc,
-      };
+  String _sortLabel(AppLocalizations l10n, _HistorySort sort) => switch (sort) {
+    _HistorySort.dateDesc => l10n.historySortDateDesc,
+    _HistorySort.dateAsc => l10n.historySortDateAsc,
+    _HistorySort.titleAsc => l10n.historySortTitleAsc,
+    _HistorySort.titleDesc => l10n.historySortTitleDesc,
+    _HistorySort.year => l10n.year,
+    _HistorySort.sizeDesc => l10n.historySortSizeDesc,
+    _HistorySort.sizeAsc => l10n.historySortSizeAsc,
+  };
 
   /// Sort picker, in the project's own dialog idiom (see the domain
   /// selector): dense ListTile rows, the selected row marked with a
@@ -219,10 +217,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         return AlertDialog(
           titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
           contentPadding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-          title: Text(
-            l10n.sort,
-            style: const TextStyle(fontSize: 18),
-          ),
+          title: Text(l10n.sort, style: const TextStyle(fontSize: 18)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: _HistorySort.values.map((sort) {
@@ -231,11 +226,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 dense: true,
                 visualDensity: const VisualDensity(vertical: -2),
                 leading: selected
-                    ? Icon(
-                        Icons.check_circle,
-                        color: cs.primary,
-                        size: 20,
-                      )
+                    ? Icon(Icons.check_circle, color: cs.primary, size: 20)
                     : const Icon(
                         Icons.circle_outlined,
                         size: 20,
@@ -245,9 +236,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   _sortLabel(l10n, sort),
                   style: TextStyle(
                     fontSize: 14,
-                    fontWeight: selected
-                        ? FontWeight.w700
-                        : FontWeight.normal,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
                     color: selected ? cs.primary : null,
                   ),
                 ),

@@ -341,10 +341,14 @@ class AuthNotifier extends Notifier<AuthState> {
     }
     try {
       await WebStorageManager.instance().deleteAllData();
-    } catch (error) { logIgnored('auth_provider', error); }
+    } catch (error) {
+      logIgnored('auth_provider', error);
+    }
     try {
       await InAppWebViewController.clearAllCache();
-    } catch (error) { logIgnored('auth_provider', error); }
+    } catch (error) {
+      logIgnored('auth_provider', error);
+    }
     state = AuthState();
     // Same account-scoped caches as an account switch: a later login
     // as a different account must not see the old account's data.
@@ -501,5 +505,6 @@ class AuthNotifier extends Notifier<AuthState> {
 }
 
 /// Auth state provider
-final authProvider =
-    NotifierProvider<AuthNotifier, AuthState>(AuthNotifier.new);
+final authProvider = NotifierProvider<AuthNotifier, AuthState>(
+  AuthNotifier.new,
+);

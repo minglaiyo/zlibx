@@ -35,8 +35,7 @@ class ArticleTile extends StatelessWidget {
         article.language!,
       if (article.extension != null && article.extension!.isNotEmpty)
         article.extension!.toUpperCase(),
-      if (article.filesizeString != null &&
-          article.filesizeString!.isNotEmpty)
+      if (article.filesizeString != null && article.filesizeString!.isNotEmpty)
         article.filesizeString!,
     ];
     final removedLabel = article.unavailableReason == 'copyright'
@@ -62,8 +61,8 @@ class ArticleTile extends StatelessWidget {
                       child: SizedBox(
                         width: 48,
                         height: 68,
-                        child: article.cover != null &&
-                                article.cover!.isNotEmpty
+                        child:
+                            article.cover != null && article.cover!.isNotEmpty
                             ? CachedNetworkImage(
                                 imageUrl: article.cover!,
                                 fit: BoxFit.cover,
@@ -86,9 +85,7 @@ class ArticleTile extends StatelessWidget {
                             article.title,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleSmall
+                            style: Theme.of(context).textTheme.titleSmall
                                 ?.copyWith(fontWeight: FontWeight.w600),
                           ),
                           if (article.author != null &&
@@ -98,9 +95,7 @@ class ArticleTile extends StatelessWidget {
                               article.author!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
+                              style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(color: cs.onSurfaceVariant),
                             ),
                           ],
@@ -110,9 +105,7 @@ class ArticleTile extends StatelessWidget {
                               metaParts.join(' · '),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
+                              style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(color: cs.onSurfaceVariant),
                             ),
                           ],
@@ -136,9 +129,9 @@ class ArticleTile extends StatelessWidget {
                   child: Text(
                     removedLabel,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: cs.onErrorContainer,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      color: cs.onErrorContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],

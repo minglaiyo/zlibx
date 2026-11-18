@@ -29,3 +29,30 @@
 - 解析下载链接的探测请求只看响应头：拿到状态码和 Content-Type 后立刻取消 token，不再 `drain` 响应体。`drain` 会把整本书先完整传一遍，下载引擎再要一遍，一次下载等于两倍流量，慢线上看起来就像“点下载后卡住”（2026-11-15 perf）。不能改成复用探测流：那是没带 `Range` 的 200，续传偏移就没了。
 
 回归见 `test/services/plugin_network_test.dart`（download engine 一组、“链接探测不重复传书”一条）、`test/services/resumable_downloader_test.dart` 和 `test/services/download_range_test.dart`。
+
+## 分类树共享与本地收藏（2026-11-19，方案 C）
+
+分类树全 app 一份（Hive `shelf_categories_v1`，书架建的分类下载页直接可用），assignments 表按 `categoryKey` 命名空间混存：
+
+- `library:<id>` — z站收藏（书架）；`local:<id>` — 本地收藏（书架）；`download:<bookId>` — 已完成下载（下载页）。任务 id 就是 bookId（历史条目按 bookId 存），删除下载记录不清归属，重新下载回来还在原分类里。
+
+### 本地收藏（外部源）
+
+- Anna/LibGen 的书进不了 z站收藏体系：长按快捷面板给外部源一个「收藏到本地」，汇进「我的图书馆」与站内收藏同屏（`ShelfSource.local`）。
+- 序列化的是 `BookData` 整体（含 `link`）：详情页从收藏打开时重建带 original 的 DisplayBook——`_ExternalBookDetail` 强解包 `asAnnaBookData/asLibgenBookData`，详情 URL 用 `bookData.link`，不能用 md5 现拼。存储键 `external_collection_v1`（settings box 内一个 JSON 数组，与书架分类同一模式：条目少、全量重写、落盘失败不丢内存态）。
+- 书架里本地收藏条目：点击进详情、长按单书弹层（归类/移出本地收藏）；不进选择模式（无站内数字 id），批量整理只对 z站条目生效。
+
+### 书架备份/导入（C3）
+
+- 入口：书架 AppBar「管理分类」弹层底部「导出/导入书架数据」。内容 = 分类 + assignments + 本地收藏，`version: 1`。
+- 导出走系统分享面板（临时 JSON 文件）；导入用 file_picker 13.x（`pickFiles` 直接返回 `List<PlatformFile>`，字节走 `readAsBytes()`，旧版 `withData/bytes` 已删）。
+- 合并语义：分类按名字去重（同名沿用本机 id），分配关系按"导入分类 id → 本机 id"映射后逐键落键（`assignEntries` 先整体校验再写），本地收藏按 来源+md5 去重。键指向的书不在本机也无妨，语义只是归属关系。
+
+### 下载页分类（C1）
+
+- 「已完成」Tab 顶部加分类 chips（全部/未分类/各分类 + 计数），条目三点菜单加「加入分类」(`showKeysCategoryPicker`)。新建/改名仍在书架「管理分类」，下载页只消费同一棵树。
+- 进行中 Tab 不做分类（任务还没落地，归类意义在成品）。
+
+回归见 `test/providers/local_collection_persistence_test.dart`、`test/providers/shelf_categories_keys_test.dart`、`test/widgets/downloads_category_filter_test.dart`、`test/widgets/quick_actions_local_test.dart`。
+
+**testWidgets 的 Hive 纪律（三次挂死换来的完整表述）**：FakeAsync 区里测试体绝不能 await 任何 Hive 写操作（clear/put 的真实文件 I/O 完成事件进不了假时钟区，future 永不完成，用例挂满超时）；widget 回调里的 put 随它挂（内存值立即可见）。需要"写后回调"类断言（如排在 `await add` 之后的 snack）时用 `tester.runAsync` 给真实 I/O 开窗口。持久化类测试一律走普通 `test()` + ProviderContainer。

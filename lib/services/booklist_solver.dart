@@ -50,8 +50,7 @@ class BooklistSolver {
     // while the solve is in flight must make the store below drop
     // the stale page (see BooklistHtmlCache).
     final fetchedAt = DateTime.now();
-    final hasSession =
-        userId != null && userKey != null && userKey.isNotEmpty;
+    final hasSession = userId != null && userKey != null && userKey.isNotEmpty;
     if (hasSession) {
       await installSessionCookies(
         userId: userId,

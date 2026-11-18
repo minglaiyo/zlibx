@@ -14,6 +14,8 @@ class SearchBarField extends StatelessWidget {
     required this.activeFilterCount,
     required this.isQueryEmpty,
     this.hintText,
+    this.focusNode,
+    this.onChanged,
     required this.onSubmitted,
     required this.onFilterTap,
     required this.onClear,
@@ -28,6 +30,10 @@ class SearchBarField extends StatelessWidget {
   /// Overrides the default hint (full-text mode shows the site's
   /// "search by phrase or words" hint); null keeps [l10n.searchForBooks].
   final String? hintText;
+
+  /// 搜索建议（D1）需要焦点态与逐字回调；不传则维持原行为。
+  final FocusNode? focusNode;
+  final ValueChanged<String>? onChanged;
   final VoidCallback onSubmitted;
   final VoidCallback onFilterTap;
   final VoidCallback onClear;
@@ -40,6 +46,8 @@ class SearchBarField extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: TextField(
         controller: controller,
+        focusNode: focusNode,
+        onChanged: onChanged,
         textInputAction: TextInputAction.search,
         onSubmitted: (_) => onSubmitted(),
         decoration: InputDecoration(
@@ -77,9 +85,14 @@ class SearchBarField extends StatelessWidget {
             horizontal: 20,
             vertical: 14,
           ),
-          border: OutlineInputBorder(borderRadius: radius, borderSide: BorderSide.none),
-          enabledBorder:
-              OutlineInputBorder(borderRadius: radius, borderSide: BorderSide.none),
+          border: OutlineInputBorder(
+            borderRadius: radius,
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: radius,
+            borderSide: BorderSide.none,
+          ),
           focusedBorder: OutlineInputBorder(
             borderRadius: radius,
             borderSide: BorderSide(color: cs.primary, width: 1.4),

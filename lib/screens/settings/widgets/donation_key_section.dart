@@ -15,8 +15,7 @@ class DonationKeySection extends ConsumerStatefulWidget {
   const DonationKeySection({super.key});
 
   @override
-  ConsumerState<DonationKeySection> createState() =>
-      _DonationKeySectionState();
+  ConsumerState<DonationKeySection> createState() => _DonationKeySectionState();
 }
 
 class _DonationKeySectionState extends ConsumerState<DonationKeySection> {
@@ -42,10 +41,7 @@ class _DonationKeySectionState extends ConsumerState<DonationKeySection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 20),
-        SectionHeader(
-          icon: Icons.key_rounded,
-          title: t.sourceAnnasArchive,
-        ),
+        SectionHeader(icon: Icons.key_rounded, title: t.sourceAnnasArchive),
         SettingsCard(
           child: ListTile(
             leading: const Icon(Icons.key_outlined),
@@ -109,7 +105,9 @@ class _DonationKeyDialogState extends State<_DonationKeyDialog> {
           hintText: t.annasDonationKeyHint,
           suffixIcon: IconButton(
             icon: Icon(
-              _obscured ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+              _obscured
+                  ? Icons.visibility_outlined
+                  : Icons.visibility_off_outlined,
             ),
             onPressed: () => setState(() => _obscured = !_obscured),
           ),

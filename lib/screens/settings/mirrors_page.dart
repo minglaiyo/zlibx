@@ -20,6 +20,7 @@ import '../../widgets/gradient_app_bar.dart';
 import '../../widgets/loading_widget.dart';
 
 import '../../utils/app_snack.dart';
+
 /// Settings > Network > Mirrors.
 ///
 /// Every mirror the app can talk to, per service, exactly as
@@ -124,11 +125,7 @@ class _MirrorsPageState extends State<MirrorsPage> {
     } catch (error) {
       logIgnored('mirrors_page', error);
       if (!mounted) return;
-      showAppSnack(
-        context,
-        l10n.mirrorSpeedTestFailed,
-        error: true,
-      );
+      showAppSnack(context, l10n.mirrorSpeedTestFailed, error: true);
     } finally {
       if (mounted) setState(() => _probing = false);
     }
@@ -153,11 +150,7 @@ class _MirrorsPageState extends State<MirrorsPage> {
       if (!result.hasMirrorList) {
         // Nothing is known — saying "up to date" would claim the empty
         // list is SLUM's answer.
-        showAppSnack(
-          context,
-          l10n.mirrorListUnreachable,
-          error: true,
-        );
+        showAppSnack(context, l10n.mirrorListUnreachable, error: true);
         return;
       }
       showAppSnackOn(
@@ -169,11 +162,7 @@ class _MirrorsPageState extends State<MirrorsPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      showAppSnack(
-        context,
-        l10n.mirrorRefreshFailed,
-        error: true,
-      );
+      showAppSnack(context, l10n.mirrorRefreshFailed, error: true);
     } finally {
       if (mounted) setState(() => _refreshing = false);
     }
@@ -262,11 +251,8 @@ class _MirrorsPageState extends State<MirrorsPage> {
           await _loadAll();
         },
         title: Text(l10n.mirrorAutoOrder),
-        subtitle: Text(_autoMode
-            ? l10n.mirrorAutoDesc
-            : l10n.mirrorManualDesc),
-        secondary:
-            Icon(_autoMode ? Icons.auto_awesome : Icons.touch_app),
+        subtitle: Text(_autoMode ? l10n.mirrorAutoDesc : l10n.mirrorManualDesc),
+        secondary: Icon(_autoMode ? Icons.auto_awesome : Icons.touch_app),
       ),
     );
   }
@@ -281,15 +267,12 @@ class _MirrorsPageState extends State<MirrorsPage> {
             _serviceTitles[service] ?? service.name,
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          Text(
-            switch (service) {
-              MirrorService.libgen => l10n.mirrorServiceLibgenDesc,
-              MirrorService.zlibrary => l10n.mirrorServiceZlibraryDesc,
-              MirrorService.welib => l10n.mirrorServiceWelibDesc,
-              MirrorService.annasArchive => l10n.mirrorServiceAnnasDesc,
-            },
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+          Text(switch (service) {
+            MirrorService.libgen => l10n.mirrorServiceLibgenDesc,
+            MirrorService.zlibrary => l10n.mirrorServiceZlibraryDesc,
+            MirrorService.welib => l10n.mirrorServiceWelibDesc,
+            MirrorService.annasArchive => l10n.mirrorServiceAnnasDesc,
+          }, style: Theme.of(context).textTheme.bodySmall),
         ],
       ),
     );
@@ -298,9 +281,7 @@ class _MirrorsPageState extends State<MirrorsPage> {
   Widget _serviceList(AppLocalizations l10n, MirrorService service) {
     final views = _views[service];
     if (views == null) {
-      return const LoadingWidget.page(
-        padding: EdgeInsets.all(16),
-      );
+      return const LoadingWidget.page(padding: EdgeInsets.all(16));
     }
     if (views.isEmpty) {
       return ListTile(
@@ -323,8 +304,13 @@ class _MirrorsPageState extends State<MirrorsPage> {
     );
   }
 
-  Widget _mirrorTile(AppLocalizations l10n, MirrorService service,
-      InstanceView view, int index, int total) {
+  Widget _mirrorTile(
+    AppLocalizations l10n,
+    MirrorService service,
+    InstanceView view,
+    int index,
+    int total,
+  ) {
     final site = view.site;
     final down = site.isDown;
     final measured = _measured[service]?[site.host];
@@ -345,8 +331,7 @@ class _MirrorsPageState extends State<MirrorsPage> {
             site.status.name.toUpperCase(),
             if (site.protection != Protection.none) site.protection.label,
             if (site.latencyMs != null) '${site.latencyMs}ms',
-            if (measured != null)
-              l10n.mirrorDeviceMs(measured),
+            if (measured != null) l10n.mirrorDeviceMs(measured),
             if (down) l10n.mirrorsDownHint,
           ].join(' · '),
           style: const TextStyle(fontSize: 12),
@@ -362,8 +347,7 @@ class _MirrorsPageState extends State<MirrorsPage> {
                 onPressed: index == 0
                     ? null
                     : () async {
-                        await InstanceManager()
-                            .move(service, site.host, -1);
+                        await InstanceManager().move(service, site.host, -1);
                         await _loadService(service);
                       },
               ),
@@ -374,8 +358,7 @@ class _MirrorsPageState extends State<MirrorsPage> {
                 onPressed: index == total - 1
                     ? null
                     : () async {
-                        await InstanceManager()
-                            .move(service, site.host, 1);
+                        await InstanceManager().move(service, site.host, 1);
                         await _loadService(service);
                       },
               ),
@@ -385,8 +368,11 @@ class _MirrorsPageState extends State<MirrorsPage> {
               onChanged: down
                   ? null
                   : (value) async {
-                      await InstanceManager()
-                          .setEnabled(service, site.host, value);
+                      await InstanceManager().setEnabled(
+                        service,
+                        site.host,
+                        value,
+                      );
                       await _loadService(service);
                     },
             ),

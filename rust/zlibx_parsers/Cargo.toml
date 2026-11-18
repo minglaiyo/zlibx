@@ -1,0 +1,39 @@
+[package]
+name = "zlibx_parsers"
+version = "0.1.0"
+edition = "2021"
+description = "Rust HTML parsers for zlibx, bridged to Dart via flutter_rust_bridge"
+license = "AGPL-3.0-or-later"
+
+[lib]
+name = "zlibx_parsers"
+# staticlib/cdylib for Android .so; rlib so cargo can also build/test on host.
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+flutter_rust_bridge = "=2.14.0-beta.2"
+
+# HTML parsing: scraper wraps html5ever and provides a CSS selector engine,
+# mirroring Dart's package:html. regex handles the inline-script/text
+# extractions (total count, pagesTotal, token format) done in Dart.
+scraper = "0.20"
+# Direct dep only for the NodeRef type in booklist's ancestor-link walk
+# (must match scraper's own ego-tree version — 0.6 for scraper 0.20).
+ego-tree = "0.6"
+url = "2"
+regex = "1"
+
+# eapi JSON → Book mapping (the `_booksOf`/`Book.fromJson` hot path).
+serde_json = "1"
+# MD5 hex digest helpers (P0-2); md-5/hex already resolve transitively
+# through flutter_rust_bridge, declared here so they are first-class deps.
+md-5 = "0.10"
+hex = "0.4"
+
+[profile.release]
+# Minimize .so size — these match the feasibility doc's APK-size risk mitigation.
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

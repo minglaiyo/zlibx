@@ -120,14 +120,16 @@ const _browserHeaders = {'User-Agent': kDefaultUserAgent};
 /// download URL (see libgen_service.dart).
 class LibgenProvider implements SearchProvider {
   LibgenProvider({Dio? dio, List<String>? mirrors})
-      : _dio = dio ??
-            createDioWithLogging(
-                options: BaseOptions(
+    : _dio =
+          dio ??
+          createDioWithLogging(
+            options: BaseOptions(
               connectTimeout: const Duration(seconds: 15),
               receiveTimeout: const Duration(seconds: 30),
               headers: _browserHeaders,
-            )),
-        _mirrors = mirrors;
+            ),
+          ),
+      _mirrors = mirrors;
 
   final Dio _dio;
   final List<String>? _mirrors;
@@ -172,9 +174,11 @@ class LibgenProvider implements SearchProvider {
     // The first link points at series.php - the work's own title. The
     // edition links below it describe specific editions and DOI lines;
     // they are longer and would drown the real title out.
-    final seriesLink =
-        titleCell.querySelector('a[href*="series.php"], a[href*="index.php?"]');
-    final title = (seriesLink ?? titleCell.querySelector('a'))?.text.trim() ??
+    final seriesLink = titleCell.querySelector(
+      'a[href*="series.php"], a[href*="index.php?"]',
+    );
+    final title =
+        (seriesLink ?? titleCell.querySelector('a'))?.text.trim() ??
         titleCell.text.trim();
     if (title.isEmpty) return null;
 
@@ -187,9 +191,11 @@ class LibgenProvider implements SearchProvider {
         .toList();
     final idMatches = cells[0]
         .querySelectorAll('a[href*="id="]')
-        .map((a) => RegExp(r'id=(\d+)')
-            .firstMatch(a.attributes['href'] ?? '')
-            ?.group(1))
+        .map(
+          (a) => RegExp(
+            r'id=(\d+)',
+          ).firstMatch(a.attributes['href'] ?? '')?.group(1),
+        )
         .whereType<String>()
         .toList();
     final md5 =
@@ -214,8 +220,8 @@ class LibgenProvider implements SearchProvider {
       link: md5Value != null
           ? '$baseUrl/ads.php?md5=$md5Value'
           : (fallbackHref.startsWith('http')
-              ? fallbackHref
-              : '$baseUrl$fallbackHref'),
+                ? fallbackHref
+                : '$baseUrl$fallbackHref'),
       md5: md5Value ?? title,
       publisher: cell(2).isEmpty ? null : cell(2),
       info: info.isEmpty ? null : info,
@@ -308,31 +314,50 @@ class LibgenProvider implements SearchProvider {
       // Every libgen mirror SLUM knows is DOWN (or switched off by the
       // user). The contract is to never touch a down host, so this ends
       // here instead of throwing against a dead address.
-      _logger.warning('No attemptable libgen mirror; not searching',
-          tag: 'LibgenProvider');
+      _logger.warning(
+        'No attemptable libgen mirror; not searching',
+        tag: 'LibgenProvider',
+      );
       return const [];
     }
 
-    _logger.info('Searching Library Genesis', tag: 'LibgenProvider', metadata: {
-      'req': req,
-      'page': query.page,
-      'mirrors': mirrors.length,
-    });
+    _logger.info(
+      'Searching Library Genesis',
+      tag: 'LibgenProvider',
+      metadata: {'req': req, 'page': query.page, 'mirrors': mirrors.length},
+    );
 
     Object? lastError;
     for (final mirror in mirrors) {
       try {
         final response = await _dio.get('$mirror/index.php?$params&res=100');
         if (response.statusCode != 200) {
-          _logger.warning('Libgen mirror answered with a non-200',
-              tag: 'LibgenProvider',
-              metadata: {'mirror': mirror, 'status': response.statusCode});
+          _logger.warning(
+            'Libgen mirror answered with a non-200',
+            tag: 'LibgenProvider',
+            metadata: {'mirror': mirror, 'status': response.statusCode},
+          );
           continue;
         }
         final html = response.data.toString();
-        final books = parseResults(html, mirror);
-        _logger.info('Libgen search returned ${books.length} books',
-            tag: 'LibgenProvider', metadata: {'mirror': mirror});
+        // Phase 4: Rust bridge when injected; on any bridge failure the
+        // hook un-registers itself and the Dart parse takes over.
+        List<BookData> books;
+        if (libgenResultsParseOverride != null) {
+          try {
+            books = await libgenResultsParseOverride!(html, mirror);
+          } on Object catch (_) {
+            libgenResultsParseOverride = null;
+            books = parseResults(html, mirror);
+          }
+        } else {
+          books = parseResults(html, mirror);
+        }
+        _logger.info(
+          'Libgen search returned ${books.length} books',
+          tag: 'LibgenProvider',
+          metadata: {'mirror': mirror},
+        );
         if (books.isNotEmpty) return books;
         // A challenge/error/placeholder page also parses to an empty
         // list. Only a real LibGen page may answer "no results"; on
@@ -346,25 +371,34 @@ class LibgenProvider implements SearchProvider {
           return books;
         }
         _logger.warning(
-            'Libgen mirror returned a non-LibGen page (possible '
-            'challenge page), trying next',
-            tag: 'LibgenProvider',
-            metadata: {'mirror': mirror, 'htmlLength': html.length});
+          'Libgen mirror returned a non-LibGen page (possible '
+          'challenge page), trying next',
+          tag: 'LibgenProvider',
+          metadata: {'mirror': mirror, 'htmlLength': html.length},
+        );
       } catch (e) {
         lastError = e;
-        _logger.warning('Libgen mirror failed, trying next',
-            tag: 'LibgenProvider', error: e, metadata: {'mirror': mirror});
+        _logger.warning(
+          'Libgen mirror failed, trying next',
+          tag: 'LibgenProvider',
+          error: e,
+          metadata: {'mirror': mirror},
+        );
       }
     }
-    _logger.error('All libgen mirrors failed',
-        tag: 'LibgenProvider', error: lastError);
+    _logger.error(
+      'All libgen mirrors failed',
+      tag: 'LibgenProvider',
+      error: lastError,
+    );
     // Short user-facing message only: the provider surfaces
     // NetworkError.userMessage, and the full Dio dump stays in the log
     // line above — it used to be shown verbatim in the search UI.
     throw NetworkError(
       type: NetworkErrorType.serverUnavailable,
       userMessage: 'Library Genesis temporarily unavailable',
-      solution: 'The LibGen mirrors are not answering right now. '
+      solution:
+          'The LibGen mirrors are not answering right now. '
           'Please try again in a moment.',
       technicalDetails: lastError.toString(),
     );
@@ -385,8 +419,18 @@ class SearchManagerResult {
   /// stops at the first provider with results.
   final String resultSource;
 
-  const SearchManagerResult(
-      {required this.books,
-      required this.failedProviders,
-      this.resultSource = ''});
+  const SearchManagerResult({
+    required this.books,
+    required this.failedProviders,
+    this.resultSource = '',
+  });
 }
+
+// ──────────────────────────────────────────────────────────────────
+// Phase 4: injectable Rust parse hook. The host app sets this to a
+// flutter_rust_bridge-backed implementation returning the SAME
+// List<BookData> contract; when null (default) the Dart implementation
+// above is used as the fallback.
+// ──────────────────────────────────────────────────────────────────
+Future<List<BookData>> Function(String html, String baseUrl)?
+libgenResultsParseOverride;

@@ -67,9 +67,7 @@ class CommentCard extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(48, 2, 16, 2),
       padding: const EdgeInsets.only(left: 12),
       decoration: BoxDecoration(
-        border: Border(
-          left: BorderSide(color: railColor, width: 2),
-        ),
+        border: Border(left: BorderSide(color: railColor, width: 2)),
       ),
       child: body,
     );
@@ -120,8 +118,9 @@ class _Body extends StatelessWidget {
                   Flexible(
                     child: Text(
                       comment.userName,
-                      style: tt.bodyMedium
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                      style: tt.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),

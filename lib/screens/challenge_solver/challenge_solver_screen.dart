@@ -60,38 +60,51 @@ class _ChallengeSolverScreenState extends State<ChallengeSolverScreen> {
 
       try {
         final title = (await controller.getTitle()) ?? '';
-        final bodySnippet = (await controller.evaluateJavascript(
-                source:
-                    "document.body ? document.body.innerHTML.slice(0, 3000) : ''"))
-            ?.toString() ?? '';
+        final bodySnippet =
+            (await controller.evaluateJavascript(
+              source:
+                  "document.body ? document.body.innerHTML.slice(0, 3000) : ''",
+            ))?.toString() ??
+            '';
 
         if (title.isEmpty && bodySnippet.isEmpty) return;
 
         if (WebviewChallengeSolver.isChallengePage(
-            title: title, bodySnippet: bodySnippet)) {
-          _logger.debug('Challenge still active (solver page)',
-              tag: 'ChallengeSolver', metadata: {'title': title});
+          title: title,
+          bodySnippet: bodySnippet,
+        )) {
+          _logger.debug(
+            'Challenge still active (solver page)',
+            tag: 'ChallengeSolver',
+            metadata: {'title': title},
+          );
           return;
         }
 
         final ready =
-            (await controller.evaluateJavascript(source: "document.readyState"))
-                ?.toString() ?? '';
+            (await controller.evaluateJavascript(
+              source: "document.readyState",
+            ))?.toString() ??
+            '';
         if (ready != 'complete') return;
 
         // Settle so late XHR content lands in the DOM.
         await Future.delayed(const Duration(milliseconds: 2000));
         if (_done || !mounted) return;
 
-        final html = (await controller.evaluateJavascript(
-                source: "document.documentElement.outerHTML"))
-            ?.toString() ?? '';
+        final html =
+            (await controller.evaluateJavascript(
+              source: "document.documentElement.outerHTML",
+            ))?.toString() ??
+            '';
         if (html.isNotEmpty) {
           _done = true;
           ChallengeHtmlCache.store(widget.url, html);
-          _logger.info('Solver page captured HTML',
-              tag: 'ChallengeSolver',
-              metadata: {'url': widget.url, 'length': html.length});
+          _logger.info(
+            'Solver page captured HTML',
+            tag: 'ChallengeSolver',
+            metadata: {'url': widget.url, 'length': html.length},
+          );
           _pollTimer?.cancel();
           if (mounted) Navigator.pop(context, true);
         }
@@ -106,20 +119,17 @@ class _ChallengeSolverScreenState extends State<ChallengeSolverScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.verifyingAccess),
-      ),
+      appBar: AppBar(title: Text(l10n.verifyingAccess)),
       body: SafeArea(
         child: Column(
           children: [
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text(
                 l10n.verifyingAccessHint,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
             if (_progress < 1)

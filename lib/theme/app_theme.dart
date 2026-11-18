@@ -87,14 +87,14 @@ class AppTheme {
   /// 此前未配置，三端各走各自默认，体验不一致。
   static const PageTransitionsTheme _pageTransitionsTheme =
       PageTransitionsTheme(
-    builders: {
-      TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
-      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-      TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
-      TargetPlatform.windows: ZoomPageTransitionsBuilder(),
-      TargetPlatform.linux: ZoomPageTransitionsBuilder(),
-    },
-  );
+        builders: {
+          TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.windows: ZoomPageTransitionsBuilder(),
+          TargetPlatform.linux: ZoomPageTransitionsBuilder(),
+        },
+      );
 
   /// Light theme for a dynamic [scheme]; null falls back to [lightTheme].
   static ThemeData lightThemeFromScheme(ColorScheme? scheme) {
@@ -121,8 +121,7 @@ class AppTheme {
     final cs = scheme ?? _lightColorScheme;
     // Without a dynamic scheme we keep the warm-paper scaffold/app-bar
     // background; a dynamic scheme uses its own surface instead.
-    final background =
-        scheme == null ? AppColors.background : cs.surface;
+    final background = scheme == null ? AppColors.background : cs.surface;
 
     return ThemeData(
       useMaterial3: true,
@@ -161,8 +160,7 @@ class AppTheme {
           if (states.contains(WidgetState.selected)) {
             return const TextStyle(fontSize: 12, fontWeight: FontWeight.bold);
           }
-          return const TextStyle(
-              fontSize: 12, fontWeight: FontWeight.normal);
+          return const TextStyle(fontSize: 12, fontWeight: FontWeight.normal);
         }),
       ),
 
@@ -181,8 +179,10 @@ class AppTheme {
           borderRadius: BorderRadius.circular(30),
           borderSide: BorderSide(color: cs.primary, width: 1.5),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 24,
+          vertical: 16,
+        ),
         hintStyle: TextStyle(color: cs.onSurfaceVariant),
       ),
 
@@ -195,17 +195,11 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(30),
           ),
-          textStyle: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
 
-      dividerTheme: DividerThemeData(
-        color: cs.outlineVariant,
-        thickness: 1,
-      ),
+      dividerTheme: DividerThemeData(color: cs.outlineVariant, thickness: 1),
 
       // 全局兜底子主题（SnackBar / Dialog / BottomSheet）：此前三者的
       // 形状与浮起行为靠各调用点手写（app_snack、22 处 showDialog、
@@ -213,22 +207,16 @@ class AppTheme {
       // 调用点显式传入的参数仍然优先（home 更新提示的定制样式不受影响）。
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
 
       dialogTheme: DialogThemeData(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
 
       bottomSheetTheme: const BottomSheetThemeData(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(16),
-          ),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
         showDragHandle: false,
       ),
@@ -282,8 +270,7 @@ class AppTheme {
           if (states.contains(WidgetState.selected)) {
             return const TextStyle(fontSize: 12, fontWeight: FontWeight.bold);
           }
-          return const TextStyle(
-              fontSize: 12, fontWeight: FontWeight.normal);
+          return const TextStyle(fontSize: 12, fontWeight: FontWeight.normal);
         }),
       ),
 
@@ -302,8 +289,10 @@ class AppTheme {
           borderRadius: BorderRadius.circular(30),
           borderSide: BorderSide(color: cs.primary, width: 1.5),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 24,
+          vertical: 16,
+        ),
         hintStyle: TextStyle(color: cs.onSurfaceVariant),
       ),
 
@@ -317,30 +306,21 @@ class AppTheme {
         ),
       ),
 
-      dividerTheme: DividerThemeData(
-        color: cs.outlineVariant,
-        thickness: 1,
-      ),
+      dividerTheme: DividerThemeData(color: cs.outlineVariant, thickness: 1),
 
       // 与亮色主题相同的兜底子主题，见 _buildLightTheme 里的说明。
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
 
       dialogTheme: DialogThemeData(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
 
       bottomSheetTheme: const BottomSheetThemeData(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(16),
-          ),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
         showDragHandle: false,
       ),

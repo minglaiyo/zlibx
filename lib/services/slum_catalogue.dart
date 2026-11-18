@@ -43,17 +43,19 @@ export 'package:zlibx/core/slum.dart';
 /// the app then reports "no mirrors" instead of guessing a URL.
 class SlumCatalogue {
   SlumCatalogue({Dio? dio, PreferenceStore? store, String? baseUrl})
-      : _dio = dio ??
-            createDioWithLogging(
-                options: BaseOptions(
+    : _dio =
+          dio ??
+          createDioWithLogging(
+            options: BaseOptions(
               connectTimeout: const Duration(seconds: 15),
               receiveTimeout: const Duration(seconds: 20),
               // Same desktop-Chrome UA as every other app HTTP client
               // (kDefaultUserAgent, http_client.dart — one definition, W1).
               headers: const {'User-Agent': kDefaultUserAgent},
-            )),
-        _store = store,
-        _baseUrl = baseUrl ?? defaultBaseUrl;
+            ),
+          ),
+      _store = store,
+      _baseUrl = baseUrl ?? defaultBaseUrl;
 
   final Dio _dio;
   final PreferenceStore? _store;
@@ -115,8 +117,10 @@ class SlumCatalogue {
   /// The mirrors of one service, in SLUM's page order. Ordering (see
   /// [SlumCatalogue.sortAuto]) is applied by [InstanceManager.instances].
   /// Returns an empty list when SLUM is unreachable and nothing is cached.
-  Future<List<SlumSite>> sites(MirrorService service,
-      {bool force = false}) async {
+  Future<List<SlumSite>> sites(
+    MirrorService service, {
+    bool force = false,
+  }) async {
     final all = await fetchAll(force: force);
     return all[service] ?? const [];
   }
@@ -128,8 +132,7 @@ class SlumCatalogue {
   /// the empty list for the whole [ttl]. Retries are throttled by
   /// [_retryAfterFailedFetch] instead, and a "Try Again"/refresh passes
   /// `force: true`.
-  Future<Map<MirrorService, List<SlumSite>>> fetchAll(
-      {bool force = false}) {
+  Future<Map<MirrorService, List<SlumSite>>> fetchAll({bool force = false}) {
     if (!force && _isFresh) return Future.value(_cache);
 
     // Share an in-progress refresh even for force callers. Starting a second
@@ -188,18 +191,26 @@ class SlumCatalogue {
     try {
       final response = await _dio.get<String>('$_baseUrl/$page');
       if (response.statusCode != 200 || response.data == null) {
-        AppLogger().warning('open-slum page answered a non-200',
-            tag: 'SlumCatalogue',
-            metadata: {'service': service.name, 'status': response.statusCode});
+        AppLogger().warning(
+          'open-slum page answered a non-200',
+          tag: 'SlumCatalogue',
+          metadata: {'service': service.name, 'status': response.statusCode},
+        );
         return const [];
       }
       final sites = parsePage(response.data!, service);
-      AppLogger().info('open-slum: ${sites.length} ${service.name} mirrors',
-          tag: 'SlumCatalogue');
+      AppLogger().info(
+        'open-slum: ${sites.length} ${service.name} mirrors',
+        tag: 'SlumCatalogue',
+      );
       return sites;
     } catch (e) {
-      AppLogger().warning('open-slum page unreachable, using cache',
-          tag: 'SlumCatalogue', error: e, metadata: {'service': service.name});
+      AppLogger().warning(
+        'open-slum page unreachable, using cache',
+        tag: 'SlumCatalogue',
+        error: e,
+        metadata: {'service': service.name},
+      );
       return const [];
     }
   }
@@ -208,8 +219,11 @@ class SlumCatalogue {
   /// cache) can feed captured HTML without network.
   @visibleForTesting
   List<SlumSite> parsePage(String html, MirrorService service) {
-    return parseSlumPage(html,
-        service: service, skipHosts: _otherPageSkipHosts);
+    return parseSlumPage(
+      html,
+      service: service,
+      skipHosts: _otherPageSkipHosts,
+    );
   }
 
   /// Auto order: never-down mirrors first by protection difficulty
@@ -271,13 +285,13 @@ class SlumCatalogue {
   }
 
   Map<String, dynamic> _siteToJson(SlumSite site) => {
-        'url': site.url,
-        'host': site.host,
-        'status': site.status.name,
-        'protection': site.protection.name,
-        'httpStatus': site.httpStatus,
-        'latencyMs': site.latencyMs,
-      };
+    'url': site.url,
+    'host': site.host,
+    'status': site.status.name,
+    'protection': site.protection.name,
+    'httpStatus': site.httpStatus,
+    'latencyMs': site.latencyMs,
+  };
 
   SlumSite _siteFromJson(Map<String, dynamic> json, MirrorService service) {
     SlumStatus status = SlumStatus.unknown;

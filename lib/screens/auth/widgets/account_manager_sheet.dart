@@ -8,6 +8,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../widgets/loading_widget.dart';
 
 import '../../../utils/app_snack.dart';
+
 enum AccountManagerResult { switched, addAccount }
 
 Future<AccountManagerResult?> showAccountManagerSheet(
@@ -72,9 +73,7 @@ class _AccountManagerSheetState extends ConsumerState<AccountManagerSheet> {
     }
 
     setState(() => _switchingUserId = null);
-    showAppSnack(context,
-          AppLocalizations.of(context)!.switchAccountFailed,
-        );
+    showAppSnack(context, AppLocalizations.of(context)!.switchAccountFailed);
   }
 
   Future<void> _confirmRemove(Map<String, dynamic> account) async {
@@ -91,7 +90,9 @@ class _AccountManagerSheetState extends ConsumerState<AccountManagerSheet> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
             child: Text(l10n.remove),
           ),
         ],
@@ -258,9 +259,7 @@ class _AccountTile extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final name = account['name']?.toString().trim();
     final email = account['email']?.toString().trim();
-    final displayName = name == null || name.isEmpty
-        ? l10n.unknown
-        : name;
+    final displayName = name == null || name.isEmpty ? l10n.unknown : name;
     final displayEmail = email == null || email.isEmpty ? '-' : email;
 
     return ListTile(
@@ -297,10 +296,7 @@ class _AccountTile extends StatelessWidget {
                   value: 'remove',
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.delete_outline_rounded,
-                        color: cs.error,
-                      ),
+                      Icon(Icons.delete_outline_rounded, color: cs.error),
                       const SizedBox(width: 12),
                       Text(l10n.removeAccount),
                     ],

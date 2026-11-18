@@ -96,9 +96,7 @@ class _SimilarBooksScreenState extends ConsumerState<SimilarBooksScreen> {
     final adaptiveGrid = ref.watch(adaptiveGridProvider);
 
     return Scaffold(
-      appBar: GradientAppBar(
-        title: l10n.similarBooks,
-      ),
+      appBar: GradientAppBar(title: l10n.similarBooks),
       body: Column(
         children: [
           // Book context header
@@ -109,7 +107,7 @@ class _SimilarBooksScreenState extends ConsumerState<SimilarBooksScreen> {
               color: Theme.of(context).cardColor,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha:0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 4,
                   offset: const Offset(0, 2),
                 ),
@@ -117,7 +115,11 @@ class _SimilarBooksScreenState extends ConsumerState<SimilarBooksScreen> {
             ),
             child: Row(
               children: [
-                Icon(Icons.book_outlined, color: Theme.of(context).colorScheme.primary, size: 20),
+                Icon(
+                  Icons.book_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -138,138 +140,152 @@ class _SimilarBooksScreenState extends ConsumerState<SimilarBooksScreen> {
             child: _isLoading
                 ? LoadingWidget(message: l10n.loadingSimilarBooks)
                 : _hasError
-                    ? EmptyState(
-                        icon: Icons.error_outline,
-                        title: l10n.error,
-                        message: _errorMessage,
-                      )
-                    : _books.isEmpty
-                        ? EmptyState(
-                            icon: Icons.search_off,
-                            title: l10n.noSimilarBooks,
-                            message: l10n.noSimilarBooksMessage,
-                          )
-                        : Column(
-                            children: [
-                              // Results info and view toggle
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      '${_books.length} ${l10n.booksFound}',
-                                      style: TextStyle(
-                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    // View mode toggle button
-                                    IconButton(
-                                      icon: Icon(
-                                        _isListView ? Icons.grid_view_rounded : Icons.view_list_rounded,
-                                        color: Theme.of(context).colorScheme.primary,
-                                        size: 22,
-                                      ),
-                                      tooltip: _isListView ? l10n.gridView : l10n.listView,
-                                      onPressed: () {
-                                        setState(() {
-                                          _isListView = !_isListView;
-                                        });
-                                      },
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                    ),
-                                  ],
-                                ),
+                ? EmptyState(
+                    icon: Icons.error_outline,
+                    title: l10n.error,
+                    message: _errorMessage,
+                  )
+                : _books.isEmpty
+                ? EmptyState(
+                    icon: Icons.search_off,
+                    title: l10n.noSimilarBooks,
+                    message: l10n.noSimilarBooksMessage,
+                  )
+                : Column(
+                    children: [
+                      // Results info and view toggle
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '${_books.length} ${l10n.booksFound}',
+                              style: TextStyle(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                                fontSize: 13,
                               ),
-                              // Books Grid/List
-                              Expanded(
-                                child: _isListView
-                                    ? ListView.builder(
-                                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                                        itemCount: _books.length,
-                                        itemBuilder: (context, index) {
-                                          final book = _books[index];
-                                          return BookListTile(
-                                            book: book.toDisplay(),
-                                            showCover: true,
-                                            // 长按封面：收藏 / 加入书单
-                                            // 快捷面板（功能 2 推广）。
-                                            onLongPress: () =>
-                                                showBookQuickActionsSheet(
+                            ),
+                            // View mode toggle button
+                            IconButton(
+                              icon: Icon(
+                                _isListView
+                                    ? Icons.grid_view_rounded
+                                    : Icons.view_list_rounded,
+                                color: Theme.of(context).colorScheme.primary,
+                                size: 22,
+                              ),
+                              tooltip: _isListView
+                                  ? l10n.gridView
+                                  : l10n.listView,
+                              onPressed: () {
+                                setState(() {
+                                  _isListView = !_isListView;
+                                });
+                              },
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Books Grid/List
+                      Expanded(
+                        child: _isListView
+                            ? ListView.builder(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  16,
+                                ),
+                                itemCount: _books.length,
+                                itemBuilder: (context, index) {
+                                  final book = _books[index];
+                                  return BookListTile(
+                                    book: book.toDisplay(),
+                                    showCover: true,
+                                    // 长按封面：收藏 / 加入书单
+                                    // 快捷面板（功能 2 推广）。
+                                    onLongPress: () =>
+                                        showBookQuickActionsSheet(
+                                          context,
+                                          book.toDisplay(),
+                                        ),
+                                    onTap: () {
+                                      AppRoutes.openBookDetailForBook(
+                                        context,
+                                        book,
+                                      );
+                                    },
+                                  );
+                                },
+                              )
+                            : LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final width = constraints.maxWidth;
+                                  // 外观设置里的"书籍网格自适应列数"（默认关）：关掉时维持固定
+                                  // 两列、左右 16 的原样。列数问的是网格盒子自身的宽度，所以用
+                                  // LayoutBuilder 取约束而不是窗口宽——两者在测试里不等价。
+                                  final gridGutter = adaptiveGrid
+                                      ? AppLayout.pageGutter(width)
+                                      : 16.0;
+                                  return GridView.builder(
+                                    padding: EdgeInsets.fromLTRB(
+                                      gridGutter,
+                                      0,
+                                      gridGutter,
+                                      16,
+                                    ),
+                                    // 自适应档：列数 / 留白 / 间距 /
+                                    // 格高走 BookCard 那个工厂，和首页
+                                    // 同一套（手机 3 列）。关掉时是本页
+                                    // 原来的固定委托：两列、0.65。
+                                    gridDelegate: adaptiveGrid
+                                        ? BookCard.adaptiveGridDelegate(
+                                            context,
+                                            width,
+                                          )
+                                        : const SliverGridDelegateWithFixedCrossAxisCount(
+                                            crossAxisCount: 2,
+                                            childAspectRatio: 0.65,
+                                            crossAxisSpacing: 12,
+                                            mainAxisSpacing: 12,
+                                          ),
+                                    itemCount: _books.length,
+                                    itemBuilder: (context, index) {
+                                      final book = _books[index];
+                                      return BookCard(
+                                        book: book.toDisplay(),
+                                        // 相似书列表同屏同 id 重复
+                                        // 几乎不可能，可安全开 Hero。
+                                        heroEnabled: true,
+                                        // 长按封面：收藏 / 加入书单
+                                        // 快捷面板（功能 2 推广）。
+                                        onLongPress: () =>
+                                            showBookQuickActionsSheet(
                                               context,
                                               book.toDisplay(),
                                             ),
-                                            onTap: () {
-                                              AppRoutes.openBookDetailForBook(
-                                                context,
-                                                book,
-                                              );
-                                            },
+                                        onTap: () {
+                                          AppRoutes.openBookDetailForBook(
+                                            context,
+                                            book,
                                           );
                                         },
-                                      )
-                                    : LayoutBuilder(
-                                      builder: (context, constraints) {
-                                        final width = constraints.maxWidth;
-                                        // 外观设置里的"书籍网格自适应列数"（默认关）：关掉时维持固定
-                                        // 两列、左右 16 的原样。列数问的是网格盒子自身的宽度，所以用
-                                        // LayoutBuilder 取约束而不是窗口宽——两者在测试里不等价。
-                                        final gridGutter = adaptiveGrid
-                                            ? AppLayout.pageGutter(width)
-                                            : 16.0;
-                                        return GridView.builder(
-                                          padding: EdgeInsets.fromLTRB(
-                                            gridGutter,
-                                            0,
-                                            gridGutter,
-                                            16,
-                                          ),
-                                          // 自适应档：列数 / 留白 / 间距 /
-                                          // 格高走 BookCard 那个工厂，和首页
-                                          // 同一套（手机 3 列）。关掉时是本页
-                                          // 原来的固定委托：两列、0.65。
-                                          gridDelegate: adaptiveGrid
-                                              ? BookCard.adaptiveGridDelegate(
-                                                  context,
-                                                  width,
-                                                )
-                                              : const SliverGridDelegateWithFixedCrossAxisCount(
-                                                  crossAxisCount: 2,
-                                                  childAspectRatio: 0.65,
-                                                  crossAxisSpacing: 12,
-                                                  mainAxisSpacing: 12,
-                                                ),
-                                          itemCount: _books.length,
-                                          itemBuilder: (context, index) {
-                                            final book = _books[index];
-                                            return BookCard(
-                                              book: book.toDisplay(),
-                                              // 相似书列表同屏同 id 重复
-                                              // 几乎不可能，可安全开 Hero。
-                                              heroEnabled: true,
-                                              // 长按封面：收藏 / 加入书单
-                                              // 快捷面板（功能 2 推广）。
-                                              onLongPress: () =>
-                                                  showBookQuickActionsSheet(
-                                                context,
-                                                book.toDisplay(),
-                                              ),
-                                              onTap: () {
-                                                AppRoutes.openBookDetailForBook(
-                                                  context,
-                                                  book,
-                                                );
-                                              },
-                                            );
-                                          },
-                                        );
-                                      },
-                                    ),
+                                      );
+                                    },
+                                  );
+                                },
                               ),
-                            ],
-                          ),
+                      ),
+                    ],
+                  ),
           ),
         ],
       ),

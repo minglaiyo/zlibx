@@ -45,12 +45,10 @@ import 'media_store.dart';
 /// `_downloadOnce` inside olib_api_plugin — can write through it
 /// without the plugin depending on app code.
 class PendingUriWriter implements PendingDownloadWriter {
-  PendingUriWriter._({
-    required String uri,
-    required String savePath,
-  })  : _uri = uri,
-        _savePath = savePath,
-        _statePath = statePathFor(savePath) {
+  PendingUriWriter._({required String uri, required String savePath})
+    : _uri = uri,
+      _savePath = savePath,
+      _statePath = statePathFor(savePath) {
     _live[_statePath] = this;
   }
 
@@ -125,8 +123,8 @@ class PendingUriWriter implements PendingDownloadWriter {
   }
 
   String get _mimeType => MediaStoreFiles.mimeTypeForExtension(
-        _displayName.contains('.') ? _displayName.split('.').last : null,
-      );
+    _displayName.contains('.') ? _displayName.split('.').last : null,
+  );
 
   /// Create a fresh pending entry. Null when MediaStore cannot create
   /// it (pre-Android 10, or any insert failure) — the caller then
@@ -156,9 +154,7 @@ class PendingUriWriter implements PendingDownloadWriter {
   /// between leaves it lagging. The entry's size is authoritative; when
   /// it differs, it wins and the sidecar is updated. When the size
   /// query fails, the sidecar value is kept.
-  static Future<PendingUriWriter?> resume({
-    required String savePath,
-  }) async {
+  static Future<PendingUriWriter?> resume({required String savePath}) async {
     final previous = _live[statePathFor(savePath)];
     if (previous != null) await previous._settle();
     final file = File(statePathFor(savePath));
@@ -356,10 +352,7 @@ class PendingUriWriter implements PendingDownloadWriter {
       // This avoids leaving a truncated JSON sidecar if the process is
       // interrupted during serialization or disk I/O.
       await tempFile.writeAsString(
-        jsonEncode(<String, Object>{
-          'uri': _uri,
-          'bytesWritten': _committed,
-        }),
+        jsonEncode(<String, Object>{'uri': _uri, 'bytesWritten': _committed}),
         flush: true,
       );
       try {

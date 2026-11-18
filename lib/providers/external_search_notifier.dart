@@ -131,17 +131,12 @@ class ExternalSearchNotifier extends Notifier<ExternalSearchState> {
       );
     } catch (e) {
       if (requestId != _requestId) return;
-      state = ExternalSearchState(
-        hasSearched: true,
-        error: _errorMessage(e),
-      );
+      state = ExternalSearchState(hasSearched: true, error: _errorMessage(e));
     }
   }
 
   Future<void> loadMore() async {
-    if (_lastQuery == null ||
-        state.isLoadingMore ||
-        !state.hasMore) {
+    if (_lastQuery == null || state.isLoadingMore || !state.hasMore) {
       return;
     }
 
@@ -155,20 +150,14 @@ class ExternalSearchNotifier extends Notifier<ExternalSearchState> {
       );
       if (requestId != _requestId) return;
       state = state.copyWith(
-        books: [
-          ...state.books,
-          ...books.map<DisplayBook>(_toDisplay),
-        ],
+        books: [...state.books, ...books.map<DisplayBook>(_toDisplay)],
         currentPage: nextPage,
         isLoadingMore: false,
         hasMore: books.isNotEmpty,
       );
     } catch (e) {
       if (requestId != _requestId) return;
-      state = state.copyWith(
-        isLoadingMore: false,
-        error: _errorMessage(e),
-      );
+      state = state.copyWith(isLoadingMore: false, error: _errorMessage(e));
     }
   }
 
@@ -195,8 +184,7 @@ final externalSearchProvider =
 /// reused across detail and search requests instead of being rebuilt
 /// per call. The service holds no per-request mutable state (its headers
 /// map is only read), so sharing one instance is safe.
-final annasArchieveProvider =
-    Provider<AnnasArchieve>((ref) => AnnasArchieve());
+final annasArchieveProvider = Provider<AnnasArchieve>((ref) => AnnasArchieve());
 
 // ── Anna's Archive Book Details ──────────────────────────────────────
 //
@@ -205,8 +193,8 @@ final annasArchieveProvider =
 // mirror, parse failure), so the provider surfaces the error as-is.
 /// autoDispose：详情页关掉后无人 watch 即释放缓存；每条 link 各占一
 /// 个缓存项，重度浏览否则无界增长。
-final annasBookDetailsProvider =
-    FutureProvider.autoDispose.family<BookInfoData, String>((ref, link) async {
+final annasBookDetailsProvider = FutureProvider.autoDispose
+    .family<BookInfoData, String>((ref, link) async {
       final archive = ref.watch(annasArchieveProvider);
       return archive.bookInfo(url: link);
     });
@@ -215,8 +203,7 @@ final annasBookDetailsProvider =
 /// a fresh Dio (and a fresh keep-alive HttpClient pool) every time the
 /// user opened a LibGen book — the same leak pattern the search side
 /// already fixed with [annasArchieveProvider].
-final libgenServiceProvider =
-    Provider<LibgenService>((ref) => LibgenService());
+final libgenServiceProvider = Provider<LibgenService>((ref) => LibgenService());
 
 // ── LibGen Book Details ──────────────────────────────────────────────
 //
@@ -225,8 +212,8 @@ final libgenServiceProvider =
 // (no mirror, non-200, parse failure), so the provider turns that into
 // a StateError for the detail page's error UI.
 /// autoDispose：与 [annasBookDetailsProvider] 同理，详情页关掉即释放。
-final libgenBookDetailsProvider =
-    FutureProvider.autoDispose.family<BookInfoData, String>((ref, link) async {
+final libgenBookDetailsProvider = FutureProvider.autoDispose
+    .family<BookInfoData, String>((ref, link) async {
       final info = await ref.watch(libgenServiceProvider).bookInfo(link);
       if (info == null) throw StateError('Failed to load book details');
       return info;

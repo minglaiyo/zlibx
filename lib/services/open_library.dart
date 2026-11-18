@@ -28,19 +28,29 @@ abstract class TrendingBooksImpl {
   String url = '';
   int timeOutDuration = 20;
   final AppLogger _logger = AppLogger();
-  List<TrendingBookData> _parser(dynamic data);
+
+  /// Async since phase 4: the parse routes through the Rust bridge
+  /// when injected (the Dart implementation stays as the fallback).
+  /// [OpenLibrary] is the only subclass.
+  Future<List<TrendingBookData>> _parser(dynamic data);
 
   Future<List<TrendingBookData>> trendingBooks() async {
     try {
       final dio = createDio();
-      final response = await dio.get(url,
-          options: Options(
-              sendTimeout: Duration(seconds: timeOutDuration),
-              receiveTimeout: Duration(seconds: timeOutDuration)));
+      final response = await dio.get(
+        url,
+        options: Options(
+          sendTimeout: Duration(seconds: timeOutDuration),
+          receiveTimeout: Duration(seconds: timeOutDuration),
+        ),
+      );
       return _parser(response.data.toString());
     } on DioException catch (e) {
-      _logger.warning('Failed to fetch trending books',
-          tag: 'TrendingBooks', metadata: {'url': url, 'error': e.message});
+      _logger.warning(
+        'Failed to fetch trending books',
+        tag: 'TrendingBooks',
+        metadata: {'url': url, 'error': e.message},
+      );
       return [];
     }
   }
@@ -52,28 +62,44 @@ class OpenLibrary extends TrendingBooksImpl {
   }
 
   @override
-  List<TrendingBookData> _parser(data) {
-    final document = parse(data.toString());
-    final bookList =
-        document.querySelectorAll('li[class="searchResultItem sri--w-main"]');
+  Future<List<TrendingBookData>> _parser(data) async {
+    // Phase 4: the Rust bridge parses when injected; on any bridge
+    // failure the hook un-registers itself and the Dart implementation
+    // below takes over.
+    if (openLibraryTrendingParseOverride != null) {
+      try {
+        return await openLibraryTrendingParseOverride!(data.toString());
+      } on Object catch (_) {
+        openLibraryTrendingParseOverride = null;
+      }
+    }
+    return _dartParseTrending(data.toString());
+  }
+
+  /// The original Dart parse body, kept as the fallback when the Rust
+  /// bridge is unavailable.
+  static List<TrendingBookData> _dartParseTrending(String html) {
+    final document = parse(html);
+    final bookList = document.querySelectorAll(
+      'li[class="searchResultItem sri--w-main"]',
+    );
     final List<TrendingBookData> trendingBooks = [];
     for (var element in bookList) {
       if (element.querySelector('h3[class="booktitle"]')?.text != null &&
           element.querySelector('img[itemprop="image" ]')?.attributes['src'] !=
               null) {
-        final String? thumbnail =
-            element.querySelector('img[itemprop="image" ]')?.attributes['src'];
+        final String? thumbnail = element
+            .querySelector('img[itemprop="image" ]')
+            ?.attributes['src'];
         final thumb = thumbnail?.toString() ?? '';
         trendingBooks.add(
           TrendingBookData(
-              title:
-                  element.querySelector('h3[class="booktitle"]')?.text.trim(),
-              // Open Library usually serves protocol-relative src values
-              // ("//..."), but an absolute https:// src must not be
-              // double-prefixed into `https:https://...`.
-              thumbnail: thumb.startsWith('http')
-                  ? thumb
-                  : 'https:$thumb'),
+            title: element.querySelector('h3[class="booktitle"]')?.text.trim(),
+            // Open Library usually serves protocol-relative src values
+            // ("//..."), but an absolute https:// src must not be
+            // double-prefixed into `https:https://...`.
+            thumbnail: thumb.startsWith('http') ? thumb : 'https:$thumb',
+          ),
         );
       }
     }
@@ -86,9 +112,9 @@ class OpenLibrary extends TrendingBooksImpl {
       final dio = createDio();
       const timeOutDuration = 5;
       Options timeoutOptions() => Options(
-            sendTimeout: const Duration(seconds: timeOutDuration),
-            receiveTimeout: const Duration(seconds: timeOutDuration),
-          );
+        sendTimeout: const Duration(seconds: timeOutDuration),
+        receiveTimeout: const Duration(seconds: timeOutDuration),
+      );
       // The two trend pages are independent: fetching them in parallel
       // halves the worst-case wait (2×5s serial → 5s).
       final responses = await Future.wait([
@@ -99,11 +125,23 @@ class OpenLibrary extends TrendingBooksImpl {
         ),
       ]);
       return _parser(
-          '${responses[0].data.toString()}${responses[1].data.toString()}');
+        '${responses[0].data.toString()}${responses[1].data.toString()}',
+      );
     } on DioException catch (e) {
-      _logger.warning('Failed to fetch OpenLibrary trending books',
-          tag: 'OpenLibrary', metadata: {'error': e.message});
+      _logger.warning(
+        'Failed to fetch OpenLibrary trending books',
+        tag: 'OpenLibrary',
+        metadata: {'error': e.message},
+      );
       return [];
     }
   }
 }
+
+// ──────────────────────────────────────────────────────────────────
+// Phase 4: injectable Rust parse hook. Same contract as the other
+// external-source hooks; when null (default) the Dart _parser above
+// is used as the fallback.
+// ──────────────────────────────────────────────────────────────────
+Future<List<TrendingBookData>> Function(String html)?
+openLibraryTrendingParseOverride;

@@ -29,3 +29,15 @@ plugins {
 }
 
 include(":app")
+
+// Apply the Kotlin plugin to Flutter plugin modules (e.g. dynamic_color).
+// Their build scripts use the `kotlin { compilerOptions { } }` DSL, which
+// requires the plugin. The Flutter plugin loader applies the Android library
+// plugin during settings evaluation, so by `beforeProject` time it is already
+// present for those modules. The `:app` module applies Kotlin via its own
+// `plugins {}` block.
+gradle.beforeProject {
+    if (plugins.hasPlugin("com.android.library")) {
+        apply(plugin = "org.jetbrains.kotlin.android")
+    }
+}

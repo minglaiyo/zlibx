@@ -21,11 +21,12 @@ import 'instance_manager.dart';
 
 class MirrorSpeedTest {
   MirrorSpeedTest({Dio? dio})
-      : _dio = dio ??
-            createDio(
-              connectTimeout: const Duration(seconds: 8),
-              receiveTimeout: const Duration(seconds: 8),
-            );
+    : _dio =
+          dio ??
+          createDio(
+            connectTimeout: const Duration(seconds: 8),
+            receiveTimeout: const Duration(seconds: 8),
+          );
 
   final Dio _dio;
 
@@ -41,8 +42,7 @@ class MirrorSpeedTest {
     if (raw is! Map) return null;
     final at = raw['at'];
     if (at is! int) return null;
-    if (DateTime.now().millisecondsSinceEpoch - at >
-        cacheTtl.inMilliseconds) {
+    if (DateTime.now().millisecondsSinceEpoch - at > cacheTtl.inMilliseconds) {
       return null;
     }
     final ms = raw['ms'];
@@ -66,8 +66,9 @@ class MirrorSpeedTest {
   Future<Map<String, int?>> probe(MirrorService service) {
     final existing = _inFlight[service];
     if (existing != null) return existing;
-    final future =
-        _probe(service).whenComplete(() => _inFlight.remove(service));
+    final future = _probe(
+      service,
+    ).whenComplete(() => _inFlight.remove(service));
     _inFlight[service] = future;
     return future;
   }
@@ -79,13 +80,15 @@ class MirrorSpeedTest {
       for (final url in urls)
         _probeOne(url).then((ms) => results[Uri.parse(url).host] = ms),
     ]);
-    unawaited(HiveService.settingsBox.put(_cacheKey(service), {
-      'at': DateTime.now().millisecondsSinceEpoch,
-      'ms': {
-        for (final entry in results.entries)
-          if (entry.value != null) entry.key: entry.value,
-      },
-    }));
+    unawaited(
+      HiveService.settingsBox.put(_cacheKey(service), {
+        'at': DateTime.now().millisecondsSinceEpoch,
+        'ms': {
+          for (final entry in results.entries)
+            if (entry.value != null) entry.key: entry.value,
+        },
+      }),
+    );
     return results;
   }
 
@@ -108,8 +111,7 @@ class MirrorSpeedTest {
       (ms.containsKey(Uri.parse(url).host) ? measured : rest).add(url);
     }
     measured.sort(
-      (a, b) =>
-          ms[Uri.parse(a).host]!.compareTo(ms[Uri.parse(b).host]!),
+      (a, b) => ms[Uri.parse(a).host]!.compareTo(ms[Uri.parse(b).host]!),
     );
     return [...measured, ...rest];
   }

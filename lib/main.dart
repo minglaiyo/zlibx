@@ -20,6 +20,13 @@ import 'services/hive_service.dart';
 import 'services/instance_manager.dart';
 import 'services/mirror_trust.dart';
 import 'services/storage_service.dart';
+import 'core/rust_annas.dart';
+import 'core/rust_libgen.dart';
+import 'core/rust_article.dart';
+import 'core/rust_book_detail.dart';
+import 'core/rust_booklists.dart';
+import 'core/rust_books.dart';
+import 'core/rust_fulltext.dart';
 import 'services/webview_challenge_solver.dart';
 import 'theme/app_theme.dart';
 import 'utils/diagnostics.dart';
@@ -29,6 +36,15 @@ final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ── 120Hz 高刷新率适配 ────────────────────────────────────────────────
+  // Flutter 引擎会自动检测设备能力并调整帧率。在支持 120Hz 的设备上，
+  // 动画和滚动会更流畅。无需任何 AndroidManifest.xml 配置——Flutter
+  // 引擎自动请求设备最高可用帧率（`preferredRefreshRate` 需要 API 31+，
+  // 而本项目 minSdk=29，故不使用该属性）。
+  //
+  // 如需强制特定帧率（不推荐，会影响电量），可以取消注释：
+  // SchedulerBinding.instance.setPreferredFramesPerSecond(120);
 
   // Global error hooks (M2): uncaught async errors (e.g. inside an
   // unawaited(...) Future) and framework errors otherwise vanish
@@ -59,6 +75,23 @@ void main() async {
   };
 
   await HiveService.init();
+  // Phase 2: route the fulltext page parse through the Rust bridge.
+  // Pure in-memory hook registration — the FRB engine initializes lazily
+  // on the first full-text search (see rust_fulltext.dart), so startup
+  // timing is unaffected and a missing .so falls back to Dart silently.
+  injectRustFulltextParser();
+  // Phase 3: same for the article search page parse (文章 tab).
+  injectRustArticleParser();
+  // Phase 3: same for the book detail metadata rows.
+  injectRustBookDetailParser();
+  // Phase 3: same for booklists / category / download history.
+  injectRustBooklistParsers();
+  // Phase 4: Anna's Archive heavy parsers (search + md5 detail).
+  injectRustAnnasParsers();
+  // Phase 4: Library Genesis / Open Library external feeds.
+  injectRustExternalParsers();
+  // JSON sink: route the eapi book-list decode (_booksOf) through Rust.
+  injectRustBooksParser();
   // O1: register the background-download foreground-service bridge and
   // request the notification permission (Android 13+) up front.
   DownloadForegroundService.register();
@@ -73,8 +106,9 @@ void main() async {
   // 直接读 settingsBox：providers 还没建，且这个判定不参与任何 UI 订阅。
   final appLockEnabled = HiveService.settingsBox.get('appLockEnabled');
   final appLockTimeout = HiveService.settingsBox.get('appLockTimeoutSeconds');
-  final leftForegroundAt =
-      HiveService.settingsBox.get(appLockLeftForegroundKey);
+  final leftForegroundAt = HiveService.settingsBox.get(
+    appLockLeftForegroundKey,
+  );
   AppLockController.instance.restoreOnStartup(
     enabled: appLockEnabled is bool && appLockEnabled,
     timeoutSeconds: appLockTimeout is int ? appLockTimeout : 0,
@@ -109,17 +143,12 @@ void main() async {
     final context = rootNavigatorKey.currentContext;
     if (context == null) return null;
     final solved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-          builder: (_) => ChallengeSolverScreen(url: url)),
+      MaterialPageRoute(builder: (_) => ChallengeSolverScreen(url: url)),
     );
     return solved == true ? ChallengeHtmlCache.get(url) : null;
   };
 
-  runApp(
-    const ProviderScope(
-      child: MyApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends ConsumerStatefulWidget {
@@ -129,9 +158,7 @@ class MyApp extends ConsumerStatefulWidget {
   ConsumerState<MyApp> createState() => _MyAppState();
 }
 
-
-class _MyAppState extends ConsumerState<MyApp>
-    with WidgetsBindingObserver {
+class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
@@ -150,8 +177,9 @@ class _MyAppState extends ConsumerState<MyApp>
     // Account-scoped pages (own lists, detail pages) are stored
     // under the current account's partition, matching the keys the
     // screens read; public pages keep the plain URL key.
-    ref.read(zlibraryApiProvider).onBooklistHtmlLoaded =
-        (url, html, fetchedAt) {
+    ref
+        .read(zlibraryApiProvider)
+        .onBooklistHtmlLoaded = (url, html, fetchedAt) {
       final accountId = BooklistHtmlCache.isPrivateUrl(url)
           ? (ref.read(authProvider).user?.id ?? 'signed-out')
           : null;

@@ -8,7 +8,7 @@ import '../../../theme/app_layout.dart';
 import '../../../widgets/book_quick_actions_sheet.dart';
 import '../../../widgets/book_card.dart';
 import '../../../widgets/empty_state.dart';
-import '../../../widgets/entrance.dart';
+import '../../../widgets/motion/motion.dart';
 import '../../../widgets/loading_widget.dart';
 
 /// The recommendation grid plus its empty / loading / error states.
@@ -84,8 +84,10 @@ class HomeBookGrid extends ConsumerWidget {
                   ? AppLayout.gridColumns(width)
                   : AppLayout.legacyGridColumns(gridWidth);
               final cardWidth =
-                  ((gridWidth - columnSpacing * (columns - 1)) / columns)
-                      .clamp(0.0, double.infinity);
+                  ((gridWidth - columnSpacing * (columns - 1)) / columns).clamp(
+                    0.0,
+                    double.infinity,
+                  );
 
               return GridView.builder(
                 controller: scrollController,
@@ -100,7 +102,7 @@ class HomeBookGrid extends ConsumerWidget {
                 itemCount: itemCount,
                 itemBuilder: (context, index) {
                   final book = books[index];
-                  return EntranceSlideFade(
+                  return MotionEntrance(
                     index: index,
                     child: BookCard(
                       book: book,

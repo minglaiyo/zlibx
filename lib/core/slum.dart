@@ -32,21 +32,21 @@ enum Protection { none, diamwall, ddosGuard, cloudflare, unknown }
 extension ProtectionRank on Protection {
   /// Lower is tried first. Exposed so ordering lives in one place.
   int get rank => switch (this) {
-        Protection.none => 0,
-        Protection.diamwall => 1,
-        Protection.ddosGuard => 2,
-        Protection.cloudflare => 3,
-        Protection.unknown => 4,
-      };
+    Protection.none => 0,
+    Protection.diamwall => 1,
+    Protection.ddosGuard => 2,
+    Protection.cloudflare => 3,
+    Protection.unknown => 4,
+  };
 
   /// Label for the settings UI.
   String get label => switch (this) {
-        Protection.none => 'Unprotected',
-        Protection.diamwall => 'DiamWall',
-        Protection.ddosGuard => 'DDoS-Guard',
-        Protection.cloudflare => 'Cloudflare',
-        Protection.unknown => 'Unknown',
-      };
+    Protection.none => 'Unprotected',
+    Protection.diamwall => 'DiamWall',
+    Protection.ddosGuard => 'DDoS-Guard',
+    Protection.cloudflare => 'Cloudflare',
+    Protection.unknown => 'Unknown',
+  };
 
   /// True when a plain Dio client has any chance without a browser.
   bool get solvableHeadless =>
@@ -91,12 +91,12 @@ class SlumSite {
   /// Sort key inside auto mode. Down mirrors sort last so a stable
   /// order still exists when a caller asks for "everything".
   int get statusTier => switch (status) {
-        SlumStatus.up => 0,
-        SlumStatus.degraded => 1,
-        SlumStatus.protected => 2,
-        SlumStatus.unknown => 3,
-        SlumStatus.down => 9,
-      };
+    SlumStatus.up => 0,
+    SlumStatus.degraded => 1,
+    SlumStatus.protected => 2,
+    SlumStatus.unknown => 3,
+    SlumStatus.down => 9,
+  };
 
   @override
   String toString() => 'SlumSite($host, ${status.name}, ${protection.name})';
@@ -157,15 +157,17 @@ List<SlumSite> parseSlumPage(
     final status = _parseStatus(card);
     final protection = _parseProtection(card, status);
 
-    sites.add(SlumSite(
-      service: service,
-      url: _preferHttps(normalizeSlumUrl(href)),
-      host: host,
-      status: status,
-      protection: protection,
-      httpStatus: _parseIntAfterLabel(card, 'Status:'),
-      latencyMs: _parseIntAfterLabel(card, 'Latency:'),
-    ));
+    sites.add(
+      SlumSite(
+        service: service,
+        url: _preferHttps(normalizeSlumUrl(href)),
+        host: host,
+        status: status,
+        protection: protection,
+        httpStatus: _parseIntAfterLabel(card, 'Status:'),
+        latencyMs: _parseIntAfterLabel(card, 'Latency:'),
+      ),
+    );
   }
 
   return sites;
@@ -176,9 +178,10 @@ List<SlumSite> parseSlumPage(
 SlumStatus _parseStatus(dom.Element card) {
   final badge = card.querySelector('.status-badge');
   final raw = badge?.attributes['class'] ?? '';
-  final match =
-      RegExp(r'\b(up|protected|degraded|down|unknown)\b', caseSensitive: false)
-          .firstMatch(raw);
+  final match = RegExp(
+    r'\b(up|protected|degraded|down|unknown)\b',
+    caseSensitive: false,
+  ).firstMatch(raw);
   final fromBadge = _statusFromWord(match?.group(1));
   if (fromBadge != null) return fromBadge;
 
@@ -194,13 +197,13 @@ SlumStatus _parseStatus(dom.Element card) {
 }
 
 SlumStatus? _statusFromWord(String? word) => switch (word?.toLowerCase()) {
-      'up' => SlumStatus.up,
-      'protected' => SlumStatus.protected,
-      'degraded' => SlumStatus.degraded,
-      'down' => SlumStatus.down,
-      'unknown' => SlumStatus.unknown,
-      _ => null,
-    };
+  'up' => SlumStatus.up,
+  'protected' => SlumStatus.protected,
+  'degraded' => SlumStatus.degraded,
+  'down' => SlumStatus.down,
+  'unknown' => SlumStatus.unknown,
+  _ => null,
+};
 
 /// The "Protected Site" block names the vendor. A protected mirror without a
 /// vendor is [Protection.unknown]; an UP mirror has no gate.
@@ -233,8 +236,9 @@ int? _parseIntAfterLabel(dom.Element card, String label) {
     final text = div.text;
     final index = text.indexOf(label);
     if (index == -1) continue;
-    final match =
-        RegExp(r'\d+').firstMatch(text.substring(index + label.length));
+    final match = RegExp(
+      r'\d+',
+    ).firstMatch(text.substring(index + label.length));
     if (match != null) return int.tryParse(match.group(0)!);
   }
   return null;
@@ -252,8 +256,9 @@ List<SlumSite> sortSlumSites(Iterable<SlumSite> sites) {
     if (byProtection != 0) return byProtection;
     final byStatus = a.statusTier.compareTo(b.statusTier);
     if (byStatus != 0) return byStatus;
-    final byLatency =
-        (a.latencyMs ?? 1 << 30).compareTo(b.latencyMs ?? 1 << 30);
+    final byLatency = (a.latencyMs ?? 1 << 30).compareTo(
+      b.latencyMs ?? 1 << 30,
+    );
     if (byLatency != 0) return byLatency;
     return a.host.compareTo(b.host);
   });

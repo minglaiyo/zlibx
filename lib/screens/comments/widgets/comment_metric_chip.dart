@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../theme/motion.dart';
 import '../../../theme/app_metrics.dart';
 
 /// 评论下方的药丸形操作按钮：图标 + 计数。
@@ -27,7 +28,7 @@ class CommentMetricChip extends StatelessWidget {
     return IgnorePointer(
       ignoring: busy,
       child: AnimatedOpacity(
-        duration: AppMotion.fast,
+        duration: context.motionDuration(AppMotion.fast),
         opacity: busy ? 0.5 : 1,
         child: Material(
           color: Colors.transparent,
@@ -35,11 +36,8 @@ class CommentMetricChip extends StatelessWidget {
             onTap: onTap,
             borderRadius: BorderRadius.circular(10),
             child: AnimatedContainer(
-              duration: AppMotion.quick,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 4,
-              ),
+              duration: context.motionDuration(AppMotion.quick),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: active
                     ? cs.primary.withValues(alpha: 0.10)
@@ -51,19 +49,19 @@ class CommentMetricChip extends StatelessWidget {
                 children: [
                   AnimatedScale(
                     scale: active ? 1.15 : 1,
-                    duration: AppMotion.quick,
+                    duration: context.motionDuration(AppMotion.quick),
+                    curve: MotionCurves.emphasized,
                     child: Icon(icon, size: 16, color: color),
                   ),
                   const SizedBox(width: 4),
                   Text(
                     count.toString(),
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: color,
-                          fontWeight:
-                              active ? FontWeight.w600 : FontWeight.w400,
-                          // 等宽数字：点赞数变化时按钮不跳动。
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
+                      color: color,
+                      fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                      // 等宽数字：点赞数变化时按钮不跳动。
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
                 ],
               ),

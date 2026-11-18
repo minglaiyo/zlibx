@@ -30,7 +30,8 @@ class MirrorFetcherService {
   /// Cadence of the slow_download link re-check while waiting.
   static const Duration slowLinkPollInterval = Duration(seconds: 1);
 
-  static final MirrorFetcherService _instance = MirrorFetcherService._internal();
+  static final MirrorFetcherService _instance =
+      MirrorFetcherService._internal();
   factory MirrorFetcherService() => _instance;
   MirrorFetcherService._internal();
 
@@ -49,7 +50,11 @@ class MirrorFetcherService {
   /// Fetch mirror links from the given URL in the background
   /// Returns a list of mirror download links
   Future<List<String>> fetchMirrors(String url) async {
-    _logger.info('Starting background mirror fetch', tag: 'MirrorFetcher', metadata: {'url': url});
+    _logger.info(
+      'Starting background mirror fetch',
+      tag: 'MirrorFetcher',
+      metadata: {'url': url},
+    );
 
     final Completer<List<String>> completer = Completer<List<String>>();
     final List<String> bookDownloadLinks = [];
@@ -68,7 +73,11 @@ class MirrorFetcherService {
             return;
           }
 
-          _logger.debug('Page loaded successfully', tag: 'MirrorFetcher', metadata: {'url': url.toString()});
+          _logger.debug(
+            'Page loaded successfully',
+            tag: 'MirrorFetcher',
+            metadata: {'url': url.toString()},
+          );
 
           // A challenge interstitial is ALSO a "page load": completing
           // here used to extract 0 links from the challenge page (or throw
@@ -81,26 +90,30 @@ class MirrorFetcherService {
           try {
             final title = await controller.getTitle() ?? '';
             final bodySnippet = await controller.evaluateJavascript(
-                  source:
-                      "document.body ? document.body.innerText.substring(0, 1500) : '';",
-                );
+              source:
+                  "document.body ? document.body.innerText.substring(0, 1500) : '';",
+            );
             final snippet = bodySnippet?.toString() ?? '';
             if (WebviewChallengeSolver.isChallengePage(
               title: title,
               bodySnippet: snippet,
             )) {
-              _logger.info('Challenge page detected, waiting for the '
-                      'auto-solve redirect',
-                  tag: 'MirrorFetcher',
-                  metadata: {'url': url.toString()});
+              _logger.info(
+                'Challenge page detected, waiting for the '
+                'auto-solve redirect',
+                tag: 'MirrorFetcher',
+                metadata: {'url': url.toString()},
+              );
               return;
             }
           } catch (challengeCheckError) {
             // Title/JS probing failed — fall through and try link
             // extraction anyway; it has its own error handling.
-            _logger.debug('Challenge probe failed, continuing with '
-                    'extraction',
-                tag: 'MirrorFetcher');
+            _logger.debug(
+              'Challenge probe failed, continuing with '
+              'extraction',
+              tag: 'MirrorFetcher',
+            );
           }
 
           try {
@@ -124,19 +137,26 @@ class MirrorFetcherService {
                 } catch (pollError) {
                   // The selector throws while the countdown paragraph is
                   // absent: "not ready yet", poll again.
-                  _logger.debug('slow_download link not ready yet',
-                      tag: 'MirrorFetcher',
-                      metadata: {'error': pollError.toString()});
+                  _logger.debug(
+                    'slow_download link not ready yet',
+                    tag: 'MirrorFetcher',
+                    metadata: {'error': pollError.toString()},
+                  );
                 }
                 if (mirrorLink != null && mirrorLink.isNotEmpty) {
                   if (_isUsableLink(mirrorLink)) {
                     bookDownloadLinks.add(mirrorLink);
-                    _logger.info('Extracted slow_download link', tag: 'MirrorFetcher');
+                    _logger.info(
+                      'Extracted slow_download link',
+                      tag: 'MirrorFetcher',
+                    );
                   } else {
-                    _logger.warning('slow_download link failed the '
-                            'https/host check, dropped',
-                        tag: 'MirrorFetcher',
-                        metadata: {'link': mirrorLink});
+                    _logger.warning(
+                      'slow_download link failed the '
+                      'https/host check, dropped',
+                      tag: 'MirrorFetcher',
+                      metadata: {'link': mirrorLink},
+                    );
                   }
                   break;
                 }
@@ -154,7 +174,11 @@ class MirrorFetcherService {
                   mirrorLinks.where(_isUsableLink).cast<String>(),
                 );
               }
-              _logger.info('Extracted mirror links', tag: 'MirrorFetcher', metadata: {'count': bookDownloadLinks.length});
+              _logger.info(
+                'Extracted mirror links',
+                tag: 'MirrorFetcher',
+                metadata: {'count': bookDownloadLinks.length},
+              );
             }
 
             // Complete the future with the extracted links
@@ -162,7 +186,11 @@ class MirrorFetcherService {
               completer.complete(bookDownloadLinks);
             }
           } catch (e) {
-            _logger.error('JavaScript evaluation error', tag: 'MirrorFetcher', error: e);
+            _logger.error(
+              'JavaScript evaluation error',
+              tag: 'MirrorFetcher',
+              error: e,
+            );
             // Evaluation error, complete with empty list
             if (!completer.isCompleted) {
               completer.complete([]);
@@ -174,11 +202,17 @@ class MirrorFetcherService {
           // favicon / image / analytics 404s used to kill the whole
           // extraction even though the document itself loaded fine.
           if (request.isForMainFrame != true) {
-            _logger.debug('Sub-resource load error (ignored)',
-                tag: 'MirrorFetcher');
+            _logger.debug(
+              'Sub-resource load error (ignored)',
+              tag: 'MirrorFetcher',
+            );
             return;
           }
-          _logger.error('WebView load error', tag: 'MirrorFetcher', error: error.description);
+          _logger.error(
+            'WebView load error',
+            tag: 'MirrorFetcher',
+            error: error.description,
+          );
           // Load error, complete with empty list
           if (!completer.isCompleted) {
             completer.complete([]);
@@ -197,9 +231,10 @@ class MirrorFetcherService {
         slowLinkWaitTimeout,
         onTimeout: () {
           _logger.warning(
-              'Mirror fetch timed out after '
-              '${slowLinkWaitTimeout.inSeconds} seconds',
-              tag: 'MirrorFetcher');
+            'Mirror fetch timed out after '
+            '${slowLinkWaitTimeout.inSeconds} seconds',
+            tag: 'MirrorFetcher',
+          );
           // Release the poll loop: it stops at its next check instead
           // of lingering after this future has already resolved.
           if (!completer.isCompleted) {
@@ -209,17 +244,30 @@ class MirrorFetcherService {
         },
       );
 
-      _logger.debug('Headless webview completed', tag: 'MirrorFetcher', metadata: {'mirrors_found': result.length});
+      _logger.debug(
+        'Headless webview completed',
+        tag: 'MirrorFetcher',
+        metadata: {'mirrors_found': result.length},
+      );
       return result;
     } catch (e, stackTrace) {
-      _logger.error('Failed to fetch mirrors', tag: 'MirrorFetcher', error: e, stackTrace: stackTrace);
+      _logger.error(
+        'Failed to fetch mirrors',
+        tag: 'MirrorFetcher',
+        error: e,
+        stackTrace: stackTrace,
+      );
       return [];
     } finally {
       try {
         await headlessWebView?.dispose();
         _logger.debug('Headless webview disposed', tag: 'MirrorFetcher');
       } catch (disposeError) {
-        _logger.warning('Headless webview dispose failed', tag: 'MirrorFetcher', error: disposeError);
+        _logger.warning(
+          'Headless webview dispose failed',
+          tag: 'MirrorFetcher',
+          error: disposeError,
+        );
       }
     }
   }

@@ -40,8 +40,7 @@ class ExternalBookActionBar extends ConsumerStatefulWidget {
       _ExternalBookActionBarState();
 }
 
-class _ExternalBookActionBarState
-    extends ConsumerState<ExternalBookActionBar> {
+class _ExternalBookActionBarState extends ConsumerState<ExternalBookActionBar> {
   bool _resolving = false;
 
   @override
@@ -54,8 +53,9 @@ class _ExternalBookActionBarState
     final book = synthesizeExternalBook(widget.info);
     // Per-book watch: only this book's task rebuilds the bar, not every
     // progress tick of every other download.
-    final DownloadTask? downloadTask =
-        ref.watch(downloadTaskProvider(book.id.toString()));
+    final DownloadTask? downloadTask = ref.watch(
+      downloadTaskProvider(book.id.toString()),
+    );
 
     final isDownloading = downloadTask?.status == DownloadStatus.downloading;
     final isCompleted = downloadTask?.status == DownloadStatus.completed;
@@ -88,9 +88,7 @@ class _ExternalBookActionBarState
       decoration: BoxDecoration(
         color: theme.scaffoldBackgroundColor,
         border: Border(
-          top: BorderSide(
-            color: cs.outlineVariant.withValues(alpha: 0.5),
-          ),
+          top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
         ),
       ),
       child: Row(
@@ -111,10 +109,12 @@ class _ExternalBookActionBarState
                   ),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      isCompleted ? cs.primaryContainer : cs.primary,
-                  foregroundColor:
-                      isCompleted ? cs.onPrimaryContainer : cs.onPrimary,
+                  backgroundColor: isCompleted
+                      ? cs.primaryContainer
+                      : cs.primary,
+                  foregroundColor: isCompleted
+                      ? cs.onPrimaryContainer
+                      : cs.onPrimary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -147,8 +147,9 @@ class _ExternalBookActionBarState
 
     // Same file-exists prompt as the z-lib bar: open the existing file
     // or re-download (which re-resolves a fresh link).
-    final existingPath =
-        await ref.read(downloadProvider.notifier).checkFileExists(book);
+    final existingPath = await ref
+        .read(downloadProvider.notifier)
+        .checkFileExists(book);
     if (existingPath != null && context.mounted) {
       final again = await showFileExistsDialog(
         context,
@@ -210,27 +211,18 @@ class _ExternalBookActionBarState
       if (MediaStoreFiles.isContentUri(path)) {
         final opened = await MediaStoreFiles.open(path);
         if (!opened && context.mounted) {
-          _toast(
-            context,
-            AppLocalizations.of(context)!.openFileFailed,
-          );
+          _toast(context, AppLocalizations.of(context)!.openFileFailed);
         }
         return;
       }
       final result = await OpenFilex.open(path);
       if (result.type != ResultType.done && context.mounted) {
-        _toast(
-          context,
-          AppLocalizations.of(context)!.openFileFailed,
-        );
+        _toast(context, AppLocalizations.of(context)!.openFileFailed);
       }
     } catch (error) {
       logIgnored('external_book_action_bar', error);
       if (context.mounted) {
-        _toast(
-          context,
-          AppLocalizations.of(context)!.openFileFailed,
-        );
+        _toast(context, AppLocalizations.of(context)!.openFileFailed);
       }
     }
   }

@@ -117,6 +117,11 @@ class _FakeArticleApi implements ZLibraryApi {
     required String query,
     String? order,
     int page = 1,
+    List<String>? languages,
+    List<String>? extensions,
+    int? yearFrom,
+    int? yearTo,
+    bool exact = false,
   }) async {
     calls++;
     fetched.add('$query#$page');
@@ -134,6 +139,11 @@ class _FakeArticleApi implements ZLibraryApi {
     required String query,
     String? order,
     int page = 1,
+    List<String>? languages,
+    List<String>? extensions,
+    int? yearFrom,
+    int? yearTo,
+    bool exact = false,
   }) =>
       'https://example.com/s/$query?content_type=article&page=$page';
 }

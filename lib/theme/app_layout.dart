@@ -66,8 +66,7 @@ abstract final class AppLayout {
   /// sliver_grid.dart 的 getLayout），1.6.0 之前首页用的就是那个委托，
   /// 所以开关关掉时的排布和旧版逐像素一致。
   static int legacyGridColumns(double contentWidth) {
-    final columns =
-        (contentWidth / (legacyMaxCardWidth + gridSpacing)).ceil();
+    final columns = (contentWidth / (legacyMaxCardWidth + gridSpacing)).ceil();
     return columns < 1 ? 1 : columns;
   }
 }

@@ -53,8 +53,11 @@ abstract class _AnnasArchieveBase {
       body: response.data?.toString() ?? '',
     );
     if (blocked) {
-      _logger.warning('DDoS protection detected',
-          tag: 'AnnasArchive', metadata: {'statusCode': response.statusCode});
+      _logger.warning(
+        'DDoS protection detected',
+        tag: 'AnnasArchive',
+        metadata: {'statusCode': response.statusCode},
+      );
     }
     return blocked;
   }
@@ -75,8 +78,8 @@ abstract class _AnnasArchieveBase {
 class AnnasArchieve extends _AnnasArchieveBase
     with _AnnasClientMixin, _AnnasSearchMixin, _AnnasBookInfoMixin {
   AnnasArchieve({Dio? dio, InstanceManager? instanceManager})
-      : dio = dio ?? createDio(),
-        _instanceManager = instanceManager ?? InstanceManager();
+    : dio = dio ?? createDio(),
+      _instanceManager = instanceManager ?? InstanceManager();
 
   @override
   final Dio dio;
@@ -130,28 +133,33 @@ class AnnasArchieve extends _AnnasArchieveBase
   /// Errors are logged by exception TYPE only — never the message — so
   /// the request URI (which carries `key=`) can never reach a log line.
   Future<String?> getFastDownloadUrl(String md5, String key) async {
-    _logger.info('Fetching fast download URL',
-        tag: 'AnnasArchive', metadata: {'md5': md5});
+    _logger.info(
+      'Fetching fast download URL',
+      tag: 'AnnasArchive',
+      metadata: {'md5': md5},
+    );
 
     // md5 is a 32-char lowercase hex digest; anything else is not a
     // book id and must never reach the URL.
     if (!RegExp(r'^[0-9a-f]{32}$').hasMatch(md5)) {
       _logger.warning(
-          'Refusing fast download: md5 is not a 32-char hex digest',
-          tag: 'AnnasArchive');
+        'Refusing fast download: md5 is not a 32-char hex digest',
+        tag: 'AnnasArchive',
+      );
       return null;
     }
     // Only whitelisted search hosts may receive the key. The list comes
     // from open-slum.org (untrusted input), so filter it — an unlisted
     // host fails closed.
-    final urls =
-        await _instanceManager.enabledUrls(MirrorService.annasArchive);
+    final urls = await _instanceManager.enabledUrls(MirrorService.annasArchive);
     final trusted = urls
         .where((u) => isAnnasFamilyHost(Uri.tryParse(u)?.host ?? ''))
         .toList();
     if (trusted.isEmpty) {
-      _logger.warning('No trusted Anna search host for fast download',
-          tag: 'AnnasArchive');
+      _logger.warning(
+        'No trusted Anna search host for fast download',
+        tag: 'AnnasArchive',
+      );
       return null;
     }
     // Single attempt against the first trusted mirror (enabledUrls is
@@ -163,22 +171,28 @@ class AnnasArchieve extends _AnnasArchieveBase
       final fastDownloadUrl =
           '$baseUrl/dyn/api/fast_download.json?md5=$md5&key=${Uri.encodeQueryComponent(key)}';
       // Log only the md5, never the URL: it carries the donation key.
-      _logger.debug('Calling fast download API',
-          tag: 'AnnasArchive', metadata: {'md5': md5});
+      _logger.debug(
+        'Calling fast download API',
+        tag: 'AnnasArchive',
+        metadata: {'md5': md5},
+      );
 
       final cancelToken = CancelToken();
       final response = await dio
-          .get(fastDownloadUrl,
-              options: Options(headers: defaultDioHeaders),
-              cancelToken: cancelToken)
+          .get(
+            fastDownloadUrl,
+            options: Options(headers: defaultDioHeaders),
+            cancelToken: cancelToken,
+          )
           .timeout(
-        const Duration(seconds: AnnasArchieve.requestTimeoutSeconds),
-        onTimeout: () {
-          cancelToken.cancel();
-          throw TimeoutException(
-              'Request timed out after ${AnnasArchieve.requestTimeoutSeconds}s');
-        },
-      );
+            const Duration(seconds: AnnasArchieve.requestTimeoutSeconds),
+            onTimeout: () {
+              cancelToken.cancel();
+              throw TimeoutException(
+                'Request timed out after ${AnnasArchieve.requestTimeoutSeconds}s',
+              );
+            },
+          );
 
       if (response.statusCode == 200 || response.statusCode == 204) {
         dynamic data = response.data;
@@ -186,8 +200,11 @@ class AnnasArchieve extends _AnnasArchieveBase
           try {
             data = jsonDecode(data);
           } catch (e) {
-            _logger.warning('Failed to parse fast download JSON response',
-                tag: 'AnnasArchive', error: e.runtimeType.toString());
+            _logger.warning(
+              'Failed to parse fast download JSON response',
+              tag: 'AnnasArchive',
+              error: e.runtimeType.toString(),
+            );
             throw Exception('Invalid JSON response');
           }
         }
@@ -199,26 +216,36 @@ class AnnasArchieve extends _AnnasArchieveBase
           final uri = Uri.tryParse(link);
           if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
             _logger.warning(
-                'Fast download URL is not https, refusing it',
-                tag: 'AnnasArchive');
+              'Fast download URL is not https, refusing it',
+              tag: 'AnnasArchive',
+            );
             return null;
           }
           _logger.info('Fast download URL obtained', tag: 'AnnasArchive');
           return link;
         } else {
           final errorMsg = data is Map ? data['error'] : 'Unknown error';
-          _logger.warning('Fast download URL not found in response',
-              tag: 'AnnasArchive', metadata: {'error': errorMsg});
+          _logger.warning(
+            'Fast download URL not found in response',
+            tag: 'AnnasArchive',
+            metadata: {'error': errorMsg},
+          );
           throw Exception(errorMsg ?? 'Fast download URL not found');
         }
       } else {
-        _logger.error('Fast download API request failed',
-            tag: 'AnnasArchive', metadata: {'status': response.statusCode});
+        _logger.error(
+          'Fast download API request failed',
+          tag: 'AnnasArchive',
+          metadata: {'status': response.statusCode},
+        );
         throw Exception('Failed to get fast download URL');
       }
     } catch (e) {
-      _logger.error('Failed to get fast download URL',
-          tag: 'AnnasArchive', error: e.runtimeType.toString());
+      _logger.error(
+        'Failed to get fast download URL',
+        tag: 'AnnasArchive',
+        error: e.runtimeType.toString(),
+      );
       return null;
     }
   }

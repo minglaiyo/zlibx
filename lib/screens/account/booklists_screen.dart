@@ -77,21 +77,17 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
   /// the answer carried no list).
   Future<void> _createBooklist() async {
     final l10n = AppLocalizations.of(context)!;
-    final result = await showDialog<
-        ({
-          String title,
-          String description,
-          int color,
-          bool isPrivate,
-        })>(
-      context: context,
-      builder: (context) => const CreateBooklistDialog(),
-    );
+    final result =
+        await showDialog<
+          ({String title, String description, int color, bool isPrivate})
+        >(context: context, builder: (context) => const CreateBooklistDialog());
     if (result == null || !mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
     final controller = ref.read(booklistsControllerProvider.notifier);
-    final response = await ref.read(zlibraryApiProvider).createBooklist(
+    final response = await ref
+        .read(zlibraryApiProvider)
+        .createBooklist(
           title: result.title,
           description: result.description,
           color: result.color,
@@ -124,22 +120,19 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
   /// carried no updated list).
   Future<void> _editBooklist(Booklist list) async {
     final l10n = AppLocalizations.of(context)!;
-    final result = await showDialog<
-        ({
-          String title,
-          String description,
-          int color,
-          bool isPrivate,
-        })>(
-      context: context,
-      builder: (context) => CreateBooklistDialog(
-        isEdit: true,
-        initialTitle: list.name,
-        initialDescription: list.description,
-        initialColor: list.color,
-        initialPrivate: list.isPrivate,
-      ),
-    );
+    final result =
+        await showDialog<
+          ({String title, String description, int color, bool isPrivate})
+        >(
+          context: context,
+          builder: (context) => CreateBooklistDialog(
+            isEdit: true,
+            initialTitle: list.name,
+            initialDescription: list.description,
+            initialColor: list.color,
+            initialPrivate: list.isPrivate,
+          ),
+        );
     if (result == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     final controller = ref.read(booklistsControllerProvider.notifier);
@@ -157,10 +150,7 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
         await controller.loadFirst();
       }
     } else {
-      showAppSnackOn(
-        messenger,
-        l10n.booklistEditFailed(response.error ?? ''),
-      );
+      showAppSnackOn(messenger, l10n.booklistEditFailed(response.error ?? ''));
     }
   }
 
@@ -169,8 +159,7 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
     final l10n = AppLocalizations.of(context)!;
     final color = await showDialog<int>(
       context: context,
-      builder: (context) =>
-          BooklistColorDialog(currentColor: list.color ?? 0),
+      builder: (context) => BooklistColorDialog(currentColor: list.color ?? 0),
     );
     if (color == null || color == list.color || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -196,8 +185,8 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
       messenger,
       response.success
           ? (list.isPrivate
-              ? l10n.booklistMadePublic
-              : l10n.booklistMadePrivate)
+                ? l10n.booklistMadePublic
+                : l10n.booklistMadePrivate)
           : l10n.booklistVisibilityFailed(response.error ?? ''),
     );
   }
@@ -208,8 +197,7 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final controller = ref.read(booklistsControllerProvider.notifier);
     final favorite = !list.isFavorite;
-    final response =
-        await controller.setBooklistFavorite(list, favorite);
+    final response = await controller.setBooklistFavorite(list, favorite);
     if (!mounted) return;
     showAppSnackOn(
       messenger,
@@ -233,10 +221,7 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
   }
 
   /// One menu action from a card's "…" menu.
-  Future<void> _onMenuSelected(
-    Booklist list,
-    BooklistMenuAction action,
-  ) async {
+  Future<void> _onMenuSelected(Booklist list, BooklistMenuAction action) async {
     switch (action) {
       case BooklistMenuAction.edit:
         await _editBooklist(list);
@@ -302,7 +287,8 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
     final recommended = ref.watch(recommendedBooklistsProvider);
     final controller = ref.read(booklistsControllerProvider.notifier);
     final showFab =
-        state.tab == BooklistTab.mine && state.phase != BooklistsPhase.loggedOut;
+        state.tab == BooklistTab.mine &&
+        state.phase != BooklistsPhase.loggedOut;
 
     return Scaffold(
       appBar: AppBar(
@@ -482,13 +468,9 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
           ];
         }
         return [
-          if (state.tab == BooklistTab.discover &&
-              recommended.lists.isNotEmpty)
+          if (state.tab == BooklistTab.discover && recommended.lists.isNotEmpty)
             SliverToBoxAdapter(
-              child: _RecommendedSection(
-                l10n: l10n,
-                lists: recommended.lists,
-              ),
+              child: _RecommendedSection(l10n: l10n, lists: recommended.lists),
             ),
           // My own lists always render as a grid (no sort or view
           // controls on that tab); discover follows the toggle.
@@ -496,8 +478,7 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 10),
               sliver: SliverGrid.builder(
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
                   childAspectRatio: 0.82,
                   mainAxisSpacing: 4,
@@ -519,8 +500,7 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
                     onLongPress: state.tab == BooklistTab.mine
                         ? () => _confirmDelete(list)
                         : null,
-                    onMenuSelected: (action) =>
-                        _onMenuSelected(list, action),
+                    onMenuSelected: (action) => _onMenuSelected(list, action),
                   );
                 },
               ),
@@ -627,10 +607,7 @@ class _BooklistSortDialog extends StatelessWidget {
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       contentPadding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-      title: Text(
-        l10n.booklistSort,
-        style: const TextStyle(fontSize: 18),
-      ),
+      title: Text(l10n.booklistSort, style: const TextStyle(fontSize: 18)),
       content: SizedBox(
         width: double.maxFinite,
         child: ListView.builder(
@@ -644,10 +621,7 @@ class _BooklistSortDialog extends StatelessWidget {
               title: Text(
                 label,
                 style: selected
-                    ? TextStyle(
-                        color: cs.primary,
-                        fontWeight: FontWeight.w700,
-                      )
+                    ? TextStyle(color: cs.primary, fontWeight: FontWeight.w700)
                     : null,
               ),
               trailing: Icon(

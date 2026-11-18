@@ -42,6 +42,17 @@ Models are hand-written: `Book`/`User` and all other models use no freezed, no j
 
 `test/` is organised as `test/parsers/` (HTML/JSON parsers), `test/services/` (providers, caches, storage, downloader, trust), `test/providers/` (Riverpod notifier tests), `test/widgets/` (widget tests), `test/l10n/` (localization string/resolution tests) and `test/routes/` (route table and argument guards). Nothing under `test/` is ignored — a new test directory is committed like any source (the old `test/*` + per-directory un-ignore whitelist, which silently dropped new directories, was removed in M7).
 
+## Rust parsing layer (flutter_rust_bridge)
+
+The HTML parsing layer lives in `rust/zlibx_parsers/` (Rust) and is bridged to Dart with flutter_rust_bridge. Every parser ported there has a **differential test**: the Rust side re-runs the SAME inline HTML fixtures as its Dart test (`test/parsers/*_test.dart`) with field-by-field assertions — port a parser only alongside its twin test.
+
+- **Hooks, not call-site rewrites**: the Dart parser stays as the fallback. The vendor plugin exposes `xxxParseOverride` hooks (fulltext / article / booklist×3 / category / book_detail / download_stats / annas ×2 / libgen ×2 / openlibrary); `lib/core/rust_*.dart` modules inject Rust-backed implementations lazily and un-register themselves on bridge failure, so a missing `.so` silently falls back to Dart. Route ALL call sites through the hook (`parseXxxH` wrappers where provided) — both the Dio path (vendor) and the WebView-solver path (app repositories) must be hooked, or one path silently keeps the Dart parse.
+- **One FRB init for everything**: `lib/core/rust_init.dart::ensureRustBridge()` is the ONLY place that calls `ZlibxParsers.init()`. FRB's `initImpl` throws on a second call, so per-module init guards made every parser after the first silently fall back to Dart (device-proven). New hook modules must use the shared guard, never call `ZlibxParsers.init()` directly.
+- **FRB codegen**: `bash tool/frb_codegen.sh` after changing `#[frb]` functions. It patches a known FRB codegen bug (`RustAutoOpaqueInner<str>` — `str` is not `Sized`) after generation. The generated files (`lib/frb_generated*`, `lib/lib.dart`, `lib/models.dart`, `rust/.../frb_generated.rs`) ARE committed — CI has no Rust toolchain and `flutter analyze` needs them at checkout. Commit them together with the `#[frb]` change that regenerated them; do not hand-edit.
+- **Crate conventions**: internal parser functions are `pub(crate)` (FRB with `rust_input: crate` scans every `pub` fn and generates bindings for it); `Option<String>` parameters don't work (FRB wraps them in RustOpaque) — entry signatures use `String` with an empty-string convention for "absent". Regexes are cached in `OnceLock` (re-compiling per call cost 13× on the hot path).
+- **The Android linker is env-driven**: `rust/zlibx_parsers/.cargo/config.toml` deliberately does NOT pin a per-OS linker path. Gradle's `cargoBuildRust`, `tool/cargo_build_android.sh` and the release CI job all set `CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER` / `CC_` / `AR_` / `RANLIB_aarch64_linux_android` from the NDK. If the release CI fails inside cargo, check those env vars first.
+- **Rust tests**: `cargo test --release` in `rust/zlibx_parsers/` (needs MinGW-w64 on Windows for the host C toolchain; the GNU toolchain's own gcc is a linker-only stub).
+
 ## Key Patterns
 
 - `ZLibraryApi` has no async init step: `zlibraryApiProvider` constructs it on the persisted domain (`resolveInitialDomain()`), and every request is built against that host.
@@ -53,6 +64,14 @@ Models are hand-written: `Book`/`User` and all other models use no freezed, no j
 - Update-dialog links are restricted to `UpdateManifest.allowedLinkHosts`; add a host there before using a new netdisk in a release.
 - Widgets that show ONE download should watch `downloadTaskProvider(id)`, not the whole `downloadProvider` list.
 - Anna's Archive fast download needs the user's own donation key, entered by the user in Settings (never ask the user to send it to you).
+
+## Release signing
+
+The release APK is signed with `android/app/olib-release-key.jks` (alias `olib-release`, PKCS12). The keystore and `android/key.properties` are **gitignored — never commit them**; losing the key means the app can never be updated for existing installs.
+
+- **Local builds**: copy `android/key.properties.example` to `android/key.properties` and point `storeFile` at the keystore (missing file/keystore makes release builds fail loudly instead of silently signing with the debug key).
+- **CI**: the release job restores the keystore from four repo Secrets — `KEYSTORE_BASE64` (base64 of the .jks), `KEYSTORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS` — then writes `android/key.properties` itself. Update them with `gh secret set NAME --repo zhuzjianqun/zlibx`.
+- Generate a replacement: `keytool -genkeypair -keystore olib-release-key.jks -alias olib-release -keyalg RSA -keysize 4096 -validity 10950` (10 950 days ≈ Google Play's minimum horizon).
 
 ## Repo Notes
 

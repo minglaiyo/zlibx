@@ -269,3 +269,12 @@ int _parseTotalPages(String html) {
       : int.tryParse(match.group(1) ?? '');
   return pages == null || pages < 1 ? 1 : pages;
 }
+
+/// Injectable Rust parse hook (phase 3). The host app sets this to a
+/// flutter_rust_bridge-backed implementation returning the SAME
+/// [ArticleSearchPage] model; when null (default) the Dart
+/// implementation above is used as the fallback. Behavior must be
+/// identical either way — test/parsers/article_search_test.dart is
+/// the contract for both.
+Future<ArticleSearchPage> Function(String html, String? baseUrl)?
+articleParseOverride;

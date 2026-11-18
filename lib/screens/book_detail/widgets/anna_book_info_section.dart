@@ -35,8 +35,7 @@ class AnnaBookInfoSection extends StatelessWidget {
         ),
     ];
     final fields = <String, String>{
-      if (info.publisher?.isNotEmpty ?? false)
-        l10n.publisher: info.publisher!,
+      if (info.publisher?.isNotEmpty ?? false) l10n.publisher: info.publisher!,
       l10n.source: displayBook.isLibGen
           ? l10n.sourceLibgen
           : l10n.sourceAnnasArchive,

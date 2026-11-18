@@ -4,14 +4,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/display_book.dart';
 import '../providers/history_cover_notifier.dart';
+import '../providers/local_collection_provider.dart';
 import '../providers/saved_books_notifier.dart';
 import '../utils/app_snack.dart';
 import '../screens/book_detail/widgets/add_to_booklist_dialog.dart';
 
 /// 长按书籍封面/条目弹出的快捷操作面板：收藏到书架 / 加入书单
 ///（用户批 2026-11-14 功能 2，后推广到搜索/首页/最新上架/相似书籍/
-/// 浏览历史）。z 站 BookCard / BookListTile 传 onLongPress 进来；
-/// 外部源（Anna/LibGen）没有 z 站收藏与书单体系，不弹面板。
+/// 浏览历史）。z 站 BookCard / BookListTile 传 onLongPress 进来。
+/// 外部源（Anna/LibGen）没有 z 站收藏与书单体系，给出"收藏到本地"
+/// 一项（方案 C2）——本地收藏汇进"我的图书馆"，与站内收藏同屏。
 ///
 /// 面板自己用 [ProviderScope.containerOf] 拿 provider（调用方多为
 /// 无 ref 的 StatelessWidget，不必为它引入 Consumer）：tile 先 pop
@@ -20,11 +22,12 @@ Future<void> showBookQuickActionsSheet(
   BuildContext context,
   DisplayBook book,
 ) async {
-  // 能力守卫：收藏只对 z 站书有意义；书单要求可解析的数字 id。
-  // 两样都不具备（外部源误接）就不弹面板。
+  // 能力守卫：收藏只对 z 站书有意义；书单要求可解析的数字 id；
+  // 本地收藏只收外部源（z 站书走收藏到书架，同屏展示）。
   final canFavorite = book.isZLibrary;
   final canBooklist = int.tryParse(book.id) != null;
-  if (!canFavorite && !canBooklist) return;
+  final canLocalSave = book.isAnnasArchive || book.isLibGen;
+  if (!canFavorite && !canBooklist && !canLocalSave) return;
 
   final l10n = AppLocalizations.of(context)!;
   final action = await showModalBottomSheet<_QuickAction>(
@@ -40,9 +43,9 @@ Future<void> showBookQuickActionsSheet(
               book.title,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(sheetContext).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+              style: Theme.of(
+                sheetContext,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
           if (canFavorite)
@@ -50,6 +53,18 @@ Future<void> showBookQuickActionsSheet(
               leading: const Icon(Icons.favorite_border_rounded),
               title: Text(l10n.like),
               onTap: () => Navigator.pop(sheetContext, _QuickAction.favorite),
+            ),
+          if (canLocalSave)
+            ListTile(
+              leading: const Icon(Icons.bookmark_add_outlined),
+              title: Text(
+                ProviderScope.containerOf(sheetContext, listen: false)
+                        .read(localCollectionProvider)
+                        .contains(book.source, book.id)
+                    ? l10n.removeFromLocalCollection
+                    : l10n.saveToLocalCollection,
+              ),
+              onTap: () => Navigator.pop(sheetContext, _QuickAction.localSave),
             ),
           if (canBooklist)
             ListTile(
@@ -83,12 +98,24 @@ Future<void> _runQuickAction(
       if (!context.mounted) return;
       if (success) {
         // 与详情页心形按钮同一套缓存失效：本命中的收藏态保持一致。
-        container.invalidate(
-          isBookFavoritedProvider(book.id),
-        );
+        container.invalidate(isBookFavoritedProvider(book.id));
         showAppSnack(context, l10n.addedToFavorites);
       } else {
         showAppSnack(context, l10n.favoriteFailed);
+      }
+    case _QuickAction.localSave:
+      final collection = container.read(localCollectionProvider.notifier);
+      final wasSaved = container
+          .read(localCollectionProvider)
+          .contains(book.source, book.id);
+      if (wasSaved) {
+        await collection.remove(book.source, book.id);
+        if (!context.mounted) return;
+        showAppSnack(context, l10n.removedFromLocalCollection);
+      } else {
+        await collection.add(book);
+        if (!context.mounted) return;
+        showAppSnack(context, l10n.addedToLocalCollection);
       }
     case _QuickAction.booklist:
       final bookId = int.tryParse(book.id);
@@ -104,4 +131,4 @@ Future<void> _runQuickAction(
   }
 }
 
-enum _QuickAction { favorite, booklist }
+enum _QuickAction { favorite, localSave, booklist }

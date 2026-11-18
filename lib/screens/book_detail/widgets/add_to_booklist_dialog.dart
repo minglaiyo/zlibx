@@ -78,8 +78,7 @@ class _AddToBooklistDialogState extends ConsumerState<_AddToBooklistDialog> {
       setState(() => _phase = _PickerPhase.loggedOut);
       return;
     }
-    final response =
-        await _repository.getBooklistsForBook(widget.bookId);
+    final response = await _repository.getBooklistsForBook(widget.bookId);
     if (!mounted) return;
     if (response.success && response.data != null) {
       setState(() {
@@ -125,10 +124,7 @@ class _AddToBooklistDialogState extends ConsumerState<_AddToBooklistDialog> {
     final l10n = AppLocalizations.of(context)!;
     return AlertDialog(
       title: Text(l10n.selectBooklist),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: _body(l10n),
-      ),
+      content: SizedBox(width: double.maxFinite, child: _body(l10n)),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
@@ -227,10 +223,7 @@ class _AddToBooklistDialogState extends ConsumerState<_AddToBooklistDialog> {
     }
   }
 
-  Widget _membershipRow(
-    AppLocalizations l10n,
-    BooklistMembership membership,
-  ) {
+  Widget _membershipRow(AppLocalizations l10n, BooklistMembership membership) {
     final busy = _busyIds.contains(membership.booklistId);
     final member = membership.isMember;
     final cs = Theme.of(context).colorScheme;
@@ -281,10 +274,7 @@ class _AddToBooklistDialogState extends ConsumerState<_AddToBooklistDialog> {
       showAppSnack(context, l10n.addToBooklistSuccess);
       return;
     }
-    showAppSnack(
-      context,
-      l10n.addToBooklistFailed(response.error ?? ''),
-    );
+    showAppSnack(context, l10n.addToBooklistFailed(response.error ?? ''));
   }
 
   Future<void> _remove(BooklistMembership membership) async {
@@ -301,10 +291,7 @@ class _AddToBooklistDialogState extends ConsumerState<_AddToBooklistDialog> {
       showAppSnack(context, l10n.booklistBookRemoved);
       return;
     }
-    showAppSnack(
-      context,
-      l10n.booklistRemoveBookFailed(response.error ?? ''),
-    );
+    showAppSnack(context, l10n.booklistRemoveBookFailed(response.error ?? ''));
   }
 
   /// Inline create: a new list with this book already in it (the
@@ -312,16 +299,10 @@ class _AddToBooklistDialogState extends ConsumerState<_AddToBooklistDialog> {
   /// table so the new row shows its member flag.
   Future<void> _createAndAdd() async {
     final l10n = AppLocalizations.of(context)!;
-    final result = await showDialog<
-        ({
-          String title,
-          String description,
-          int color,
-          bool isPrivate,
-        })>(
-      context: context,
-      builder: (context) => const CreateBooklistDialog(),
-    );
+    final result =
+        await showDialog<
+          ({String title, String description, int color, bool isPrivate})
+        >(context: context, builder: (context) => const CreateBooklistDialog());
     if (result == null || !mounted) return;
     final response = await _repository.createBooklist(
       title: result.title,
@@ -337,9 +318,6 @@ class _AddToBooklistDialogState extends ConsumerState<_AddToBooklistDialog> {
       await _load();
       return;
     }
-    showAppSnack(
-      context,
-      l10n.booklistCreateFailed(response.error ?? ''),
-    );
+    showAppSnack(context, l10n.booklistCreateFailed(response.error ?? ''));
   }
 }

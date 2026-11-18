@@ -166,7 +166,7 @@ mixin ZLibraryBooklists on ZLibraryApiBase {
       html,
       fetchedAt,
     );
-    return ApiResponse.ok(parseBooklistsPage(html, baseUrl: _base));
+    return ApiResponse.ok(await parseBooklistsPageH(html, baseUrl: _base));
   }
 
   /// Absolute URL of a user's profile page, for callers that fetch the
@@ -231,7 +231,7 @@ mixin ZLibraryBooklists on ZLibraryApiBase {
       html,
       fetchedAt,
     );
-    return ApiResponse.ok(parseUserProfileBooklists(html, baseUrl: _base));
+    return ApiResponse.ok(await parseUserProfileBooklistsH(html, baseUrl: _base));
   }
 
   /// Books on the FIRST page of one booklist, parsed from the detail
@@ -283,7 +283,7 @@ mixin ZLibraryBooklists on ZLibraryApiBase {
       );
     }
     onBooklistHtmlLoaded?.call(list.url, html, fetchedAt);
-    return ApiResponse.ok(parseBooklistDetailBooks(html, baseUrl: _base));
+    return ApiResponse.ok(await parseBooklistDetailBooksH(html, baseUrl: _base));
   }
 
   /// Books on page 2 and up of one booklist. The site's own JSON API:

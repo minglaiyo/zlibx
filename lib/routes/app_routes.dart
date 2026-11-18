@@ -16,6 +16,8 @@ import '../screens/account/my_comments_screen.dart';
 import '../screens/account/user_profile_screen.dart';
 import '../screens/account/view_history_screen.dart';
 import '../screens/auth/login_screen.dart';
+import '../screens/categories/categories_directory_screen.dart';
+import '../screens/author/author_screen.dart';
 import '../screens/downloads/local_downloads_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../services/view_history_storage.dart';
@@ -53,6 +55,8 @@ class AppRoutes {
   static const String reader = '/reader';
   static const String settings = '/settings';
   static const String downloads = '/downloads';
+  static const String categoriesDirectory = '/categories-directory';
+  static const String author = '/author';
 
   // ── Typed navigation helpers (routes that take arguments) ──────────
   //
@@ -147,6 +151,18 @@ class AppRoutes {
     ReaderArgs args,
   ) => Navigator.of(context).pushNamed<T>(reader, arguments: args);
 
+  /// 分类目录树（F1）。
+  static Future<T?> openCategoriesDirectory<T extends Object?>(
+    BuildContext context,
+  ) => Navigator.of(context).pushNamed<T>(categoriesDirectory);
+
+  /// 作者聚合页（F2）：[authorName] 是站内作者串（与书籍详情页的
+  /// author 字段一致）。参数名不能叫 author——会遮蔽同名路由常量。
+  static Future<T?> openAuthor<T extends Object?>(
+    BuildContext context,
+    String authorName,
+  ) => Navigator.of(context).pushNamed<T>(author, arguments: authorName);
+
   // ── Typed navigation helpers (routes without arguments) ────────────
 
   /// The login page, pushed on top of the current page.
@@ -205,35 +221,28 @@ class AppRoutes {
 
   /// The local viewing-history page (books whose detail page was
   /// opened on this device).
-  static Future<T?> openViewHistory<T extends Object?>(
-    BuildContext context,
-  ) => Navigator.of(context).pushNamed<T>(viewHistory);
+  static Future<T?> openViewHistory<T extends Object?>(BuildContext context) =>
+      Navigator.of(context).pushNamed<T>(viewHistory);
 
   /// The recently-added books page (the site homepage's
   /// "new additions" section).
-  static Future<T?> openRecentBooks<T extends Object?>(
-    BuildContext context,
-  ) => Navigator.of(context).pushNamed<T>(recentBooks);
+  static Future<T?> openRecentBooks<T extends Object?>(BuildContext context) =>
+      Navigator.of(context).pushNamed<T>(recentBooks);
 
   /// The most-popular books page (the site homepage's "most popular"
   /// section).
-  static Future<T?> openPopularBooks<T extends Object?>(
-    BuildContext context,
-  ) => Navigator.of(context).pushNamed<T>(popularBooks);
+  static Future<T?> openPopularBooks<T extends Object?>(BuildContext context) =>
+      Navigator.of(context).pushNamed<T>(popularBooks);
 
   /// After a successful sign-in, or "skip login": replace the login page
   /// with the home page.
-  static Future<T?> goHomeAfterLogin<T extends Object?>(
-    BuildContext context,
-  ) => Navigator.of(context).pushReplacementNamed<T, Object?>(home);
+  static Future<T?> goHomeAfterLogin<T extends Object?>(BuildContext context) =>
+      Navigator.of(context).pushReplacementNamed<T, Object?>(home);
 
   /// After sign-out: go to the login page and clear the whole back stack
   /// (the predicate always returns false, so every route is removed).
   static Future<T?> logoutToLogin<T extends Object?>(BuildContext context) =>
-      Navigator.of(context).pushNamedAndRemoveUntil<T>(
-        login,
-        (route) => false,
-      );
+      Navigator.of(context).pushNamedAndRemoveUntil<T>(login, (route) => false);
 
   /// Splash exits with a fade, not a slide: the splash is full dark-green
   /// while home/login are full white, so a slide reads as a flash.
@@ -244,9 +253,8 @@ class AppRoutes {
           transitionDuration: AppMotion.slow,
           pageBuilder: (context, animation, secondaryAnimation) =>
               const HomeScreen(),
-          transitionsBuilder:
-              (context, animation, secondaryAnimation, child) =>
-                  FadeTransition(opacity: animation, child: child),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+              FadeTransition(opacity: animation, child: child),
         ),
       );
 
@@ -258,9 +266,8 @@ class AppRoutes {
           transitionDuration: AppMotion.slow,
           pageBuilder: (context, animation, secondaryAnimation) =>
               const LoginScreen(),
-          transitionsBuilder:
-              (context, animation, secondaryAnimation, child) =>
-                  FadeTransition(opacity: animation, child: child),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+              FadeTransition(opacity: animation, child: child),
         ),
       );
 }
@@ -320,14 +327,11 @@ Map<String, WidgetBuilder> buildAppRoutes() {
     // is enough. Settings' list reserves 128dp at the bottom for the
     // floating nav this page does not have — harmless dead space.
     AppRoutes.settings: (context) => Scaffold(
-      appBar: AppBar(
-        title: Text(AppLocalizations.of(context)!.settings),
-      ),
+      appBar: AppBar(title: Text(AppLocalizations.of(context)!.settings)),
       body: const SettingsScreen(),
     ),
-    AppRoutes.downloads: (context) => const Scaffold(
-      body: LocalDownloadsScreen(),
-    ),
+    AppRoutes.downloads: (context) =>
+        const Scaffold(body: LocalDownloadsScreen()),
     AppRoutes.viewHistory: (context) => const ViewHistoryScreen(),
     AppRoutes.recentBooks: (context) => const RecentBooksScreen(),
     AppRoutes.popularBooks: (context) => const PopularBooksScreen(),
@@ -357,6 +361,15 @@ Map<String, WidgetBuilder> buildAppRoutes() {
       return const _MissingRouteArgsScreen();
     },
     AppRoutes.myComments: (context) => const MyCommentsScreen(),
+    AppRoutes.categoriesDirectory: (context) =>
+        const CategoriesDirectoryScreen(),
+    AppRoutes.author: (context) {
+      final args = ModalRoute.of(context)!.settings.arguments;
+      if (args is String && args.trim().isNotEmpty) {
+        return AuthorScreen(author: args);
+      }
+      return const _MissingRouteArgsScreen();
+    },
     AppRoutes.userProfile: (context) {
       final args = ModalRoute.of(context)!.settings.arguments;
       if (args is UserProfileArgs) {
@@ -401,8 +414,7 @@ class _MissingRouteArgsScreen extends StatelessWidget {
       appBar: AppBar(),
       body: Center(
         child: Text(
-          AppLocalizations.of(context)?.pageUnavailable ??
-              'Page unavailable',
+          AppLocalizations.of(context)?.pageUnavailable ?? 'Page unavailable',
         ),
       ),
     );

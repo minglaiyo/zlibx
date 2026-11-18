@@ -50,8 +50,11 @@ class NetworkError implements Exception {
   String toString() => "NetworkError.${type.name}";
 
   // Factory to create error from exception - performs additional diagnostics
-  static Future<NetworkError> fromExceptionAsync(dynamic error,
-      {String? responseBody, String? targetHost}) async {
+  static Future<NetworkError> fromExceptionAsync(
+    dynamic error, {
+    String? responseBody,
+    String? targetHost,
+  }) async {
     final logger = AppLogger();
 
     // An already-classified error passes through untouched. Re-wrapping
@@ -128,7 +131,10 @@ class NetworkError implements Exception {
 
   // Diagnose timeout errors with connectivity checks
   static Future<NetworkError> _diagnoseTimeoutError(
-      dynamic error, AppLogger logger, String? targetHost) async {
+    dynamic error,
+    AppLogger logger,
+    String? targetHost,
+  ) async {
     logger.debug("Diagnosing timeout error", tag: "NetworkError");
 
     // Check if we have internet at all
@@ -162,8 +168,10 @@ class NetworkError implements Exception {
     }
 
     // Can reach internet and host, but still timed out - server issue or throttling
-    logger.debug("Internet OK but request timed out - likely server issue",
-        tag: "NetworkError");
+    logger.debug(
+      "Internet OK but request timed out - likely server issue",
+      tag: "NetworkError",
+    );
     return NetworkError(
       type: NetworkErrorType.timeout,
       userMessage: "Server not responding",
@@ -175,13 +183,17 @@ class NetworkError implements Exception {
 
   // Diagnose SocketException for specific issues
   static NetworkError _diagnoseSocketException(
-      SocketException error, AppLogger logger) {
+    SocketException error,
+    AppLogger logger,
+  ) {
     final message = error.message.toLowerCase();
     final osErrorMessage = error.osError?.message.toLowerCase() ?? "";
 
-    logger.debug("Diagnosing socket exception",
-        tag: "NetworkError",
-        metadata: {"message": message, "osError": osErrorMessage});
+    logger.debug(
+      "Diagnosing socket exception",
+      tag: "NetworkError",
+      metadata: {"message": message, "osError": osErrorMessage},
+    );
 
     // Host not found / DNS failure
     if (message.contains("host") ||
@@ -244,7 +256,9 @@ class NetworkError implements Exception {
 
   // Handle Dio-specific exceptions
   static NetworkError _handleDioException(
-      DioException error, AppLogger logger) {
+    DioException error,
+    AppLogger logger,
+  ) {
     final statusCode = error.response?.statusCode;
     final responseData = error.response?.data?.toString();
 
@@ -348,7 +362,10 @@ class NetworkError implements Exception {
 
   // Handle HTTP error status codes
   static NetworkError _handleBadResponse(
-      int? statusCode, String? responseData, String? message) {
+    int? statusCode,
+    String? responseData,
+    String? message,
+  ) {
     // Check for Cloudflare in response body
     if (responseData != null && _containsCloudflareMarkers(responseData)) {
       return NetworkError(
@@ -501,8 +518,9 @@ class ConnectivityChecker {
       // lookup() itself has no built-in timeout: on a broken/hijacked
       // DNS setup it can hang far longer than the user should wait for
       // an error message. Bound it explicitly.
-      final result = await InternetAddress.lookup("google.com")
-          .timeout(const Duration(seconds: 3));
+      final result = await InternetAddress.lookup(
+        "google.com",
+      ).timeout(const Duration(seconds: 3));
       final hasConnection =
           result.isNotEmpty && result[0].rawAddress.isNotEmpty;
       _logger.debug(
@@ -530,8 +548,9 @@ class ConnectivityChecker {
       final uri = Uri.parse(host);
       final hostname = uri.host.isNotEmpty ? uri.host : host;
       // Same bounded lookup as [hasInternetConnection].
-      final result = await InternetAddress.lookup(hostname)
-          .timeout(const Duration(seconds: 3));
+      final result = await InternetAddress.lookup(
+        hostname,
+      ).timeout(const Duration(seconds: 3));
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } on SocketException {
       return false;

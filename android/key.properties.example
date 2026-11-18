@@ -1,0 +1,9 @@
+# Release signing template. Copy to android/key.properties (gitignored)
+# and fill in real values — see CLAUDE.md "Release signing".
+#
+# NEVER commit key.properties or the keystore itself: the store keeps the
+# private key that lets anyone publish updates as zlibx.
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=olib-release
+storeFile=olib-release-key.jks

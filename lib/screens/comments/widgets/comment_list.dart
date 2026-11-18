@@ -53,8 +53,9 @@ class CommentList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final comments = controller.comments;
-    final shown =
-        visibleCount < comments.length ? visibleCount : comments.length;
+    final shown = visibleCount < comments.length
+        ? visibleCount
+        : comments.length;
     final hasMore = controller.hasMore;
     // 只有一屏取尽且确实加载过多页时才显示“没有更多”收尾。
     final showNoMore = !hasMore && comments.length > 1;
@@ -129,9 +130,9 @@ class _NoMoreFooter extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(
               text,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
             ),
           ),
           const Expanded(child: Divider(height: 1)),

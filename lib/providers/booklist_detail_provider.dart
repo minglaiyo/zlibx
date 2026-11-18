@@ -137,6 +137,7 @@ class BooklistDetailController
     }
     return _bookIds.containsAll(_firstPageIds);
   }
+
   // Books with a remove in flight. The same book cannot be removed
   // twice concurrently; without this, two overlapping removes can
   // each resolve the entry id, then remove/restore the wrong row.
@@ -202,11 +203,15 @@ class BooklistDetailController
       // Same guard as BooklistsController.loadFirst: the cache was written
       // by an older run — a parse failure must not escape loadFirst (which
       // runs from a microtask) and leave the screen loading forever.
-      htmlBooks = _repository.parseCachedDetailBooks(
+      htmlBooks = await _repository.parseCachedDetailBooks(
         usableHtml,
         baseUrl: Uri.parse(list.url).origin,
       );
     }
+    // Guard: if the user navigated away or a refresh started while the
+    // cache was being parsed, this generation is stale — discard so old
+    // snapshots cannot briefly paint under a newer load.
+    if (!_isCurrent(generation)) return;
     final initialBooks = cachedPage ?? htmlBooks ?? preview;
     final hasLocalSnapshot =
         cachedPage != null || usableHtml != null || preview.isNotEmpty;
@@ -333,18 +338,14 @@ class BooklistDetailController
     // Same invalidation check as _loadDetailPage: the solver fetch
     // started with this load, so a write that completed meanwhile
     // makes its page stale.
-    if (_repository.wasInvalidatedAfter(
-      url,
-      fetchedAt,
-      accountId: accountId,
-    )) {
+    if (_repository.wasInvalidatedAfter(url, fetchedAt, accountId: accountId)) {
       return;
     }
     if (html == null) {
       if (!background) _fail(originalError);
       return;
     }
-    final books = _repository.parseDetailBooks(
+    final books = await _repository.parseDetailBooks(
       html,
       baseUrl: Uri.parse(url).origin,
     );
@@ -476,9 +477,7 @@ class BooklistDetailController
       }
       final entryId = entry.data;
       if (!entry.success || entryId == null) {
-        return ApiResponse.fail(
-          entry.error ?? 'book is not in this booklist',
-        );
+        return ApiResponse.fail(entry.error ?? 'book is not in this booklist');
       }
       // Re-locate by id: another remove may have shifted the list
       // while the entry id was being resolved.
@@ -510,10 +509,7 @@ class BooklistDetailController
       if (response.success) {
         // Invalidate even when the controller is gone — the next
         // open must not paint the deleted book from a page cache.
-        _repository.invalidateBooklist(
-          _list.url,
-          accountId: _accountId,
-        );
+        _repository.invalidateBooklist(_list.url, accountId: _accountId);
       }
       if (!_alive) return response;
       if (response.success) return response;
@@ -582,9 +578,7 @@ class BooklistDetailController
       }
       final entryId = entry.data;
       if (!entry.success || entryId == null) {
-        return ApiResponse.fail(
-          entry.error ?? 'book is not in this booklist',
-        );
+        return ApiResponse.fail(entry.error ?? 'book is not in this booklist');
       }
       final response = await _repository.saveBookDescription(
         listId: listId,

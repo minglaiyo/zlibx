@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../providers/trending_provider.dart';
+import '../../../routes/app_routes.dart';
 import '../../../services/open_library.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/loading_widget.dart';
@@ -31,10 +32,10 @@ class SearchEmptyQueryView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final trendingAsync = ref.watch(trendingBooksProvider);
-    final trendingBooks = (trendingAsync.valueOrNull ??
-            const <TrendingBookData>[])
-        .where((book) => book.title?.trim().isNotEmpty ?? false)
-        .toList();
+    final trendingBooks =
+        (trendingAsync.valueOrNull ?? const <TrendingBookData>[])
+            .where((book) => book.title?.trim().isNotEmpty ?? false)
+            .toList();
     if (recentSearches.isEmpty && trendingBooks.isEmpty) {
       if (trendingAsync.isLoading) {
         return const LoadingWidget.page(padding: EdgeInsets.all(24));
@@ -62,8 +63,17 @@ class SearchEmptyQueryView extends ConsumerWidget {
             onRemove: onRemoveSearch,
             onClear: onClearHistory,
           ),
+        // 分类目录树入口（方案 F1）：与热搜并列的另一种发现路径。
+        const SizedBox(height: 28),
+        ListTile(
+          leading: const Icon(Icons.category_outlined),
+          title: Text(l10n.categoriesDirectory),
+          subtitle: Text(l10n.categoriesDirectoryHint),
+          trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+          onTap: () => AppRoutes.openCategoriesDirectory(context),
+        ),
         if (trendingBooks.isNotEmpty) ...[
-          if (recentSearches.isNotEmpty) const SizedBox(height: 28),
+          const SizedBox(height: 8),
           SearchTrendingSection(
             l10n: l10n,
             books: trendingBooks,

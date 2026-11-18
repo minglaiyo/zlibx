@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
@@ -59,6 +60,7 @@ class _FakeCategoryApi implements ZLibraryApi {
     int categoryId, {
     int page = 1,
     String? order,
+    CancelToken? cancelToken,
   }) async {
     browseCalls++;
     if (browseError != null) return ApiResponse.fail(browseError!);
@@ -80,6 +82,7 @@ class _FakeCategoryApi implements ZLibraryApi {
     List<String>? contentTypes,
     String? order,
     int page = 1,
+    CancelToken? cancelToken,
   }) async {
     searchSlugs.add(slug);
     return ApiResponse.ok(

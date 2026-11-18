@@ -149,8 +149,7 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
   /// authoritative list, so a stale restore must not re-insert a
   /// list the refresh already dropped (or duplicate one it kept).
   Future<ApiResponse<bool>> deleteBooklist(Booklist list) async {
-    if (state.tab != BooklistTab.mine ||
-        state.phase != BooklistsPhase.ready) {
+    if (state.tab != BooklistTab.mine || state.phase != BooklistsPhase.ready) {
       return ApiResponse.fail('delete booklist not available');
     }
     final index = state.lists.indexWhere((l) => l.id == list.id);
@@ -161,9 +160,7 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
     }
     final generation = _generation;
     final removed = state.lists[index];
-    state = state.copyWith(
-      lists: [...state.lists]..removeAt(index),
-    );
+    state = state.copyWith(lists: [...state.lists]..removeAt(index));
     try {
       final response = await _repository.deleteBooklist(listId);
       if (!_alive) return response;
@@ -298,8 +295,7 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
     required bool isPrivate,
     required int? color,
   }) async {
-    if (state.tab != BooklistTab.mine ||
-        state.phase != BooklistsPhase.ready) {
+    if (state.tab != BooklistTab.mine || state.phase != BooklistsPhase.ready) {
       return ApiResponse.fail('edit booklist not available');
     }
     final listId = int.tryParse(list.id);
@@ -333,8 +329,7 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
   /// optimistic local update, restored on failure. The color value
   /// (0–5) is the site's own numbering.
   Future<ApiResponse<bool>> setBooklistColor(Booklist list, int color) async {
-    if (state.tab != BooklistTab.mine ||
-        state.phase != BooklistsPhase.ready) {
+    if (state.tab != BooklistTab.mine || state.phase != BooklistsPhase.ready) {
       return ApiResponse.fail('change booklist color not available');
     }
     final listId = int.tryParse(list.id);
@@ -344,8 +339,10 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
     final updated = _withColor(list, color);
     _replaceList(updated);
     try {
-      final response =
-          await _repository.setBooklistColor(id: listId, color: color);
+      final response = await _repository.setBooklistColor(
+        id: listId,
+        color: color,
+      );
       if (!_alive) return response;
       if (response.success) {
         _repository.invalidateBooklist(
@@ -366,8 +363,7 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
   /// tab only): the server flips the current state, so the local flag
   /// is flipped optimistically and restored on failure.
   Future<ApiResponse<bool>> toggleBooklistPublic(Booklist list) async {
-    if (state.tab != BooklistTab.mine ||
-        state.phase != BooklistsPhase.ready) {
+    if (state.tab != BooklistTab.mine || state.phase != BooklistsPhase.ready) {
       return ApiResponse.fail('change booklist visibility not available');
     }
     final listId = int.tryParse(list.id);
@@ -427,60 +423,60 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
 
   /// Rebuild [list] with a new color, copying every other field.
   static Booklist _withColor(Booklist list, int color) => Booklist(
-        id: list.id,
-        name: list.name,
-        description: list.description,
-        author: list.author,
-        authorProfile: list.authorProfile,
-        authorAvatar: list.authorAvatar,
-        count: list.count,
-        views: list.views,
-        comments: list.comments,
-        color: color,
-        isPrivate: list.isPrivate,
-        isFavorite: list.isFavorite,
-        coverUrl: list.coverUrl,
-        url: list.url,
-        previewBooks: list.previewBooks,
-      );
+    id: list.id,
+    name: list.name,
+    description: list.description,
+    author: list.author,
+    authorProfile: list.authorProfile,
+    authorAvatar: list.authorAvatar,
+    count: list.count,
+    views: list.views,
+    comments: list.comments,
+    color: color,
+    isPrivate: list.isPrivate,
+    isFavorite: list.isFavorite,
+    coverUrl: list.coverUrl,
+    url: list.url,
+    previewBooks: list.previewBooks,
+  );
 
   /// Rebuild [list] with a new private flag, copying every other field.
   static Booklist _withPrivate(Booklist list, bool isPrivate) => Booklist(
-        id: list.id,
-        name: list.name,
-        description: list.description,
-        author: list.author,
-        authorProfile: list.authorProfile,
-        authorAvatar: list.authorAvatar,
-        count: list.count,
-        views: list.views,
-        comments: list.comments,
-        color: list.color,
-        isPrivate: isPrivate,
-        isFavorite: list.isFavorite,
-        coverUrl: list.coverUrl,
-        url: list.url,
-        previewBooks: list.previewBooks,
-      );
+    id: list.id,
+    name: list.name,
+    description: list.description,
+    author: list.author,
+    authorProfile: list.authorProfile,
+    authorAvatar: list.authorAvatar,
+    count: list.count,
+    views: list.views,
+    comments: list.comments,
+    color: list.color,
+    isPrivate: isPrivate,
+    isFavorite: list.isFavorite,
+    coverUrl: list.coverUrl,
+    url: list.url,
+    previewBooks: list.previewBooks,
+  );
 
   /// Rebuild [list] with a new favorite flag, copying every other field.
   static Booklist _withFavorite(Booklist list, bool isFavorite) => Booklist(
-        id: list.id,
-        name: list.name,
-        description: list.description,
-        author: list.author,
-        authorProfile: list.authorProfile,
-        authorAvatar: list.authorAvatar,
-        count: list.count,
-        views: list.views,
-        comments: list.comments,
-        color: list.color,
-        isPrivate: list.isPrivate,
-        isFavorite: isFavorite,
-        coverUrl: list.coverUrl,
-        url: list.url,
-        previewBooks: list.previewBooks,
-      );
+    id: list.id,
+    name: list.name,
+    description: list.description,
+    author: list.author,
+    authorProfile: list.authorProfile,
+    authorAvatar: list.authorAvatar,
+    count: list.count,
+    views: list.views,
+    comments: list.comments,
+    color: list.color,
+    isPrivate: list.isPrivate,
+    isFavorite: isFavorite,
+    coverUrl: list.coverUrl,
+    url: list.url,
+    previewBooks: list.previewBooks,
+  );
 
   /// Pull-to-refresh: revalidate page 1 in place when lists are on
   /// screen, otherwise do a full first load.
@@ -502,12 +498,8 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
     if (!_alive) return;
     // Only the own-lists tab needs a login; the discover tab is
     // public, so a signed-out user must still be able to browse it.
-    if (state.tab == BooklistTab.mine &&
-        ref.read(authProvider).user == null) {
-      state = state.copyWith(
-        phase: BooklistsPhase.loggedOut,
-        lists: const [],
-      );
+    if (state.tab == BooklistTab.mine && ref.read(authProvider).user == null) {
+      state = state.copyWith(phase: BooklistsPhase.loggedOut, lists: const []);
       return;
     }
     final generation = ++_generation;
@@ -519,13 +511,25 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
       order: state.order,
       page: 1,
     );
-    final cachedPage = _repository.cachedListPage(url, accountId: accountId);
+    final cachedPage = await _repository.cachedListPage(
+      url,
+      accountId: accountId,
+    );
+    // Guard: if the user switched tab/query/order while the cache was
+    // being read, this generation is stale — discard the result so old
+    // data cannot briefly paint under the new search key.
+    if (!_isCurrent(generation)) return;
     if (cachedPage != null) {
       // Stale-while-revalidate: paint the last-known lists instantly,
       // then refresh page 1 in the background.
       _applyPage(cachedPage, 1, replace: true);
       unawaited(
-        _loadPage(1, replace: true, generation: generation, accountId: accountId),
+        _loadPage(
+          1,
+          replace: true,
+          generation: generation,
+          accountId: accountId,
+        ),
       );
       return;
     }
@@ -540,7 +544,12 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
         _paintedQuery == state.query &&
         _paintedOrder == state.order) {
       unawaited(
-        _loadPage(1, replace: true, generation: generation, accountId: accountId),
+        _loadPage(
+          1,
+          replace: true,
+          generation: generation,
+          accountId: accountId,
+        ),
       );
       return;
     }
@@ -676,7 +685,7 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
       return;
     }
     _applyPage(
-      _repository.parseListPage(html, baseUrl: Uri.parse(url).origin),
+      await _repository.parseListPage(html, baseUrl: Uri.parse(url).origin),
       page,
       replace: replace,
     );
@@ -693,7 +702,9 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
       phase: BooklistsPhase.ready,
       // A background refresh replaces the cached page instead of
       // appending to it.
-      lists: replace || page == 1 ? data.lists : [...state.lists, ...data.lists],
+      lists: replace || page == 1
+          ? data.lists
+          : [...state.lists, ...data.lists],
       // The site pages at 10 lists; a short page ends the list. A parsed
       // page count (0 = unknown) is the second signal.
       hasMore:

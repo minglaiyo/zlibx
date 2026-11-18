@@ -13,10 +13,10 @@ import 'package:flutter/services.dart';
 class DownloadForegroundService {
   DownloadForegroundService._();
 
-  static const MethodChannel _channel =
-      MethodChannel('zlibx/download_service');
-  static const MethodChannel _actionChannel =
-      MethodChannel('zlibx/download_service_action');
+  static const MethodChannel _channel = MethodChannel('zlibx/download_service');
+  static const MethodChannel _actionChannel = MethodChannel(
+    'zlibx/download_service_action',
+  );
 
   /// Registered once: receives 'pause' / 'cancel' from the notification
   /// action buttons. Set by the download engine.
@@ -34,7 +34,9 @@ class DownloadForegroundService {
       return null;
     });
     unawaited(
-      _channel.invokeMethod<void>('setActionChannel', {'name': _actionChannel.name}),
+      _channel.invokeMethod<void>('setActionChannel', {
+        'name': _actionChannel.name,
+      }),
     );
   }
 
@@ -71,6 +73,27 @@ class DownloadForegroundService {
   static Future<void> updateProgress(String text) async {
     try {
       await _channel.invokeMethod<void>('updateProgress', {'text': text});
+    } on Object catch (_) {
+      // Best-effort.
+    }
+  }
+
+  /// E3+F4: 完成通知（独立于进度通知的普通重要性渠道），点击直达文件
+  /// （content:// URI 由原生侧配 ACTION_VIEW + 读授权；文件路径兜底
+  /// 时不带点击目标）。[detail] 是副文本（带当日剩余额度）。
+  static Future<void> notifyCompleted({
+    required String title,
+    required String uri,
+    required String mimeType,
+    String detail = '下载完成',
+  }) async {
+    try {
+      await _channel.invokeMethod<void>('notifyCompleted', {
+        'title': title,
+        'uri': uri,
+        'mimeType': mimeType,
+        'detail': detail,
+      });
     } on Object catch (_) {
       // Best-effort.
     }

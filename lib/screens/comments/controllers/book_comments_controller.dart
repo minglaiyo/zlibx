@@ -95,9 +95,11 @@ class BookCommentsController extends ChangeNotifier {
     final seenIds = <int>{};
     var disabled = false;
     var error = '';
-    for (var page = 0;
-        page < maxFetchPages && collected.length < maxFetchComments;
-        page++) {
+    for (
+      var page = 0;
+      page < maxFetchPages && collected.length < maxFetchComments;
+      page++
+    ) {
       try {
         final response = await api.getBookComments(
           bookId.toString(),
@@ -201,8 +203,9 @@ class BookCommentsController extends ChangeNotifier {
           // 新顶层评论排在站点列表最前
           comments.insert(0, posted);
         } else {
-          final parentIndex =
-              comments.indexWhere((c) => c.id == replyTarget.id);
+          final parentIndex = comments.indexWhere(
+            (c) => c.id == replyTarget.id,
+          );
           if (parentIndex >= 0) {
             comments.insert(parentIndex + 1, posted);
             replyCounts[replyTarget.id] =
@@ -282,8 +285,7 @@ class BookCommentsController extends ChangeNotifier {
     deletingIds.add(comment.id);
     final removed = comments.removeAt(index);
     final parentId = removed.parentId;
-    final hadReplyCount =
-        parentId != null && (replyCounts[parentId] ?? 0) > 0;
+    final hadReplyCount = parentId != null && (replyCounts[parentId] ?? 0) > 0;
     if (hadReplyCount) replyCounts[parentId] = replyCounts[parentId]! - 1;
     _emit();
     try {

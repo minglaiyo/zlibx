@@ -18,8 +18,7 @@ class BooklistRow extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final meta = [
       if (list.author.isNotEmpty) list.author,
-      if (list.count != null)
-        l10n.booklistBookCount(list.count!),
+      if (list.count != null) l10n.booklistBookCount(list.count!),
       if (list.views.isNotEmpty) list.views,
       if (list.comments.isNotEmpty && list.comments != '0') list.comments,
     ].join(' · ');
@@ -72,11 +71,7 @@ class BooklistRow extends StatelessWidget {
           ],
           if (list.isFavorite) ...[
             const SizedBox(width: 4),
-            Icon(
-              Icons.favorite_rounded,
-              size: 15,
-              color: cs.primary,
-            ),
+            Icon(Icons.favorite_rounded, size: 15, color: cs.primary),
           ],
         ],
       ),
@@ -88,25 +83,22 @@ class BooklistRow extends StatelessWidget {
               meta,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: cs.onSurfaceVariant,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
             ),
           if (list.description.isNotEmpty)
             Text(
               list.description,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: cs.onSurfaceVariant,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
             ),
         ],
       ),
-      trailing: Icon(
-        Icons.chevron_right_rounded,
-        color: cs.onSurfaceVariant,
-      ),
+      trailing: Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
       onTap: onTap,
     );
   }

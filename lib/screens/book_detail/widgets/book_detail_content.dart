@@ -200,11 +200,7 @@ class BookPublicationInfo extends StatelessWidget {
   /// without one stays plain text. Null means no field is tappable.
   final Map<String, VoidCallback>? onFieldTap;
 
-  const BookPublicationInfo({
-    super.key,
-    required this.fields,
-    this.onFieldTap,
-  });
+  const BookPublicationInfo({super.key, required this.fields, this.onFieldTap});
 
   @override
   Widget build(BuildContext context) {

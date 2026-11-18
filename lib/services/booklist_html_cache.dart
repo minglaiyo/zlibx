@@ -32,6 +32,17 @@ import 'hive_service.dart';
 class BooklistHtmlCache {
   BooklistHtmlCache._();
 
+  /// Fire-and-forget Hive write/delete with error convergence.
+  ///
+  /// Cache writes must never block the UI or crash the app on disk errors.
+  /// This helper swallows exceptions and records only the tag + exception
+  /// type via [logIgnored] (no URLs, keys, or content — see diagnostics.dart).
+  static void _safeCacheOp(String tag, Future<void> op) {
+    unawaited(op.catchError((Object e, StackTrace st) {
+      logIgnored(tag, e);
+    }));
+  }
+
   /// Hive box name, shared with [HiveService].
   static const String boxName = HiveService.booklistHtmlBoxName;
 
@@ -95,7 +106,7 @@ class BooklistHtmlCache {
     if (sensitiveKeys.isNotEmpty) {
       // Hive applies deletes to its in-memory store synchronously; the
       // Future only represents the disk flush.
-      unawaited(box.deleteAll(sensitiveKeys));
+      _safeCacheOp('cache_token_sweep', box.deleteAll(sensitiveKeys));
     }
   }
 
@@ -109,14 +120,8 @@ class BooklistHtmlCache {
   /// `user_token` JWT as a card attribute; the parser deliberately
   /// never reads it, and it must never reach Hive either.
   static String _stripSensitive(String html) {
-    var clean = html.replaceAll(
-      RegExp(r'''\suser_token="[^"]*"'''),
-      '',
-    );
-    clean = clean.replaceAll(
-      RegExp(r"""\suser_token='[^']*'"""),
-      '',
-    );
+    var clean = html.replaceAll(RegExp(r'''\suser_token="[^"]*"'''), '');
+    clean = clean.replaceAll(RegExp(r"""\suser_token='[^']*'"""), '');
     return clean;
   }
 
@@ -218,7 +223,7 @@ class BooklistHtmlCache {
     // readers (and to the eviction below) immediately; the returned
     // Future only covers the disk flush, which is intentionally
     // fire-and-forget.
-    unawaited(box.put(key, value));
+    _safeCacheOp('cache_put', box.put(key, value));
     _evictOldest(box);
     // The byte cap applies even when the entry count is under the cap:
     // a few very large pages can exceed it on their own.
@@ -261,7 +266,7 @@ class BooklistHtmlCache {
     _invalidatedAt[_key(url, accountId)] = stamp();
     if (!_ready) return;
     final box = _box;
-    unawaited(box.delete(_key(url, accountId)));
+    _safeCacheOp('cache_invalidate', box.delete(_key(url, accountId)));
     invalidateBooklistPages(url, accountId: accountId);
   }
 
@@ -284,7 +289,7 @@ class BooklistHtmlCache {
       return key.endsWith(suffix);
     }).toList();
     for (final key in keys) {
-      unawaited(box.delete(key));
+      _safeCacheOp('cache_evict', box.delete(key));
     }
   }
 
@@ -303,7 +308,7 @@ class BooklistHtmlCache {
       return now - at > ttl.inMilliseconds;
     }).toList();
     for (final key in keys) {
-      unawaited(box.delete(key));
+      _safeCacheOp('cache_evict', box.delete(key));
     }
   }
 
@@ -319,17 +324,17 @@ class BooklistHtmlCache {
     final key = _key(url, accountId);
     final raw = box.get(key);
     if (raw is! Map) {
-      if (raw != null) unawaited(box.delete(key));
+      if (raw != null) _safeCacheOp('cache_evict', box.delete(key));
       return null;
     }
     final at = raw['at'];
     final html = raw['html'];
     if (at is! int || html is! String) {
-      unawaited(box.delete(key));
+      _safeCacheOp('cache_evict', box.delete(key));
       return null;
     }
     if (DateTime.now().millisecondsSinceEpoch - at > ttl.inMilliseconds) {
-      unawaited(box.delete(key));
+      _safeCacheOp('cache_evict', box.delete(key));
       return null;
     }
     return html;
@@ -348,28 +353,24 @@ class BooklistHtmlCache {
   /// only a page whose every entry is bad counts as corrupt and is
   /// deleted. An empty stored list is a valid empty page, not a
   /// corrupt one.
-  static List<Book>? getBooksPage(
-    String url,
-    int page, {
-    String? accountId,
-  }) {
+  static List<Book>? getBooksPage(String url, int page, {String? accountId}) {
     if (url.isEmpty) return null;
     if (!_ready) return null; // O2: box opens after the first frame.
     final box = _box;
     final key = _key('$url#json-page=$page', accountId);
     final raw = box.get(key);
     if (raw is! Map) {
-      if (raw != null) unawaited(box.delete(key));
+      if (raw != null) _safeCacheOp('cache_evict', box.delete(key));
       return null;
     }
     final at = raw['at'];
     final books = raw['books'];
     if (at is! int || books is! List) {
-      unawaited(box.delete(key));
+      _safeCacheOp('cache_evict', box.delete(key));
       return null;
     }
     if (DateTime.now().millisecondsSinceEpoch - at > ttl.inMilliseconds) {
-      unawaited(box.delete(key));
+      _safeCacheOp('cache_evict', box.delete(key));
       return null;
     }
     final good = <Book>[];
@@ -383,7 +384,7 @@ class BooklistHtmlCache {
     }
     if (good.isEmpty && books.isNotEmpty) {
       // Every entry was bad: the page itself is corrupt.
-      unawaited(box.delete(key));
+      _safeCacheOp('cache_evict', box.delete(key));
       return null;
     }
     return good;
@@ -446,7 +447,7 @@ class BooklistHtmlCache {
     final keys = atByKey.keys.toList()
       ..sort((a, b) => atByKey[a]!.compareTo(atByKey[b]!));
     for (var i = 0; i < keys.length - maxEntries; i++) {
-      unawaited(box.delete(keys[i]));
+      _safeCacheOp('cache_evict', box.delete(keys[i]));
     }
   }
 
@@ -478,7 +479,7 @@ class BooklistHtmlCache {
       if (total <= maxBytes) break;
       if (box.length <= 1) break;
       total -= bytesByKey[key] ?? 0;
-      unawaited(box.delete(key));
+      _safeCacheOp('cache_evict', box.delete(key));
     }
   }
 }

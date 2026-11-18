@@ -45,7 +45,11 @@ class ResumableDownloader {
   ResumableDownloader._();
 
   /// Sidecar file holding the resume validator for [savePath].
-  static String metaPathFor(String savePath) => '$savePath.meta';
+  /// Delegates to the shared [DownloadRange.metaPathFor] (phase 5):
+  /// the twin engine (`ZLibraryDownloads.metaPathFor`) used to carry
+  /// the identical one-liner.
+  static String metaPathFor(String savePath) =>
+      DownloadRange.metaPathFor(savePath);
 
   /// True when [bytes] (the start of a body) look like an HTML document.
   /// Delegates to the shared [DownloadRange.looksLikeHtml] (O10) so the
@@ -111,18 +115,18 @@ class ResumableDownloader {
     final start = pendingWriter != null
         ? pendingWriter.bytesWritten
         : await file.exists()
-            ? await file.length()
-            : 0;
+        ? await file.length()
+        : 0;
     // Only decorates the request now (see the twin rule in
     // `ZLibraryDownloads._downloadOnce`): a mirror with neither ETag nor
     // Last-Modified has no validator to record, and its partials must
     // still resume instead of starting the book over.
-    final validator = start > 0 ? await _readValidator(meta) : null;
+    final validator = start > 0
+        ? await DownloadRange.readValidator(meta)
+        : null;
     // A pending entry cannot be truncated, only recreated: if the resume
     // offset ever is dropped, reset the writer before the request.
-    if (pendingWriter != null &&
-        start == 0 &&
-        pendingWriter.bytesWritten > 0) {
+    if (pendingWriter != null && start == 0 && pendingWriter.bytesWritten > 0) {
       if (!await pendingWriter.reset()) {
         throw const DownloadContentException(
           'cannot recreate the pending MediaStore entry',
@@ -130,17 +134,14 @@ class ResumableDownloader {
       }
     }
 
-    final reqHeaders = <String, String>{...?headers};
-    // File downloads want the raw bytes: a gzipped answer would make
-    // Content-Length (compressed) disagree with the decompressed bytes
-    // received, skewing progress and the truncation check (O13).
-    reqHeaders['Accept-Encoding'] = 'identity';
-    if (start > 0) {
-      reqHeaders['Range'] = 'bytes=$start-';
-      // Only with a real validator — an unrecognised `If-Range` value is
-      // answered with the full body, losing the resume either way.
-      if (validator != null) reqHeaders['If-Range'] = validator;
-    }
+    // Phase 5: the resume header build is shared with the twin engine
+    // (Range / If-Range / Accept-Encoding identity, O13) so the three
+    // rules land once.
+    final reqHeaders = DownloadRange.resumeHeaders(
+      headers ?? const {},
+      start,
+      validator: validator,
+    );
 
     final res = await dio.get<ResponseBody>(
       url,
@@ -165,8 +166,9 @@ class ResumableDownloader {
       // normally instead of throwing it away and re-downloading the
       // whole book (O5). Only N < start (or an unparsable header)
       // resets and restarts from zero.
-      final remoteSize =
-          _totalFromContentRange(res.headers.value('content-range'));
+      final remoteSize = _totalFromContentRange(
+        res.headers.value('content-range'),
+      );
       if (remoteSize != null && remoteSize == start) {
         if (await meta.exists()) await meta.delete();
         return false;
@@ -211,8 +213,8 @@ class ResumableDownloader {
       }
     }
 
-    final contentType =
-        (res.headers.value(HttpHeaders.contentTypeHeader) ?? '').toLowerCase();
+    final contentType = (res.headers.value(HttpHeaders.contentTypeHeader) ?? '')
+        .toLowerCase();
     if (contentType.contains('text/html')) {
       await res.data?.stream.drain<void>();
       throw DownloadContentException(
@@ -221,7 +223,8 @@ class ResumableDownloader {
       );
     }
 
-    final contentLength = int.tryParse(
+    final contentLength =
+        int.tryParse(
           res.headers.value(HttpHeaders.contentLengthHeader) ?? '',
         ) ??
         -1;
@@ -229,8 +232,8 @@ class ResumableDownloader {
     final base = resumed ? start : 0;
     final total = contentLength >= 0 ? base + contentLength : -1;
 
-    final newValidator = res.headers.value(HttpHeaders.etagHeader) ??
-        res.headers.value(HttpHeaders.lastModifiedHeader);
+    // Phase 5: shared extraction (was inline, identical in the twin).
+    final newValidator = DownloadRange.validatorFromResponse(res.headers);
 
     final body = res.data;
     if (body == null) {
@@ -323,15 +326,5 @@ class ResumableDownloader {
     }
     if (await meta.exists()) await meta.delete();
     return false;
-  }
-
-  static Future<String?> _readValidator(File meta) async {
-    try {
-      if (!await meta.exists()) return null;
-      final v = (await meta.readAsString()).trim();
-      return v.isEmpty ? null : v;
-    } on FileSystemException {
-      return null;
-    }
   }
 }

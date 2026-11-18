@@ -15,6 +15,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../services/wall_cookie_bridge.dart';
 import '../../utils/app_log.dart';
 import '../../utils/app_snack.dart';
+
 class ReaderScreen extends StatefulWidget {
   final String url;
   final String title;
@@ -227,18 +228,20 @@ class _ReaderScreenState extends State<ReaderScreen> {
         uri.host.isEmpty) {
       return '[non-http URL]';
     }
-    final path = uri.pathSegments.map((segment) {
-      if (RegExp(r'^[0-9]{1,10}$').hasMatch(segment)) return ':id';
-      if (const {
-        'api',
-        'books',
-        'quotes',
-        'common-by-others',
-      }.contains(segment)) {
-        return segment;
-      }
-      return ':redacted';
-    }).join('/');
+    final path = uri.pathSegments
+        .map((segment) {
+          if (RegExp(r'^[0-9]{1,10}$').hasMatch(segment)) return ':id';
+          if (const {
+            'api',
+            'books',
+            'quotes',
+            'common-by-others',
+          }.contains(segment)) {
+            return segment;
+          }
+          return ':redacted';
+        })
+        .join('/');
     final port = uri.hasPort ? ':${uri.port}' : '';
     return '${uri.scheme}://${uri.host}$port/$path';
   }
@@ -248,10 +251,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     entry['t_ms'] = DateTime.now().difference(_probeStart).inMilliseconds;
     _probeLog.add(entry);
     if (kDebugMode) {
-      AppLog.debug(
-        '[LITERA_PROBE] ${jsonEncode(entry)}',
-        tag: 'reader_screen',
-      );
+      AppLog.debug('[LITERA_PROBE] ${jsonEncode(entry)}', tag: 'reader_screen');
     }
     if (mounted) setState(() {});
   }
@@ -269,7 +269,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
         'entry_count': _probeLog.length,
         'entries': _probeLog,
       };
-      await file.writeAsString(const JsonEncoder.withIndent('  ').convert(payload));
+      await file.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(payload),
+      );
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(file.path)],
@@ -279,9 +281,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
       );
     } catch (e) {
       if (mounted) {
-        showAppSnack(context,
-              AppLocalizations.of(context)!.readerLogExportFailed('$e'),
-            );
+        showAppSnack(
+          context,
+          AppLocalizations.of(context)!.readerLogExportFailed('$e'),
+        );
       }
     }
   }
@@ -329,11 +332,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
         actions: [
@@ -342,21 +341,26 @@ class _ReaderScreenState extends State<ReaderScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black26,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
                     '${_probeLog.length}',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
             ),
             IconButton(
-              tooltip: AppLocalizations.of(context)!
-                .readerExportResourceLog,
+              tooltip: AppLocalizations.of(context)!.readerExportResourceLog,
               icon: const Icon(Icons.ios_share),
               onPressed: _probeLog.isEmpty ? null : _shareProbeLog,
             ),
@@ -431,9 +435,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 final scheme = uri.scheme.toLowerCase();
                 if (scheme != 'https' && scheme != 'http') return false;
                 if (_isAllowedHost(uri.host)) {
-                  await controller.loadUrl(
-                    urlRequest: URLRequest(url: uri),
-                  );
+                  await controller.loadUrl(urlRequest: URLRequest(url: uri));
                   return true;
                 }
                 if (scheme == 'https') {
@@ -446,10 +448,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   _isLoading = true;
                 });
                 if (_probeEnabled) {
-                  _addProbe({
-                    'kind': 'load_start',
-                    'url': _probeUrl(url),
-                  });
+                  _addProbe({'kind': 'load_start', 'url': _probeUrl(url)});
                 }
               },
               onLoadStop: (controller, url) {
@@ -457,10 +456,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   _isLoading = false;
                 });
                 if (_probeEnabled) {
-                  _addProbe({
-                    'kind': 'load_stop',
-                    'url': _probeUrl(url),
-                  });
+                  _addProbe({'kind': 'load_stop', 'url': _probeUrl(url)});
                 }
                 // 每次页面加载完成都回读一次会话：站内登录/密钥轮换
                 // 只发生在 WebView 侧，发现新会话就上报 app 采纳。
@@ -473,14 +469,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   _progress = progress / 100;
                 });
               },
-              onLoadResource: _probeEnabled ? (controller, resource) {
-                _addProbe({
-                  'kind': 'resource',
-                  'url': _probeUrl(resource.url),
-                  'initiator': resource.initiatorType,
-                  'duration_ms': resource.duration,
-                });
-              } : null,
+              onLoadResource: _probeEnabled
+                  ? (controller, resource) {
+                      _addProbe({
+                        'kind': 'resource',
+                        'url': _probeUrl(resource.url),
+                        'initiator': resource.initiatorType,
+                        'duration_ms': resource.duration,
+                      });
+                    }
+                  : null,
               onReceivedError: (controller, request, error) {
                 if (_probeEnabled) {
                   _addProbe({
@@ -505,9 +503,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
               right: 0,
               child: LinearProgressIndicator(
                 value: _progress,
-                backgroundColor:
-                    Theme.of(context).colorScheme.surfaceContainerHighest,
-                valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary),
+                backgroundColor: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  Theme.of(context).colorScheme.primary,
+                ),
               ),
             ),
         ],

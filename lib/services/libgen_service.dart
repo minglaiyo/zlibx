@@ -34,15 +34,17 @@ class LibgenService {
   final AppLogger _logger = AppLogger();
 
   LibgenService({Dio? dio})
-      : _dio = dio ??
-            createDioWithLogging(
-                options: BaseOptions(
+    : _dio =
+          dio ??
+          createDioWithLogging(
+            options: BaseOptions(
               connectTimeout: const Duration(seconds: 15),
               receiveTimeout: const Duration(seconds: 30),
               headers: _browserHeaders,
               followRedirects: true,
               maxRedirects: 5,
-            ));
+            ),
+          );
 
   /// Fetches and parses a libgen `ads.php` page.
   ///
@@ -59,15 +61,17 @@ class LibgenService {
     // Download order: a fresh device-side speed measurement (Mirrors
     // page > 测速) ranks the mirrors fastest-first; without one this
     // falls back to SLUM order, exactly like before.
-    final mirrors =
-        await MirrorSpeedTest().rankedUrls(MirrorService.libgen);
+    final mirrors = await MirrorSpeedTest().rankedUrls(MirrorService.libgen);
     final candidates = _candidateUrls(url, mirrors);
 
     Object? lastError;
     for (final candidate in candidates) {
       try {
-        _logger.debug('Fetching libgen ads page',
-            tag: 'LibgenService', metadata: {'url': candidate});
+        _logger.debug(
+          'Fetching libgen ads page',
+          tag: 'LibgenService',
+          metadata: {'url': candidate},
+        );
         final baseUrl = Uri.parse(candidate).origin;
         final response = await _dio.get(
           candidate,
@@ -75,25 +79,46 @@ class LibgenService {
         );
         if (response.statusCode != 200) continue;
 
-        final data = parseAdsPage(response.data.toString(), baseUrl, candidate);
+        // Phase 4: Rust bridge when injected; on any bridge failure the
+        // hook un-registers itself and the Dart parse takes over.
+        BookInfoData? data;
+        if (libgenAdsPageParseOverride != null) {
+          try {
+            data = await libgenAdsPageParseOverride!(
+              response.data.toString(),
+              baseUrl,
+              candidate,
+            );
+          } on Object catch (_) {
+            libgenAdsPageParseOverride = null;
+            data = parseAdsPage(response.data.toString(), baseUrl, candidate);
+          }
+        } else {
+          data = parseAdsPage(response.data.toString(), baseUrl, candidate);
+        }
         if (data != null) return data;
 
-        _logger.warning('Libgen ads page did not parse',
-            tag: 'LibgenService', metadata: {'url': candidate});
+        _logger.warning(
+          'Libgen ads page did not parse',
+          tag: 'LibgenService',
+          metadata: {'url': candidate},
+        );
       } catch (e) {
         lastError = e;
-        _logger.debug('Libgen mirror failed, trying next',
-            tag: 'LibgenService',
-            metadata: {
-              'url': candidate,
-              'error': e.toString(),
-            });
+        _logger.debug(
+          'Libgen mirror failed, trying next',
+          tag: 'LibgenService',
+          metadata: {'url': candidate, 'error': e.toString()},
+        );
       }
     }
 
     if (lastError != null) {
-      _logger.error('All libgen mirrors failed for book info',
-          tag: 'LibgenService', error: lastError);
+      _logger.error(
+        'All libgen mirrors failed for book info',
+        tag: 'LibgenService',
+        error: lastError,
+      );
     }
     return null;
   }
@@ -147,8 +172,9 @@ class LibgenService {
     try {
       final document = html_parser.parse(html);
 
-      final getHref =
-          document.querySelector('a[href*="get.php?md5="]')?.attributes['href'];
+      final getHref = document
+          .querySelector('a[href*="get.php?md5="]')
+          ?.attributes['href'];
       if (getHref == null) return null;
 
       final mainTable = document.querySelector('table#main');
@@ -172,9 +198,8 @@ class LibgenService {
       final title = fields['Title'];
       if (title == null || title.isEmpty) return null;
 
-      final md5 = RegExp(r'[?&]md5=([0-9a-fA-F]{32})')
-              .firstMatch(url)
-              ?.group(1) ??
+      final md5 =
+          RegExp(r'[?&]md5=([0-9a-fA-F]{32})').firstMatch(url)?.group(1) ??
           RegExp(r'[?&]md5=([0-9a-fA-F]{32})').firstMatch(getHref)?.group(1) ??
           title;
 
@@ -182,8 +207,9 @@ class LibgenService {
       // Shares the selector with [parseAdsCover] so both see the
       // same element.
       final src = mainTable.querySelector('img')?.attributes['src'];
-      final thumbnail =
-          (src != null && src.isNotEmpty) ? _absolute(src, baseUrl) : null;
+      final thumbnail = (src != null && src.isNotEmpty)
+          ? _absolute(src, baseUrl)
+          : null;
 
       final series = fields['Series'];
       final year = fields['Year'];
@@ -212,8 +238,11 @@ class LibgenService {
         description: null,
       );
     } catch (e) {
-      _logger.warning('Libgen ads page parse failed',
-          tag: 'LibgenService', error: e.toString());
+      _logger.warning(
+        'Libgen ads page parse failed',
+        tag: 'LibgenService',
+        error: e.toString(),
+      );
       return null;
     }
   }
@@ -246,8 +275,9 @@ class LibgenService {
         final idx = text.indexOf(other, valueStart);
         if (idx != -1 && idx < end) end = idx;
       }
-      fields[label.substring(0, label.length - 1)] =
-          _collapseWhitespace(text.substring(valueStart, end));
+      fields[label.substring(0, label.length - 1)] = _collapseWhitespace(
+        text.substring(valueStart, end),
+      );
     }
     return fields;
   }
@@ -277,3 +307,13 @@ class LibgenService {
   String _collapseWhitespace(String text) =>
       text.replaceAll(RegExp(r'\s+'), ' ').trim();
 }
+
+// ──────────────────────────────────────────────────────────────────
+// Phase 4: injectable Rust parse hook. Same contract as the
+// external_search hook; when null (default) the Dart parseAdsPage
+// above is used as the fallback. NOTE: the Dart parseAdsPage logs via
+// _logger on failure — the Rust hook path returns None silently and
+// the same "try next mirror" behavior applies.
+// ──────────────────────────────────────────────────────────────────
+Future<BookInfoData?> Function(String html, String baseUrl, String url)?
+libgenAdsPageParseOverride;

@@ -20,10 +20,15 @@ mixin ZLibraryArticles on ZLibraryApiBase {
   /// endpoint for articles.
   ///
   /// [order] is the sort dropdown (`bestmatch`, `date`, `year`, ...)
-  /// passed through as-is; language / extension / year filters are
-  /// NOT sent — the capture does not show their exact parameter
-  /// names for this route, so they stay out until device-verified.
-  /// [page] is 1-based (the site's pager convention).
+  /// passed through as-is. Filter parameter names are site-verified
+  /// (2026-11-19, zh.z-library.sk article search form's submit JS):
+  /// the `/s/` form submits `['q', 'e', 'yearFrom', 'yearTo',
+  /// 'languages[]', 'extensions[]']` — the same `languages[]` /
+  /// `extensions[]` repeated-param shape the full-text eapi search
+  /// uses, so [languages] / [extensions] ride on dio's list
+  /// expansion exactly like the full-text mixin. [exact] is the
+  /// form's `e` checkbox (`e=1`). [page] is 1-based (the site's
+  /// pager convention).
   ///
   /// A stale or wrong page is guarded exactly like the full-text
   /// search: the results form re-renders the submitted query in its
@@ -35,6 +40,11 @@ mixin ZLibraryArticles on ZLibraryApiBase {
     required String query,
     String? order,
     int page = 1,
+    List<String>? languages,
+    List<String>? extensions,
+    int? yearFrom,
+    int? yearTo,
+    bool exact = false,
   }) async {
     final trimmed = query.trim();
     if (trimmed.isEmpty) {
@@ -53,6 +63,12 @@ mixin ZLibraryArticles on ZLibraryApiBase {
       queryParameters: {
         'content_type': 'article',
         if (order != null) 'order': order,
+        if (exact) 'e': '1',
+        if (yearFrom != null) 'yearFrom': yearFrom,
+        if (yearTo != null) 'yearTo': yearTo,
+        if (languages != null && languages.isNotEmpty) 'languages': languages,
+        if (extensions != null && extensions.isNotEmpty)
+          'extensions': extensions,
         'page': page,
       },
       extraHeaders: const {'Accept': 'text/html'},
@@ -88,21 +104,30 @@ mixin ZLibraryArticles on ZLibraryApiBase {
     // Parse on a background isolate: the results page is a large
     // HTML document and the parse is pure work on a string; the
     // result is plain data (sendable), so the main isolate never
-    // blocks on it.
-    final pageResult = await Isolate.run(
-      () => parseArticleSearchPage(html, baseUrl: _base),
-    );
+    // blocks on it. Phase 3: the host-injected Rust hook takes over
+    // when present; the Dart isolate path stays as the fallback.
+    final pageResult = articleParseOverride != null
+        ? await articleParseOverride!(html, _base)
+        : await Isolate.run(
+            () => parseArticleSearchPage(html, baseUrl: _base),
+          );
     return ApiResponse.ok(pageResult);
   }
 
   /// The full URL of one article results page — the string the app's
   /// screens use for their solver fallback (the WebView follows it
   /// with the session cookies installed), same role as
-  /// `fulltextPageUrl`. Query is capped like the Dio call above.
+  /// `fulltextPageUrl`. Query is capped like the Dio call above; the
+  /// filter params mirror [searchArticles] (site-verified names).
   String articlePageUrl({
     required String query,
     String? order,
     int page = 1,
+    List<String>? languages,
+    List<String>? extensions,
+    int? yearFrom,
+    int? yearTo,
+    bool exact = false,
   }) {
     final capped = query.trim().length > articleSearchMaxQueryLength
         ? query.trim().substring(0, articleSearchMaxQueryLength)
@@ -110,6 +135,13 @@ mixin ZLibraryArticles on ZLibraryApiBase {
     final parts = <String>[
       'content_type=article',
       if (order != null) 'order=${Uri.encodeComponent(order)}',
+      if (exact) 'e=1',
+      if (yearFrom != null) 'yearFrom=$yearFrom',
+      if (yearTo != null) 'yearTo=$yearTo',
+      for (final language in languages ?? const <String>[])
+        'languages[]=${Uri.encodeComponent(language)}',
+      for (final extension in extensions ?? const <String>[])
+        'extensions[]=${Uri.encodeComponent(extension)}',
       'page=$page',
     ];
     return '$_base/s/${Uri.encodeComponent(capped)}?${parts.join('&')}';

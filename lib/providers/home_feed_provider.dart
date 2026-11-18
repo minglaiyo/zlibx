@@ -23,8 +23,10 @@ import 'zlibrary_provider.dart';
 /// 热门页数据，按页码分页。回退 search 时透传 [page]，让下拉刷新翻到
 /// 下一页拿到不同批次——之前永远打第 1 页（limit 20），刷新后内容不变，
 /// 用户看到的就是"加载没用还是那几本"。
-final mostPopularBooksProvider =
-    FutureProvider.family<List<Book>, int>((ref, int page) async {
+final mostPopularBooksProvider = FutureProvider.family<List<Book>, int>((
+  ref,
+  int page,
+) async {
   final api = ref.watch(zlibraryApiProvider);
   final response = await api.getMostPopular(page: page);
   if (!response.success) {
@@ -290,7 +292,10 @@ Future<List<Book>> _randomCategoryBooks(
         userKey: userKey,
       );
       if (html != null) {
-        final parsed = repo.parseBooks(html, baseUrl: Uri.parse(url).origin);
+        final parsed = await repo.parseBooks(
+          html,
+          baseUrl: Uri.parse(url).origin,
+        );
         if (parsed != null) {
           response = ApiResponse.ok(parsed);
         }
@@ -389,15 +394,17 @@ final homeRecommendedProvider = Provider<AsyncValue<List<DisplayBook>>>((ref) {
   // whenData keeps loading/error states as-is: the home screen keeps its
   // error/retry entry and keeps showing the previous data while a
   // revalidation after an account switch is in flight.
-  return ref.watch(recommendedBooksProvider).whenData(
-    (books) => books.map((b) => b.toDisplay()).toList(),
-  );
+  return ref
+      .watch(recommendedBooksProvider)
+      .whenData((books) => books.map((b) => b.toDisplay()).toList());
 });
 
 /// 最新上架页数据，按页码分页。回退 search 时透传 [page]，刷新翻页拿到
 /// 不同批次——之前永远打第 1 页，刷新后内容不变。
-final recentBooksProvider =
-    FutureProvider.family<List<Book>, int>((ref, int page) async {
+final recentBooksProvider = FutureProvider.family<List<Book>, int>((
+  ref,
+  int page,
+) async {
   final api = ref.watch(zlibraryApiProvider);
   final response = await api.getRecently(page: page);
   if (!response.success) {

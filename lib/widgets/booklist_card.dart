@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../l10n/generated/app_localizations.dart';
+import '../theme/motion.dart';
 import '../theme/app_metrics.dart';
 import '../utils/booklist_colors.dart';
 import '../utils/cover_cache.dart';
+
 /// Rounded booklist cover with a soft shadow and a themed placeholder.
 class BooklistCover extends StatelessWidget {
   final String url;
@@ -124,15 +126,9 @@ class BooklistMetaPills extends StatelessWidget {
             text: l10n.booklistBookCount(count),
           ),
         if (list.views.isNotEmpty)
-          BooklistMetaPill(
-            icon: Icons.visibility_outlined,
-            text: list.views,
-          ),
+          BooklistMetaPill(icon: Icons.visibility_outlined, text: list.views),
         if (list.comments.isNotEmpty && list.comments != '0')
-          BooklistMetaPill(
-            icon: Icons.comment_outlined,
-            text: list.comments,
-          ),
+          BooklistMetaPill(icon: Icons.comment_outlined, text: list.comments),
       ],
     );
   }
@@ -196,7 +192,10 @@ class BooklistCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (gradient != null)
-                Container(width: 5, decoration: BoxDecoration(gradient: gradient)),
+                Container(
+                  width: 5,
+                  decoration: BoxDecoration(gradient: gradient),
+                ),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(14),
@@ -216,10 +215,11 @@ class BooklistCard extends StatelessWidget {
                                     list.name,
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                      height: 1.25,
-                                    ),
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                          height: 1.25,
+                                        ),
                                   ),
                                 ),
                                 if (list.isPrivate) ...[
@@ -255,9 +255,10 @@ class BooklistCard extends StatelessWidget {
                                       list.author,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: cs.onSurfaceVariant,
-                                      ),
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: cs.onSurfaceVariant,
+                                          ),
                                     ),
                                   ),
                                 ],
@@ -333,15 +334,15 @@ class _BooklistMenuButton extends StatelessWidget {
           PopupMenuItem(
             value: BooklistMenuAction.togglePublic,
             child: Text(
-              list.isPrivate ? l10n.booklistMakePublic : l10n.booklistMakePrivate,
+              list.isPrivate
+                  ? l10n.booklistMakePublic
+                  : l10n.booklistMakePrivate,
             ),
           ),
         PopupMenuItem(
           value: BooklistMenuAction.toggleFavorite,
           child: Text(
-            list.isFavorite
-                ? l10n.unfavoriteBooklist
-                : l10n.favoriteBooklist,
+            list.isFavorite ? l10n.unfavoriteBooklist : l10n.favoriteBooklist,
           ),
         ),
         PopupMenuItem(
@@ -404,7 +405,10 @@ class BooklistGridCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (gradient != null)
-              Container(height: 4, decoration: BoxDecoration(gradient: gradient)),
+              Container(
+                height: 4,
+                decoration: BoxDecoration(gradient: gradient),
+              ),
             AspectRatio(
               aspectRatio: 4 / 3,
               child: list.coverUrl.isEmpty
@@ -486,7 +490,25 @@ class _BooklistSkeletonListState extends State<BooklistSkeletonList>
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: AppMotion.slowest,
-  )..repeat(reverse: true);
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (!context.disableAnimations) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (context.disableAnimations && _controller.isAnimating) {
+      _controller.stop();
+    } else if (!context.disableAnimations && !_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {
@@ -507,7 +529,9 @@ class _BooklistSkeletonListState extends State<BooklistSkeletonList>
       ),
     );
     return FadeTransition(
-      opacity: Tween<double>(begin: 0.45, end: 1).animate(_controller),
+      opacity: Tween<double>(begin: 0.45, end: 1).animate(
+        CurvedAnimation(parent: _controller, curve: MotionCurves.loop),
+      ),
       child: Column(
         children: [
           for (var i = 0; i < widget.count; i++)

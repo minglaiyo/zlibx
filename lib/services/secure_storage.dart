@@ -9,9 +9,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// bearer tokens — belongs here, NEVER in the plaintext Hive boxes.
 /// Non-secret state (settings, caches, download history) stays in Hive.
 class SecureStorage {
-  static const _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(),
-  );
+  static const _storage = FlutterSecureStorage(aOptions: AndroidOptions());
 
   static Future<String?> read(String key) => _storage.read(key: key);
 

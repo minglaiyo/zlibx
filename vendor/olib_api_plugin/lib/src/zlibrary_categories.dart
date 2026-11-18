@@ -47,10 +47,12 @@ mixin ZLibraryCategories on ZLibraryApiBase {
     int categoryId, {
     int page = 1,
     String? order,
+    CancelToken? cancelToken,
   }) {
     return _fetchCategoryPage(
       _categoryPath(categoryId),
       queryParameters: _categoryQuery(page: page, order: order),
+      cancelToken: cancelToken,
     );
   }
 
@@ -76,6 +78,7 @@ mixin ZLibraryCategories on ZLibraryApiBase {
     List<String>? contentTypes,
     String? order,
     int page = 1,
+    CancelToken? cancelToken,
   }) {
     final q = query.length > 200 ? query.substring(0, 200) : query;
     if (q.trim().isEmpty) {
@@ -94,6 +97,7 @@ mixin ZLibraryCategories on ZLibraryApiBase {
         extensions: extensions,
         contentTypes: contentTypes,
       ),
+      cancelToken: cancelToken,
     );
   }
 
@@ -139,11 +143,13 @@ mixin ZLibraryCategories on ZLibraryApiBase {
   Future<ApiResponse<CategoryPage>> _fetchCategoryPage(
     String path, {
     Map<String, dynamic>? queryParameters,
+    CancelToken? cancelToken,
   }) async {
     final raw = await _getWithRedirects(
       path,
       extraHeaders: const {'Accept': 'text/html'},
       queryParameters: queryParameters,
+      cancelToken: cancelToken,
     );
     final status = raw.status;
     if (status == null || status < 200 || status >= 300) {
@@ -178,7 +184,7 @@ mixin ZLibraryCategories on ZLibraryApiBase {
         statusCode: status,
       );
     }
-    final parsed = parseCategoryBooksPage(html, baseUrl: _base);
+    final parsed = await parseCategoryBooksPageH(html, baseUrl: _base);
     return ApiResponse.ok(parsed);
   }
 
@@ -244,5 +250,43 @@ mixin ZLibraryCategories on ZLibraryApiBase {
       }
     }
     return parts.isEmpty ? '' : '?${parts.join('&')}';
+  }
+
+  /// The absolute `/categories` directory URL — the string the app's
+  /// screens use for their solver fallback.
+  String get categoriesDirectoryUrl => '$_base/categories';
+
+  /// The `/categories` directory: every top-level category with its
+  /// children and per-child book counts. Plain HTML, same wall rules
+  /// as the category pages.
+  Future<ApiResponse<CategoriesDirectoryPage>> getCategoriesDirectory() async {
+    final raw = await _getWithRedirects(
+      '/categories',
+      extraHeaders: const {'Accept': 'text/html'},
+    );
+    final status = raw.status;
+    if (status == null || status < 200 || status >= 300) {
+      if (status == 503 || status == 513) {
+        return ApiResponse.fail(
+          'HTTP $status: browser check page',
+          statusCode: status,
+        );
+      }
+      return ApiResponse.fail(
+        raw.error ?? 'categories directory failed (HTTP $status)',
+        statusCode: status,
+      );
+    }
+    final html = raw.body;
+    if (html == null || html.isEmpty) {
+      return ApiResponse.fail('categories directory failed');
+    }
+    if (ZLibraryApiBase._looksLikeChallengePage(html)) {
+      return ApiResponse.fail(
+        'HTTP $status: browser check page',
+        statusCode: status,
+      );
+    }
+    return ApiResponse.ok(await parseCategoriesDirectoryH(html));
   }
 }

@@ -5,11 +5,7 @@ import '../services/hive_service.dart';
 import '../utils/diagnostics.dart';
 import '../utils/locale_utils.dart';
 
-enum AppThemeMode {
-  system,
-  light,
-  dark,
-}
+enum AppThemeMode { system, light, dark }
 
 /// Theme mode notifier
 class ThemeModeNotifier extends Notifier<AppThemeMode> {
@@ -43,12 +39,12 @@ class ThemeModeNotifier extends Notifier<AppThemeMode> {
     state = mode;
     await _storage.setThemeMode(mode.index);
   }
-
 }
 
 /// Theme mode provider
-final themeModeProvider =
-    NotifierProvider<ThemeModeNotifier, AppThemeMode>(ThemeModeNotifier.new);
+final themeModeProvider = NotifierProvider<ThemeModeNotifier, AppThemeMode>(
+  ThemeModeNotifier.new,
+);
 
 /// Download path notifier for custom download directory (Android only)
 class DownloadPathNotifier extends Notifier<String?> {
@@ -79,8 +75,9 @@ class DownloadPathNotifier extends Notifier<String?> {
 }
 
 /// Download path provider
-final downloadPathProvider =
-    NotifierProvider<DownloadPathNotifier, String?>(DownloadPathNotifier.new);
+final downloadPathProvider = NotifierProvider<DownloadPathNotifier, String?>(
+  DownloadPathNotifier.new,
+);
 
 /// Locale notifier for managing app language
 class LocaleNotifier extends Notifier<Locale?> {
@@ -106,12 +103,12 @@ class LocaleNotifier extends Notifier<Locale?> {
       await HiveService.settingsBox.put('locale', getLocaleKey(locale));
     }
   }
-
 }
 
 /// Locale provider
-final localeProvider =
-    NotifierProvider<LocaleNotifier, Locale?>(LocaleNotifier.new);
+final localeProvider = NotifierProvider<LocaleNotifier, Locale?>(
+  LocaleNotifier.new,
+);
 
 /// Blur effect notifier — whether the glass header and bottom nav bar use
 /// a backdrop blur (on) or a solid surface (off). Default on.
@@ -134,8 +131,9 @@ class BlurNotifier extends Notifier<bool> {
 }
 
 /// Blur effect provider
-final blurEnabledProvider =
-    NotifierProvider<BlurNotifier, bool>(BlurNotifier.new);
+final blurEnabledProvider = NotifierProvider<BlurNotifier, bool>(
+  BlurNotifier.new,
+);
 
 /// Floating navigation bar — whether the bottom nav bar floats as a
 /// detached rounded pill (on) or spans the full width attached to the
@@ -159,8 +157,9 @@ class FloatingNavNotifier extends Notifier<bool> {
 }
 
 /// Floating navigation bar provider
-final floatingNavProvider =
-    NotifierProvider<FloatingNavNotifier, bool>(FloatingNavNotifier.new);
+final floatingNavProvider = NotifierProvider<FloatingNavNotifier, bool>(
+  FloatingNavNotifier.new,
+);
 
 /// Hide the floating nav bar on scroll down — whether the floating bar
 /// slides away while scrolling down and returns on scroll up. Only
@@ -184,10 +183,9 @@ class HideNavOnScrollNotifier extends Notifier<bool> {
 }
 
 /// Hide-on-scroll provider
-final hideNavOnScrollProvider =
-    NotifierProvider<HideNavOnScrollNotifier, bool>(
-      HideNavOnScrollNotifier.new,
-    );
+final hideNavOnScrollProvider = NotifierProvider<HideNavOnScrollNotifier, bool>(
+  HideNavOnScrollNotifier.new,
+);
 
 /// 上一版（只活了两个提交）这里存的是枚举名，迁移时它是权威：认得的
 /// 名字直接决定开关，不再回头看更老的键。
@@ -241,10 +239,9 @@ class AdaptiveGridNotifier extends Notifier<bool> {
 }
 
 /// 自适应列数 provider
-final adaptiveGridProvider =
-    NotifierProvider<AdaptiveGridNotifier, bool>(
-      AdaptiveGridNotifier.new,
-    );
+final adaptiveGridProvider = NotifierProvider<AdaptiveGridNotifier, bool>(
+  AdaptiveGridNotifier.new,
+);
 
 /// 首页随机推荐 — whether the home feed shows random-category
 /// recommendations (on) or the personalised recommendations (off).
@@ -271,10 +268,9 @@ class RandomRecommendNotifier extends Notifier<bool> {
 }
 
 /// 首页随机推荐 provider
-final randomRecommendProvider =
-    NotifierProvider<RandomRecommendNotifier, bool>(
-      RandomRecommendNotifier.new,
-    );
+final randomRecommendProvider = NotifierProvider<RandomRecommendNotifier, bool>(
+  RandomRecommendNotifier.new,
+);
 
 /// ── 隐私锁（用户批 2026-11-14 功能）─────────────────────────────
 ///
@@ -296,10 +292,9 @@ class AppLockEnabledNotifier extends Notifier<bool> {
   }
 }
 
-final appLockEnabledProvider =
-    NotifierProvider<AppLockEnabledNotifier, bool>(
-      AppLockEnabledNotifier.new,
-    );
+final appLockEnabledProvider = NotifierProvider<AppLockEnabledNotifier, bool>(
+  AppLockEnabledNotifier.new,
+);
 
 /// 切后台多少秒后要求解锁：0 = 立即，60 / 300 = 延迟。
 class AppLockTimeoutNotifier extends Notifier<int> {
@@ -318,10 +313,9 @@ class AppLockTimeoutNotifier extends Notifier<int> {
   }
 }
 
-final appLockTimeoutProvider =
-    NotifierProvider<AppLockTimeoutNotifier, int>(
-      AppLockTimeoutNotifier.new,
-    );
+final appLockTimeoutProvider = NotifierProvider<AppLockTimeoutNotifier, int>(
+  AppLockTimeoutNotifier.new,
+);
 
 /// 无痕模式：开启后不记录浏览历史（app_routes 的详情入口）和搜索
 /// 记录（search_screen 的最近搜索）。历史/记录页照常显示旧内容，
@@ -342,9 +336,33 @@ class IncognitoModeNotifier extends Notifier<bool> {
   }
 }
 
-final incognitoModeProvider =
-    NotifierProvider<IncognitoModeNotifier, bool>(
-      IncognitoModeNotifier.new,
+final incognitoModeProvider = NotifierProvider<IncognitoModeNotifier, bool>(
+  IncognitoModeNotifier.new,
+);
+
+/// 仅 Wi-Fi 下载（方案 E1）：开着时，发起/恢复/重试下载在计费连接
+/// （移动数据 / 无网）上被拒绝，任务记为带 wifiOnlyBlocked 旗标的
+/// 错误态。到 Wi-Fi 后重试即可。已在进行的下载不受影响（不做中途
+/// 暂停——断点续传的暂停/恢复由用户自己控制）。
+class WifiOnlyDownloadsNotifier extends Notifier<bool> {
+  @override
+  bool build() => _load();
+
+  bool _load() {
+    final v = HiveService.settingsBox.get('wifiOnlyDownloads');
+    if (v is bool) return v;
+    return false;
+  }
+
+  Future<void> setEnabled(bool value) async {
+    state = value;
+    await HiveService.settingsBox.put('wifiOnlyDownloads', value);
+  }
+}
+
+final wifiOnlyDownloadsProvider =
+    NotifierProvider<WifiOnlyDownloadsNotifier, bool>(
+      WifiOnlyDownloadsNotifier.new,
     );
 
 /// 详情页快捷入口上移开关：开启后相似书籍 / 加入书单 / 评论三行
@@ -392,5 +410,6 @@ class NavBarVisibleNotifier extends Notifier<bool> {
   void setVisible(bool value) => state = value;
 }
 
-final navBarVisibleProvider =
-    NotifierProvider<NavBarVisibleNotifier, bool>(NavBarVisibleNotifier.new);
+final navBarVisibleProvider = NotifierProvider<NavBarVisibleNotifier, bool>(
+  NavBarVisibleNotifier.new,
+);

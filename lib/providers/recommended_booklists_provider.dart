@@ -20,10 +20,7 @@ class RecommendedBooklistsState {
     this.lists = const [],
   });
 
-  RecommendedBooklistsState copyWith({
-    bool? isLoading,
-    List<Booklist>? lists,
-  }) {
+  RecommendedBooklistsState copyWith({bool? isLoading, List<Booklist>? lists}) {
     return RecommendedBooklistsState(
       isLoading: isLoading ?? this.isLoading,
       lists: lists ?? this.lists,
@@ -62,7 +59,8 @@ class RecommendedBooklistsController
   }
 }
 
-final recommendedBooklistsProvider = NotifierProvider.autoDispose<
-    RecommendedBooklistsController, RecommendedBooklistsState>(
-  RecommendedBooklistsController.new,
-);
+final recommendedBooklistsProvider =
+    NotifierProvider.autoDispose<
+      RecommendedBooklistsController,
+      RecommendedBooklistsState
+    >(RecommendedBooklistsController.new);

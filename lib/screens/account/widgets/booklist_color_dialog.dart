@@ -53,10 +53,7 @@ class BooklistColorDialog extends StatelessWidget {
               title: Text(
                 colorNames[index],
                 style: selected
-                    ? TextStyle(
-                        color: cs.primary,
-                        fontWeight: FontWeight.w700,
-                      )
+                    ? TextStyle(color: cs.primary, fontWeight: FontWeight.w700)
                     : null,
               ),
               trailing: Icon(

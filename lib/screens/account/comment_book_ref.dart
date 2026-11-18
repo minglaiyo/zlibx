@@ -34,10 +34,7 @@ Future<CommentBookRef?> resolveCommentBookRef(
   if (!res.success || res.data == null) return null;
   for (final book in res.data!) {
     if (book.id == bookId) {
-      return CommentBookRef(
-        hash: book.hash ?? '',
-        cover: book.cover ?? '',
-      );
+      return CommentBookRef(hash: book.hash ?? '', cover: book.cover ?? '');
     }
   }
   return null;
@@ -113,11 +110,7 @@ class CommentBookTile extends StatelessWidget {
               child: LoadingWidget.inline(size: 16),
             )
           else
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 22,
-              color: cs.outline,
-            ),
+            Icon(Icons.chevron_right_rounded, size: 22, color: cs.outline),
         ],
       ),
     );

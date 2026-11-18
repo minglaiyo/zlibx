@@ -199,3 +199,113 @@ int? _parseCategoryTotalPages(String html) {
   final pages = match == null ? null : int.tryParse(match.group(1) ?? '');
   return pages == null || pages < 1 ? null : pages;
 }
+
+/// Injectable Rust parse hook (phase 3). See booklist.dart's hooks
+/// for the contract; test/parsers/category_*.dart are the baselines.
+Future<CategoryPage> Function(String html, String? baseUrl)?
+    categoryPageParseOverride;
+
+/// Hook-aware entry. Mirrors parseBooklistsPageH.
+Future<CategoryPage> parseCategoryBooksPageH(
+  String html, {
+  String? baseUrl,
+}) async =>
+    categoryPageParseOverride != null
+        ? await categoryPageParseOverride!(html, baseUrl)
+        : parseCategoryBooksPage(html, baseUrl: baseUrl);
+
+/// 分类目录树的一个链接节点（父级没有 slug，子级带 slug 和书量计数）。
+class CategoryDirectoryLink {
+  final int id;
+
+  /// 子级的 slug（`/category/{id}/{slug}`）；父级为 null。
+  final String? slug;
+  final String name;
+
+  /// 子级链接文本里带的藏书计数（"(23282)"）；解析不出为 null。
+  final int? count;
+
+  const CategoryDirectoryLink({
+    required this.id,
+    this.slug,
+    required this.name,
+    this.count,
+  });
+}
+
+/// 分类目录树的一个分组：顶级分类 + 它的子分类。
+class CategoryDirectoryGroup {
+  final CategoryDirectoryLink parent;
+  final List<CategoryDirectoryLink> children;
+
+  const CategoryDirectoryGroup({required this.parent, required this.children});
+}
+
+/// `/categories` 目录页的解析结果。
+class CategoriesDirectoryPage {
+  final List<CategoryDirectoryGroup> groups;
+
+  const CategoriesDirectoryPage({required this.groups});
+}
+
+/// Parse the `/categories` directory document into its tree.
+///
+/// Shape confirmed from the live page 2026-11-19 (zh.z-library.sk,
+/// 841 category links): top-level categories link as bare
+/// `/category/{id}` and appear immediately before their children,
+/// which link as `/category/{id}/{slug}` with a "(count)" suffix in
+/// the text. Document order therefore encodes the tree: a bare link
+/// starts a new group, a slugged link joins the most recent group.
+/// Links before any bare link (nav breadcrumbs) and non-category
+/// links are skipped.
+CategoriesDirectoryPage parseCategoriesDirectory(String html) {
+  final doc = html_parser.parse(html);
+  final groups = <CategoryDirectoryGroup>[];
+  CategoryDirectoryGroup? current;
+  final linkPattern = RegExp(r'^/category/(\d+)(?:/([^/?#]+))?[/?#]?$');
+  for (final a in doc.querySelectorAll("a[href]")) {
+    final match = linkPattern.firstMatch(a.attributes['href'] ?? '');
+    if (match == null) continue;
+    final id = int.tryParse(match.group(1)!);
+    if (id == null) continue;
+    final text = a.text.trim();
+    if (text.isEmpty) continue;
+    var name = text;
+    int? count;
+    final countMatch = RegExp(r'\((\d+)\)\s*$').firstMatch(text);
+    if (countMatch != null) {
+      count = int.tryParse(countMatch.group(1)!);
+      name = text.substring(0, countMatch.start).trim();
+    }
+    if (name.isEmpty) continue;
+    final slug = match.group(2);
+    if (slug == null || slug.isEmpty) {
+      // 父级。同一父链接在页内可能重复出现（吸顶导航等）：同 id 已是
+      // 当前组时跳过，不重复开组。
+      if (current != null && current.parent.id == id) continue;
+      current = CategoryDirectoryGroup(
+        parent: CategoryDirectoryLink(id: id, name: name, count: count),
+        children: [],
+      );
+      groups.add(current);
+    } else {
+      // 子级挂最近的父级组；父级未出现（导航杂项）时丢弃。
+      if (current == null) continue;
+      current.children.add(
+        CategoryDirectoryLink(id: id, slug: slug, name: name, count: count),
+      );
+    }
+  }
+  return CategoriesDirectoryPage(groups: groups);
+}
+
+/// Injectable Rust parse hook（同 categoryPageParseOverride 的契约）；
+/// Dart 实现是默认回退。
+Future<CategoriesDirectoryPage> Function(String html)?
+categoriesDirectoryParseOverride;
+
+/// Hook-aware entry. Mirrors parseCategoryBooksPageH.
+Future<CategoriesDirectoryPage> parseCategoriesDirectoryH(String html) async =>
+    categoriesDirectoryParseOverride != null
+        ? await categoriesDirectoryParseOverride!(html)
+        : parseCategoriesDirectory(html);

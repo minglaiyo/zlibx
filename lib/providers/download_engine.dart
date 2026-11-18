@@ -52,10 +52,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
   /// Thin wrapper around [_runDownloadRound]: it records the round so
   /// a later call for the same book waits for this one to settle
   /// instead of racing it on the same .part / pending entry.
-  Future<void> startDownload(
-    Book book, {
-    String? presetUrl,
-  }) {
+  Future<void> startDownload(Book book, {String? presetUrl}) {
     final id = book.id.toString();
     final previous = _runningRounds[id];
     final round = _runDownloadRound(
@@ -83,11 +80,11 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
 
   /// True when a round for [id] is currently downloading or queued.
   bool _isDownloadActive(String id) => state.any(
-        (t) =>
-            t.id == id &&
-            (t.status == DownloadStatus.downloading ||
-                t.status == DownloadStatus.pending),
-      );
+    (t) =>
+        t.id == id &&
+        (t.status == DownloadStatus.downloading ||
+            t.status == DownloadStatus.pending),
+  );
 
   Future<void> _runDownloadRound(
     Book book, {
@@ -112,6 +109,24 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     // Re-check: another round may have started while we waited.
     if (_isDownloadActive(id)) return;
 
+    // E1 仅 Wi-Fi 下载：开关打开且当前没有 Wi-Fi/以太网时拒绝启动，
+    // 任务记为带 wifiOnlyBlocked 旗标的错误态——下载页据此解释，到
+    // Wi-Fi 后照常重试。放在加任务之前：不开任务就不占队列。
+    if (await _wifiOnlyBlocked()) {
+      _updateOrAddTask(
+        DownloadTask(
+          id: id,
+          book: book,
+          status: DownloadStatus.error,
+          error: 'wifi-only',
+          wifiOnlyBlocked: true,
+          needsFreshLink: presetUrl != null,
+          presetUrl: presetUrl,
+        ),
+      );
+      return;
+    }
+
     // Add or update task to pending
     final cancelToken = CancelToken();
     _cancelTokens[id] = cancelToken;
@@ -125,10 +140,10 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       ),
     );
 
-    // S6: wait for a free slot (FIFO). Callers fire this with
-    // `unawaited`, so the wait never blocks the UI; the task shows as
-    // pending while queued.
-    await _slotPool.acquire();
+    // S6: wait for a free slot (FIFO, keyed by task id so 置顶 can
+    // reorder). Callers fire this with `unawaited`, so the wait never
+    // blocks the UI; the task shows as pending while queued.
+    await _slotPool.acquire(key: id);
     // Cancelled while queued: give the slot back and stop without
     // downloading. (The `finally` below never runs on this path, so
     // the release has to happen here.)
@@ -158,10 +173,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       // download starts at 0 (the task was created with progress 0), and
       // a resume continues from where it paused — resetting to 0 would
       // flash the bar back to zero on every resume (O13).
-      _updateTask(
-        id,
-        (t) => t.copyWith(status: DownloadStatus.downloading),
-      );
+      _updateTask(id, (t) => t.copyWith(status: DownloadStatus.downloading));
 
       // Write to a task-specific temporary file so cancellation never leaves
       // a partial book under its final name.
@@ -172,9 +184,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       // the real file. Any failure here keeps the staging flow
       // (pendingWriter stays null).
       if (Platform.isAndroid && !alreadyExists) {
-        pendingWriter = await PendingUriWriter.resume(
-          savePath: temporaryPath,
-        );
+        pendingWriter = await PendingUriWriter.resume(savePath: temporaryPath);
         if (pendingWriter != null &&
             !await MediaStoreFiles.exists(pendingWriter.uri)) {
           // The pending entry vanished (user deleted it in Files);
@@ -323,6 +333,9 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         cover: book.cover,
         extension: book.extension,
       );
+      // E3+F4: 完成通知（独立于进度通知的普通重要性渠道），点击直达
+      // 文件，副文本带当日剩余额度（best-effort，取不到就省略）。
+      unawaited(_notifyCompletedWithQuota(book, recordedPath));
       _updateTask(
         id,
         (t) => t.copyWith(
@@ -428,6 +441,54 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       }
       rethrow;
     }
+  }
+
+  /// E3+F4: 完成通知——先查一次当日剩余额度拼进副文本。额度查询
+  /// 失败不影响通知本身（降级为不带额度）。getProfile 的响应里
+  /// downloadsLeft 是"今日剩余次数"（与额度耗尽弹窗同一来源）。
+  Future<void> _notifyCompletedWithQuota(Book book, String recordedPath) async {
+    String detail = '下载完成';
+    try {
+      final profile = await _api.getProfile();
+      final left = profile.data?.downloadsLeft;
+      if (left != null) detail = '下载完成 · 今日剩余 $left 本';
+    } catch (error) {
+      logIgnored('download_completed_quota', error);
+    }
+    await DownloadForegroundService.notifyCompleted(
+      title: book.title,
+      uri: recordedPath,
+      mimeType: MediaStoreFiles.mimeTypeForExtension(book.extension),
+      detail: detail,
+    );
+  }
+
+  /// E1 仅 Wi-Fi 下载：开关打开且当前没有 Wi-Fi/以太网时返回 true
+  /// （移动数据 / 无网 / 其他计费连接都算）。探测失败放行——不能因
+  /// 为开关检查失败把下载挡死。
+  Future<bool> _wifiOnlyBlocked() async {
+    try {
+      if (HiveService.settingsBox.get('wifiOnlyDownloads') != true) {
+        return false;
+      }
+      final results = await Connectivity().checkConnectivity();
+      return !results.contains(ConnectivityResult.wifi) &&
+          !results.contains(ConnectivityResult.ethernet);
+    } catch (error) {
+      logIgnored('download_wifi_only', error);
+      return false;
+    }
+  }
+
+  /// E2 下载队列置顶：把 pending 任务挪到队列最前——slot 池里插队
+  /// （下一个空出的槽位给它）+ 状态列表里打 pinned 旗（展示排序里
+  /// pinned 的 pending 排在其他 pending 之前）。已在下载 / 不在队列
+  /// 的任务是无害 no-op。
+  void pinToTop(String id) {
+    final matches = state.where((t) => t.id == id && t.status == DownloadStatus.pending).toList();
+    if (matches.isEmpty) return;
+    _slotPool.prioritize(id);
+    _updateTask(id, (t) => t.copyWith(pinned: true));
   }
 
   /// Best-effort flush of a pending writer on pause (O6): the writer

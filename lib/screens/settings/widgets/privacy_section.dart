@@ -57,13 +57,11 @@ class _PrivacySectionState extends ConsumerState<PrivacySection> {
                       ? Icons.radio_button_checked_rounded
                       : Icons.radio_button_off_rounded,
                 ),
-                title: Text(
-                  switch (seconds) {
-                    0 => l10n.lockImmediately,
-                    60 => l10n.lockAfter1Min,
-                    _ => l10n.lockAfter5Min,
-                  },
-                ),
+                title: Text(switch (seconds) {
+                  0 => l10n.lockImmediately,
+                  60 => l10n.lockAfter1Min,
+                  _ => l10n.lockAfter5Min,
+                }),
                 onTap: () => Navigator.pop(sheetContext, seconds),
               ),
             const SizedBox(height: 8),
@@ -80,6 +78,7 @@ class _PrivacySectionState extends ConsumerState<PrivacySection> {
     final l10n = AppLocalizations.of(context)!;
     final enabled = ref.watch(appLockEnabledProvider);
     final timeoutSeconds = ref.watch(appLockTimeoutProvider);
+    final incognito = ref.watch(incognitoModeProvider);
     final cs = Theme.of(context).colorScheme;
 
     final timeoutLabel = switch (timeoutSeconds) {
@@ -91,9 +90,11 @@ class _PrivacySectionState extends ConsumerState<PrivacySection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // 区块头从「隐私锁」扩为「隐私」：本区现在收两件事——应用锁
+        // 和无痕模式，锁只是其一。
         SectionHeader(
           icon: Icons.lock_person_rounded,
-          title: l10n.privacyLock,
+          title: l10n.privacySettings,
         ),
         SettingsCard(
           child: Column(
@@ -102,9 +103,9 @@ class _PrivacySectionState extends ConsumerState<PrivacySection> {
                 title: Text(l10n.appLockEnable),
                 subtitle: Text(
                   l10n.appLockEnableDesc,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                 ),
                 value: enabled,
                 isThreeLine: true,
@@ -134,6 +135,27 @@ class _PrivacySectionState extends ConsumerState<PrivacySection> {
                   onTap: () => _pickTimeout(timeoutSeconds),
                 ),
             ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        // 无痕模式开关：provider（incognitoModeProvider）和五语言文案
+        // 早已就位、逻辑也一直生效（app_routes 不写浏览历史、
+        // search_screen 不存最近搜索），此前唯独缺这个设置页入口。
+        SettingsCard(
+          child: SwitchListTile(
+            title: Text(l10n.incognitoMode),
+            subtitle: Text(
+              l10n.incognitoModeDesc,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+            ),
+            value: incognito,
+            isThreeLine: true,
+            activeThumbColor: cs.primary,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            onChanged: (value) =>
+                ref.read(incognitoModeProvider.notifier).setEnabled(value),
           ),
         ),
       ],

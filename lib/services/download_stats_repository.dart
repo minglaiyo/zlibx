@@ -41,10 +41,10 @@ class DownloadStatsRepository {
   /// then keeps the original challenge error instead of reading the
   /// wrong page as an empty history. A genuine dstats document with no
   /// rows (empty history) parses to an empty list.
-  List<Book>? parsePage(String html) {
+  Future<List<Book>?> parsePage(String html) async {
     const markers = ['dstats-row', 'dstats-content', 'dstats-form'];
     if (!markers.any(html.contains)) return null;
-    return parseDownloadStatsPage(html);
+    return parseDownloadStatsPageH(html);
   }
 
   /// Fetches [url] through the WebView solver and returns the real page
@@ -60,8 +60,7 @@ class DownloadStatsRepository {
     String? userId,
     String? userKey,
   }) async {
-    final hasSession =
-        userId != null && userKey != null && userKey.isNotEmpty;
+    final hasSession = userId != null && userKey != null && userKey.isNotEmpty;
     if (hasSession) {
       await installSessionCookies(
         userId: userId,
@@ -95,8 +94,7 @@ class DownloadStatsRepository {
     String? userId,
     String? userKey,
   }) async {
-    final hasSession =
-        userId != null && userKey != null && userKey.isNotEmpty;
+    final hasSession = userId != null && userKey != null && userKey.isNotEmpty;
     if (hasSession) {
       await installSessionCookies(
         userId: userId,

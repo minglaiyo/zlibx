@@ -159,3 +159,11 @@ String _normalizeLabel(String text) {
   }
   return label.trim();
 }
+
+/// Injectable Rust parse hook (phase 3). The host app sets this to a
+/// flutter_rust_bridge-backed implementation returning the SAME
+/// [BookDetailMetadata] model; when null (default) the Dart
+/// implementation above is used as the fallback. Behavior must be
+/// identical either way — test/parsers/book_detail_metadata_test.dart
+/// is the contract for both.
+Future<BookDetailMetadata> Function(String html)? bookDetailParseOverride;

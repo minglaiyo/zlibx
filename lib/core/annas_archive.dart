@@ -64,16 +64,26 @@ class ArchiveParsing {
   // Compiled once: cleanText runs for every title/author/publisher of
   // every search-result row — re-building six RegExp instances per call
   // was pure overhead on the hottest parsing path.
-  static final RegExp _reEmojiBlock =
-      RegExp(r'[\u{1F300}-\u{1F9FF}]', unicode: true);
-  static final RegExp _reMiscSymbols =
-      RegExp(r'[\u{2600}-\u{26FF}]', unicode: true);
-  static final RegExp _reDingbats =
-      RegExp(r'[\u{2700}-\u{27BF}]', unicode: true);
-  static final RegExp _reEmoticons =
-      RegExp(r'[\u{1F600}-\u{1F64F}]', unicode: true);
-  static final RegExp _reTransport =
-      RegExp(r'[\u{1F680}-\u{1F6FF}]', unicode: true);
+  static final RegExp _reEmojiBlock = RegExp(
+    r'[\u{1F300}-\u{1F9FF}]',
+    unicode: true,
+  );
+  static final RegExp _reMiscSymbols = RegExp(
+    r'[\u{2600}-\u{26FF}]',
+    unicode: true,
+  );
+  static final RegExp _reDingbats = RegExp(
+    r'[\u{2700}-\u{27BF}]',
+    unicode: true,
+  );
+  static final RegExp _reEmoticons = RegExp(
+    r'[\u{1F600}-\u{1F64F}]',
+    unicode: true,
+  );
+  static final RegExp _reTransport = RegExp(
+    r'[\u{1F680}-\u{1F6FF}]',
+    unicode: true,
+  );
   static final RegExp _reWhitespace = RegExp(r'\s+');
 
   /// Removes emoji/icon noise and collapses whitespace.
@@ -94,8 +104,20 @@ class ArchiveParsing {
   /// real format token. Unknown formats fall back to `epub` (unchanged
   /// from the previous behavior for unrecognized entries).
   static const List<String> _knownFormats = [
-    'pdf', 'epub', 'mobi', 'azw3', 'fb2', 'djvu', 'cbz', 'cbr',
-    'txt', 'rtf', 'doc', 'docx', 'lit', 'chm',
+    'pdf',
+    'epub',
+    'mobi',
+    'azw3',
+    'fb2',
+    'djvu',
+    'cbz',
+    'cbr',
+    'txt',
+    'rtf',
+    'doc',
+    'docx',
+    'lit',
+    'chm',
   ];
 
   /// Detects the book format from the info line, defaulting to `epub`.
@@ -175,19 +197,22 @@ class ArchiveParsing {
   }) {
     final fieldTerms = StringBuffer();
     if (author.trim().isNotEmpty) {
-      fieldTerms
-          .write('author:%22${Uri.encodeQueryComponent(author.trim())}%22 ');
+      fieldTerms.write(
+        'author:%22${Uri.encodeQueryComponent(author.trim())}%22 ',
+      );
     }
     if (publisher.trim().isNotEmpty) {
       fieldTerms.write(
-          'publisher:%22${Uri.encodeQueryComponent(publisher.trim())}%22 ');
+        'publisher:%22${Uri.encodeQueryComponent(publisher.trim())}%22 ',
+      );
     }
     final encodedQuery =
         '${fieldTerms.toString()}${Uri.encodeQueryComponent(query.trim())}';
 
     final hasYearRange =
         (yearFrom?.isNotEmpty ?? false) || (yearTo?.isNotEmpty ?? false);
-    final filters = enableFilters ??
+    final filters =
+        enableFilters ??
         (content.isNotEmpty ||
             sort.isNotEmpty ||
             fileType.isNotEmpty ||
@@ -258,8 +283,9 @@ class ArchiveParsing {
 
     final books = <ArchiveBook>[];
     for (final container in containers) {
-      final mainLink =
-          container.querySelector('a.line-clamp-\\[3\\].js-vim-focus');
+      final mainLink = container.querySelector(
+        'a.line-clamp-\\[3\\].js-vim-focus',
+      );
       final md5Link = container.querySelector('a[href*="/md5/"]');
       final linkElement = mainLink ?? md5Link;
       final thumbnailElement = container.querySelector('a[href*="/md5/"] img');
@@ -287,26 +313,29 @@ class ArchiveParsing {
       final author = authorRaw == null
           ? null
           : (authorRaw.contains('icon-')
-              ? cleanText(authorRaw.split(' ').skip(1).join(' ').trim())
-              : cleanText(authorRaw));
+                ? cleanText(authorRaw.split(' ').skip(1).join(' ').trim())
+                : cleanText(authorRaw));
       final publisherRaw = publisherElement?.text.trim();
       final publisher = publisherRaw != null ? cleanText(publisherRaw) : null;
 
       final info = visibleText(container.querySelector('div.text-gray-800'));
 
-      final matchesType = fileType.isEmpty ||
+      final matchesType =
+          fileType.isEmpty ||
           info.toLowerCase().contains(fileType.toLowerCase());
       if (!matchesType) continue;
 
-      books.add(ArchiveBook(
-        title: title,
-        author: author?.isEmpty == true ? 'unknown' : author,
-        thumbnail: thumbnail,
-        link: resolveUrl(baseUrl, href),
-        md5: md5,
-        publisher: publisher?.isEmpty == true ? 'unknown' : publisher,
-        info: info,
-      ));
+      books.add(
+        ArchiveBook(
+          title: title,
+          author: author?.isEmpty == true ? 'unknown' : author,
+          thumbnail: thumbnail,
+          link: resolveUrl(baseUrl, href),
+          md5: md5,
+          publisher: publisher?.isEmpty == true ? 'unknown' : publisher,
+          info: info,
+        ),
+      );
     }
     return books;
   }
@@ -326,10 +355,12 @@ class ArchiveParsing {
     if (titleElement == null) return null;
 
     String? slowDownload;
-    final slowLinks =
-        main.querySelectorAll('ul.list-inside a[href*="/slow_download/"]');
-    final slowHref =
-        slowLinks.isEmpty ? null : slowLinks.first.attributes['href'];
+    final slowLinks = main.querySelectorAll(
+      'ul.list-inside a[href*="/slow_download/"]',
+    );
+    final slowHref = slowLinks.isEmpty
+        ? null
+        : slowLinks.first.attributes['href'];
     if (slowHref != null && slowHref.isNotEmpty) {
       slowDownload = resolveUrl(baseUrl, slowHref);
     }
@@ -346,7 +377,8 @@ class ArchiveParsing {
 
     dom.Element? descriptionElement;
     final descriptionLabel = main.querySelector(
-        'div.js-md5-top-box-description div.text-xs.text-gray-500.uppercase');
+      'div.js-md5-top-box-description div.text-xs.text-gray-500.uppercase',
+    );
     if (descriptionLabel?.text.trim().toLowerCase() == 'description') {
       descriptionElement = descriptionLabel?.nextElementSibling;
     }
@@ -381,10 +413,10 @@ class ArchiveParsing {
     final lower = body.toLowerCase();
     if (lower.isEmpty) return false;
 
-    final title = RegExp(r'<title[^>]*>([^<]*)</title>')
-            .firstMatch(lower)
-            ?.group(1)
-            ?.trim() ??
+    final title =
+        RegExp(
+          r'<title[^>]*>([^<]*)</title>',
+        ).firstMatch(lower)?.group(1)?.trim() ??
         '';
     const challengeTitles = [
       'just a moment',
@@ -421,10 +453,11 @@ class ArchiveParsing {
   /// True when [html] is an Anna's Archive page rather than an unrelated
   /// site that happens to share the mirror host.
   static bool isArchivePage(String html) {
-    final title = RegExp(r'<title[^>]*>([^<]*)</title>', caseSensitive: false)
-            .firstMatch(html)
-            ?.group(1)
-            ?.toLowerCase() ??
+    final title =
+        RegExp(
+          r'<title[^>]*>([^<]*)</title>',
+          caseSensitive: false,
+        ).firstMatch(html)?.group(1)?.toLowerCase() ??
         '';
     return title.contains('anna') && title.contains('archive');
   }
@@ -435,11 +468,55 @@ class ArchiveParsing {
     // Class-combining selector (order-insensitive) first; the exact
     // attribute match stays as a fallback in case the site renders an
     // additional class in between.
-    final paragraph = document.querySelector('p.mb-4.text-xl.font-bold') ??
+    final paragraph =
+        document.querySelector('p.mb-4.text-xl.font-bold') ??
         document.querySelector('p[class="mb-4 text-xl font-bold"]');
     final href = paragraph?.querySelector('a')?.attributes['href'];
     if (href == null || href.isEmpty) return null;
     if (pageUrl.isEmpty) return href;
     return resolveRelative(href, pageUrl);
   }
+
+  // ────────────────────────────────────────────────────────────────
+  // Phase 4: injectable Rust parse hooks. The host app sets these to
+  // flutter_rust_bridge-backed implementations returning the SAME
+  // models; when null (default) the Dart implementations above are
+  // used as the fallback. Behavior must be identical either way —
+  // test/parsers/anna_parsing_test.dart is the contract for both.
+  // Only the two heavy HTML parsers are hooked; the light string/URL
+  // helpers stay Dart (their cost is microseconds, below the FFI
+  // round-trip).
+  // ────────────────────────────────────────────────────────────────
+  static Future<List<ArchiveBook>> Function(
+    String html,
+    String baseUrl,
+    String fileType,
+  )?
+  searchResultsParseOverride;
+  static Future<ArchiveBookDetails?> Function(
+    String html,
+    String url,
+    String baseUrl,
+  )?
+  bookDetailsParseOverride;
+
+  /// Hook-aware entry: Rust bridge when injected, Dart fallback
+  /// otherwise. Call sites route through this instead of
+  /// [parseSearchResults] directly.
+  static Future<List<ArchiveBook>> parseSearchResultsH(
+    String html, {
+    required String baseUrl,
+    String fileType = '',
+  }) async => searchResultsParseOverride != null
+      ? await searchResultsParseOverride!(html, baseUrl, fileType)
+      : parseSearchResults(html, baseUrl: baseUrl, fileType: fileType);
+
+  /// Hook-aware entry. Mirrors [parseSearchResultsH].
+  static Future<ArchiveBookDetails?> parseBookDetailsH(
+    String html, {
+    required String url,
+    required String baseUrl,
+  }) async => bookDetailsParseOverride != null
+      ? await bookDetailsParseOverride!(html, url, baseUrl)
+      : parseBookDetails(html, url: url, baseUrl: baseUrl);
 }

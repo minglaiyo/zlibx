@@ -14,7 +14,11 @@ class LanguageSection extends ConsumerWidget {
   static const allLanguages = {
     'en': {'flag': '🇺🇸', 'native': 'English', 'english': 'English'},
     'zh': {'flag': '🇨🇳', 'native': '简体中文', 'english': 'Simplified Chinese'},
-    'zh_Hant': {'flag': '🇹🇼', 'native': '繁體中文', 'english': 'Traditional Chinese'},
+    'zh_Hant': {
+      'flag': '🇹🇼',
+      'native': '繁體中文',
+      'english': 'Traditional Chinese',
+    },
     'ja': {'flag': '🇯🇵', 'native': '日本語', 'english': 'Japanese'},
     'ko': {'flag': '🇰🇷', 'native': '한국어', 'english': 'Korean'},
   };
@@ -31,10 +35,8 @@ class LanguageSection extends ConsumerWidget {
         SettingsCard(
           child: ListTile(
             leading: const Icon(Icons.language_rounded),
-            title: Text(
-                AppLocalizations.of(context)!.languageSetting),
-            subtitle: Text(
-                _getLanguageDisplayName(ref.watch(localeProvider))),
+            title: Text(AppLocalizations.of(context)!.languageSetting),
+            subtitle: Text(_getLanguageDisplayName(ref.watch(localeProvider))),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showLanguageDialog(context, ref),
           ),
@@ -56,78 +58,75 @@ class LanguageSection extends ConsumerWidget {
         ? locale_utils.getLocaleKey(currentLocale)
         : null;
 
-    unawaited(showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) =>
-          DraggableScrollableSheet(
-            initialChildSize: 0.6,
-            minChildSize: 0.4,
-            maxChildSize: 0.9,
-            expand: false,
-            builder: (context, scrollController) =>
-                Column(
+    unawaited(
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (context) => DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) => Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  AppLocalizations.of(context)!.languageSetting,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
                   children: [
-                    // Handle bar
-                    Container(
-                      margin: const EdgeInsets.only(top: 12),
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.outlineVariant,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        AppLocalizations.of(context)!.languageSetting,
-                        style: Theme
-                            .of(context)
-                            .textTheme
-                            .titleLarge
-                            ?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                    // System option
+                    _buildLanguageOption(
+                      context: context,
+                      ref: ref,
+                      key: null,
+                      flag: '🌐',
+                      native: 'System',
+                      english: AppLocalizations.of(context)!.followDevice,
+                      isSelected: currentKey == null,
                     ),
                     const Divider(height: 1),
-                    Expanded(
-                      child: ListView(
-                        controller: scrollController,
-                        children: [
-                          // System option
-                          _buildLanguageOption(
-                            context: context,
-                            ref: ref,
-                            key: null,
-                            flag: '🌐',
-                            native: 'System',
-                            english: AppLocalizations.of(context)!.followDevice,
-                            isSelected: currentKey == null,
-                          ),
-                          const Divider(height: 1),
-                          // All languages
-                          ...allLanguages.entries.map((entry) =>
-                              _buildLanguageOption(
-                                context: context,
-                                ref: ref,
-                                key: entry.key,
-                                flag: entry.value['flag']!,
-                                native: entry.value['native']!,
-                                english: entry.value['english']!,
-                                isSelected: currentKey == entry.key,
-                              )),
-                        ],
+                    // All languages
+                    ...allLanguages.entries.map(
+                      (entry) => _buildLanguageOption(
+                        context: context,
+                        ref: ref,
+                        key: entry.key,
+                        flag: entry.value['flag']!,
+                        native: entry.value['native']!,
+                        english: entry.value['english']!,
+                        isSelected: currentKey == entry.key,
                       ),
                     ),
                   ],
                 ),
+              ),
+            ],
           ),
-    ));
+        ),
+      ),
+    );
   }
 
   Widget _buildLanguageOption({
@@ -144,19 +143,21 @@ class LanguageSection extends ConsumerWidget {
       title: Text(native, style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Text(
         english,
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
       trailing: isSelected
-          ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary)
+          ? Icon(
+              Icons.check_circle,
+              color: Theme.of(context).colorScheme.primary,
+            )
           : null,
       onTap: () {
         if (key == null) {
           ref.read(localeProvider.notifier).setLocale(null);
         } else {
-          ref.read(localeProvider.notifier).setLocale(
-              locale_utils.parseLocaleKey(key));
+          ref
+              .read(localeProvider.notifier)
+              .setLocale(locale_utils.parseLocaleKey(key));
         }
         Navigator.pop(context);
       },

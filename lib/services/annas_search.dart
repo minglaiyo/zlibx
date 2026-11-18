@@ -6,15 +6,25 @@ mixin _AnnasSearchMixin on _AnnasClientMixin {
   // --------------------------------------------------------------------
   // _parser FUNCTION (Search Results - Fixed nth-of-type issue)
   // --------------------------------------------------------------------
-  List<BookData> _parser(
-      dynamic resData, String fileType, String currentBaseUrl) {
-    final parsed = ArchiveParsing.parseSearchResults(
+  // Async since phase 4: the parse routes through the Rust bridge when
+  // injected (the Dart implementation stays as the fallback). All five
+  // call sites already run in async contexts, so the Future wrapper is
+  // behavior-neutral.
+  Future<List<BookData>> _parser(
+    dynamic resData,
+    String fileType,
+    String currentBaseUrl,
+  ) async {
+    final parsed = await ArchiveParsing.parseSearchResultsH(
       resData.toString(),
       baseUrl: currentBaseUrl,
       fileType: fileType,
     );
-    _logger.info('Parser completed',
-        tag: 'AnnasArchive', metadata: {'booksFound': parsed.length});
+    _logger.info(
+      'Parser completed',
+      tag: 'AnnasArchive',
+      metadata: {'booksFound': parsed.length},
+    );
     return [
       for (final book in parsed)
         BookData(
@@ -34,18 +44,19 @@ mixin _AnnasSearchMixin on _AnnasClientMixin {
     ];
   }
 
-  String urlEncoder(
-      {required String searchQuery,
-      required String content,
-      required String sort,
-      required String fileType,
-      required String language,
-      required String year,
-      String author = "",
-      String publisher = "",
-      required bool enableFilters,
-      required String currentBaseUrl,
-      int page = 1}) {
+  String urlEncoder({
+    required String searchQuery,
+    required String content,
+    required String sort,
+    required String fileType,
+    required String language,
+    required String year,
+    String author = "",
+    String publisher = "",
+    required bool enableFilters,
+    required String currentBaseUrl,
+    int page = 1,
+  }) {
     return ArchiveParsing.buildSearchUrl(
       baseUrl: currentBaseUrl,
       query: searchQuery,
@@ -78,8 +89,7 @@ mixin _AnnasSearchMixin on _AnnasClientMixin {
     required bool enableFilters,
     required int page,
   }) async {
-    final urls =
-        await _instanceManager.enabledUrls(MirrorService.annasArchive);
+    final urls = await _instanceManager.enabledUrls(MirrorService.annasArchive);
     if (urls.isEmpty) return null;
     final baseUrl = urls.first;
     final targetUrl = urlEncoder(
@@ -100,44 +110,58 @@ mixin _AnnasSearchMixin on _AnnasClientMixin {
     // cache first; skipping Dio must not lose the instant repeat search.)
     final cached = _usableCachedHtml(targetUrl);
     if (cached != null) {
-      _logger.info('Using cached challenge HTML for search',
-          tag: 'AnnasArchive', metadata: {'url': targetUrl});
-      return _parser(cached, fileType, baseUrl);
+      _logger.info(
+        'Using cached challenge HTML for search',
+        tag: 'AnnasArchive',
+        metadata: {'url': targetUrl},
+      );
+      return await _parser(cached, fileType, baseUrl);
     }
-    _logger.info('All mirrors timed out, solving search URL in WebView',
-        tag: 'AnnasArchive', metadata: {'url': targetUrl});
-    final html =
-        await WebviewChallengeSolver.fetchHtmlAfterChallenge(targetUrl);
+    _logger.info(
+      'All mirrors timed out, solving search URL in WebView',
+      tag: 'AnnasArchive',
+      metadata: {'url': targetUrl},
+    );
+    final html = await WebviewChallengeSolver.fetchHtmlAfterChallenge(
+      targetUrl,
+    );
     if (html == null || html.length <= AnnasArchieve.minUsableHtmlLength) {
-      _logger.warning('WebView solve returned no usable HTML for search',
-          tag: 'AnnasArchive');
+      _logger.warning(
+        'WebView solve returned no usable HTML for search',
+        tag: 'AnnasArchive',
+      );
       return null;
     }
-    return _parser(html, fileType, baseUrl);
+    return await _parser(html, fileType, baseUrl);
   }
 
-  Future<List<BookData>> searchBooks(
-      {required String searchQuery,
-      String content = "",
-      String sort = "",
-      String fileType = "",
-      String language = "",
-      String year = "",
-      String author = "",
-      String publisher = "",
-      bool enableFilters = true,
-      int page = 1}) async {
-    _logger.info('Searching books', tag: 'AnnasArchive', metadata: {
-      'query': searchQuery,
-      'content': content,
-      'sort': sort,
-      'fileType': fileType,
-      'language': language,
-      'year': year,
-      'author': author,
-      'publisher': publisher,
-      'filtersEnabled': enableFilters,
-    });
+  Future<List<BookData>> searchBooks({
+    required String searchQuery,
+    String content = "",
+    String sort = "",
+    String fileType = "",
+    String language = "",
+    String year = "",
+    String author = "",
+    String publisher = "",
+    bool enableFilters = true,
+    int page = 1,
+  }) async {
+    _logger.info(
+      'Searching books',
+      tag: 'AnnasArchive',
+      metadata: {
+        'query': searchQuery,
+        'content': content,
+        'sort': sort,
+        'fileType': fileType,
+        'language': language,
+        'year': year,
+        'author': author,
+        'publisher': publisher,
+        'filtersEnabled': enableFilters,
+      },
+    );
 
     // Fast path: every enabled mirror is protected, so Dio cannot
     // succeed — skip the timed-out Dio phase and solve the first
@@ -164,8 +188,11 @@ mixin _AnnasSearchMixin on _AnnasClientMixin {
         );
         if (solved != null) return solved;
       } catch (e) {
-        _logger.error('WebView pre-solve failed',
-            tag: 'AnnasArchive', error: e.toString());
+        _logger.error(
+          'WebView pre-solve failed',
+          tag: 'AnnasArchive',
+          error: e.toString(),
+        );
       }
       throw await _handleErrorAsync(
         TimeoutException('All mirrors protected and WebView solve failed'),
@@ -173,48 +200,64 @@ mixin _AnnasSearchMixin on _AnnasClientMixin {
     }
 
     try {
-      final books =
-          await _requestWithRetry<List<BookData>>((currentBaseUrl, cancelToken) async {
+      final books = await _requestWithRetry<List<BookData>>((
+        currentBaseUrl,
+        cancelToken,
+      ) async {
         final String encodedURL = urlEncoder(
-            searchQuery: searchQuery,
-            content: content,
-            sort: sort,
-            fileType: fileType,
-            language: language,
-            year: year,
-            author: author,
-            publisher: publisher,
-            enableFilters: enableFilters,
-            currentBaseUrl: currentBaseUrl,
-            page: page);
+          searchQuery: searchQuery,
+          content: content,
+          sort: sort,
+          fileType: fileType,
+          language: language,
+          year: year,
+          author: author,
+          publisher: publisher,
+          enableFilters: enableFilters,
+          currentBaseUrl: currentBaseUrl,
+          page: page,
+        );
 
         // If the challenge solver already captured this page in a browser,
         // use it directly - Dio can never pass the challenge itself.
         // _usableCachedHtml rejects stale challenge interstitials.
         final cached = _usableCachedHtml(encodedURL);
         if (cached != null) {
-          _logger.info('Using cached challenge HTML for search',
-              tag: 'AnnasArchive', metadata: {'url': encodedURL});
-          return _parser(cached, fileType, currentBaseUrl);
+          _logger.info(
+            'Using cached challenge HTML for search',
+            tag: 'AnnasArchive',
+            metadata: {'url': encodedURL},
+          );
+          return await _parser(cached, fileType, currentBaseUrl);
         }
 
-        _logger.debug('Fetching search results',
-            tag: 'AnnasArchive', metadata: {'url': encodedURL});
-        final response =
-            await _makeRequest(encodedURL, cancelToken: cancelToken);
+        _logger.debug(
+          'Fetching search results',
+          tag: 'AnnasArchive',
+          metadata: {'url': encodedURL},
+        );
+        final response = await _makeRequest(
+          encodedURL,
+          cancelToken: cancelToken,
+        );
 
         // Log response details for debugging
-        _logger
-            .debug('Search response received', tag: 'AnnasArchive', metadata: {
-          'statusCode': response.statusCode,
-          'contentType': response.headers.value('content-type'),
-          'responseLength': response.data?.toString().length ?? 0,
-        });
+        _logger.debug(
+          'Search response received',
+          tag: 'AnnasArchive',
+          metadata: {
+            'statusCode': response.statusCode,
+            'contentType': response.headers.value('content-type'),
+            'responseLength': response.data?.toString().length ?? 0,
+          },
+        );
 
         // Check for Cloudflare block in the response
         if (_isChallengeResponse(response)) {
-          _logger.warning('Cloudflare/DDoS block detected in search response',
-              tag: 'AnnasArchive');
+          _logger.warning(
+            'Cloudflare/DDoS block detected in search response',
+            tag: 'AnnasArchive',
+          );
           throw NetworkError(
             type: NetworkErrorType.cloudflareBlock,
             userMessage: "Access blocked by DDoS protection",
@@ -237,17 +280,23 @@ mixin _AnnasSearchMixin on _AnnasClientMixin {
         // books and the walk stops, reporting "no results" while the
         // mirrors that would have answered are never tried.
         if (!_isAnnasArchivePage(response.data.toString())) {
-          _logger.warning('Mirror did not serve an Anna\'s Archive page',
-              tag: 'AnnasArchive',
-              metadata: {'url': encodedURL, 'mirror': currentBaseUrl});
+          _logger.warning(
+            'Mirror did not serve an Anna\'s Archive page',
+            tag: 'AnnasArchive',
+            metadata: {'url': encodedURL, 'mirror': currentBaseUrl},
+          );
           throw Exception(
-              'Mirror $currentBaseUrl did not serve an Anna\'s Archive page');
+            'Mirror $currentBaseUrl did not serve an Anna\'s Archive page',
+          );
         }
-        return _parser(response.data, fileType, currentBaseUrl);
+        return await _parser(response.data, fileType, currentBaseUrl);
       });
 
-      _logger.info('Search completed',
-          tag: 'AnnasArchive', metadata: {'results': books.length});
+      _logger.info(
+        'Search completed',
+        tag: 'AnnasArchive',
+        metadata: {'results': books.length},
+      );
       return books;
     } on NetworkError catch (networkErr) {
       // All mirrors are challenge-blocked. Let a real browser solve the
@@ -256,32 +305,41 @@ mixin _AnnasSearchMixin on _AnnasClientMixin {
       if (networkErr.type == NetworkErrorType.cloudflareBlock &&
           WebviewChallengeSolver.isSupported &&
           networkErr.blockedUrl != null) {
-        _logger.info('Attempting automatic challenge solve via webview',
-            tag: 'AnnasArchive');
+        _logger.info(
+          'Attempting automatic challenge solve via webview',
+          tag: 'AnnasArchive',
+        );
 
         try {
           final html = await WebviewChallengeSolver.fetchHtmlAfterChallenge(
-              networkErr.blockedUrl!);
+            networkErr.blockedUrl!,
+          );
           if (html != null && html.length > AnnasArchieve.minUsableHtmlLength) {
-            _logger.info('Challenge solved, parsing results from webview HTML',
-                tag: 'AnnasArchive');
+            _logger.info(
+              'Challenge solved, parsing results from webview HTML',
+              tag: 'AnnasArchive',
+            );
             // Uri.parse(...).origin throws on non-http(s) schemes, and the
             // solver itself can fail: a crash here must escape as the
             // original NetworkError, not as a bare StateError that
             // violates the "searchBooks only throws NetworkError"
             // contract.
             final currentBaseUrl = Uri.parse(networkErr.blockedUrl!).origin;
-            return _parser(html, fileType, currentBaseUrl);
+            return await _parser(html, fileType, currentBaseUrl);
           } else {
-            _logger.warning('Webview solver returned no usable HTML',
-                tag: 'AnnasArchive');
+            _logger.warning(
+              'Webview solver returned no usable HTML',
+              tag: 'AnnasArchive',
+            );
           }
         } catch (solveError, solveStack) {
-          _logger.error('Challenge solve crashed; reporting the original '
-              'block instead',
-          tag: 'AnnasArchive',
-          error: solveError,
-          stackTrace: solveStack);
+          _logger.error(
+            'Challenge solve crashed; reporting the original '
+            'block instead',
+            tag: 'AnnasArchive',
+            error: solveError,
+            stackTrace: solveStack,
+          );
         }
       }
       // Dio never got a response at all: every mirror timed out (DDoS-Guard
@@ -308,23 +366,33 @@ mixin _AnnasSearchMixin on _AnnasClientMixin {
           );
           if (solved != null) return solved;
         } catch (solveError, solveStack) {
-          _logger.error('WebView search fallback crashed; rethrowing the '
-              'original network error',
-          tag: 'AnnasArchive',
-          error: solveError,
-          stackTrace: solveStack);
+          _logger.error(
+            'WebView search fallback crashed; rethrowing the '
+            'original network error',
+            tag: 'AnnasArchive',
+            error: solveError,
+            stackTrace: solveStack,
+          );
         }
       }
       // Re-throw NetworkError as-is for UI to handle if solver failed or unavailable
       rethrow;
     } on DioException catch (e) {
-      _logger.error('Search failed',
-          tag: 'AnnasArchive', error: e.message ?? e.error);
-      throw await _handleErrorAsync(e,
-          responseBody: e.response?.data?.toString());
+      _logger.error(
+        'Search failed',
+        tag: 'AnnasArchive',
+        error: e.message ?? e.error,
+      );
+      throw await _handleErrorAsync(
+        e,
+        responseBody: e.response?.data?.toString(),
+      );
     } catch (e) {
-      _logger.error('Unexpected search error',
-          tag: 'AnnasArchive', error: e.toString());
+      _logger.error(
+        'Unexpected search error',
+        tag: 'AnnasArchive',
+        error: e.toString(),
+      );
       throw await _handleErrorAsync(e);
     }
   }

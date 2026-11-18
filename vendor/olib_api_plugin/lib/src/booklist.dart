@@ -443,3 +443,43 @@ String _resolveCardUrl(String raw, String baseUrl) {
   if (raw.startsWith('/')) return '$baseUrl$raw';
   return raw;
 }
+
+/// Injectable Rust parse hooks (phase 3). The host app sets these to
+/// flutter_rust_bridge-backed implementations returning the SAME
+/// models; when null (default) the Dart implementations above are
+/// used as the fallback. Behavior must be identical either way —
+/// test/parsers/booklist_*.dart and user_profile_booklists_test.dart
+/// are the contracts for both.
+Future<BooklistsPage> Function(String html, String baseUrl)?
+    booklistsPageParseOverride;
+Future<List<Booklist>> Function(String html, String baseUrl)?
+    userProfileBooklistsParseOverride;
+Future<List<Book>> Function(String html, String? baseUrl)?
+    booklistDetailBooksParseOverride;
+
+/// Hook-aware entries: Rust bridge when injected, Dart fallback
+/// otherwise. All call sites route through these (the Future wrapper
+/// is behavior-neutral — every caller already runs in async contexts).
+Future<BooklistsPage> parseBooklistsPageH(
+  String html, {
+  required String baseUrl,
+}) async =>
+    booklistsPageParseOverride != null
+        ? await booklistsPageParseOverride!(html, baseUrl)
+        : parseBooklistsPage(html, baseUrl: baseUrl);
+
+Future<List<Booklist>> parseUserProfileBooklistsH(
+  String html, {
+  required String baseUrl,
+}) async =>
+    userProfileBooklistsParseOverride != null
+        ? await userProfileBooklistsParseOverride!(html, baseUrl)
+        : parseUserProfileBooklists(html, baseUrl: baseUrl);
+
+Future<List<Book>> parseBooklistDetailBooksH(
+  String html, {
+  String? baseUrl,
+}) async =>
+    booklistDetailBooksParseOverride != null
+        ? await booklistDetailBooksParseOverride!(html, baseUrl)
+        : parseBooklistDetailBooks(html, baseUrl: baseUrl);

@@ -65,7 +65,7 @@ class BookDetailPageRepository {
       timeout: solverTimeout,
     );
     if (html == null) return first;
-    final parsed = parsePage(html, baseUrl: Uri.parse(url).origin);
+    final parsed = await parsePage(html, baseUrl: Uri.parse(url).origin);
     if (parsed == null) return first;
     return ApiResponse.ok(parsed);
   }
@@ -87,10 +87,19 @@ class BookDetailPageRepository {
   /// failure. A page with no `bookDetailsBox` is not a book page at
   /// all (the solver most likely landed on the wall or an error
   /// page) — also null.
-  BookDetailExtras? parsePage(String html, {required String baseUrl}) {
+  /// Async since phase 3: with the host's `bookDetailParseOverride`
+  /// injected, the parse runs through the Rust bridge (a Future); the
+  /// Dart implementation stays as the synchronous fallback.
+  Future<BookDetailExtras?> parsePage(
+    String html, {
+    required String baseUrl,
+  }) async {
     if (!html.contains('bookDetailsBox')) return null;
     try {
-      return BookDetailExtras(metadata: parseBookDetailProperties(html));
+      final metadata = bookDetailParseOverride != null
+          ? await bookDetailParseOverride!(html)
+          : parseBookDetailProperties(html);
+      return BookDetailExtras(metadata: metadata);
     } catch (_) {
       return null;
     }

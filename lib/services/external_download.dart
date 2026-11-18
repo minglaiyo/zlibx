@@ -77,10 +77,7 @@ Future<void> _migrateAnnasDonationKeyFromHive() {
     try {
       final value = HiveService.settingsBox.get(annasDonationKeyHiveKey);
       if (value is String && value.trim().isNotEmpty) {
-        await SecureStorage.write(
-          annasDonationKeySecureKey,
-          value.trim(),
-        );
+        await SecureStorage.write(annasDonationKeySecureKey, value.trim());
       }
       await HiveService.settingsBox.delete(annasDonationKeyHiveKey);
     } catch (error) {
@@ -163,9 +160,7 @@ Future<DownloadTarget> resolveExternalDownload(BookInfoData info) async {
   final mirror = info.mirror;
 
   // Route 1 — LibGen get.php is already a direct download URL.
-  if (mirror != null &&
-      mirror.isNotEmpty &&
-      mirror.contains('/get.php?')) {
+  if (mirror != null && mirror.isNotEmpty && mirror.contains('/get.php?')) {
     return chooseDownloadTarget(url: mirror, fast: true);
   }
 
@@ -173,18 +168,23 @@ Future<DownloadTarget> resolveExternalDownload(BookInfoData info) async {
   // when a mirror is reachable by plain Dio (see the header comment).
   final donationKey = await readAnnasDonationKey();
   if (donationKey.isNotEmpty) {
-    final hasOpen = await InstanceManager()
-        .hasUnprotectedMirror(MirrorService.annasArchive);
+    final hasOpen = await InstanceManager().hasUnprotectedMirror(
+      MirrorService.annasArchive,
+    );
     if (hasOpen) {
       try {
-        final fastLink =
-            await _sharedAnnas.getFastDownloadUrl(info.md5, donationKey);
+        final fastLink = await _sharedAnnas.getFastDownloadUrl(
+          info.md5,
+          donationKey,
+        );
         if (fastLink != null && fastLink.isNotEmpty) {
           return chooseDownloadTarget(url: fastLink, fast: true);
         }
       } catch (e) {
-        logger.debug('Fast download lookup failed, falling back to slow',
-            tag: 'ExternalDownload');
+        logger.debug(
+          'Fast download lookup failed, falling back to slow',
+          tag: 'ExternalDownload',
+        );
       }
     }
   }
@@ -199,8 +199,11 @@ Future<DownloadTarget> resolveExternalDownload(BookInfoData info) async {
         return chooseDownloadTarget(url: mirrors.first, fast: false);
       }
     } catch (e) {
-      logger.debug('MirrorFetcher slow-link extraction failed, trying '
-          'plain-HTML fallback', tag: 'ExternalDownload');
+      logger.debug(
+        'MirrorFetcher slow-link extraction failed, trying '
+        'plain-HTML fallback',
+        tag: 'ExternalDownload',
+      );
     }
 
     // Route 4 — plain Dio GET on the slow page (unprotected mirrors

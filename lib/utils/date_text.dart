@@ -19,7 +19,8 @@ String formatViewedAt(DateTime date, {DateTime? now}) {
   final time =
       '${date.hour.toString().padLeft(2, '0')}:'
       '${date.minute.toString().padLeft(2, '0')}';
-  final day = '${date.month.toString().padLeft(2, '0')}-'
+  final day =
+      '${date.month.toString().padLeft(2, '0')}-'
       '${date.day.toString().padLeft(2, '0')}';
   return date.year == ref.year ? '$day $time' : '${date.year}-$day $time';
 }

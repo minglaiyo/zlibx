@@ -16,12 +16,7 @@ import '../../../l10n/generated/app_localizations.dart';
 /// domain-selector idiom (current pick marked with a primary
 /// `check_circle`).
 /// One flat row of the category picker list.
-typedef _PickerEntry = ({
-  int id,
-  String name,
-  String? parentName,
-  bool isTop,
-});
+typedef _PickerEntry = ({int id, String name, String? parentName, bool isTop});
 
 class CategoryPickerDialog extends StatefulWidget {
   const CategoryPickerDialog({
@@ -116,17 +111,15 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
     final cs = Theme.of(context).colorScheme;
     final locale = Localizations.localeOf(context);
     final filtering = _query.trim().isNotEmpty;
-    final entries =
-        filtering ? _filteredEntries(_query.trim(), locale) : _allEntries(locale);
+    final entries = filtering
+        ? _filteredEntries(_query.trim(), locale)
+        : _allEntries(locale);
     final showAll = widget.showAllOption && !filtering;
 
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       contentPadding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-      title: Text(
-        l10n.categories,
-        style: const TextStyle(fontSize: 18),
-      ),
+      title: Text(l10n.categories, style: const TextStyle(fontSize: 18)),
       content: SizedBox(
         width: double.maxFinite,
         height: MediaQuery.of(context).size.height * 0.6,
@@ -190,12 +183,12 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
                                     )
                                   : null,
                             ),
-                            onTap: () => Navigator.of(context)
-                                .pop((id: null, name: null)),
+                            onTap: () => Navigator.of(
+                              context,
+                            ).pop((id: null, name: null)),
                           );
                         }
-                        final entry =
-                            entries[index - (showAll ? 1 : 0)];
+                        final entry = entries[index - (showAll ? 1 : 0)];
                         final selected = entry.id == widget.currentId;
                         return ListTile(
                           dense: true,
@@ -206,9 +199,7 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
                             selected
                                 ? Icons.check_circle
                                 : Icons.circle_outlined,
-                            color: selected
-                                ? cs.primary
-                                : cs.onSurfaceVariant,
+                            color: selected ? cs.primary : cs.onSurfaceVariant,
                             size: 20,
                           ),
                           title: Text(
@@ -223,10 +214,9 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
                           subtitle: entry.parentName == null
                               ? null
                               : Text(entry.parentName!),
-                          onTap: () => Navigator.of(context).pop((
-                            id: entry.id,
-                            name: entry.name,
-                          )),
+                          onTap: () => Navigator.of(
+                            context,
+                          ).pop((id: entry.id, name: entry.name)),
                         );
                       },
                     ),
@@ -243,4 +233,3 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
     );
   }
 }
-

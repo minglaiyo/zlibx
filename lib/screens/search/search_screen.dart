@@ -7,6 +7,7 @@ import '../../providers/article_search_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/books_provider.dart';
 import '../../providers/fulltext_search_provider.dart';
+import '../../providers/search_suggestions_provider.dart';
 import '../../providers/settings_provider.dart';
 import 'widgets/active_filter_chips.dart';
 import 'widgets/empty_query_view.dart';
@@ -15,6 +16,7 @@ import 'widgets/search_bar_field.dart';
 import 'widgets/search_filter_dialog.dart';
 import 'widgets/search_results_view.dart';
 import 'widgets/search_skeleton_grid.dart';
+import 'widgets/search_suggestions_panel.dart';
 import 'widgets/source_selector.dart';
 import '../reader/reader_screen.dart';
 import '../../widgets/empty_state.dart';
@@ -25,10 +27,12 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../constants/search_filters.dart';
 import '../../providers/update_provider.dart';
 import '../../services/hive_service.dart';
+import '../../widgets/motion/motion.dart';
 import '../../theme/app_metrics.dart';
 
 import '../../utils/app_log.dart';
 import '../../utils/app_snack.dart';
+
 const _recentSearchesKey = 'recent_search_keywords';
 const _recentSearchesLimit = 12;
 
@@ -99,6 +103,10 @@ class SearchScreen extends ConsumerStatefulWidget {
 /// 网的行为与"按搜索键才搜"的预期冲突，慢链路上尤其打扰）。
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _searchController = TextEditingController();
+
+  /// 搜索建议（D1）的焦点态：面板只在输入框聚焦、查询非空且与上次
+  /// 提交的不同（正在编写新查询）时出现；提交后随结果出现而收起。
+  final _searchFocus = FocusNode();
 
   // z站通用搜索结果的 DisplayBook 缓存。此前 build 里每次
   // `searchState.books.map((b) => b.toDisplay()).toList()`——每个
@@ -265,6 +273,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   void dispose() {
     _searchController.removeListener(_onQueryChanged);
     _searchController.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -276,6 +285,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final isEmpty = _searchController.text.trim().isEmpty;
     if (isEmpty != _isQueryEmpty) {
       setState(() => _isQueryEmpty = isEmpty);
+    }
+    // 搜索建议面板（D1）只在"聚焦 + 非空 + 正在编写新查询"的窗口内
+    // 逐字刷新建议内容；窗口外不整页重建（结果列表随输入逐字重建
+    // 的代价不值得）。
+    final trimmed = _searchController.text.trim();
+    if (_searchFocus.hasFocus &&
+        trimmed.isNotEmpty &&
+        trimmed != _lastSubmittedQuery) {
+      setState(() {});
     }
   }
 
@@ -293,9 +311,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         tag: 'search_screen',
       );
       if (mounted) {
-        showAppSnack(context,
-              AppLocalizations.of(context)!.searchHistorySaveFailed,
-            );
+        showAppSnack(
+          context,
+          AppLocalizations.of(context)!.searchHistorySaveFailed,
+        );
       }
     }
   }
@@ -427,18 +446,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   /// tapped; closing discards.
   void _openFilterDialogForCurrentLocale() {
     final locale = Localizations.localeOf(context).languageCode;
-    final isArticle = _mode == SearchMode.article;
+    // 文章模式（v2）与全文一样带语言/格式筛选：`/s/` 表单的筛选参数
+    // 名已站点验证（languages[]/extensions[]），不再隐藏这两行。
     unawaited(
       _openFilterDialog(
-        isArticle
-            ? const <String, String>{}
-            : getLanguageDisplayNames(locale),
+        getLanguageDisplayNames(locale),
         _mode == SearchMode.fulltext
             ? getFulltextOrderDisplayNames(locale)
             : getOrderDisplayNames(locale),
-        isArticle
-            ? const <String, String>{}
-            : getExtensionDisplayNames(locale),
+        getExtensionDisplayNames(locale),
       ),
     );
   }
@@ -458,9 +474,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         extension: _selectedExtension,
         yearFrom: _selectedYearFrom,
         yearTo: _selectedYearTo,
-        exact: _mode == SearchMode.fulltext
-            ? _fullTextExact
-            : _generalExact,
+        exact: _mode == SearchMode.fulltext ? _fullTextExact : _generalExact,
         matchType: _fullTextMatchType,
         contentType: _selectedContentType,
         categoryId: _selectedCategoryId,
@@ -503,7 +517,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     // picked — but it is never remembered as a recent search, and it
     // only browses in the z站 general search (a category means
     // nothing on another source or mode).
-    final canBrowseCategory = _selectedCategoryId != null &&
+    final canBrowseCategory =
+        _selectedCategoryId != null &&
         _source == BookSource.zlibrary &&
         _mode == SearchMode.general;
     if (query.isEmpty && !canBrowseCategory) return;
@@ -536,32 +551,45 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     }
 
     if (_mode == SearchMode.fulltext) {
-      ref.read(fulltextSearchProvider.notifier).search(
-        FullTextSearchParams(
-          query: query,
-          type: _fullTextMatchType,
-          exact: _fullTextExact,
-          yearFrom: _selectedYearFrom,
-          yearTo: _selectedYearTo,
-          languages: searchLanguages[_selectedLanguage] != null
-              ? [searchLanguages[_selectedLanguage]!]
-              : null,
-          extensions: searchExtensions[_selectedExtension] != null
-              ? [searchExtensions[_selectedExtension]!]
-              : null,
-          order: _selectedOrder,
-        ),
-      );
+      ref
+          .read(fulltextSearchProvider.notifier)
+          .search(
+            FullTextSearchParams(
+              query: query,
+              type: _fullTextMatchType,
+              exact: _fullTextExact,
+              yearFrom: _selectedYearFrom,
+              yearTo: _selectedYearTo,
+              languages: searchLanguages[_selectedLanguage] != null
+                  ? [searchLanguages[_selectedLanguage]!]
+                  : null,
+              extensions: searchExtensions[_selectedExtension] != null
+                  ? [searchExtensions[_selectedExtension]!]
+                  : null,
+              order: _selectedOrder,
+            ),
+          );
       return true;
     }
 
     if (_mode == SearchMode.article) {
-      ref.read(articleSearchProvider.notifier).search(
-        ArticleSearchParams(
-          query: query,
-          order: searchOrders[_selectedOrder],
-        ),
-      );
+      ref
+          .read(articleSearchProvider.notifier)
+          .search(
+            ArticleSearchParams(
+              query: query,
+              order: searchOrders[_selectedOrder],
+              exact: _generalExact,
+              yearFrom: _selectedYearFrom,
+              yearTo: _selectedYearTo,
+              languages: searchLanguages[_selectedLanguage] != null
+                  ? [searchLanguages[_selectedLanguage]!]
+                  : null,
+              extensions: searchExtensions[_selectedExtension] != null
+                  ? [searchExtensions[_selectedExtension]!]
+                  : null,
+            ),
+          );
       return true;
     }
 
@@ -570,25 +598,27 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     // search otherwise) with the same filters the old category
     // screen passed; without one it is the plain eapi search.
     if (_selectedCategoryId != null) {
-      ref.read(searchProvider.notifier).search(
-        SearchParams(
-          query: query,
-          yearFrom: _selectedYearFrom,
-          yearTo: _selectedYearTo,
-          languages: searchLanguages[_selectedLanguage] != null
-              ? [searchLanguages[_selectedLanguage]!]
-              : null,
-          extensions: searchExtensions[_selectedExtension] != null
-              ? [searchExtensions[_selectedExtension]!]
-              : null,
-          order: searchOrders[_selectedOrder],
-          exact: _generalExact,
-          categoryId: _selectedCategoryId,
-          contentTypes: _selectedContentType == null
-              ? null
-              : [_selectedContentType!],
-        ),
-      );
+      ref
+          .read(searchProvider.notifier)
+          .search(
+            SearchParams(
+              query: query,
+              yearFrom: _selectedYearFrom,
+              yearTo: _selectedYearTo,
+              languages: searchLanguages[_selectedLanguage] != null
+                  ? [searchLanguages[_selectedLanguage]!]
+                  : null,
+              extensions: searchExtensions[_selectedExtension] != null
+                  ? [searchExtensions[_selectedExtension]!]
+                  : null,
+              order: searchOrders[_selectedOrder],
+              exact: _generalExact,
+              categoryId: _selectedCategoryId,
+              contentTypes: _selectedContentType == null
+                  ? null
+                  : [_selectedContentType!],
+            ),
+          );
       return true;
     }
 
@@ -629,8 +659,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     ref.read(externalSearchProvider.notifier).reset();
     if (_searchController.text.trim().isNotEmpty) {
       _performSearch();
-    } else if (_selectedCategoryId != null &&
-        source == BookSource.zlibrary) {
+    } else if (_selectedCategoryId != null && source == BookSource.zlibrary) {
       // Back to z站 with a category picked: browse it again (the
       // reset above dropped the results).
       _runSearch();
@@ -707,8 +736,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       if (_scrollAccum > _scrollHideThreshold && _headerVisible) {
         _scrollAccum = 0;
         setState(() => _headerVisible = false);
-      } else if (_scrollAccum < -_scrollHideThreshold &&
-          !_headerVisible) {
+      } else if (_scrollAccum < -_scrollHideThreshold && !_headerVisible) {
         _scrollAccum = 0;
         setState(() => _headerVisible = true);
       }
@@ -844,7 +872,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     // skeleton / error branches there is nothing to scroll, so the
     // header is forced visible there instead of getting stuck folded
     // away.
-    final showResults = !(_isQueryEmpty && _selectedCategoryId == null) &&
+    final showResults =
+        !(_isQueryEmpty && _selectedCategoryId == null) &&
         hasSearched &&
         !isLoading &&
         !loginRequired &&
@@ -860,6 +889,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             SearchBarField(
               l10n: l10n,
               controller: _searchController,
+              focusNode: _searchFocus,
               isExternal: isExternal,
               activeFilterCount: _activeFilterCount,
               isQueryEmpty: _isQueryEmpty,
@@ -870,32 +900,34 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               onFilterTap: _openFilterDialogForCurrentLocale,
               onClear: _clearSearch,
             ),
+            // 搜索建议（D1）：正在输入新查询时列出本地匹配（最近搜索
+            // + 浏览历史），选中即回填并搜索。提交后查询与
+            // _lastSubmittedQuery 相同，面板随之收起。
+            if (_searchFocus.hasFocus &&
+                !_isQueryEmpty &&
+                _searchController.text.trim() != _lastSubmittedQuery)
+              SearchSuggestionsPanel(
+                suggestions: ref.watch(
+                  searchSuggestionsProvider(_searchController.text),
+                ),
+                onSelect: (text) {
+                  _searchController.text = text;
+                  _searchController.selection = TextSelection.collapsed(
+                    offset: text.length,
+                  );
+                  _performSearch();
+                },
+              ),
             // The source / mode / filter-chip header folds away
             // (animated) while the user scrolls down through the
             // results, and folds back in when scrolling back up —
             // the search bar above stays put. The height animates
             // (SizeTransition, top-anchored) plus a fade, on the
-            // standard 200 ms — the same AnimatedSwitcher idiom as
-            // the filter dialog's content-type row. The chips row is
+            // standard 200 ms (MotionSwitch.size). The chips row is
             // conditional, so the height is never hard-coded.
-            AnimatedSwitcher(
+            MotionSwitch(
+              style: MotionSwitchStyle.size,
               duration: AppMotion.standard,
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SizeTransition(
-                  sizeFactor: animation,
-                  // "Top-anchored" is expressed with axis + axisAlignment
-                  // (-1 = top). `alignment` does not exist on the local
-                  // 3.41.8 toolchain (that is the original error this
-                  // fixes), while 3.44 deprecates `axisAlignment` — so
-                  // keep the 3.41-compatible form and suppress the
-                  // newer toolchain's deprecation notice.
-                  axis: Axis.vertical,
-                  // ignore: deprecated_member_use
-                  axisAlignment: -1.0,
-                  child: child,
-                ),
-              ),
               child: _headerVisible || !showResults
                   ? Column(
                       key: const ValueKey('search-header'),

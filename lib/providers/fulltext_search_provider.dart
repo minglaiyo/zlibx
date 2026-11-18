@@ -9,9 +9,11 @@ import 'zlibrary_provider.dart';
 
 // ── Full-text search ────────────────────────────────────────────────
 
-/// Parameters for one full-text search. `yearFrom` / `yearTo` are
-/// supported by the plugin but not exposed in the filter UI (v1) —
-/// the sheet has no year controls, same as the general search.
+/// Parameters for one full-text search. `yearFrom` / `yearTo` (like
+/// language / extension / order) come from the shared filter sheet —
+/// it shows the year rows for every non-article mode — and flow
+/// through both the Dio path and the solver URL. The old "v1, not
+/// exposed" note described a state that no longer holds.
 class FullTextSearchParams {
   final String query;
 
@@ -128,12 +130,12 @@ class FullTextSearchNotifier extends Notifier<FullTextSearchState> {
   /// (a walled mirror spends two WebView loads per page; running
   /// those on speculation would hurt more than the prefetch helps).
   ({FullTextSearchParams params, int page, FullTextSearchPage data})?
-      _prefetched;
+  _prefetched;
 
   /// The in-flight prefetch load, so a scroll arriving while it runs
   /// awaits it instead of double-fetching the same page.
   Future<({FullTextSearchPage? page, String? error, bool viaSolver})>?
-      _prefetchInFlight;
+  _prefetchInFlight;
 
   /// Generation guard: every new search / reset / consume bumps it,
   /// so a stale prefetch continuation can never write into newer
@@ -224,8 +226,13 @@ class FullTextSearchNotifier extends Notifier<FullTextSearchState> {
       if (requestId != _requestId) return;
       if (result.page != null) {
         _dropPrefetch();
-        _applyLoadedPage(params, page, result.page!, requestId,
-            viaSolver: result.viaSolver);
+        _applyLoadedPage(
+          params,
+          page,
+          result.page!,
+          requestId,
+          viaSolver: result.viaSolver,
+        );
         return;
       }
       // The speculative load failed — drop it and load the page the
@@ -243,8 +250,13 @@ class FullTextSearchNotifier extends Notifier<FullTextSearchState> {
       return;
     }
     _dropPrefetch();
-    _applyLoadedPage(params, page, result.page!, requestId,
-        viaSolver: result.viaSolver);
+    _applyLoadedPage(
+      params,
+      page,
+      result.page!,
+      requestId,
+      viaSolver: result.viaSolver,
+    );
   }
 
   /// Merges [data] (page [page] of [params]) into the list, then
@@ -284,13 +296,15 @@ class FullTextSearchNotifier extends Notifier<FullTextSearchState> {
     _prefetched = null;
     final future = _loadPage(params, page);
     _prefetchInFlight = future;
-    unawaited(future.then((result) {
-      if (gen != _prefetchGen) return;
-      _prefetchInFlight = null;
-      final data = result.page;
-      if (data == null || result.viaSolver) return;
-      _prefetched = (params: params, page: page, data: data);
-    }));
+    unawaited(
+      future.then((result) {
+        if (gen != _prefetchGen) return;
+        _prefetchInFlight = null;
+        final data = result.page;
+        if (data == null || result.viaSolver) return;
+        _prefetched = (params: params, page: page, data: data);
+      }),
+    );
   }
 
   /// Drops any parked / in-flight prefetch and invalidates its
@@ -313,8 +327,7 @@ class FullTextSearchNotifier extends Notifier<FullTextSearchState> {
   /// message when both paths failed. [viaSolver] says which path
   /// produced a non-null page (the solver path is never prefetched
   /// from).
-  Future<({FullTextSearchPage? page, String? error, bool viaSolver})>
-      _loadPage(
+  Future<({FullTextSearchPage? page, String? error, bool viaSolver})> _loadPage(
     FullTextSearchParams params,
     int page,
   ) async {
@@ -341,11 +354,7 @@ class FullTextSearchNotifier extends Notifier<FullTextSearchState> {
         // throw becomes a failed future that flies straight past the
         // catch) — CI-proven 2026-11-13 by the prefetch tests, which
         // were the first to exercise this path in a unit test.
-        return await _loadPageViaSolver(
-          params,
-          page,
-          originalError: error,
-        );
+        return await _loadPageViaSolver(params, page, originalError: error);
       }
       return (page: null, error: error, viaSolver: false);
     } catch (e) {
@@ -354,7 +363,7 @@ class FullTextSearchNotifier extends Notifier<FullTextSearchState> {
   }
 
   Future<({FullTextSearchPage? page, String? error, bool viaSolver})>
-      _loadPageViaSolver(
+  _loadPageViaSolver(
     FullTextSearchParams params,
     int page, {
     required String originalError,
@@ -375,8 +384,7 @@ class FullTextSearchNotifier extends Notifier<FullTextSearchState> {
       userId: user?.id,
       userKey: user?.remixUserkey,
     );
-    final token =
-        tokenHtml == null ? null : extractFulltextToken(tokenHtml);
+    final token = tokenHtml == null ? null : extractFulltextToken(tokenHtml);
     if (token == null) {
       return (page: null, error: originalError, viaSolver: true);
     }
@@ -400,7 +408,7 @@ class FullTextSearchNotifier extends Notifier<FullTextSearchState> {
     if (html == null) {
       return (page: null, error: originalError, viaSolver: true);
     }
-    final parsed = _repository.parsePage(
+    final parsed = await _repository.parsePage(
       html,
       baseUrl: Uri.parse(url).origin,
       expectedQuery: params.query,

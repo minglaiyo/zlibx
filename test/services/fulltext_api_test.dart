@@ -455,9 +455,8 @@ void main() {
     FulltextRepository repository() =>
         FulltextRepository(_apiWith(_FakeAdapter()));
 
-    test('returns the page when the form echoes the submitted query',
-        () {
-      final page = repository().parsePage(
+    test('returns the page when the form echoes the submitted query', () async {
+      final page = await repository().parsePage(
         _oneHitHtml.replaceAll('__ECHOED_QUERY__', 'synthetic phrase'),
         baseUrl: 'https://bookroom.lifestyle',
         expectedQuery: 'synthetic phrase',
@@ -466,8 +465,8 @@ void main() {
       expect(page!.hits, hasLength(1));
     });
 
-    test('returns null when the form echoes a different query', () {
-      final page = repository().parsePage(
+    test('returns null when the form echoes a different query', () async {
+      final page = await repository().parsePage(
         _oneHitHtml.replaceAll('__ECHOED_QUERY__', 'some other phrase'),
         baseUrl: 'https://bookroom.lifestyle',
         expectedQuery: 'synthetic phrase',
@@ -475,8 +474,8 @@ void main() {
       expect(page, isNull);
     });
 
-    test('returns null when the form echoes an empty query', () {
-      final page = repository().parsePage(
+    test('returns null when the form echoes an empty query', () async {
+      final page = await repository().parsePage(
         _oneHitHtml.replaceAll('__ECHOED_QUERY__', ''),
         baseUrl: 'https://bookroom.lifestyle',
         expectedQuery: 'synthetic phrase',
@@ -484,8 +483,8 @@ void main() {
       expect(page, isNull);
     });
 
-    test('returns the page when no expected query is given', () {
-      final page = repository().parsePage(
+    test('returns the page when no expected query is given', () async {
+      final page = await repository().parsePage(
         _oneHitHtml.replaceAll('__ECHOED_QUERY__', 'anything at all'),
         baseUrl: 'https://bookroom.lifestyle',
       );

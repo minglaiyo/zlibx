@@ -54,8 +54,7 @@ mixin _DownloadPathsMixin on _DownloadNotifierBase {
     ]);
     final historyPath = results[0];
     final savePath = results[1];
-    if (historyPath != null &&
-        await MediaStoreFiles.exists(historyPath)) {
+    if (historyPath != null && await MediaStoreFiles.exists(historyPath)) {
       return historyPath;
     }
 

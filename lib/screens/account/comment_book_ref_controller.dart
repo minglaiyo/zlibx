@@ -68,11 +68,7 @@ class CommentBookRefController extends ChangeNotifier {
     for (final item in queue) {
       if (_disposed || _generation != token) return;
       try {
-        final info = await resolveCommentBookRef(
-          api,
-          item.bookId,
-          item.title,
-        );
+        final info = await resolveCommentBookRef(api, item.bookId, item.title);
         if (_disposed || _generation != token) return;
         if (info != null) {
           refs[item.bookId] = info;

@@ -47,11 +47,9 @@ class HistoryCoverNotifier extends Notifier<Map<String, String>> {
   Future<void> _resolve(Book book) async {
     final id = book.id.toString();
     try {
-      final response = await ref.read(zlibraryApiProvider).getBookInfo(
-            id,
-            book.hash ?? '',
-            title: book.title,
-          );
+      final response = await ref
+          .read(zlibraryApiProvider)
+          .getBookInfo(id, book.hash ?? '', title: book.title);
       final cover = response.data?.cover;
       if (response.success && cover != null && cover.isNotEmpty) {
         state = {...state, id: cover};
@@ -73,10 +71,9 @@ final historyCoverProvider =
 
 /// autoDispose：每本书一个缓存项；详情页关掉即释放，切换账号时
 /// [invalidateAccountScopedProviders] 本来就会整体失效它。
-final isBookFavoritedProvider = FutureProvider.autoDispose.family<bool, String>((
-  ref,
-  bookId,
-) async {
-  final storage = ref.watch(storageServiceProvider);
-  return await storage.isFavorite(bookId);
-});
+final isBookFavoritedProvider = FutureProvider.autoDispose.family<bool, String>(
+  (ref, bookId) async {
+    final storage = ref.watch(storageServiceProvider);
+    return await storage.isFavorite(bookId);
+  },
+);

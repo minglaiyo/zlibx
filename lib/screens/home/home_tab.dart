@@ -4,18 +4,20 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/books_provider.dart';
+
+import '../../l10n/generated/app_localizations.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/books_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/update_provider.dart';
-import '../../widgets/update_dialog.dart';
 import '../../routes/app_routes.dart';
-import '../../l10n/generated/app_localizations.dart';
-import '../../theme/motion.dart';
 import '../../theme/app_metrics.dart';
+import '../../theme/motion.dart';
 import '../../utils/app_snack.dart';
+import '../../widgets/update_dialog.dart';
 import 'widgets/home_book_grid.dart';
 import 'widgets/home_line_unavailable_banner.dart';
+
 
 /// Get time-based greeting message
 String _getGreeting(BuildContext context) {

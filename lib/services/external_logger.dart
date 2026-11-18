@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import '../utils/app_log.dart';
 import 'http_client.dart';
 
+
 /// A minimal stand-in for OpenlibExtended's AppLogger: the ported services
 /// only need the four level methods plus a way to build a Dio that logs.
 /// Single shared instance so the static-ish call sites stay identical.

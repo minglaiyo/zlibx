@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../../utils/cover_cache.dart';
-import '../../widgets/loading_widget.dart';
 import '../../widgets/cover_placeholder.dart';
+import '../../widgets/loading_widget.dart';
+
 
 /// 一条用户评论背后的书。“我的评论”与用户主页的评论接口都只给
 /// bookId + 书名：跳书籍详情要用的 eapi hash 和书名行要显示的

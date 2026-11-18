@@ -5,6 +5,7 @@ import '../services/author_repository.dart';
 import 'auth_provider.dart';
 import 'zlibrary_provider.dart';
 
+
 /// 作者聚合页（方案 F2）的分页状态。
 class AuthorBooksState {
   const AuthorBooksState({

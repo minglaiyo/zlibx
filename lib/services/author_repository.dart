@@ -5,6 +5,7 @@ import 'booklist_solver.dart';
 import 'wall_cookie_bridge.dart';
 import 'webview_challenge_solver.dart';
 
+
 /// Data layer for the author aggregation screen (方案 F2): fetching
 /// (`/author/{name}`, fast Dio first, the WebView solver on the
 /// browser-check wall) and parsing — the author page is the same
@@ -41,7 +42,7 @@ class AuthorRepository {
   Future<CategoryPage?> parseBooks(String html, {required String baseUrl}) async {
     try {
       return await parseCategoryBooksPageH(html, baseUrl: baseUrl);
-    } catch (_) {
+    } on Object catch (_) {
       return null;
     }
   }

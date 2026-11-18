@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_metrics.dart';
 import 'motion/motion.dart';
 
+
 /// Shared cover placeholder for every "cover is loading / missing" surface.
 ///
 /// Two variants, one visual language:

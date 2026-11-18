@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,15 +14,15 @@ import '../../screens/favorites/category_actions.dart';
 import '../../screens/favorites/widgets/shelf_chip.dart';
 import '../../services/media_store.dart';
 import '../../theme/app_colors.dart';
-import '../../utils/cover_cache.dart';
-import '../../utils/file_utils.dart';
-import '../../widgets/empty_state.dart';
-import '../../widgets/motion/motion.dart';
-import '../../widgets/confirm_dialog.dart';
-
 import '../../utils/app_snack.dart';
+import '../../utils/cover_cache.dart';
 import '../../utils/date_text.dart';
 import '../../utils/error_text.dart';
+import '../../utils/file_utils.dart';
+import '../../widgets/confirm_dialog.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/motion/motion.dart';
+
 
 class LocalDownloadsScreen extends ConsumerStatefulWidget {
   const LocalDownloadsScreen({super.key});

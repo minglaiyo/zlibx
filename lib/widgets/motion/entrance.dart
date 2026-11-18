@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_metrics.dart';
 import '../../theme/motion.dart';
 
+
 /// 列表/网格条目的一次性错峰入场（淡入 + 轻微上滑）。
 ///
 /// [TweenAnimationBuilder] 在条目首次构建时自播一次。[index] 越大

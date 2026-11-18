@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/hive_service.dart';
 import '../services/view_history_storage.dart';
 
+
 /// 搜索建议（方案 D1）：输入时从本地数据出 typeahead，不发网络。
 ///
 /// 两个来源、三档排序：

@@ -1,24 +1,26 @@
 import 'dart:async';
-import 'package:zlibx/utils/diagnostics.dart';
+
 import 'package:flutter/material.dart';
-import '../../../theme/app_metrics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:open_filex/open_filex.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
-import '../../../providers/download_provider.dart';
-import '../../../providers/domain_provider.dart';
-import '../../../providers/auth_provider.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:zlibx/utils/diagnostics.dart';
+
 import '../../../l10n/generated/app_localizations.dart';
-import 'file_exists_dialog.dart';
-import '../../../services/media_store.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../providers/domain_provider.dart';
+import '../../../providers/download_provider.dart';
 import '../../../providers/update_provider.dart';
 import '../../../routes/app_routes.dart';
+import '../../../services/media_store.dart';
+import '../../../theme/app_metrics.dart';
 import '../../../utils/app_snack.dart';
 import '../../../utils/host_utils.dart';
 import '../../../widgets/motion/motion.dart';
 import '../../../widgets/update_dialog.dart';
 import '../../reader/reader_screen.dart';
 import 'download_quota_dialog.dart';
+import 'file_exists_dialog.dart';
 
 class BookActionBar extends ConsumerWidget {
   final Book book;

@@ -6,6 +6,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../utils/cover_cache.dart';
 import '../../../widgets/cover_placeholder.dart';
 
+
 /// One full-text search hit: cover + title + author + meta line,
 /// then the matching passage as a [RichText] whose `<em>` runs are
 /// highlighted in the theme color. Mirrors [BookListTile]'s cover

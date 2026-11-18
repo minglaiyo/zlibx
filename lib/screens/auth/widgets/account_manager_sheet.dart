@@ -1,13 +1,14 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../utils/app_snack.dart';
 import '../../../widgets/loading_widget.dart';
 
-import '../../../utils/app_snack.dart';
 
 enum AccountManagerResult { switched, addAccount }
 

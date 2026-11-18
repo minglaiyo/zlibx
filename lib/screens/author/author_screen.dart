@@ -5,10 +5,11 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../models/display_book.dart';
 import '../../providers/author_books_provider.dart';
 import '../../routes/app_routes.dart';
-import '../../widgets/motion/motion.dart';
 import '../../widgets/book_list_tile.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/loading_widget.dart';
+import '../../widgets/motion/motion.dart';
+
 
 /// 作者聚合页（方案 F2）：站点 `/author/{名}` 的分页书列表。进入即
 /// 加载第一页，滚动到底自动 loadMore；列表项复用 BookListTile，点击

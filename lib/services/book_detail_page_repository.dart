@@ -4,6 +4,7 @@ import 'booklist_solver.dart';
 import 'wall_cookie_bridge.dart';
 import 'webview_challenge_solver.dart';
 
+
 /// Data layer for one book detail page: the payload
 /// ([BookDetailExtras] — metadata rows) the
 /// detail screen merges onto the eapi book.

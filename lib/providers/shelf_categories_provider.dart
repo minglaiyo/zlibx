@@ -6,6 +6,7 @@ import '../models/unified_shelf_item.dart';
 import '../services/hive_service.dart';
 import '../utils/app_log.dart';
 
+
 class ShelfCategory {
   const ShelfCategory({required this.id, required this.name});
 

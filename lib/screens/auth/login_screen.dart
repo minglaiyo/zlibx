@@ -1,18 +1,20 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../l10n/generated/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/domain_provider.dart';
-import '../../routes/app_routes.dart';
 import '../../providers/update_provider.dart';
+import '../../routes/app_routes.dart';
 import '../../utils/app_snack.dart';
 import '../../widgets/domain_selector.dart';
-import '../../widgets/mirror_trust_dialog.dart';
 import '../../widgets/loading_widget.dart';
+import '../../widgets/mirror_trust_dialog.dart';
 import '../../widgets/update_dialog.dart';
-import '../../l10n/generated/app_localizations.dart';
-import 'widgets/account_manager_sheet.dart';
 import 'login_failure.dart';
+import 'widgets/account_manager_sheet.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   final bool addAccountMode;

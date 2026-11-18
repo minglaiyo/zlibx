@@ -5,6 +5,7 @@ import '../services/category_repository.dart';
 import 'auth_provider.dart';
 import 'zlibrary_provider.dart';
 
+
 /// 分类目录树（方案 F1）：`/categories` 页解析成 顶级分类 → 子分类
 /// （带藏书计数）。双通道：Dio 直取，命中浏览器检查墙时走 WebView
 /// solver。

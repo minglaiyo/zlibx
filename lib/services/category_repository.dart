@@ -5,6 +5,7 @@ import 'booklist_solver.dart';
 import 'wall_cookie_bridge.dart';
 import 'webview_challenge_solver.dart';
 
+
 /// Data layer for the category browsing screens: fetching (fast Dio
 /// first, the WebView solver on the browser-check wall) and parsing.
 ///
@@ -164,7 +165,7 @@ class CategoryRepository {
   Future<CategoriesDirectoryPage?> parseDirectory(String html) async {
     try {
       return await parseCategoriesDirectoryH(html);
-    } catch (_) {
+    } on Object catch (_) {
       return null;
     }
   }

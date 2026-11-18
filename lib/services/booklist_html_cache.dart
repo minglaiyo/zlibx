@@ -7,6 +7,7 @@ import 'package:zlibx/utils/diagnostics.dart';
 
 import 'hive_service.dart';
 
+
 /// Persistent (Hive) cache for booklist HTML pages, keyed by the
 /// page's full URL — the same key convention as the in-memory
 /// ChallengeHtmlCache (10-minute TTL, dies on restart).

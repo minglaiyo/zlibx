@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../../../routes/app_routes.dart';
+import '../../../theme/app_metrics.dart';
+import '../../../utils/date_text.dart';
+import '../../../widgets/motion/motion.dart';
 import '../../comments/widgets/comment_avatar.dart';
 import '../../comments/widgets/comment_metric_chip.dart';
 import '../comment_book_ref.dart';
-import '../../../widgets/motion/motion.dart';
-import '../../../theme/app_metrics.dart';
-import '../../../utils/date_text.dart';
+
 
 /// 主页头部卡片：头像 + 昵称 + 统计药丸（评论数 / 书单数）。评论数
 /// 来自评论接口，书单数来自书单区（加载中或无书单区时省略）。

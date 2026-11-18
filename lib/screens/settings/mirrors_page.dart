@@ -10,16 +10,16 @@
 // The app bar uses zlibx's GradientAppBar like the other settings
 // screens, and every user-facing string goes through AppLocalizations.
 
-import 'package:zlibx/utils/diagnostics.dart';
 import 'package:flutter/material.dart';
+import 'package:zlibx/utils/diagnostics.dart';
 
 import '../../l10n/generated/app_localizations.dart';
 import '../../services/instance_manager.dart';
 import '../../services/mirror_speed_test.dart';
+import '../../utils/app_snack.dart';
 import '../../widgets/gradient_app_bar.dart';
 import '../../widgets/loading_widget.dart';
 
-import '../../utils/app_snack.dart';
 
 /// Settings > Network > Mirrors.
 ///

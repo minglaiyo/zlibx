@@ -19,6 +19,7 @@ import 'dart:collection';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+
 class Diagnostics {
   Diagnostics._();
 

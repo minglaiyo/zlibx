@@ -6,6 +6,7 @@ import '../providers/settings_provider.dart';
 import '../services/app_lock_service.dart';
 import '../utils/app_snack.dart';
 
+
 /// 隐私锁覆盖层：锁上时盖住整个 app（吸收所有点击），解锁按钮触发
 /// 系统 BiometricPrompt。挂在 MaterialApp.builder 的 Stack 顶上
 /// （见 main.dart），监听 AppLockController.locked。

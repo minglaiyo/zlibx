@@ -6,9 +6,10 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../providers/categories_directory_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../screens/search/search_screen.dart';
-import '../../widgets/motion/motion.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/loading_widget.dart';
+import '../../widgets/motion/motion.dart';
+
 
 /// 分类目录树（方案 F1）：站点 `/categories` 页的树形浏览。顶级分类
 /// 可展开看子分类（带藏书计数），点任一分类 → 站内搜索页按该分类

@@ -12,6 +12,7 @@ import '../../providers/local_collection_provider.dart';
 import '../../providers/shelf_categories_provider.dart';
 import '../../utils/app_snack.dart';
 
+
 /// Sentinel category id meaning "no category": the shelf's
 /// uncategorized filter and the picker's uncategorized row.
 const kShelfUncategorizedId = '__uncategorized__';
@@ -51,7 +52,7 @@ class ShelfCategoryActions {
       await _host.ref.read(shelfCategoriesProvider.notifier).create(name);
       final created = _host.ref.read(shelfCategoriesProvider).categories.last;
       return created.id;
-    } catch (error) {
+    } on Object catch (_) {
       if (_host.mounted) {
         _host.showMessage(_host.l10n().shelfCategoryInvalid);
       }
@@ -247,7 +248,7 @@ class ShelfCategoryActions {
           .read(shelfCategoriesProvider.notifier)
           .delete(category.id);
       _host.onCategoryDeleted(category.id);
-    } catch (error) {
+    } on Object catch (_) {
       if (_host.mounted) _host.showMessage(l.shelfCategorySaveFailed);
     }
   }
@@ -364,7 +365,7 @@ class ShelfCategoryActions {
           .importEntries(collectionEntries);
 
       if (_host.mounted) _host.showMessage(l.shelfImportDone(mapped.length + importedCount));
-    } catch (error) {
+    } on Object catch (_) {
       if (_host.mounted) _host.showMessage(l.shelfImportFailed);
     }
   }
@@ -435,7 +436,7 @@ Future<void> showKeysCategoryPicker(
     try {
       await ref.read(shelfCategoriesProvider.notifier).create(name);
       id = ref.read(shelfCategoriesProvider).categories.last.id;
-    } catch (error) {
+    } on Object catch (_) {
       if (context.mounted) {
         showAppSnack(context, l.shelfCategoryInvalid);
       }

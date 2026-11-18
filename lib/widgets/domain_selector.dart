@@ -1,16 +1,18 @@
 import 'dart:async';
-import 'mirror_trust_dialog.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../l10n/generated/app_localizations.dart';
 import '../providers/domain_provider.dart';
 import '../providers/speed_test_provider.dart';
 import '../theme/app_colors.dart';
-import '../theme/motion.dart';
 import '../theme/app_metrics.dart';
-import 'loading_widget.dart';
-
+import '../theme/motion.dart';
 import '../utils/app_snack.dart';
+import 'loading_widget.dart';
+import 'mirror_trust_dialog.dart';
+
 
 class DomainSelector extends ConsumerWidget {
   final bool compact;

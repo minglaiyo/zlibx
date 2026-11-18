@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+
+import '../../l10n/generated/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/update_dialog.dart';
-import '../../l10n/generated/app_localizations.dart';
 import '../auth/login_screen.dart';
-import 'widgets/download_path_section.dart';
-import 'widgets/donation_key_section.dart';
 import 'widgets/about_section.dart';
+import 'widgets/donation_key_section.dart';
+import 'widgets/download_path_section.dart';
 import 'widgets/language_section.dart';
-import 'widgets/theme_section.dart';
-import 'widgets/privacy_section.dart';
 import 'widgets/network_section.dart';
+import 'widgets/privacy_section.dart';
 import 'widgets/recommendation_section.dart';
 import 'widgets/section_header.dart';
 import 'widgets/settings_card.dart';
+import 'widgets/theme_section.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});

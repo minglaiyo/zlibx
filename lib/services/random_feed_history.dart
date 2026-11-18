@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../utils/app_log.dart';
 import 'hive_service.dart';
 
+
 /// 首页随机推荐的"已经给你看过"名单。
 ///
 /// 随机分类推荐每次刷新都从某个分类里随机取一页，同一本书很容易在几

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/open_library.dart';
 
+
 final trendingBooksProvider = FutureProvider<List<TrendingBookData>>((
   ref,
 ) async {

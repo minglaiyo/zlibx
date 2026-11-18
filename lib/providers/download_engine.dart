@@ -452,7 +452,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       final profile = await _api.getProfile();
       final left = profile.data?.downloadsLeft;
       if (left != null) detail = '下载完成 · 今日剩余 $left 本';
-    } catch (error) {
+    } on Object catch (error) {
       logIgnored('download_completed_quota', error);
     }
     await DownloadForegroundService.notifyCompleted(
@@ -474,7 +474,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       final results = await Connectivity().checkConnectivity();
       return !results.contains(ConnectivityResult.wifi) &&
           !results.contains(ConnectivityResult.ethernet);
-    } catch (error) {
+    } on Object catch (error) {
       logIgnored('download_wifi_only', error);
       return false;
     }

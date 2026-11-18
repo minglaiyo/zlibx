@@ -11,6 +11,7 @@ import 'package:zlibx/utils/diagnostics.dart';
 import '../services/storage_service.dart';
 import 'zlibrary_provider.dart';
 
+
 class HistoryCoverNotifier extends Notifier<Map<String, String>> {
   final Set<String> _attempted = <String>{};
 

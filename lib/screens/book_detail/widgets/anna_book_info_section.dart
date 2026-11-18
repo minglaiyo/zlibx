@@ -8,6 +8,7 @@ import '../../../routes/app_routes.dart';
 import '../../../services/annas_archieve.dart';
 import 'book_detail_content.dart';
 
+
 /// External detail body (Anna's Archive / LibGen): heading + format tag +
 /// description + publication info. Built from [BookInfoData] (the detail
 /// page's own fetch); the search-result [DisplayBook] supplies

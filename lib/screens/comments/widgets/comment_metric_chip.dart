@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../../theme/motion.dart';
 import '../../../theme/app_metrics.dart';
+import '../../../theme/motion.dart';
 
 /// 评论下方的药丸形操作按钮：图标 + 计数。
 /// 激活态（已点赞）带主色底与放大动效；忙碌中忽略点击并降透明度。

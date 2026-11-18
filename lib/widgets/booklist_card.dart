@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../l10n/generated/app_localizations.dart';
-import '../theme/motion.dart';
 import '../theme/app_metrics.dart';
+import '../theme/motion.dart';
 import '../utils/booklist_colors.dart';
 import '../utils/cover_cache.dart';
+
 
 /// Rounded booklist cover with a soft shadow and a themed placeholder.
 class BooklistCover extends StatelessWidget {

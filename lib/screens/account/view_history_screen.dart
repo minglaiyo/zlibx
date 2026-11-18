@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
@@ -8,13 +9,14 @@ import '../../models/display_book.dart';
 import '../../routes/app_routes.dart';
 import '../../services/view_history_storage.dart';
 import '../../utils/date_text.dart';
-import '../../widgets/book_list_tile.dart';
-import '../../widgets/empty_state.dart';
-import '../../widgets/motion/motion.dart';
-import '../../widgets/book_quick_actions_sheet.dart';
-import '../../widgets/loading_widget.dart';
-import '../../widgets/gradient_app_bar.dart';
 import '../../utils/error_text.dart';
+import '../../widgets/book_list_tile.dart';
+import '../../widgets/book_quick_actions_sheet.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/gradient_app_bar.dart';
+import '../../widgets/loading_widget.dart';
+import '../../widgets/motion/motion.dart';
+
 
 /// 浏览历史（本地）：站内书详情页的最近打开记录，每次打开置顶
 /// （记录点在 AppRoutes.openBookDetail，所有入口统一生效）。

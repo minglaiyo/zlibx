@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
-import '../../../theme/motion.dart';
 import '../../../theme/app_metrics.dart';
+import '../../../theme/motion.dart';
+
 
 /// 从 search_screen 抽出的零状态段：搜索源三段选择器（滑动高亮）。
 /// 切换经 [onSwitch] 回调交回搜索页。

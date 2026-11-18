@@ -10,6 +10,7 @@ import '../../../widgets/loading_widget.dart';
 import 'recent_searches_section.dart';
 import 'trending_section.dart';
 
+
 /// 从 search_screen 抽出的零状态段：空查询时的落地页 —— 近期搜索 +
 /// Open Library 热搜。热搜数据由本组件 watch（与原搜索页实现相同的
 /// provider），搜索 / 删除历史等行为经回调交回搜索页。

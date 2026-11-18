@@ -13,6 +13,7 @@ import '../services/category_repository.dart';
 import 'auth_provider.dart';
 import 'zlibrary_provider.dart';
 
+
 // ── Search ──────────────────────────────────────────────────────────
 
 class SearchParams {

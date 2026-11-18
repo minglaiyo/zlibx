@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
-import 'category_picker_dialog.dart';
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../theme/motion.dart';
 import '../../../theme/app_metrics.dart';
+import '../../../theme/motion.dart';
+import 'category_picker_dialog.dart';
 import 'search_mode_selector.dart';
+
 
 /// The values a filter-dialog visit returns when the user taps 使用.
 /// Every field is carried for every visit (the dialog is initialised

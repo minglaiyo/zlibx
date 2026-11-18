@@ -5,12 +5,13 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
 import '../../../theme/app_layout.dart';
 import '../../../widgets/book_card.dart';
-import '../../../widgets/book_quick_actions_sheet.dart';
 import '../../../widgets/book_list_tile.dart';
-import '../../../widgets/motion/motion.dart';
+import '../../../widgets/book_quick_actions_sheet.dart';
 import '../../../widgets/loading_widget.dart';
+import '../../../widgets/motion/motion.dart';
 import 'article_tile.dart';
 import 'fulltext_hit_tile.dart';
+
 
 /// Search 结果区：结果数 / 页码 / 视图切换头 + 加载更多失败横幅 +
 /// 四种结果列表（全文 / 文章 / 书本列表 / 书本网格）。

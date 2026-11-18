@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import 'search_section_header.dart';
 
+
 /// 从 search_screen 抽出的零状态段：近期搜索关键词 chips。点击即
 /// 重新搜索（[onSearch]），删除单个 / 清空历史经回调交回搜索页。
 class SearchRecentSearchesSection extends StatelessWidget {

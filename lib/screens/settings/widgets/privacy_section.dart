@@ -8,6 +8,7 @@ import '../../../utils/app_snack.dart';
 import 'section_header.dart';
 import 'settings_card.dart';
 
+
 /// 隐私锁设置区（用户批 2026-11-14 功能）：生物识别 / 设备凭据解锁。
 /// 锁定逻辑在 [AppLockController]，生命周期钩子在
 /// main.dart；这里只管开关与参数。

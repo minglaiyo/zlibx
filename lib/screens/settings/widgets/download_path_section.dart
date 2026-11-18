@@ -1,15 +1,17 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 import 'dart:async';
 import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../utils/app_snack.dart';
 import '../../../utils/file_utils.dart';
 import 'section_header.dart';
 import 'settings_card.dart';
-import '../../../l10n/generated/app_localizations.dart';
 
-import '../../../utils/app_snack.dart';
 
 class DownloadPathSection extends ConsumerWidget {
   const DownloadPathSection({super.key});

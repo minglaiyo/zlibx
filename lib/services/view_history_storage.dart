@@ -4,6 +4,7 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 import '../utils/diagnostics.dart';
 import 'hive_service.dart';
 
+
 /// 浏览历史（本地实现）——官网站内的"浏览历史"只记站内书，这里
 /// 同样只记站内 [Book]：每次打开详情页都置顶一条（与网站行为一致），
 /// 按 bookId 去重，超出 [maxEntries] 淘汰最旧的。

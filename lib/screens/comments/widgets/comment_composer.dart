@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../../../theme/motion.dart';
-import '../../../widgets/motion/motion.dart';
 import '../../../theme/app_metrics.dart';
+import '../../../theme/motion.dart';
 import '../../../widgets/loading_widget.dart';
+import '../../../widgets/motion/motion.dart';
 
 /// 评论区底部输入区：可选的“回复 @某人”横幅 + 胶囊输入框 + 发送键。
 /// 纯展示组件，文案由 screen 通过参数传入，因此不涉及 l10n 依赖。

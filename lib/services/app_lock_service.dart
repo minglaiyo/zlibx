@@ -12,6 +12,7 @@ import 'package:meta/meta.dart';
 import '../utils/diagnostics.dart';
 import 'hive_service.dart';
 
+
 /// settingsBox 里记录"最后一次离开前台的时刻"（毫秒）的键。
 ///
 /// 为什么必须落盘：Android 随时会杀掉后台进程，用户"切后台再回来"很大

@@ -1,20 +1,22 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import '../../theme/motion.dart';
-import '../../widgets/motion/motion.dart';
-import '../../theme/app_colors.dart';
-import 'dart:io';
+
 import '../../l10n/generated/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/domain_provider.dart';
 import '../../providers/speed_test_provider.dart';
 import '../../routes/app_routes.dart';
+import '../../theme/app_colors.dart';
 import '../../theme/app_metrics.dart';
+import '../../theme/motion.dart';
 import '../../utils/app_log.dart';
 import '../../widgets/domain_selector.dart';
+import '../../widgets/motion/motion.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});

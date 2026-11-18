@@ -8,6 +8,7 @@ import '../services/annas_models.dart';
 import '../services/hive_service.dart';
 import '../utils/app_log.dart';
 
+
 /// 本地收藏（方案 C2）：Anna's Archive / LibGen 的书进不了 z站 的
 /// 收藏体系（远端列表按账号存），长按快捷面板给外部源一个"收藏到
 /// 本地"的落点。数据整体存 Hive settings box 的一个 JSON blob（与
@@ -46,7 +47,7 @@ class LocalCollectionNotifier extends Notifier<LocalCollectionState> {
         if (book != null) books.add(book);
       }
       return LocalCollectionState(books);
-    } catch (error) {
+    } on Object catch (error) {
       AppLog.report(
         'Could not load local collection: ${error.runtimeType}',
         tag: 'local_collection',

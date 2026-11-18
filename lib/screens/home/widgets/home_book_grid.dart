@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../routes/app_routes.dart';
 import '../../../theme/app_layout.dart';
-import '../../../widgets/book_quick_actions_sheet.dart';
 import '../../../widgets/book_card.dart';
+import '../../../widgets/book_quick_actions_sheet.dart';
 import '../../../widgets/empty_state.dart';
-import '../../../widgets/motion/motion.dart';
 import '../../../widgets/loading_widget.dart';
+import '../../../widgets/motion/motion.dart';
 
 /// The recommendation grid plus its empty / loading / error states.
 ///

@@ -4,6 +4,7 @@ import '../utils/diagnostics.dart';
 import 'hive_service.dart';
 import 'secure_storage.dart';
 
+
 /// Account credentials at rest.
 ///
 /// Session keys (`remix_userid` / `remix_userkey`), profile fields and the

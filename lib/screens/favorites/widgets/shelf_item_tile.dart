@@ -5,6 +5,7 @@ import '../../../models/unified_shelf_item.dart';
 import '../../../providers/download_provider.dart';
 import 'shelf_book_item.dart';
 
+
 /// One shelf row that watches only its own download task. A progress
 /// tick for another book rebuilds neither this tile nor the shelf
 /// above it — the parent never watches the download list at all.

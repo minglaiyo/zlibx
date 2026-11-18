@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/zlibrary_provider.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
+
+import '../../l10n/generated/app_localizations.dart';
 import '../../models/display_book.dart';
 import '../../providers/settings_provider.dart';
-import '../../widgets/book_card.dart';
-import '../../widgets/book_quick_actions_sheet.dart';
-import '../../widgets/book_list_tile.dart';
-import '../../widgets/loading_widget.dart';
-import '../../widgets/empty_state.dart';
-import '../../widgets/gradient_app_bar.dart';
+import '../../providers/zlibrary_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../theme/app_layout.dart';
-import '../../l10n/generated/app_localizations.dart';
+import '../../widgets/book_card.dart';
+import '../../widgets/book_list_tile.dart';
+import '../../widgets/book_quick_actions_sheet.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/gradient_app_bar.dart';
+import '../../widgets/loading_widget.dart';
 
 /// Arguments for SimilarBooksScreen
 class SimilarBooksArgs {

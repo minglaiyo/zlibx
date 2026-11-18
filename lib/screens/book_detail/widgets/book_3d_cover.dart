@@ -2,9 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../../theme/motion.dart';
 import '../../../theme/app_metrics.dart';
+import '../../../theme/motion.dart';
 import '../../../widgets/cover_placeholder.dart';
+
 
 /// A small book-shaped scene. Every face shares the same perspective transform,
 /// so the cover, spine and paper edges stay connected while the book turns.

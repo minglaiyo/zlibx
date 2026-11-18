@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../utils/booklist_colors.dart';
 
+
 /// Single-choice color dialog for a booklist, following the
 /// domain-selector idiom: dense rows, the selected row shows a filled
 /// `check_circle` in primary with a bold primary title, unselected

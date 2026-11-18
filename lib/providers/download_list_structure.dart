@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'download_provider.dart';
 
+
 /// Task ids per downloads tab, in display order, with value equality:
 /// two structures are equal when both id lists match element-wise.
 /// Progress ticks change neither list, so a screen watching this

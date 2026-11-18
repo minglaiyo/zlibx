@@ -6,8 +6,9 @@ import '../models/display_book.dart';
 import '../providers/history_cover_notifier.dart';
 import '../providers/local_collection_provider.dart';
 import '../providers/saved_books_notifier.dart';
-import '../utils/app_snack.dart';
 import '../screens/book_detail/widgets/add_to_booklist_dialog.dart';
+import '../utils/app_snack.dart';
+
 
 /// 长按书籍封面/条目弹出的快捷操作面板：收藏到书架 / 加入书单
 ///（用户批 2026-11-14 功能 2，后推广到搜索/首页/最新上架/相似书籍/

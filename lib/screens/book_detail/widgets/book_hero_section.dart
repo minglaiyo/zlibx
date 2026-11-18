@@ -1,21 +1,22 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
 import '../../../providers/books_provider.dart';
-import '../../../l10n/generated/app_localizations.dart';
-import '../../../theme/app_metrics.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_metrics.dart';
 import '../../../theme/motion.dart';
 import '../../../utils/app_snack.dart';
 import '../../../utils/cover_cache.dart';
 import '../../../widgets/loading_widget.dart';
 import '../../../widgets/motion/motion.dart';
 import 'book_3d_cover.dart';
+
 
 class BookHeroSection extends ConsumerStatefulWidget {
   final DisplayBook book;

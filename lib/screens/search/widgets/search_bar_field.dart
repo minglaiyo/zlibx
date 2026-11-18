@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 
+
 /// 从 search_screen 抽出的零状态段：药丸形搜索框。筛选按钮带激活
 /// 筛选数角标（[activeFilterCount]，仅站内源显示）；打开筛选面板、
 /// 提交搜索、清空输入等行为经回调交回搜索页。

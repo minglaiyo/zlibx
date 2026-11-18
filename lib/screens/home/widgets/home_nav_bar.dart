@@ -1,9 +1,11 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../theme/motion.dart';
 import '../../../theme/app_metrics.dart';
+import '../../../theme/motion.dart';
+
 
 /// The four-destination pill bar. HomeScreen owns the PageController and
 /// passes the current index + selection callback in.

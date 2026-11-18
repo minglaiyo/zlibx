@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart';
 import '../../theme/app_metrics.dart';
 import '../../theme/motion.dart';
 
+
 /// 骨架屏 shimmer：全 app 共享一个控制器，所有可见的 shimmer 同相位。
 ///
 /// 一屏 50 张加载封面曾经 = 50 个 AnimationController（50 个 ticker）；

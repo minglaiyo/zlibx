@@ -4,6 +4,7 @@ import '../../../theme/app_layout.dart';
 import '../../../widgets/book_card.dart';
 import '../../../widgets/cover_placeholder.dart';
 
+
 /// 从 search_screen 抽出的零状态段：搜索加载骨架网格。
 class SearchSkeletonGrid extends StatelessWidget {
   const SearchSkeletonGrid({super.key, this.adaptiveGridColumns = false});

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../theme/motion.dart';
 import '../../../theme/app_metrics.dart';
+import '../../../theme/motion.dart';
+
 
 /// The three search modes of the z站 search page. The enum lives here
 /// (next to the switch that renders it); the screen owns the current

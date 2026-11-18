@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
-import '../services/hive_service.dart';
-import '../utils/diagnostics.dart';
 import '../constants/search_filters.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/display_book.dart';
@@ -16,14 +14,12 @@ import '../screens/account/my_comments_screen.dart';
 import '../screens/account/user_profile_screen.dart';
 import '../screens/account/view_history_screen.dart';
 import '../screens/auth/login_screen.dart';
-import '../screens/categories/categories_directory_screen.dart';
 import '../screens/author/author_screen.dart';
-import '../screens/downloads/local_downloads_screen.dart';
-import '../screens/settings/settings_screen.dart';
-import '../services/view_history_storage.dart';
 import '../screens/book_detail/book_detail_args.dart';
 import '../screens/book_detail/book_detail_screen.dart';
+import '../screens/categories/categories_directory_screen.dart';
 import '../screens/comments/book_comments_screen.dart';
+import '../screens/downloads/local_downloads_screen.dart';
 import '../screens/favorites/favorites_screen.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/popular/popular_books_screen.dart';
@@ -31,9 +27,14 @@ import '../screens/reader/reader_screen.dart';
 import '../screens/recent/recent_books_screen.dart';
 import '../screens/search/search_screen.dart';
 import '../screens/settings/history_screen.dart';
+import '../screens/settings/settings_screen.dart';
 import '../screens/similar/similar_books_screen.dart';
 import '../screens/splash/splash_screen.dart';
+import '../services/hive_service.dart';
+import '../services/view_history_storage.dart';
 import '../theme/app_metrics.dart';
+import '../utils/diagnostics.dart';
+
 
 class AppRoutes {
   static const String splash = '/';

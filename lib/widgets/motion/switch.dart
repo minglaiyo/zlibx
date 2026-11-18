@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_metrics.dart';
 import '../../theme/motion.dart';
 
+
 /// 切换过渡的形态。
 enum MotionSwitchStyle {
   /// 纯淡入淡出：三态容器（loading/empty/error/content）的默认。

@@ -6,6 +6,7 @@ import '../../../providers/shelf_categories_provider.dart';
 import 'shelf_book_item.dart';
 import 'shelf_item_tile.dart';
 
+
 /// 从 favorites_screen 抽出的列表 / 网格体：可见条目按列表或网格
 /// 铺开，每个条目经 [ShelfItemTile] 只监听自己的下载任务。选择态
 /// 与点击 / 长按行为经参数与回调交回收藏页。

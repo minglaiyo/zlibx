@@ -38,6 +38,7 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import 'media_store.dart';
 
+
 /// Streams download bytes into a pending MediaStore entry.
 ///
 /// Implements [PendingDownloadWriter] (defined in the vendor plugin)

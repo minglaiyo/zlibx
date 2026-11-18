@@ -3,9 +3,10 @@
 
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
+
 import 'frb_generated.dart';
 import 'models.dart';
-import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 /// Phase 1 smoke-test function: a trivial pure function to verify the
 /// Rust → Dart bridge is wired end-to-end. Not a real parser.

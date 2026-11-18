@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../l10n/book_categories.dart';
 import '../../../l10n/generated/app_localizations.dart';
 
+
 /// Searchable category picker over the 841 categories in
 /// [kBookCategoryNames]: the "all categories" row first (unless
 /// [showAllOption] is false), then every category in tree order —

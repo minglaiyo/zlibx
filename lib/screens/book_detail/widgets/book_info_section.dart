@@ -5,17 +5,18 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../../../constants/search_filters.dart';
 import '../../../core/book_description.dart';
-import '../../../models/display_book.dart';
-import '../../../l10n/generated/app_localizations.dart';
 import '../../../l10n/book_categories.dart';
-import '../../../routes/app_routes.dart';
+import '../../../l10n/generated/app_localizations.dart';
+import '../../../models/display_book.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../routes/app_routes.dart';
 import '../../../utils/app_snack.dart';
+import '../../comments/book_comments_screen.dart';
 import '../../search/search_screen.dart';
 import '../../similar/similar_books_screen.dart';
-import '../../comments/book_comments_screen.dart';
 import 'add_to_booklist_dialog.dart';
 import 'book_detail_content.dart';
+
 
 class BookInfoSection extends ConsumerStatefulWidget {
   final Book book;

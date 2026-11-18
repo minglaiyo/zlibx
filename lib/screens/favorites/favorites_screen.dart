@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,14 +17,14 @@ import '../../routes/app_routes.dart';
 import '../../screens/search/search_screen.dart';
 import '../../services/media_store.dart';
 import '../../theme/app_metrics.dart';
+import '../../utils/app_snack.dart';
+import '../../utils/error_text.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/loading_widget.dart';
 import 'category_actions.dart';
 import 'widgets/shelf_book_sliver.dart';
 import 'widgets/shelf_chip.dart';
-import '../../widgets/loading_widget.dart';
 
-import '../../utils/app_snack.dart';
-import '../../utils/error_text.dart';
 
 enum _ShelfSort { defaultOrder, title, author }
 

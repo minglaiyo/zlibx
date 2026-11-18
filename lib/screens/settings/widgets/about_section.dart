@@ -1,9 +1,11 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
-import '../../../theme/app_metrics.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../theme/app_metrics.dart';
 import 'section_header.dart';
 import 'settings_card.dart';
 

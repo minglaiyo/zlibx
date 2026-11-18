@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
+
 import '../../core/book_description.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../models/display_book.dart';
 import '../../providers/books_provider.dart';
 import '../../providers/download_provider.dart';
 import 'book_detail_args.dart';
 import 'widgets/anna_book_info_section.dart';
+import 'widgets/book_action_bar.dart';
 import 'widgets/book_hero_section.dart';
 import 'widgets/book_info_section.dart';
-import 'widgets/book_action_bar.dart';
 import 'widgets/download_quota_dialog.dart';
 import 'widgets/external_book_action_bar.dart';
-import '../../l10n/generated/app_localizations.dart';
 
 /// 详情页当前该渲染的书本体：入参书本体 → eapi 正文 → 已到达的
 /// 附加字段，后到的覆盖先到的（[applyBookDetailExtras] 的空值语义是

@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,6 +11,7 @@ import '../../widgets/user_profile_section.dart';
 import '../auth/login_screen.dart';
 import '../auth/widgets/account_manager_sheet.dart';
 import '../settings/widgets/settings_card.dart';
+
 
 /// Account tab (third nav destination): the signed-in user's profile
 /// hero card (the one from Settings — avatar, name, email,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../services/mirror_trust.dart';
 
+
 /// Asks the user, once per host, before credentials go to a community
 /// mirror. Returns true when [domain] is (or has just been) confirmed.
 ///

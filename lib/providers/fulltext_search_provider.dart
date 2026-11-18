@@ -7,6 +7,7 @@ import '../services/fulltext_repository.dart';
 import 'auth_provider.dart';
 import 'zlibrary_provider.dart';
 
+
 // ── Full-text search ────────────────────────────────────────────────
 
 /// Parameters for one full-text search. `yearFrom` / `yearTo` (like

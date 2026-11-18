@@ -13,6 +13,7 @@ import '../services/external_search.dart';
 import '../services/libgen_service.dart';
 import '../services/network_error.dart';
 
+
 // ── External Search (Anna's Archive + LibGen) ────────────────────────
 //
 // Mirrors SearchNotifier's shape, but over a swappable external provider

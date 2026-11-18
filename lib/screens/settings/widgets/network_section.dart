@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../providers/domain_provider.dart';
 import '../../../providers/speed_test_provider.dart';
 import '../../../theme/app_colors.dart';
-import '../../../l10n/generated/app_localizations.dart';
 import '../../../widgets/domain_selector.dart';
 import '../mirrors_page.dart';
 import 'section_header.dart';

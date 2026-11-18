@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
 
+
 class BookDetailHeading extends StatelessWidget {
   final DisplayBook book;
   final String? subtitle;

@@ -1,12 +1,13 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import '../../../theme/app_metrics.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../services/open_library.dart';
+import '../../../theme/app_metrics.dart';
 import '../../../utils/cover_cache.dart';
 import '../../../widgets/cover_placeholder.dart';
 import '../../../widgets/motion/motion.dart';
+
 
 /// Open Library trending (ported from OpenlibExtended): a horizontal
 /// cover strip. Tapping a cover searches its title on the current

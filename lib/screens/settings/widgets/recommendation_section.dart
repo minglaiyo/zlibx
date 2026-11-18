@@ -9,6 +9,7 @@ import '../../../providers/settings_provider.dart';
 import 'section_header.dart';
 import 'settings_card.dart';
 
+
 class RecommendationSection extends ConsumerWidget {
   const RecommendationSection({super.key});
 

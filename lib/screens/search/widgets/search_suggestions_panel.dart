@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../providers/search_suggestions_provider.dart';
 
+
 /// 搜索建议面板（方案 D1）：输入非空且聚焦时列在搜索框正下方，
 /// 纯本地匹配（最近搜索关键词 + 浏览历史书名/作者），点击建议
 /// 回填并立即发起搜索。空列表时面板不渲染。

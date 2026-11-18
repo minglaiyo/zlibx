@@ -3,6 +3,7 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../l10n/generated/app_localizations.dart';
 
+
 /// One booklist row: cover thumb, name, author + book count + views,
 /// optional description, chevron. Shared by the booklists screen and
 /// the user profile page's booklists section.

@@ -205,8 +205,14 @@ class DownloadPathSection extends ConsumerWidget {
                     ),
                     onTap: () async {
                       Navigator.pop(context);
-                      final result = await FilePicker.getDirectoryPath();
-                      if (result != null) {
+                      // file_picker 13.3：getDirectoryPath 已废弃，新 API
+                      // pickDirectory 返回 Uri——file scheme 转回本地路径
+                      // （桌面自选目录场景），其他 scheme 原样交给存储层。
+                      final picked = await FilePicker.pickDirectory();
+                      final result = picked?.scheme == 'file'
+                          ? picked!.toFilePath()
+                          : picked?.toString();
+                      if (result != null && result.isNotEmpty) {
                         await ref
                             .read(downloadPathProvider.notifier)
                             .setDownloadPath(result);

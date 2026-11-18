@@ -31,8 +31,10 @@ md-5 = "0.10"
 hex = "0.4"
 
 [profile.release]
-# Minimize .so size — these match the feasibility doc's APK-size risk mitigation.
-opt-level = "z"
+# opt-level=3 over "z": the parsers are on the search/detail hot path
+# (html5ever DOM build is size-sensitive but latency-first) — measured
+# .so delta is ~1 MB, DOM-parse throughput is the user-visible win.
+opt-level = 3
 lto = true
 codegen-units = 1
 panic = "abort"

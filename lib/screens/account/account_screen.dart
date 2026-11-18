@@ -27,11 +27,28 @@ import '../settings/widgets/settings_card.dart';
 /// and the bottom nav already says where you are. The detail page's
 /// per-book comments entry is untouched, and the Settings login card
 /// stays as the other way back to login.
-class AccountScreen extends ConsumerWidget {
+class AccountScreen extends ConsumerStatefulWidget {
   const AccountScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AccountScreen> createState() => _AccountScreenState();
+}
+
+class _AccountScreenState extends ConsumerState<AccountScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // 进入账户页即刷新资料/额度（best-effort）：downloadsLeft 只在
+    // 登录/启动时拉取，别处下载后进 tab 看到的数字是旧的。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (ref.read(authProvider).isAuthenticated) {
+        ref.read(authProvider.notifier).refreshProfile();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final user = ref.watch(authProvider).user;
 

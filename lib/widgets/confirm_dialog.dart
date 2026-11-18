@@ -17,9 +17,7 @@ Future<bool> showConfirmDialog(
     context: context,
     builder: (dialogContext) => AlertDialog(
       title: Text(title),
-      content: (message == null || message.isEmpty)
-          ? null
-          : Text(message),
+      content: (message == null || message.isEmpty) ? null : Text(message),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialogContext, false),

@@ -35,6 +35,7 @@ class DownloadForegroundService : Service() {
     companion object {
         private const val CHANNEL_ID = "zlibx_download"
         private const val NOTIFICATION_ID = 1
+        private const val DONE_CHANNEL_ID = "zlibx_done"
 
         private const val ACTION_START = "start"
         private const val ACTION_PROGRESS = "progress"
@@ -92,6 +93,60 @@ class DownloadForegroundService : Service() {
         fun updateProgress(text: String?) {
             progressText = text
             if (activeCount > 0) service?.notifyProgress()
+        }
+
+        /** E3: post a completion notification tapping straight into the
+            book (content:// URI + ACTION_VIEW with a read grant). Plain
+            file paths get a notification without a tap target — modern
+            Android blocks file:// intents without a FileProvider, and the
+            book is still one tap away in the downloads tab. Runs from the
+            app process; POST_NOTIFICATIONS gates visibility, best-effort.
+            Notification id is stable per book so a re-download replaces
+            its old notice instead of stacking. */
+        fun notifyCompleted(
+            context: Context,
+            title: String,
+            uri: String,
+            mimeType: String,
+            detail: String,
+        ) {
+            try {
+                val nm = context.getSystemService(NotificationManager::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    nm.createNotificationChannel(
+                        NotificationChannel(
+                            DONE_CHANNEL_ID,
+                            "下载完成",
+                            NotificationManager.IMPORTANCE_DEFAULT,
+                        ).apply { description = "书籍下载完成提醒" },
+                    )
+                }
+                val builder = NotificationCompat.Builder(context, DONE_CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                    .setContentTitle(title)
+                    .setContentText(detail)
+                    .setAutoCancel(true)
+                if (uri.startsWith("content://")) {
+                    val openIntent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(android.net.Uri.parse(uri), mimeType)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                        PendingIntent.FLAG_IMMUTABLE
+                    builder.setContentIntent(
+                        PendingIntent.getActivity(
+                            context,
+                            uri.hashCode(),
+                            openIntent,
+                            flags,
+                        ),
+                    )
+                }
+                nm.notify(uri.hashCode(), builder.build())
+            } catch (e: Exception) {
+                android.util.Log.w("ZlibxDownload", "completion notification failed", e)
+            }
         }
     }
 

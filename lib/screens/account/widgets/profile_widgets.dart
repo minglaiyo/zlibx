@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
@@ -6,6 +5,7 @@ import '../../../routes/app_routes.dart';
 import '../../comments/widgets/comment_avatar.dart';
 import '../../comments/widgets/comment_metric_chip.dart';
 import '../comment_book_ref.dart';
+import '../../../widgets/motion/motion.dart';
 import '../../../theme/app_metrics.dart';
 import '../../../utils/date_text.dart';
 
@@ -44,8 +44,9 @@ class ProfileHeader extends StatelessWidget {
                   Expanded(
                     child: Text(
                       args.userName,
-                      style: Theme.of(context).textTheme.titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -98,19 +99,8 @@ class ProfileStatPill extends StatelessWidget {
           Icon(icon, size: 14, color: cs.onSecondaryContainer),
           const SizedBox(width: 5),
           // 数字变化时轻微上滑淡入（下拉刷新计数变化不跳变）。
-          AnimatedSwitcher(
-            duration: AppMotion.standard,
-            switchInCurve: Curves.easeOutCubic,
-            transitionBuilder: (child, animation) => FadeTransition(
-              opacity: animation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.4),
-                  end: Offset.zero,
-                ).animate(animation),
-                child: child,
-              ),
-            ),
+          MotionSwitch(
+            style: MotionSwitchStyle.slide,
             child: Text(
               '$count',
               key: ValueKey(count),

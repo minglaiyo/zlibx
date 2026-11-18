@@ -7,8 +7,11 @@ mixin _AnnasBookInfoMixin on _AnnasClientMixin {
   // _bookInfoParser FUNCTION (Detail Page - Fixed 'unable to get data' error)
   // --------------------------------------------------------------------
   Future<BookInfoData?> _bookInfoParser(
-      dynamic resData, String url, String currentBaseUrl) async {
-    final details = ArchiveParsing.parseBookDetails(
+    dynamic resData,
+    String url,
+    String currentBaseUrl,
+  ) async {
+    final details = await ArchiveParsing.parseBookDetailsH(
       resData.toString(),
       url: url,
       baseUrl: currentBaseUrl,
@@ -38,8 +41,7 @@ mixin _AnnasBookInfoMixin on _AnnasClientMixin {
   /// Returns the parsed details, or null when the solve failed or the
   /// user backed out.
   Future<BookInfoData?> _solveBookInfoViaWebView(String url) async {
-    final urls =
-        await _instanceManager.enabledUrls(MirrorService.annasArchive);
+    final urls = await _instanceManager.enabledUrls(MirrorService.annasArchive);
     if (urls.isEmpty) return null;
     final baseUrl = urls.first;
     final urlParsed = Uri.parse(url);
@@ -53,26 +55,40 @@ mixin _AnnasBookInfoMixin on _AnnasClientMixin {
     // captured this exact detail page.
     final cached = _usableCachedHtml(adjustedUrl);
     if (cached != null) {
-      _logger.info('Using cached challenge HTML for bookInfo',
-          tag: 'AnnasArchive', metadata: {'url': adjustedUrl});
+      _logger.info(
+        'Using cached challenge HTML for bookInfo',
+        tag: 'AnnasArchive',
+        metadata: {'url': adjustedUrl},
+      );
       return _bookInfoParser(cached, adjustedUrl, baseUrl);
     }
-    _logger.info('All mirrors timed out, solving book URL in WebView',
-        tag: 'AnnasArchive', metadata: {'url': adjustedUrl});
-    final html =
-        await WebviewChallengeSolver.fetchHtmlAfterChallenge(adjustedUrl);
+    _logger.info(
+      'All mirrors timed out, solving book URL in WebView',
+      tag: 'AnnasArchive',
+      metadata: {'url': adjustedUrl},
+    );
+    final html = await WebviewChallengeSolver.fetchHtmlAfterChallenge(
+      adjustedUrl,
+    );
     if (html == null || html.length <= AnnasArchieve.minUsableHtmlLength) {
-      _logger.warning('WebView solve returned no usable HTML for bookInfo',
-          tag: 'AnnasArchive');
+      _logger.warning(
+        'WebView solve returned no usable HTML for bookInfo',
+        tag: 'AnnasArchive',
+      );
       return null;
     }
     return _bookInfoParser(html, adjustedUrl, baseUrl);
   }
 
-  Future<BookInfoData> bookInfo(
-      {required String url, String? donationKey}) async {
-    _logger.info('Fetching book info',
-        tag: 'AnnasArchive', metadata: {'url': url});
+  Future<BookInfoData> bookInfo({
+    required String url,
+    String? donationKey,
+  }) async {
+    _logger.info(
+      'Fetching book info',
+      tag: 'AnnasArchive',
+      metadata: {'url': url},
+    );
 
     // Fast path, same as searchBooks: every enabled mirror is protected,
     // so skip the timed-out Dio phase and solve this book's detail URL
@@ -82,8 +98,11 @@ mixin _AnnasBookInfoMixin on _AnnasClientMixin {
         final solved = await _solveBookInfoViaWebView(url);
         if (solved != null) return solved;
       } catch (e) {
-        _logger.error('WebView pre-solve failed',
-            tag: 'AnnasArchive', error: e.toString());
+        _logger.error(
+          'WebView pre-solve failed',
+          tag: 'AnnasArchive',
+          error: e.toString(),
+        );
       }
       throw await _handleErrorAsync(
         TimeoutException('All mirrors protected and WebView solve failed'),
@@ -91,8 +110,10 @@ mixin _AnnasBookInfoMixin on _AnnasClientMixin {
     }
 
     try {
-      final data =
-          await _requestWithRetry<BookInfoData>((currentBaseUrl, cancelToken) async {
+      final data = await _requestWithRetry<BookInfoData>((
+        currentBaseUrl,
+        cancelToken,
+      ) async {
         // Replace the base URL in the url parameter if it contains a different one
         String adjustedUrl = url;
         final urlParsed = Uri.parse(url);
@@ -109,23 +130,35 @@ mixin _AnnasBookInfoMixin on _AnnasClientMixin {
         // _usableCachedHtml rejects stale challenge interstitials.
         final cached = _usableCachedHtml(adjustedUrl);
         if (cached != null) {
-          _logger.info('Using cached challenge HTML for bookInfo',
-              tag: 'AnnasArchive', metadata: {'url': adjustedUrl});
-          final data =
-              await _bookInfoParser(cached, adjustedUrl, currentBaseUrl);
+          _logger.info(
+            'Using cached challenge HTML for bookInfo',
+            tag: 'AnnasArchive',
+            metadata: {'url': adjustedUrl},
+          );
+          final data = await _bookInfoParser(
+            cached,
+            adjustedUrl,
+            currentBaseUrl,
+          );
           if (data != null) return data;
         }
 
-        _logger.debug('Fetching book details',
-            tag: 'AnnasArchive', metadata: {'url': adjustedUrl});
-        final response =
-            await _makeRequest(adjustedUrl, cancelToken: cancelToken);
+        _logger.debug(
+          'Fetching book details',
+          tag: 'AnnasArchive',
+          metadata: {'url': adjustedUrl},
+        );
+        final response = await _makeRequest(
+          adjustedUrl,
+          cancelToken: cancelToken,
+        );
 
         // Check for Cloudflare block in the response
         if (_isChallengeResponse(response)) {
           _logger.warning(
-              'Cloudflare/DDoS block detected in book info response',
-              tag: 'AnnasArchive');
+            'Cloudflare/DDoS block detected in book info response',
+            tag: 'AnnasArchive',
+          );
           throw NetworkError(
             type: NetworkErrorType.cloudflareBlock,
             userMessage: "Access blocked by DDoS protection",
@@ -141,23 +174,30 @@ mixin _AnnasBookInfoMixin on _AnnasClientMixin {
         // rather than be parsed into a null (handled below) or an
         // error page mistaken for book details.
         _ensureResponseStatus(response, adjustedUrl);
-        final BookInfoData? data =
-            await _bookInfoParser(response.data, adjustedUrl, currentBaseUrl);
+        final BookInfoData? data = await _bookInfoParser(
+          response.data,
+          adjustedUrl,
+          currentBaseUrl,
+        );
         if (data != null) {
           return data;
         } else {
           // Log response preview when parser fails
           final responseStr = response.data?.toString() ?? "";
           final preview = responseStr.substring(
-              0, responseStr.length > 1000 ? 1000 : responseStr.length);
-          _logger.error('Parser returned null - possible DDoS protection page',
-              tag: 'AnnasArchive',
-              metadata: {
-                'url': adjustedUrl,
-                'responseLength': responseStr.length,
-                'statusCode': response.statusCode,
-                'preview': preview,
-              });
+            0,
+            responseStr.length > 1000 ? 1000 : responseStr.length,
+          );
+          _logger.error(
+            'Parser returned null - possible DDoS protection page',
+            tag: 'AnnasArchive',
+            metadata: {
+              'url': adjustedUrl,
+              'responseLength': responseStr.length,
+              'statusCode': response.statusCode,
+              'preview': preview,
+            },
+          );
 
           throw NetworkError(
             type: NetworkErrorType.unknown,
@@ -170,13 +210,15 @@ mixin _AnnasBookInfoMixin on _AnnasClientMixin {
         }
       });
 
-      _logger.info('Book info retrieved successfully',
-          tag: 'AnnasArchive',
-          metadata: {
-            'title': data.title,
-            'format': data.format,
-            'hasMirror': data.mirror != null,
-          });
+      _logger.info(
+        'Book info retrieved successfully',
+        tag: 'AnnasArchive',
+        metadata: {
+          'title': data.title,
+          'format': data.format,
+          'hasMirror': data.mirror != null,
+        },
+      );
       return data;
     } on NetworkError catch (networkErr) {
       // If all instances failed with 403 and webview solver is available, try automatic solve.
@@ -184,26 +226,31 @@ mixin _AnnasBookInfoMixin on _AnnasClientMixin {
           WebviewChallengeSolver.isSupported &&
           networkErr.blockedUrl != null) {
         _logger.info(
-            'Attempting automatic challenge solve via webview for bookInfo',
-            tag: 'AnnasArchive');
+          'Attempting automatic challenge solve via webview for bookInfo',
+          tag: 'AnnasArchive',
+        );
 
         try {
           final targetUrl = networkErr.blockedUrl!;
-          final html =
-              await WebviewChallengeSolver.fetchHtmlAfterChallenge(targetUrl);
+          final html = await WebviewChallengeSolver.fetchHtmlAfterChallenge(
+            targetUrl,
+          );
           if (html != null && html.length > AnnasArchieve.minUsableHtmlLength) {
-            _logger.info('Challenge solved, parsing bookInfo from webview HTML',
-                tag: 'AnnasArchive');
+            _logger.info(
+              'Challenge solved, parsing bookInfo from webview HTML',
+              tag: 'AnnasArchive',
+            );
             final currentBaseUrl = Uri.parse(targetUrl).origin;
-            final data =
-                await _bookInfoParser(html, targetUrl, currentBaseUrl);
+            final data = await _bookInfoParser(html, targetUrl, currentBaseUrl);
             if (data != null) {
               return data;
             } else {
               // The page rendered fine but holds no book details - the md5
               // led to a search redirect. This is a dead link, not a block.
-              _logger.warning('Webview HTML parsed but returned null bookInfo',
-                  tag: 'AnnasArchive');
+              _logger.warning(
+                'Webview HTML parsed but returned null bookInfo',
+                tag: 'AnnasArchive',
+              );
               throw NetworkError(
                 type: NetworkErrorType.unknown,
                 userMessage: "Book not found",
@@ -215,19 +262,22 @@ mixin _AnnasBookInfoMixin on _AnnasClientMixin {
             }
           } else {
             _logger.warning(
-                'Webview solver returned no usable HTML for bookInfo',
-                tag: 'AnnasArchive');
+              'Webview solver returned no usable HTML for bookInfo',
+              tag: 'AnnasArchive',
+            );
           }
         } catch (solveError, solveStack) {
           // A solver crash (bad URL scheme, UI callback failure, ...)
           // must not escape as a bare exception: surface the original
           // NetworkError so the UI's error handling keeps working.
           if (solveError is NetworkError) rethrow;
-          _logger.error('Challenge solve crashed; reporting the original '
-              'block instead',
-          tag: 'AnnasArchive',
-          error: solveError,
-          stackTrace: solveStack);
+          _logger.error(
+            'Challenge solve crashed; reporting the original '
+            'block instead',
+            tag: 'AnnasArchive',
+            error: solveError,
+            stackTrace: solveStack,
+          );
         }
       }
       // Same timeout fallback as searchBooks: Dio got no response from any
@@ -241,23 +291,33 @@ mixin _AnnasBookInfoMixin on _AnnasClientMixin {
           if (solved != null) return solved;
         } catch (solveError, solveStack) {
           if (solveError is NetworkError) rethrow;
-          _logger.error('WebView bookInfo fallback crashed; rethrowing the '
-              'original network error',
-          tag: 'AnnasArchive',
-          error: solveError,
-          stackTrace: solveStack);
+          _logger.error(
+            'WebView bookInfo fallback crashed; rethrowing the '
+            'original network error',
+            tag: 'AnnasArchive',
+            error: solveError,
+            stackTrace: solveStack,
+          );
         }
       }
       // Re-throw NetworkError as-is for UI to handle if solver failed or unavailable
       rethrow;
     } on DioException catch (e) {
-      _logger.error('Failed to fetch book info',
-          tag: 'AnnasArchive', error: e.message ?? e.error);
-      throw await _handleErrorAsync(e,
-          responseBody: e.response?.data?.toString());
+      _logger.error(
+        'Failed to fetch book info',
+        tag: 'AnnasArchive',
+        error: e.message ?? e.error,
+      );
+      throw await _handleErrorAsync(
+        e,
+        responseBody: e.response?.data?.toString(),
+      );
     } catch (e) {
-      _logger.error('Unexpected book info error',
-          tag: 'AnnasArchive', error: e.toString());
+      _logger.error(
+        'Unexpected book info error',
+        tag: 'AnnasArchive',
+        error: e.toString(),
+      );
       throw await _handleErrorAsync(e);
     }
   }

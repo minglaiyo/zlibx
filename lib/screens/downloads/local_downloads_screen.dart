@@ -8,22 +8,36 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../l10n/generated/app_localizations.dart';
 import '../../providers/download_provider.dart';
+import '../../providers/shelf_categories_provider.dart';
+import '../../screens/favorites/category_actions.dart';
+import '../../screens/favorites/widgets/shelf_chip.dart';
 import '../../services/media_store.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/cover_cache.dart';
 import '../../utils/file_utils.dart';
 import '../../widgets/empty_state.dart';
-import '../../widgets/entrance.dart';
+import '../../widgets/motion/motion.dart';
 import '../../widgets/confirm_dialog.dart';
 
 import '../../utils/app_snack.dart';
 import '../../utils/date_text.dart';
 import '../../utils/error_text.dart';
-class LocalDownloadsScreen extends ConsumerWidget {
+
+class LocalDownloadsScreen extends ConsumerStatefulWidget {
   const LocalDownloadsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LocalDownloadsScreen> createState() =>
+      _LocalDownloadsScreenState();
+}
+
+class _LocalDownloadsScreenState extends ConsumerState<LocalDownloadsScreen> {
+  /// 已完成列表的分类筛选：null = 全部；[kShelfUncategorizedId] =
+  /// 未分类；其余 = 分类 id。分类树与书架共用一份（方案 C1）。
+  String? _completedFilter;
+
+  @override
+  Widget build(BuildContext context) {
     final l = AppLocalizations.of(context)!;
     // Structural watch only: the id lists (and so the tab counts and
     // order) change only when a task is added/removed, changes status,
@@ -74,7 +88,8 @@ class LocalDownloadsScreen extends ConsumerWidget {
           children: [
             SizedBox(
               height:
-                  appBar.preferredSize.height + MediaQuery.paddingOf(context).top,
+                  appBar.preferredSize.height +
+                  MediaQuery.paddingOf(context).top,
               child: appBar,
             ),
             Expanded(
@@ -86,17 +101,137 @@ class LocalDownloadsScreen extends ConsumerWidget {
                     emptyTitle: l.noActiveDownloads,
                     emptyMessage: l.downloadsAppearHere,
                   ),
-                  _DownloadList(
+                  _CompletedTab(
                     taskIds: completedIds,
-                    emptyIcon: Icons.check_circle_outline_rounded,
-                    emptyTitle: l.noCompletedDownloads,
-                    emptyMessage: l.downloadedBooksHere,
+                    filter: _completedFilter,
+                    onFilterChanged: (value) =>
+                        setState(() => _completedFilter = value),
                   ),
                 ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 已完成 Tab：分类筛选条 + 列表。任务 id 就是 bookId（历史条目按
+/// bookId 存），分类归属用 `download:<bookId>` 键写进书架分类的
+/// assignments 表。
+class _CompletedTab extends ConsumerWidget {
+  const _CompletedTab({
+    required this.taskIds,
+    required this.filter,
+    required this.onFilterChanged,
+  });
+
+  final List<String> taskIds;
+  final String? filter;
+  final ValueChanged<String?> onFilterChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context)!;
+    final categories = ref.watch(shelfCategoriesProvider);
+    final visible = taskIds.where((id) {
+      final assigned = categories.assignments['download:$id'];
+      if (filter == kShelfUncategorizedId) return assigned == null;
+      if (filter != null) return assigned == filter;
+      return true;
+    }).toList();
+
+    return Column(
+      children: [
+        _CompletedCategoryBar(
+          taskIds: taskIds,
+          selected: filter,
+          onSelected: onFilterChanged,
+        ),
+        Expanded(
+          child: _DownloadList(
+            taskIds: visible,
+            emptyIcon: filter == null
+                ? Icons.check_circle_outline_rounded
+                : Icons.search_off_rounded,
+            emptyTitle: filter == null
+                ? l.noCompletedDownloads
+                : l.shelfNoMatches,
+            emptyMessage: filter == null
+                ? l.downloadedBooksHere
+                : l.shelfTryOtherFilter,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 分类筛选 chips：全部 / 未分类 / 各分类 + 计数。分类的新建与改名
+/// 仍在书架的「管理分类」里，这里只消费同一棵树。
+class _CompletedCategoryBar extends ConsumerWidget {
+  const _CompletedCategoryBar({
+    required this.taskIds,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<String> taskIds;
+  final String? selected;
+  final ValueChanged<String?> onSelected;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context)!;
+    final categories = ref.watch(shelfCategoriesProvider);
+    String? assignedFor(String id) => categories.assignments['download:$id'];
+
+    return SizedBox(
+      height: 44,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: Center(
+              child: ShelfChip(
+                label: '${l.shelfAllCategories} ${taskIds.length}',
+                selected: selected == null,
+                dense: true,
+                onSelected: () => onSelected(null),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: Center(
+              child: ShelfChip(
+                label:
+                    '${l.shelfUncategorized} '
+                    '${taskIds.where((id) => assignedFor(id) == null).length}',
+                selected: selected == kShelfUncategorizedId,
+                dense: true,
+                onSelected: () => onSelected(kShelfUncategorizedId),
+              ),
+            ),
+          ),
+          for (final category in categories.categories)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Center(
+                child: ShelfChip(
+                  label:
+                      '${category.name} '
+                      '${taskIds.where((id) => assignedFor(id) == category.id).length}',
+                  selected: selected == category.id,
+                  dense: true,
+                  onSelected: () => onSelected(category.id),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -131,7 +266,7 @@ class _DownloadList extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 124),
       itemCount: taskIds.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (_, index) => EntranceSlideFade(
+      itemBuilder: (_, index) => MotionEntrance(
         index: index,
         child: _DownloadItem(id: taskIds[index]),
       ),
@@ -253,7 +388,9 @@ class _DownloadItem extends ConsumerWidget {
             if (task.status == DownloadStatus.error) ...[
               const SizedBox(height: 8),
               Text(
-                task.missingFile
+                task.wifiOnlyBlocked
+                    ? l.downloadWifiOnlyRequired
+                    : task.missingFile
                     ? l.downloadFileMissing
                     : task.quotaExceeded
                     ? l.downloadQuotaExceeded
@@ -322,15 +459,23 @@ class _DownloadItem extends ConsumerWidget {
                   tooltip: l.more,
                   onSelected: (value) => _onMenu(context, ref, task, value),
                   itemBuilder: (_) => [
+                    // 排队中（pending）可置顶（E2）：下一个空出的槽位
+                    // 给这本。
+                    if (task.status == DownloadStatus.pending)
+                      PopupMenuItem(
+                        value: 'pin',
+                        child: Text(l.downloadPinToTop),
+                      ),
                     if (isComplete) ...[
+                      PopupMenuItem(
+                        value: 'category',
+                        child: Text(l.shelfAddToCategory),
+                      ),
                       PopupMenuItem(
                         value: 'details',
                         child: Text(l.fileDetails),
                       ),
-                      PopupMenuItem(
-                        value: 'share',
-                        child: Text(l.share),
-                      ),
+                      PopupMenuItem(value: 'share', child: Text(l.share)),
                       const PopupMenuDivider(),
                     ],
                     PopupMenuItem(
@@ -367,7 +512,10 @@ class _DownloadItem extends ConsumerWidget {
         l.downloadPreparing,
         Theme.of(context).colorScheme.primary,
       ),
-      DownloadStatus.downloading => (l.downloading, Theme.of(context).colorScheme.primary),
+      DownloadStatus.downloading => (
+        l.downloading,
+        Theme.of(context).colorScheme.primary,
+      ),
       DownloadStatus.paused => (
         l.pauseDownload,
         Theme.of(context).colorScheme.onSurfaceVariant,
@@ -415,9 +563,7 @@ class _DownloadItem extends ConsumerWidget {
     if (path != null && await MediaStoreFiles.exists(path)) return true;
     ref.read(downloadProvider.notifier).markMissingFile(task.id);
     if (context.mounted) {
-      showAppSnack(context,
-            AppLocalizations.of(context)!.downloadFileMissing,
-          );
+      showAppSnack(context, AppLocalizations.of(context)!.downloadFileMissing);
     }
     return false;
   }
@@ -434,9 +580,7 @@ class _DownloadItem extends ConsumerWidget {
       if (MediaStoreFiles.isContentUri(task.filePath!)) {
         final opened = await MediaStoreFiles.open(task.filePath!);
         if (!opened && context.mounted) {
-          showAppSnack(context,
-                AppLocalizations.of(context)!.openFileFailed,
-              );
+          showAppSnack(context, AppLocalizations.of(context)!.openFileFailed);
         }
         return;
       }
@@ -462,6 +606,22 @@ class _DownloadItem extends ConsumerWidget {
   ) async {
     final l = AppLocalizations.of(context)!;
     switch (action) {
+      case 'pin':
+        // E2：pending 任务置顶——slot 池插队，下一个空出的槽位给它。
+        ref.read(downloadProvider.notifier).pinToTop(task.id);
+        return;
+      case 'category':
+        // 归类进与书架同一棵分类树（方案 C1）：键 `download:<bookId>`。
+        // 删除下载记录不清归属——重新下载回来还在原分类里。
+        await showKeysCategoryPicker(
+          context,
+          ref,
+          ['download:${task.id}'],
+          current: ref
+              .read(shelfCategoriesProvider)
+              .assignments['download:${task.id}'],
+        );
+        return;
       case 'details':
         if (!context.mounted) return;
         await showDialog<void>(
@@ -495,9 +655,7 @@ class _DownloadItem extends ConsumerWidget {
         // MediaStore-published downloads live at a content:// URI,
         // which share_plus cannot share as a file path — those are
         // copied to a temp file in the app cache dir first.
-        final sharePath = await MediaStoreFiles.shareablePath(
-          task.filePath!,
-        );
+        final sharePath = await MediaStoreFiles.shareablePath(task.filePath!);
         if (sharePath == null) {
           if (context.mounted) {
             showAppSnack(context, l.shareFailed);
@@ -547,5 +705,4 @@ class _DownloadItem extends ConsumerWidget {
       }
     }
   }
-
 }

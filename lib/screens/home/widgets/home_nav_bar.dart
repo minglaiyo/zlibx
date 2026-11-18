@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../theme/motion.dart';
 import '../../../theme/app_metrics.dart';
 
 /// The four-destination pill bar. HomeScreen owns the PageController and
@@ -114,14 +115,18 @@ class HomeNavBar extends StatelessWidget {
                               const SizedBox(height: 4),
                               Text(
                                 switch (destinations[i].labelKey) {
-                                  'downloads' =>
-                                      AppLocalizations.of(context)!.downloads,
-                                  'account' =>
-                                      AppLocalizations.of(context)!.account,
-                                  'settings' =>
-                                      AppLocalizations.of(context)!.settings,
-                                  _ =>
-                                      AppLocalizations.of(context)!.recommended,
+                                  'downloads' => AppLocalizations.of(
+                                    context,
+                                  )!.downloads,
+                                  'account' => AppLocalizations.of(
+                                    context,
+                                  )!.account,
+                                  'settings' => AppLocalizations.of(
+                                    context,
+                                  )!.settings,
+                                  _ => AppLocalizations.of(
+                                    context,
+                                  )!.recommended,
                                 },
                                 style: TextStyle(
                                   fontSize: 12,
@@ -161,10 +166,9 @@ class HomeNavBar extends StatelessWidget {
     // scroll state says.
     final hideEnabled = floatingNav && hideNavOnScroll;
     return AnimatedSlide(
-      offset:
-          hideEnabled && !navVisible ? const Offset(0, 1.5) : Offset.zero,
-      duration: AppMotion.medium,
-      curve: Curves.easeInOut,
+      offset: hideEnabled && !navVisible ? const Offset(0, 1.5) : Offset.zero,
+      duration: context.motionDuration(AppMotion.medium),
+      curve: MotionCurves.loop,
       child: navBar,
     );
   }
@@ -188,10 +192,7 @@ class HomeNavBar extends StatelessWidget {
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(40),
-        child: navBar,
-      ),
+      child: ClipRRect(borderRadius: BorderRadius.circular(40), child: navBar),
     );
   }
 }

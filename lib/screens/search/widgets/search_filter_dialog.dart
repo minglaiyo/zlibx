@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'category_picker_dialog.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../theme/motion.dart';
 import '../../../theme/app_metrics.dart';
 import 'search_mode_selector.dart';
 
@@ -64,14 +65,15 @@ class SearchFilterResult {
 /// (edits apply only on 使用, 取消 discards, 删除筛选 resets the
 /// staged values) in a popup that matches the rest of the app.
 ///
-/// Which fields show is driven by the search [mode]: article shows
-/// sort only (its request carries nothing else); full-text adds
-/// exact match, match type, years, language and extension; general
-/// adds exact match, years, language and extension plus the category
-/// row (when [showCategory] is true — the z站 general search only)
-/// and the content-type row, which appears only while a category is
-/// picked (with the standard [AppMotion.standard] switch, the same
-/// duration the domain dialog uses for its state swaps).
+/// Which fields show is driven by the search [mode]: every mode
+/// carries exact match, years, language and extension (article's
+/// filters ride the `/s/` form's site-verified parameter names since
+/// v2); full-text additionally offers the match-type row; general
+/// adds the category row (when [showCategory] is true — the z站
+/// general search only) and the content-type row, which appears only
+/// while a category is picked (with the standard [AppMotion.standard]
+/// switch, the same duration the domain dialog uses for its state
+/// swaps).
 class SearchFilterDialog extends StatefulWidget {
   const SearchFilterDialog({
     super.key,
@@ -205,18 +207,14 @@ class _SearchFilterDialogState extends State<SearchFilterDialog> {
           title: Text(
             display(option),
             style: selected
-                ? TextStyle(
-                    color: cs.primary,
-                    fontWeight: FontWeight.w700,
-                  )
+                ? TextStyle(color: cs.primary, fontWeight: FontWeight.w700)
                 : null,
           ),
           trailing: Icon(
             selected ? Icons.check_circle : Icons.circle_outlined,
             color: selected ? cs.primary : cs.onSurfaceVariant,
           ),
-          onTap: () =>
-              Navigator.of(context).pop((picked: true, value: option)),
+          onTap: () => Navigator.of(context).pop((picked: true, value: option)),
         );
       },
     );
@@ -248,8 +246,7 @@ class _SearchFilterDialogState extends State<SearchFilterDialog> {
   Future<void> _pickCategory() async {
     final picked = await showDialog<PickedCategory?>(
       context: context,
-      builder: (context) =>
-          CategoryPickerDialog(currentId: _categoryId),
+      builder: (context) => CategoryPickerDialog(currentId: _categoryId),
     );
     if (picked == null) return;
     setState(() {
@@ -293,19 +290,13 @@ class _SearchFilterDialogState extends State<SearchFilterDialog> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final cs = Theme.of(context).colorScheme;
-    final years = <int>[
-      for (var y = DateTime.now().year; y >= 1800; y--) y,
-    ];
-    final isArticle = widget.mode == SearchMode.article;
+    final years = <int>[for (var y = DateTime.now().year; y >= 1800; y--) y];
     final isFulltext = widget.mode == SearchMode.fulltext;
 
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       contentPadding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-      title: Text(
-        l10n.filter,
-        style: const TextStyle(fontSize: 18),
-      ),
+      title: Text(l10n.filter, style: const TextStyle(fontSize: 18)),
       content: SizedBox(
         width: double.maxFinite,
         child: SingleChildScrollView(
@@ -313,7 +304,6 @@ class _SearchFilterDialogState extends State<SearchFilterDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (!isArticle)
                 SwitchListTile(
                   title: Text(l10n.exactMatch),
                   value: _exact,
@@ -329,7 +319,7 @@ class _SearchFilterDialogState extends State<SearchFilterDialog> {
               // row fades in/out with the standard dialog swap
               // duration when the category is picked or cleared.
               AnimatedSwitcher(
-                duration: AppMotion.standard,
+                duration: context.motionDuration(AppMotion.standard),
                 child: widget.showCategory && _categoryId != null
                     ? _fieldRow(
                         label: l10n.contentType,
@@ -373,7 +363,7 @@ class _SearchFilterDialogState extends State<SearchFilterDialog> {
                     }
                   },
                 ),
-              if (!isArticle) ...[
+              ...[
                 _fieldRow(
                   label: l10n.yearFrom,
                   value: _yearFrom == null ? l10n.noSelection : '$_yearFrom',
@@ -441,7 +431,6 @@ class _SearchFilterDialogState extends State<SearchFilterDialog> {
                   }
                 },
               ),
-              if (!isArticle)
                 _fieldRow(
                   label: l10n.extension,
                   value: widget.extensionNames[_extension] ?? _extension,
@@ -478,10 +467,7 @@ class _SearchFilterDialogState extends State<SearchFilterDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: Text(l10n.cancel),
         ),
-        FilledButton(
-          onPressed: _apply,
-          child: Text(l10n.apply),
-        ),
+        FilledButton(onPressed: _apply, child: Text(l10n.apply)),
       ],
     );
   }
@@ -492,4 +478,3 @@ class _SearchFilterDialogState extends State<SearchFilterDialog> {
 /// (both fields null). A null future result means the dialog was
 /// dismissed, not picked — the two must not look the same.
 typedef PickedCategory = ({int? id, String? name});
-

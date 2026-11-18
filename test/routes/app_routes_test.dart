@@ -24,13 +24,15 @@ void main() {
         AppRoutes.reader,
         AppRoutes.settings,
         AppRoutes.downloads,
+        AppRoutes.categoriesDirectory,
+        AppRoutes.author,
       };
 
       final routes = buildAppRoutes();
 
-      expect(expected.length, 19);
+      expect(expected.length, 21);
       expect(routes.keys.toSet(), expected);
-      expect(routes.length, 19);
+      expect(routes.length, 21);
     });
   });
 }

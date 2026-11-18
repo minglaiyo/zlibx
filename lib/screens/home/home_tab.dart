@@ -11,6 +11,7 @@ import '../../providers/update_provider.dart';
 import '../../widgets/update_dialog.dart';
 import '../../routes/app_routes.dart';
 import '../../l10n/generated/app_localizations.dart';
+import '../../theme/motion.dart';
 import '../../theme/app_metrics.dart';
 import '../../utils/app_snack.dart';
 import 'widgets/home_book_grid.dart';
@@ -95,11 +96,13 @@ class HomeTabState extends ConsumerState<HomeTab> {
   /// Recommended nav destination).
   void scrollToTop() {
     if (_scrollController.hasClients) {
-      unawaited(_scrollController.animateTo(
-        0,
-        duration: AppMotion.slower,
-        curve: Curves.easeOut,
-      ));
+      unawaited(
+        _scrollController.animateTo(
+          0,
+          duration: AppMotion.slower,
+          curve: MotionCurves.enter,
+        ),
+      );
     }
   }
 
@@ -130,7 +133,6 @@ class HomeTabState extends ConsumerState<HomeTab> {
     final hasUpdate = await updateNotifier.checkForUpdate();
 
     if (!hasUpdate || !mounted) return;
-
 
     if (ref.read(updateProvider).forceUpdate) {
       // Force update - non-dismissable dialog with download channels
@@ -163,9 +165,7 @@ class HomeTabState extends ConsumerState<HomeTab> {
           backgroundColor: Theme.of(context).colorScheme.primary,
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.all(16),
-          shape: RoundedRectangleBorder(
-            borderRadius: AppRadius.card,
-          ),
+          shape: RoundedRectangleBorder(borderRadius: AppRadius.card),
           duration: const Duration(seconds: 6),
           dismissDirection: DismissDirection.horizontal,
         ),
@@ -189,13 +189,15 @@ class HomeTabState extends ConsumerState<HomeTab> {
     // fixed, so the grid reserves the same space on top. When the
     // line-unavailable banner is shown it takes the status-bar inset
     // itself, so the header adds none.
-    final topInset =
-        authState.lineUnavailable ? 0.0 : MediaQuery.of(context).padding.top;
+    final topInset = authState.lineUnavailable
+        ? 0.0
+        : MediaQuery.of(context).padding.top;
     const searchBarHeight = 54.0;
     const headerPadding = 12.0;
     const greetingHeight = 58.0;
     const headerGap = 12.0;
-    final headerHeight = topInset +
+    final headerHeight =
+        topInset +
         headerPadding +
         searchBarHeight +
         headerGap +
@@ -211,14 +213,16 @@ class HomeTabState extends ConsumerState<HomeTab> {
       decoration: BoxDecoration(
         color: blurEnabled ? cs.surface.withValues(alpha: 0.65) : cs.surface,
         border: Border(
-          bottom: BorderSide(
-            color: cs.outlineVariant.withValues(alpha: 0.4),
-          ),
+          bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.4)),
         ),
       ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(
-            24, topInset + headerPadding, 24, headerPadding),
+          24,
+          topInset + headerPadding,
+          24,
+          headerPadding,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -278,8 +282,7 @@ class HomeTabState extends ConsumerState<HomeTab> {
 
     return Column(
       children: [
-        if (authState.lineUnavailable)
-          const HomeLineUnavailableBanner(),
+        if (authState.lineUnavailable) const HomeLineUnavailableBanner(),
         Expanded(
           child: Stack(
             children: [
@@ -297,8 +300,7 @@ class HomeTabState extends ConsumerState<HomeTab> {
                 child: blurEnabled
                     ? ClipRect(
                         child: BackdropFilter(
-                          filter:
-                              ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
                           child: header,
                         ),
                       )

@@ -13,8 +13,9 @@ import 'loading_widget.dart';
 ///
 /// 强制更新时不可关闭（返回键 / 点遮罩均无效）。
 Future<void> showUpdateDialog(BuildContext context) {
-  final forced =
-      ProviderScope.containerOf(context).read(updateProvider).forceUpdate;
+  final forced = ProviderScope.containerOf(
+    context,
+  ).read(updateProvider).forceUpdate;
   return showDialog<void>(
     context: context,
     barrierDismissible: !forced,
@@ -24,23 +25,25 @@ Future<void> showUpdateDialog(BuildContext context) {
 
 /// 设置页「检查更新」：强制请求一次，有新版本弹更新对话框，否则提示已是最新
 Future<void> showManualUpdateCheck(BuildContext context) async {
-  unawaited(showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => AlertDialog(
-      content: Row(
-        children: [
-          const LoadingWidget.inline(),
-          const SizedBox(width: 20),
-          Text(AppLocalizations.of(context)!.checkingUpdates),
-        ],
+  unawaited(
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            const LoadingWidget.inline(),
+            const SizedBox(width: 20),
+            Text(AppLocalizations.of(context)!.checkingUpdates),
+          ],
+        ),
       ),
     ),
-  ));
+  );
 
-  final hasUpdate = await ProviderScope.containerOf(context)
-      .read(updateProvider.notifier)
-      .checkForUpdate(force: true);
+  final hasUpdate = await ProviderScope.containerOf(
+    context,
+  ).read(updateProvider.notifier).checkForUpdate(force: true);
   if (!context.mounted) return;
   Navigator.of(context).pop();
 
@@ -115,7 +118,9 @@ class _UpdateDialog extends ConsumerWidget {
       title: Text(
         forced
             ? (AppLocalizations.of(context)!.updateRequired)
-            : (AppLocalizations.of(context)!.updateFoundTitle(update.latestVersion ?? '')),
+            : (AppLocalizations.of(
+                context,
+              )!.updateFoundTitle(update.latestVersion ?? '')),
         textAlign: TextAlign.center,
       ),
       content: SizedBox(
@@ -126,7 +131,10 @@ class _UpdateDialog extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                AppLocalizations.of(context)!.updateCurrentLatest(update.currentVersion ?? '', update.latestVersion ?? ''),
+                AppLocalizations.of(context)!.updateCurrentLatest(
+                  update.currentVersion ?? '',
+                  update.latestVersion ?? '',
+                ),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: cs.onSurfaceVariant,
@@ -174,7 +182,9 @@ class _UpdateDialog extends ConsumerWidget {
               if (update.droppedLinkCount > 0) ...[
                 const SizedBox(height: 12),
                 Text(
-                  AppLocalizations.of(context)!.updateDroppedLinks(update.droppedLinkCount),
+                  AppLocalizations.of(
+                    context,
+                  )!.updateDroppedLinks(update.droppedLinkCount),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: cs.onSurfaceVariant,
                   ),

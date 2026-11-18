@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
+import '../../../theme/motion.dart';
 import '../../../theme/app_metrics.dart';
 
 /// 从 search_screen 抽出的零状态段：搜索源三段选择器（滑动高亮）。
@@ -83,8 +84,8 @@ class _SourceSegment extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
-        duration: AppMotion.quick,
-        curve: Curves.easeOutCubic,
+        duration: context.motionDuration(AppMotion.quick),
+        curve: MotionCurves.enter,
         padding: const EdgeInsets.symmetric(vertical: 9),
         decoration: BoxDecoration(
           color: selected ? cs.primaryContainer : Colors.transparent,
@@ -105,11 +106,9 @@ class _SourceSegment extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: selected
-                          ? cs.onPrimaryContainer
-                          : cs.onSurfaceVariant,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                    ),
+                  color: selected ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                ),
               ),
             ),
           ],

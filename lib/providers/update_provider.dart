@@ -286,5 +286,6 @@ class UpdateNotifier extends Notifier<UpdateState> {
 }
 
 /// Global update state — cached across the app lifecycle.
-final updateProvider =
-    NotifierProvider<UpdateNotifier, UpdateState>(UpdateNotifier.new);
+final updateProvider = NotifierProvider<UpdateNotifier, UpdateState>(
+  UpdateNotifier.new,
+);

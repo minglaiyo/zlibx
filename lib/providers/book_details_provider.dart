@@ -52,17 +52,21 @@ bool _extrasFresh(Map<String, dynamic> extras) {
       _bookDetailExtrasTtl.inMilliseconds;
 }
 
-/// [BookDetailMetadata] → 可持久化的 JSON（7 个字段；fetchedAt 由
-/// storage 层盖章）。
-Map<String, dynamic> _extrasJsonOf(BookDetailMetadata metadata) => {
-  'volume': metadata.volume,
-  'isbn10': metadata.isbn10,
-  'isbn13': metadata.isbn13,
-  'ipfsCid': metadata.ipfsCid,
-  'ipfsCidBlake2b': metadata.ipfsCidBlake2b,
-  'ratingInterest': metadata.ratingInterest,
-  'ratingQuality': metadata.ratingQuality,
-};
+/// [BookDetailExtras] → 可持久化的 JSON（7 个 metadata 字段 + 关键
+/// 词列表；fetchedAt 由 storage 层盖章）。
+Map<String, dynamic> _extrasJsonOf(BookDetailExtras extras) {
+  final json = <String, dynamic>{
+    'volume': extras.metadata.volume,
+    'isbn10': extras.metadata.isbn10,
+    'isbn13': extras.metadata.isbn13,
+    'ipfsCid': extras.metadata.ipfsCid,
+    'ipfsCidBlake2b': extras.metadata.ipfsCidBlake2b,
+    'ratingInterest': extras.metadata.ratingInterest,
+    'ratingQuality': extras.metadata.ratingQuality,
+    if (extras.keywords.isNotEmpty) 'keywords': extras.keywords,
+  };
+  return json;
+}
 
 /// 缓存 JSON → 合并进书本体。逐字段容错取值：缓存是手改/旧版本的
 /// JSON 时最坏也只是丢字段，绝不让详情页报错。
@@ -71,8 +75,12 @@ String? _extrasString(Object? value) => value is String ? value : null;
 /// 附加字段 JSON 并进书本体（[bookDetailsProvider] 的正文 +
 /// [bookDetailExtrasProvider] 的装饰字段）。copyWith 的空值语义是
 /// “保留原值”，所以附加字段只会补行、不会抹掉 eapi 已有的值。
+List<String>? _extrasStringList(Object? value) =>
+    value is List ? value.whereType<String>().toList() : null;
+
 Book applyBookDetailExtras(Book book, Map<String, dynamic> extras) =>
     book.copyWith(
+      keywords: _extrasStringList(extras['keywords']),
       volume: _extrasString(extras['volume']),
       isbn10: _extrasString(extras['isbn10']),
       isbn13: _extrasString(extras['isbn13']),
@@ -153,7 +161,7 @@ final bookDetailExtrasProvider = FutureProvider.autoDispose
             )
             .timeout(_bookDetailExtrasBudget);
         if (result.success && result.data != null) {
-          final json = _extrasJsonOf(result.data!.metadata);
+          final json = _extrasJsonOf(result.data!);
           unawaited(storage.mergeBookDetailExtras(key, json));
           return json;
         }

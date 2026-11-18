@@ -10,7 +10,7 @@ import '../../services/view_history_storage.dart';
 import '../../utils/date_text.dart';
 import '../../widgets/book_list_tile.dart';
 import '../../widgets/empty_state.dart';
-import '../../widgets/entrance.dart';
+import '../../widgets/motion/motion.dart';
 import '../../widgets/book_quick_actions_sheet.dart';
 import '../../widgets/loading_widget.dart';
 import '../../widgets/gradient_app_bar.dart';
@@ -63,9 +63,7 @@ class _ViewHistoryScreenState extends State<ViewHistoryScreen> {
             },
             child: Text(
               l10n.clear,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.error,
-              ),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ),
         ],
@@ -113,7 +111,7 @@ class _ViewHistoryScreenState extends State<ViewHistoryScreen> {
             itemCount: entries.length,
             itemBuilder: (context, index) {
               final entry = entries[index];
-              return EntranceSlideFade(
+              return MotionEntrance(
                 index: index,
                 child: BookListTile(
                   book: entry.book.toDisplay(),

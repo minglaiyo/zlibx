@@ -9,6 +9,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../models/unified_shelf_item.dart';
 import '../../providers/books_provider.dart';
 import '../../providers/download_provider.dart';
+import '../../providers/local_collection_provider.dart';
 import '../../providers/shelf_categories_provider.dart';
 import '../../providers/shelf_provider.dart';
 import '../../routes/app_routes.dart';
@@ -23,6 +24,7 @@ import '../../widgets/loading_widget.dart';
 
 import '../../utils/app_snack.dart';
 import '../../utils/error_text.dart';
+
 enum _ShelfSort { defaultOrder, title, author }
 
 class FavoritesScreen extends ConsumerStatefulWidget {
@@ -71,8 +73,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
     // downloadTaskProvider for its own book id, so one progress tick
     // rebuilds only that tile instead of the whole shelf.
     final categoryNameById = <String, String>{
-      for (final category in categories.categories)
-        category.id: category.name,
+      for (final category in categories.categories) category.id: category.name,
     };
     // Only the select-mode app bar needs the visible library ids.
     final selectedVisible = _isSelectMode
@@ -88,9 +89,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
           ? LoadingWidget.page(message: l.loadingFavorites)
           : RefreshIndicator(
               onRefresh: () async {
-                await ref
-                    .read(savedBooksProvider.notifier)
-                    .loadSavedBooks();
+                await ref.read(savedBooksProvider.notifier).loadSavedBooks();
               },
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -209,9 +208,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
           onPressed: _actions.manageCategories,
         ),
         IconButton(
-          tooltip: _isListView
-              ? l.shelfView
-              : l.listView,
+          tooltip: _isListView ? l.shelfView : l.listView,
           onPressed: () => setState(() => _isListView = !_isListView),
           icon: Icon(
             _isListView ? Icons.grid_view_rounded : Icons.view_list_rounded,
@@ -407,9 +404,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
                 _selectedCategoryId = null;
               })
             : () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const SearchScreen(),
-                ),
+                MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
               ),
         child: Text(
           hasSourceError
@@ -498,9 +493,18 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
       _toggleSelect(id);
       return;
     }
+    if (_isSelectMode) {
+      // 本地收藏（外部源）没有站内数字 id，进不了选择模式；选择模式
+      // 下点它不做任何事，避免误触。
+      return;
+    }
     final book = item.displayBook.original;
     if (book is Book) {
       AppRoutes.openBookDetailForBook(context, book);
+    } else {
+      // 本地收藏条目：DisplayBook 自带重建详情页所需的一切
+      // （original 是还原出来的 BookData）。
+      AppRoutes.openBookDetailForDisplayBook(context, item.displayBook);
     }
   }
 
@@ -543,10 +547,8 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
         if (mounted) _message(result.message);
       } catch (error) {
         if (mounted) {
-              _message(
-                friendlyErrorText(error, AppLocalizations.of(context)!),
-              );
-            }
+          _message(friendlyErrorText(error, AppLocalizations.of(context)!));
+        }
       }
       return;
     }
@@ -578,11 +580,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
               ),
               ListTile(
                 leading: const Icon(Icons.menu_book_rounded),
-                title: Text(
-                  local != null
-                      ? l.openFile
-                      : l.shelfViewDetails,
-                ),
+                title: Text(local != null ? l.openFile : l.shelfViewDetails),
                 onTap: () => Navigator.pop(sheetContext, 'quick'),
               ),
               ListTile(
@@ -590,6 +588,14 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
                 title: Text(l.shelfAddToCategory),
                 onTap: () => Navigator.pop(sheetContext, 'category'),
               ),
+              // 本地收藏条目（外部源）：删除动作不是取消站内收藏，
+              // 是把它从本地收藏里移出。
+              if (item.source == ShelfSource.local)
+                ListTile(
+                  leading: const Icon(Icons.bookmark_remove_outlined),
+                  title: Text(l.removeFromLocalCollection),
+                  onTap: () => Navigator.pop(sheetContext, 'unsaveLocal'),
+                ),
               ListTile(
                 leading: const Icon(Icons.info_outline_rounded),
                 title: Text(l.shelfViewDetails),
@@ -606,6 +612,13 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
       await _quickAction(item, local);
     } else if (action == 'category') {
       await _actions.showCategoryPicker([item]);
+    } else if (action == 'unsaveLocal') {
+      await ref
+          .read(localCollectionProvider.notifier)
+          .remove(item.displayBook.source, item.displayBook.id);
+      if (mounted) {
+        _message(AppLocalizations.of(context)!.removedFromLocalCollection);
+      }
     } else if (action == 'detail') {
       _onItemTap(item);
     }
@@ -618,9 +631,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(l.confirmRemoveTitle),
-        content: Text(
-          l.confirmRemoveMsg(ids.length),
-        ),
+        content: Text(l.confirmRemoveMsg(ids.length)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),

@@ -10,10 +10,11 @@ import '../../../providers/books_provider.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../theme/app_metrics.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/motion.dart';
 import '../../../utils/app_snack.dart';
 import '../../../utils/cover_cache.dart';
 import '../../../widgets/loading_widget.dart';
-import '../../../widgets/state_transition_switch.dart';
+import '../../../widgets/motion/motion.dart';
 import 'book_3d_cover.dart';
 
 class BookHeroSection extends ConsumerStatefulWidget {
@@ -113,7 +114,7 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
                 child: IconButton(
                   tooltip: widget.isFavorited ? l10n.removeFavorite : l10n.like,
                   onPressed: _saving ? null : _toggleFavorite,
-                  icon: StateTransitionSwitch(
+                  icon: MotionSwitch(
                     child: _saving
                         ? LoadingWidget.inline(
                             key: const ValueKey('saving'),
@@ -124,10 +125,14 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
                                 ? Icons.favorite
                                 : Icons.favorite_border,
                             key: ValueKey(
-                              widget.isFavorited ? 'favorited' : 'not-favorited',
+                              widget.isFavorited
+                                  ? 'favorited'
+                                  : 'not-favorited',
                             ),
                             color: collapsed
-                                ? (widget.isFavorited ? cs.primary : cs.onSurface)
+                                ? (widget.isFavorited
+                                      ? cs.primary
+                                      : cs.onSurface)
                                 : (widget.isFavorited
                                       ? AppColors.favoriteHeart
                                       : Colors.white),
@@ -207,8 +212,7 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
                   cover: image,
                   title: widget.book.title,
                   loading: loading,
-                  animate:
-                      animate && !MediaQuery.of(context).disableAnimations,
+                  animate: animate && !context.disableAnimations,
                   height:
                       (height -
                               MediaQuery.paddingOf(context).top -
@@ -231,11 +235,12 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
     final cover = widget.book.cover;
     if (cover == null || cover.isEmpty) return content();
     // 要图与解码同宽：详情大图解码 400~900，covers100 原图放大会糊。
-    final cacheWidth = ((height - kToolbarHeight) *
-            0.7 *
-            MediaQuery.devicePixelRatioOf(context))
-        .ceil()
-        .clamp(400, 900);
+    final cacheWidth =
+        ((height - kToolbarHeight) *
+                0.7 *
+                MediaQuery.devicePixelRatioOf(context))
+            .ceil()
+            .clamp(400, 900);
     // 长按封面查看高清大图（用户批 2026-11-14 功能 3）：GestureDetector
     // 在 Hero 外层，长按不影响共享元素转场。
     return GestureDetector(
@@ -253,27 +258,29 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
   /// 高清大图查看器：covers800（实测最大档，800x1200），支持捏合
   /// 缩放，点任意处关闭。
   void _showHdCoverViewer(String cover) {
-    unawaited(showDialog<void>(
-      context: context,
-      barrierColor: Colors.black87,
-      builder: (dialogContext) => GestureDetector(
-        onTap: () => Navigator.pop(dialogContext),
-        child: InteractiveViewer(
-          maxScale: 4,
-          child: Center(
-            child: CachedNetworkImage(
-              imageUrl: coverUrlAtWidth(cover, 800),
-              placeholder: (context, url) => const LoadingWidget.page(),
-              errorWidget: (context, url, error) => const Icon(
-                Icons.broken_image_outlined,
-                color: Colors.white70,
-                size: 48,
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierColor: Colors.black87,
+        builder: (dialogContext) => GestureDetector(
+          onTap: () => Navigator.pop(dialogContext),
+          child: InteractiveViewer(
+            maxScale: 4,
+            child: Center(
+              child: CachedNetworkImage(
+                imageUrl: coverUrlAtWidth(cover, 800),
+                placeholder: (context, url) => const LoadingWidget.page(),
+                errorWidget: (context, url, error) => const Icon(
+                  Icons.broken_image_outlined,
+                  color: Colors.white70,
+                  size: 48,
+                ),
               ),
             ),
           ),
         ),
       ),
-    ));
+    );
   }
 }
 

@@ -30,8 +30,7 @@ class StorageService {
   /// Same account-scoping rule as [favoritesKeyFor]: the account id is
   /// the Z-Library user id, so each account reads only its own cached
   /// history and a different account starts with no cache.
-  static const String _keyServerDownloadHistory =
-      'server_download_history';
+  static const String _keyServerDownloadHistory = 'server_download_history';
 
   /// Per-account server download-history cache key (see above).
   static String serverDownloadHistoryKeyFor(String accountId) =>
@@ -56,7 +55,10 @@ class StorageService {
       final userId = (await AuthStorage().getCredentials())['userId'];
       return (userId == null || userId.isEmpty) ? null : userId;
     } catch (error) {
-      AppLog.report('[storage] cannot resolve account id', tag: 'storage_service');
+      AppLog.report(
+        '[storage] cannot resolve account id',
+        tag: 'storage_service',
+      );
       return null;
     }
   }
@@ -70,7 +72,10 @@ class StorageService {
     try {
       return List<String>.from(data);
     } catch (error) {
-      AppLog.report('[storage] ignoring corrupt favorites entry', tag: 'storage_service');
+      AppLog.report(
+        '[storage] ignoring corrupt favorites entry',
+        tag: 'storage_service',
+      );
       return [];
     }
   }
@@ -114,7 +119,10 @@ class StorageService {
       }
       await box.delete(_keyFavorites);
     } catch (error) {
-      AppLog.report('[storage] favorites migration failed', tag: 'storage_service');
+      AppLog.report(
+        '[storage] favorites migration failed',
+        tag: 'storage_service',
+      );
     }
   }
 
@@ -127,10 +135,7 @@ class StorageService {
       throw StateError('cannot save favorites: no signed-in account');
     }
     await migrateLegacyFavoritesFor(accountId);
-    await HiveService.settingsBox.put(
-      favoritesKeyFor(accountId),
-      bookIds,
-    );
+    await HiveService.settingsBox.put(favoritesKeyFor(accountId), bookIds);
   }
 
   /// Get favorite book IDs for the signed-in account ([] when signed
@@ -268,8 +273,9 @@ class StorageService {
       final history = <String, dynamic>{};
       for (final entry in decoded.entries) {
         if (entry.value is Map) {
-          history['${entry.key}'] =
-              Map<String, dynamic>.from(entry.value as Map);
+          history['${entry.key}'] = Map<String, dynamic>.from(
+            entry.value as Map,
+          );
         }
       }
       return history;
@@ -290,10 +296,7 @@ class StorageService {
       tag: 'storage_service',
     );
     try {
-      await HiveService.settingsBox.put(
-        '${_keyDownloadHistory}_corrupt',
-        raw,
-      );
+      await HiveService.settingsBox.put('${_keyDownloadHistory}_corrupt', raw);
     } catch (_) {
       // Best-effort backup; the read already returns {}.
     }
@@ -305,9 +308,10 @@ class StorageService {
     String bookId,
     String title,
     String? author,
-    String filePath,
-    {String? cover, String? extension}
-  ) async {
+    String filePath, {
+    String? cover,
+    String? extension,
+  }) async {
     await _runSerialized(_keyDownloadHistory, () async {
       final history = await _readDownloadHistorySafely();
 
@@ -320,7 +324,10 @@ class StorageService {
         'downloadTime': DateTime.now().toIso8601String(),
       };
 
-      await HiveService.settingsBox.put(_keyDownloadHistory, jsonEncode(history));
+      await HiveService.settingsBox.put(
+        _keyDownloadHistory,
+        jsonEncode(history),
+      );
     });
   }
 
@@ -345,7 +352,10 @@ class StorageService {
 
       history.remove(bookId);
 
-      await HiveService.settingsBox.put(_keyDownloadHistory, jsonEncode(history));
+      await HiveService.settingsBox.put(
+        _keyDownloadHistory,
+        jsonEncode(history),
+      );
     });
   }
 
@@ -524,12 +534,12 @@ class StorageService {
   /// The five fields the history overlay reads, as the cached JSON
   /// shape (id is the map key, not repeated inside).
   Map<String, dynamic> _overlayJsonOf(Book book) => {
-        'author': book.author,
-        'cover': book.cover,
-        'extension': book.extension,
-        'filesize': book.filesize,
-        'filesizeString': book.filesizeString,
-      };
+    'author': book.author,
+    'cover': book.cover,
+    'extension': book.extension,
+    'filesize': book.filesize,
+    'filesizeString': book.filesizeString,
+  };
 
   // ===== Book-detail extras cache =====
   //

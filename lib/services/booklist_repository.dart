@@ -31,11 +31,7 @@ class BooklistRepository {
 
   /// Cached books of one detail JSON page (`#json-page=N`), or null
   /// when never cached, stale or corrupt.
-  List<Book>? cachedBooksPage(
-    String url,
-    int page, {
-    String? accountId,
-  }) {
+  List<Book>? cachedBooksPage(String url, int page, {String? accountId}) {
     return BooklistHtmlCache.getBooksPage(url, page, accountId: accountId);
   }
 
@@ -53,13 +49,14 @@ class BooklistRepository {
   /// when the cached page fails to parse. The cache was written by an
   /// older app run: a parse failure there must not escape the load
   /// (which runs from a microtask) and leave the screen loading
-  /// forever — treat a broken cache like a cache miss.
-  List<Book>? parseCachedDetailBooks(
+  /// forever — treat a broken cache like a cache miss. Async since
+  /// phase 3: the parse routes through the Rust bridge when injected.
+  Future<List<Book>?> parseCachedDetailBooks(
     String html, {
     required String baseUrl,
-  }) {
+  }) async {
     try {
-      return parseBooklistDetailBooks(html, baseUrl: baseUrl);
+      return await parseBooklistDetailBooksH(html, baseUrl: baseUrl);
     } catch (_) {
       return null;
     }
@@ -70,16 +67,23 @@ class BooklistRepository {
   /// data from an older app run: a parse failure there must not leave
   /// the screen loading forever, so a broken cache is treated like a
   /// cache miss and the caller falls through to the network path.
-  BooklistsPage? cachedListPage(String url, {String? accountId}) {
+  /// Async since phase 3 (Rust bridge when injected).
+  Future<BooklistsPage?> cachedListPage(String url, {String? accountId}) async {
     final cachedHtml = BooklistHtmlCache.get(url, accountId: accountId);
     if (cachedHtml == null || BooklistSolver.isChallengeHtml(cachedHtml)) {
       return null;
     }
     try {
-      return parseBooklistsPage(cachedHtml, baseUrl: Uri.parse(url).origin);
+      return await parseBooklistsPageH(
+        cachedHtml,
+        baseUrl: Uri.parse(url).origin,
+      );
     } catch (e) {
-      _logger.warning('Cached booklists page failed to parse, ignoring it',
-          tag: 'Booklists', error: e);
+      _logger.warning(
+        'Cached booklists page failed to parse, ignoring it',
+        tag: 'Booklists',
+        error: e,
+      );
       return null;
     }
   }
@@ -89,12 +93,14 @@ class BooklistRepository {
   /// Parses the detail page's HTML into first-page books. Unlike
   /// [parseCachedDetailBooks] this is the network path's parse: a
   /// failure propagates to the caller like any fetch error.
-  List<Book> parseDetailBooks(String html, {required String baseUrl}) =>
-      parseBooklistDetailBooks(html, baseUrl: baseUrl);
+  /// Async since phase 3 (Rust bridge when injected).
+  Future<List<Book>> parseDetailBooks(String html, {required String baseUrl}) =>
+      parseBooklistDetailBooksH(html, baseUrl: baseUrl);
 
   /// Parses one own/discover list page's HTML into its model.
-  BooklistsPage parseListPage(String html, {required String baseUrl}) =>
-      parseBooklistsPage(html, baseUrl: baseUrl);
+  /// Async since phase 3 (Rust bridge when injected).
+  Future<BooklistsPage> parseListPage(String html, {required String baseUrl}) =>
+      parseBooklistsPageH(html, baseUrl: baseUrl);
 
   // ---- cache writes / invalidation ----
 
@@ -160,24 +166,21 @@ class BooklistRepository {
   Future<ApiResponse<BooklistBooksPage>> fetchBooksPage(
     String listId, {
     int page = 2,
-  }) =>
-      _api.getBooklistBooks(listId, page: page);
+  }) => _api.getBooklistBooks(listId, page: page);
 
   /// One page of the signed-in user's own booklists.
   Future<ApiResponse<BooklistsPage>> searchMyBooklists({
     String query = '',
     String? order,
     int page = 1,
-  }) =>
-      _api.searchMyBooklists(query: query, order: order, page: page);
+  }) => _api.searchMyBooklists(query: query, order: order, page: page);
 
   /// One page of the public booklists to discover.
   Future<ApiResponse<BooklistsPage>> searchPublicBooklists({
     String query = '',
     String order = 'popular',
     int page = 1,
-  }) =>
-      _api.searchPublicBooklists(query: query, order: order, page: page);
+  }) => _api.searchPublicBooklists(query: query, order: order, page: page);
 
   /// Creates a booklist owned by the signed-in user. [color] (0–5),
   /// [isPrivate] and [bookId] ("create and add this book in one call")
@@ -188,14 +191,13 @@ class BooklistRepository {
     int? color,
     bool? isPrivate,
     int? bookId,
-  }) =>
-      _api.createBooklist(
-        title: title,
-        description: description,
-        color: color,
-        isPrivate: isPrivate,
-        bookId: bookId,
-      );
+  }) => _api.createBooklist(
+    title: title,
+    description: description,
+    color: color,
+    isPrivate: isPrivate,
+    bookId: bookId,
+  );
 
   /// Edits one of the signed-in user's booklists (title, description,
   /// private flag, color). Returns the updated list when the answer
@@ -206,21 +208,19 @@ class BooklistRepository {
     String description = '',
     bool isPrivate = false,
     int? color,
-  }) =>
-      _api.editBooklist(
-        id: id,
-        title: title,
-        description: description,
-        isPrivate: isPrivate,
-        color: color,
-      );
+  }) => _api.editBooklist(
+    id: id,
+    title: title,
+    description: description,
+    isPrivate: isPrivate,
+    color: color,
+  );
 
   /// Changes one of the signed-in user's booklists' color (0–5).
   Future<ApiResponse<bool>> setBooklistColor({
     required int id,
     required int color,
-  }) =>
-      _api.setBooklistColor(id: id, color: color);
+  }) => _api.setBooklistColor(id: id, color: color);
 
   /// Flips one of the signed-in user's booklists between public and
   /// private. The new state is not in the response; the caller flips
@@ -244,19 +244,17 @@ class BooklistRepository {
     required int listId,
     required int entryId,
     required String description,
-  }) =>
-      _api.saveBookDescription(
-        listId: listId,
-        entryId: entryId,
-        description: description,
-      );
+  }) => _api.saveBookDescription(
+    listId: listId,
+    entryId: entryId,
+    description: description,
+  );
 
   /// All of the signed-in user's booklists plus whether [bookId] is in
   /// each one (the add-to-booklist picker's data source).
   Future<ApiResponse<List<BooklistMembership>>> getBooklistsForBook(
     int bookId,
-  ) =>
-      _api.getBooklistsForBook(bookId);
+  ) => _api.getBooklistsForBook(bookId);
 
   /// Adds a book to one of the signed-in user's booklists and returns
   /// the new membership-row id (or null when the response did not
@@ -264,14 +262,12 @@ class BooklistRepository {
   Future<ApiResponse<int?>> addBookToBooklistEntry({
     required int booklistId,
     required int bookId,
-  }) =>
-      _api.addBookToBooklistEntry(booklistId: booklistId, bookId: bookId);
+  }) => _api.addBookToBooklistEntry(booklistId: booklistId, bookId: bookId);
 
   /// Recommended booklists for the discover tab's recommendation slots.
   Future<ApiResponse<List<Booklist>>> getRecommendedBooklists({
     int booklistsCount = 10,
-  }) =>
-      _api.getRecommendedBooklists(booklistsCount: booklistsCount);
+  }) => _api.getRecommendedBooklists(booklistsCount: booklistsCount);
 
   /// The full URL of one own/discover list page — also the cache key
   /// the list pages are stored under.
@@ -281,12 +277,7 @@ class BooklistRepository {
     String? order,
     int page = 1,
   }) =>
-      _api.booklistsPageUrl(
-        mine: mine,
-        query: query,
-        order: order,
-        page: page,
-      );
+      _api.booklistsPageUrl(mine: mine, query: query, order: order, page: page);
 
   /// The readlist ENTRY id of one (book, list) membership row — the id
   /// remove-book takes, never the book id (see
@@ -294,8 +285,7 @@ class BooklistRepository {
   Future<ApiResponse<int?>> resolveBookEntry({
     required int booklistId,
     required int bookId,
-  }) =>
-      _api.getReadlistBookId(booklistId: booklistId, bookId: bookId);
+  }) => _api.getReadlistBookId(booklistId: booklistId, bookId: bookId);
 
   /// Removes one membership row from a booklist. Takes the readlist
   /// ENTRY id from [resolveBookEntry], not the book id — sending the
@@ -303,11 +293,10 @@ class BooklistRepository {
   Future<ApiResponse<bool>> removeBookFromBooklist({
     required int booklistId,
     required int readlistBookId,
-  }) =>
-      _api.removeBookFromBooklist(
-        booklistId: booklistId,
-        readlistBookId: readlistBookId,
-      );
+  }) => _api.removeBookFromBooklist(
+    booklistId: booklistId,
+    readlistBookId: readlistBookId,
+  );
 
   /// Deletes one of the user's own booklists.
   Future<ApiResponse<bool>> deleteBooklist(int booklistId) =>
@@ -331,12 +320,11 @@ class BooklistRepository {
     String? accountId,
     String? userId,
     String? userKey,
-  }) =>
-      BooklistSolver.fetchHtml(
-        _api,
-        url,
-        accountId: accountId,
-        userId: userId,
-        userKey: userKey,
-      );
+  }) => BooklistSolver.fetchHtml(
+    _api,
+    url,
+    accountId: accountId,
+    userId: userId,
+    userKey: userKey,
+  );
 }

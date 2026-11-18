@@ -8,11 +8,7 @@ class SettingsCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
 
-  const SettingsCard({
-    super.key,
-    required this.child,
-    this.padding,
-  });
+  const SettingsCard({super.key, required this.child, this.padding});
 
   @override
   Widget build(BuildContext context) {
@@ -27,10 +23,7 @@ class SettingsCard extends StatelessWidget {
           border: Border.all(color: cs.outlineVariant, width: 1),
         ),
         padding: padding,
-        child: ClipRRect(
-          borderRadius: AppRadius.sheet,
-          child: child,
-        ),
+        child: ClipRRect(borderRadius: AppRadius.sheet, child: child),
       ),
     );
   }

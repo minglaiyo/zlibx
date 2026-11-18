@@ -44,8 +44,7 @@ class AccountScreen extends ConsumerWidget {
                 icon: Icons.person_outlined,
                 title: l10n.loginToContinue,
                 action: FilledButton(
-                  onPressed: () =>
-                      AppRoutes.openLogin(context),
+                  onPressed: () => AppRoutes.openLogin(context),
                   child: Text(l10n.login),
                 ),
               )
@@ -65,40 +64,35 @@ class AccountScreen extends ConsumerWidget {
                     icon: Icons.library_books_outlined,
                     title: l10n.myLibrary,
                     subtitle: l10n.myLibrarySubtitle,
-                    onTap: () =>
-                        AppRoutes.openFavorites(context),
+                    onTap: () => AppRoutes.openFavorites(context),
                   ),
                   const SizedBox(height: 12),
                   _EntryCard(
                     icon: Icons.comment_outlined,
                     title: l10n.myComments,
                     subtitle: l10n.myCommentsSubtitle,
-                    onTap: () =>
-                        AppRoutes.openMyComments(context),
+                    onTap: () => AppRoutes.openMyComments(context),
                   ),
                   const SizedBox(height: 12),
                   _EntryCard(
                     icon: Icons.collections_bookmark_outlined,
                     title: l10n.booklists,
                     subtitle: l10n.booklistsSubtitle,
-                    onTap: () =>
-                        AppRoutes.openBooklists(context),
+                    onTap: () => AppRoutes.openBooklists(context),
                   ),
                   const SizedBox(height: 12),
                   _EntryCard(
                     icon: Icons.history,
                     title: l10n.downloadHistory,
                     subtitle: l10n.booksDownloadedAnyDevice,
-                    onTap: () =>
-                        AppRoutes.openHistory(context),
+                    onTap: () => AppRoutes.openHistory(context),
                   ),
                   const SizedBox(height: 12),
                   _EntryCard(
                     icon: Icons.manage_history,
                     title: l10n.viewHistory,
                     subtitle: l10n.viewHistorySubtitle,
-                    onTap: () =>
-                        AppRoutes.openViewHistory(context),
+                    onTap: () => AppRoutes.openViewHistory(context),
                   ),
                   const SizedBox(height: 28),
                   Center(
@@ -144,32 +138,34 @@ class AccountScreen extends ConsumerWidget {
 
   void _confirmLogout(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context)!;
-    unawaited(showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.logoutConfirmTitle),
-        content: Text(l10n.logoutConfirmDesc),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(l10n.cancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
+    unawaited(
+      showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(l10n.logoutConfirmTitle),
+          content: Text(l10n.logoutConfirmDesc),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(l10n.cancel),
             ),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(l10n.logoutAction),
-          ),
-        ],
-      ),
-    ).then((confirmed) async {
-      if (confirmed != true || !context.mounted) return;
-      await ref.read(authProvider.notifier).logout();
-      if (context.mounted) {
-        await AppRoutes.logoutToLogin(context);
-      }
-    }));
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(l10n.logoutAction),
+            ),
+          ],
+        ),
+      ).then((confirmed) async {
+        if (confirmed != true || !context.mounted) return;
+        await ref.read(authProvider.notifier).logout();
+        if (context.mounted) {
+          await AppRoutes.logoutToLogin(context);
+        }
+      }),
+    );
   }
 }
 
@@ -204,10 +200,7 @@ class _EntryCard extends StatelessWidget {
           ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
         ),
         subtitle: Text(subtitle),
-        trailing: Icon(
-          Icons.chevron_right_rounded,
-          color: cs.onSurfaceVariant,
-        ),
+        trailing: Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
         onTap: onTap,
       ),
     );

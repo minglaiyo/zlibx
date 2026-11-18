@@ -7,11 +7,7 @@ class BookContextHeader extends StatelessWidget {
   final String title;
   final int? commentCount;
 
-  const BookContextHeader({
-    super.key,
-    required this.title,
-    this.commentCount,
-  });
+  const BookContextHeader({super.key, required this.title, this.commentCount});
 
   @override
   Widget build(BuildContext context) {

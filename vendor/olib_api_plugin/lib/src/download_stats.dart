@@ -104,3 +104,16 @@ DateTime? _parseDstatsStamp(String? dateText, String? timeText) {
     int.parse(t.group(2)!),
   );
 }
+
+/// Injectable Rust parse hook (phase 3). See booklist.dart's hooks
+/// for the contract; download_stats_page_test.dart is the baseline.
+/// NOTE: the Rust side returns downloadedAt as an ISO-8601 string —
+/// the host's mapping layer converts it back to DateTime before this
+/// hook's Future resolves, so the contract stays `List<Book>`.
+Future<List<Book>> Function(String html)? downloadStatsParseOverride;
+
+/// Hook-aware entry. Mirrors parseBooklistsPageH.
+Future<List<Book>> parseDownloadStatsPageH(String html) async =>
+    downloadStatsParseOverride != null
+        ? await downloadStatsParseOverride!(html)
+        : parseDownloadStatsPage(html);

@@ -57,7 +57,7 @@ final zlibraryApiProvider = Provider<ZLibraryApi>((ref) {
   // override this provider with fakes that carry no such field — and read
   // lazily inside the callback, so the two providers do not form a cycle
   // (AuthNotifier reads this one while building).
-  api.onSessionRejected =
-      () => ref.read(authProvider.notifier).handleSessionRejected();
+  api.onSessionRejected = () =>
+      ref.read(authProvider.notifier).handleSessionRejected();
   return api;
 });

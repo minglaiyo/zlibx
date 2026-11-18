@@ -47,7 +47,10 @@ class MirrorRefreshResult {
   final List<String> changes;
   final bool hasMirrorList;
 
-  const MirrorRefreshResult({required this.changes, required this.hasMirrorList});
+  const MirrorRefreshResult({
+    required this.changes,
+    required this.hasMirrorList,
+  });
 }
 
 /// Decides **which mirrors the app may talk to, and in what order**.
@@ -72,13 +75,13 @@ class InstanceManager {
   factory InstanceManager() => _instance;
 
   InstanceManager._internal()
-      : _catalogue = SlumCatalogue(store: HivePreferenceStore()),
-        _store = HivePreferenceStore();
+    : _catalogue = SlumCatalogue(store: HivePreferenceStore()),
+      _store = HivePreferenceStore();
 
   /// Tests build their own with an injected catalogue/store.
   InstanceManager.forTest({SlumCatalogue? catalogue, PreferenceStore? store})
-      : _catalogue = catalogue ?? SlumCatalogue(),
-        _store = store;
+    : _catalogue = catalogue ?? SlumCatalogue(),
+      _store = store;
 
   final SlumCatalogue _catalogue;
   final PreferenceStore? _store;
@@ -102,9 +105,11 @@ class InstanceManager {
 
   Future<void> setAutoMode(bool auto) async {
     await _store?.write(_autoModeKey, auto);
-    _logger.info('Instance mode changed', tag: 'InstanceManager', metadata: {
-      'mode': auto ? 'auto' : 'manual',
-    });
+    _logger.info(
+      'Instance mode changed',
+      tag: 'InstanceManager',
+      metadata: {'mode': auto ? 'auto' : 'manual'},
+    );
   }
 
   // ------------------------------------------------------------------
@@ -138,9 +143,7 @@ class InstanceManager {
     }
   }
 
-  static Map<String, List<String>> _copyHostMap(
-    Map<String, List<String>> map,
-  ) {
+  static Map<String, List<String>> _copyHostMap(Map<String, List<String>> map) {
     return {
       for (final entry in map.entries) entry.key: [...entry.value],
     };
@@ -161,7 +164,11 @@ class InstanceManager {
     return (map[service.name] ?? const []).toSet();
   }
 
-  Future<void> setEnabled(MirrorService service, String host, bool enabled) async {
+  Future<void> setEnabled(
+    MirrorService service,
+    String host,
+    bool enabled,
+  ) async {
     final map = await _readHostMap(_disabledKey);
     final list = map[service.name] ?? <String>[];
     if (enabled) {
@@ -171,8 +178,11 @@ class InstanceManager {
     }
     map[service.name] = list;
     await _writeHostMap(_disabledKey, map);
-    _logger.info(enabled ? 'Mirror enabled' : 'Mirror disabled',
-        tag: 'InstanceManager', metadata: {'host': host});
+    _logger.info(
+      enabled ? 'Mirror enabled' : 'Mirror disabled',
+      tag: 'InstanceManager',
+      metadata: {'host': host},
+    );
   }
 
   /// The user's manual order for [service] (host list, first = preferred).
@@ -212,18 +222,17 @@ class InstanceManager {
   ///
   /// Auto mode: SLUM order (see [SlumCatalogue.sortAuto]).
   /// Manual mode: the user's pinned order first, then the auto tail.
-  Future<List<InstanceView>> instances(MirrorService service,
-      {bool force = false}) async {
+  Future<List<InstanceView>> instances(
+    MirrorService service, {
+    bool force = false,
+  }) async {
     final sites = await _catalogue.sites(service, force: force);
     final ordered = SlumCatalogue.sortAuto(sites);
 
     // The auto-mode flag and the disabled list are needed in both modes
     // and do not depend on each other, so they are read together; the
     // manual order is only read when auto mode is off.
-    final results = await Future.wait([
-      isAutoMode(),
-      disabledHosts(service),
-    ]);
+    final results = await Future.wait([isAutoMode(), disabledHosts(service)]);
     final auto = results[0] as bool;
     final disabled = results[1] as Set<String>;
     final List<SlumSite> finalOrder;
@@ -257,8 +266,11 @@ class InstanceManager {
   /// from the same list: mirrors SLUM reports DOWN and mirrors the user
   /// switched off are out, and [headlessOnly] additionally drops any
   /// mirror a plain Dio client cannot pass.
-  Future<List<InstanceView>> _enabledViews(MirrorService service,
-      {bool force = false, bool headlessOnly = false}) async {
+  Future<List<InstanceView>> _enabledViews(
+    MirrorService service, {
+    bool force = false,
+    bool headlessOnly = false,
+  }) async {
     final views = await instances(service, force: force);
     return [
       for (final view in views)
@@ -274,10 +286,16 @@ class InstanceManager {
   ///  * mirrors the user switched off;
   ///  * mirrors whose protection is browser-only while the caller asked
   ///    for headless-only ([headlessOnly]).
-  Future<List<String>> enabledUrls(MirrorService service,
-      {bool force = false, bool headlessOnly = false}) async {
-    final views =
-        await _enabledViews(service, force: force, headlessOnly: headlessOnly);
+  Future<List<String>> enabledUrls(
+    MirrorService service, {
+    bool force = false,
+    bool headlessOnly = false,
+  }) async {
+    final views = await _enabledViews(
+      service,
+      force: force,
+      headlessOnly: headlessOnly,
+    );
     return [for (final view in views) view.site.url];
   }
 
@@ -287,8 +305,10 @@ class InstanceManager {
   /// enabled mirror sits behind a challenge (DiamWall, DDoS-Guard,
   /// Cloudflare or unknown): Dio would only time out on those, so
   /// callers can skip straight to the WebView solve.
-  Future<bool> hasUnprotectedMirror(MirrorService service,
-      {bool force = false}) async {
+  Future<bool> hasUnprotectedMirror(
+    MirrorService service, {
+    bool force = false,
+  }) async {
     final views = await _enabledViews(service, force: force);
     return views.any((view) => view.site.protection == Protection.none);
   }
@@ -310,8 +330,11 @@ class InstanceManager {
         changes.add('- $host (${service.name})');
       }
     }
-    _logger.info('Mirror list refreshed from open-slum.org',
-        tag: 'InstanceManager', metadata: {'changes': changes.length});
+    _logger.info(
+      'Mirror list refreshed from open-slum.org',
+      tag: 'InstanceManager',
+      metadata: {'changes': changes.length},
+    );
     return MirrorRefreshResult(
       changes: changes,
       hasMirrorList: _catalogue.lastFetchSucceeded,
@@ -325,8 +348,11 @@ class InstanceManager {
       await _catalogue.restore();
       await _catalogue.fetchAll();
     } catch (e) {
-      _logger.warning('Startup mirror refresh failed',
-          tag: 'InstanceManager', error: e);
+      _logger.warning(
+        'Startup mirror refresh failed',
+        tag: 'InstanceManager',
+        error: e,
+      );
     }
   }
 }

@@ -1,0 +1,9 @@
+# flutter_rust_bridge codegen config for zlibx_parsers (phase 1 scaffold).
+# Run: flutter_rust_bridge_codegen generate --config-file frb_config.yaml
+
+rust_input: crate
+rust_root: rust/zlibx_parsers
+rust_output: rust/zlibx_parsers/src/frb_generated.rs
+dart_output: lib
+dart_entrypoint_class_name: ZlibxParsers
+type_64bit_int: true

@@ -152,17 +152,17 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
     /// 当前累积记录叠加已到的元数据：只补空字段，dstats 自己的字段
     /// 不动。同一本书下载多次是多条独立记录，各自叠加。
     List<Book> overlay() => [
-          for (final record in records)
-            meta[record.id] == null
-                ? record
-                : record.copyWith(
-                    author: meta[record.id]!.author,
-                    cover: meta[record.id]!.cover,
-                    extension: meta[record.id]!.extension,
-                    filesize: meta[record.id]!.filesize,
-                    filesizeString: meta[record.id]!.filesizeString,
-                  ),
-        ];
+      for (final record in records)
+        meta[record.id] == null
+            ? record
+            : record.copyWith(
+                author: meta[record.id]!.author,
+                cover: meta[record.id]!.cover,
+                extension: meta[record.id]!.extension,
+                filesize: meta[record.id]!.filesize,
+                filesizeString: meta[record.id]!.filesizeString,
+              ),
+    ];
 
     /// 上屏一次累积列表。两条守卫：空累积不上屏（元数据先到时不能
     /// 把 loading 闪成空历史）；绝不把可见列表换短（静默对账时旧
@@ -203,7 +203,7 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
         final result = consume == 1
             ? await _issueStatsPage(repository, consume)
             : await (pending.remove(consume) ??
-                _issueStatsPage(repository, consume));
+                  _issueStatsPage(repository, consume));
         if (!isCurrent()) return;
         if (result.error != null) throw result.error!;
         final batch = result.books;
@@ -269,9 +269,7 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
       // 只存非空的完整列表——空结果（失败/中途返回）绝不覆盖好缓存。
       if (finalList.isNotEmpty) {
         unawaited(
-          ref
-              .read(storageServiceProvider)
-              .saveServerDownloadHistory(finalList),
+          ref.read(storageServiceProvider).saveServerDownloadHistory(finalList),
         );
       }
     } catch (e, stack) {
@@ -310,9 +308,7 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
       );
       return (books: books, viaSolver: true);
     }
-    throw StateError(
-      response.error ?? 'Could not load download history',
-    );
+    throw StateError(response.error ?? 'Could not load download history');
   }
 
   /// 流水线的单页抓取：把 [_fetchStatsPage] 的异常折进结果——被终点
@@ -350,7 +346,7 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
       userKey: user?.remixUserkey,
     );
     if (html == null) throw StateError(originalError);
-    var parsed = repository.parsePage(html);
+    var parsed = await repository.parsePage(html);
     if (parsed == null) {
       // solver 回来了 HTML，但它根本不是下载历史页：无头 WebView 抓
       // 到的可能是一个空的 503 报错页，或者标题里没有验证墙关键字、
@@ -362,7 +358,7 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
         userKey: user?.remixUserkey,
       );
       if (visibleHtml == null) throw StateError(originalError);
-      parsed = repository.parsePage(visibleHtml);
+      parsed = await repository.parsePage(visibleHtml);
       if (parsed == null) throw StateError(originalError);
     }
     return parsed;
@@ -383,9 +379,7 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
         limit: pageSize,
       );
       if (!response.success) {
-        throw StateError(
-          response.error ?? 'Could not load download metadata',
-        );
+        throw StateError(response.error ?? 'Could not load download metadata');
       }
       final batch = response.data ?? const <Book>[];
       final before = meta.length;
@@ -404,8 +398,7 @@ class DownloadedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
       final totalPages = int.tryParse(
         response.meta?['total_pages']?.toString() ?? '',
       );
-      if ((totalPages != null && page >= totalPages) ||
-          meta.length == before) {
+      if ((totalPages != null && page >= totalPages) || meta.length == before) {
         break;
       }
     }

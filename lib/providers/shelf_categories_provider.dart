@@ -136,16 +136,47 @@ class ShelfCategoriesNotifier extends Notifier<ShelfCategoriesState> {
     Iterable<UnifiedShelfItem> items,
     String? categoryId,
   ) async {
+    await assignKeys(items.map((item) => item.categoryKey), categoryId);
+  }
+
+  /// 按 categoryKey 直接分配。分类表是全 app 一份（书架 / 下载页共
+  /// 用同一棵分类树），下载页的条目没有 UnifiedShelfItem（下载任务
+  /// 的 id 就是 bookId），用 `download:<bookId>` 键写进同一张
+  /// assignments 表——按键分配是那边的唯一入口。
+  Future<void> assignKeys(
+    Iterable<String> keys,
+    String? categoryId,
+  ) async {
     if (categoryId != null &&
         !state.categories.any((category) => category.id == categoryId)) {
       throw ArgumentError('Unknown category');
     }
     final assignments = Map<String, String>.of(state.assignments);
-    for (final item in items) {
+    for (final key in keys) {
       if (categoryId == null) {
-        assignments.remove(item.categoryKey);
+        assignments.remove(key);
       } else {
-        assignments[item.categoryKey] = categoryId;
+        assignments[key] = categoryId;
+      }
+    }
+    await _save(ShelfCategoriesState(state.categories, assignments));
+  }
+
+  /// 逐键分配（导入备份时不同键要落不同的分类）：值为 null 表示移出
+  /// 该键的归属。先整体校验再落盘，坏分类 id 一条都不写。
+  Future<void> assignEntries(Map<String, String?> entries) async {
+    for (final categoryId in entries.values) {
+      if (categoryId != null &&
+          !state.categories.any((category) => category.id == categoryId)) {
+        throw ArgumentError('Unknown category');
+      }
+    }
+    final assignments = Map<String, String>.of(state.assignments);
+    for (final entry in entries.entries) {
+      if (entry.value == null) {
+        assignments.remove(entry.key);
+      } else {
+        assignments[entry.key] = entry.value!;
       }
     }
     await _save(ShelfCategoriesState(state.categories, assignments));

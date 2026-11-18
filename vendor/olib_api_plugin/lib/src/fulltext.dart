@@ -295,3 +295,12 @@ int _parseTotalPages(String html) {
       : int.tryParse(match.group(1) ?? '');
   return pages == null || pages < 1 ? 1 : pages;
 }
+
+/// Injectable Rust parse hook (phase 2 migration). The host app sets
+/// this to a flutter_rust_bridge-backed implementation returning the
+/// SAME [FullTextSearchPage] model; when null (default) the Dart
+/// implementation above is used as the fallback. Behavior must be
+/// identical either way — test/parsers/fulltext_test.dart is the
+/// contract for both.
+Future<FullTextSearchPage> Function(String html, String? baseUrl)?
+fulltextParseOverride;

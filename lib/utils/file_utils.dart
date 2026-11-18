@@ -19,7 +19,8 @@ Future<bool> openDownloadFolder() async {
       try {
         final intent = AndroidIntent(
           action: 'android.intent.action.VIEW',
-          data: 'content://com.android.externalstorage.documents/document/primary%3ADownload%2Fzlibx',
+          data:
+              'content://com.android.externalstorage.documents/document/primary%3ADownload%2Fzlibx',
           type: 'vnd.android.document/directory',
           flags: <int>[0x10000000], // FLAG_ACTIVITY_NEW_TASK
         );
@@ -31,7 +32,8 @@ Future<bool> openDownloadFolder() async {
         try {
           final intent = AndroidIntent(
             action: 'android.intent.action.VIEW',
-            data: 'content://com.android.externalstorage.documents/root/primary%3ADownload',
+            data:
+                'content://com.android.externalstorage.documents/root/primary%3ADownload',
             type: 'vnd.android.document/root',
             flags: <int>[0x10000000],
           );
@@ -94,10 +96,10 @@ String truncateUtf8ByBytes(String input, int maxBytes) {
     final runeBytes = rune < 0x80
         ? 1
         : rune < 0x800
-            ? 2
-            : rune < 0x10000
-                ? 3
-                : 4;
+        ? 2
+        : rune < 0x10000
+        ? 3
+        : 4;
     if (bytes + runeBytes > maxBytes) break;
     bytes += runeBytes;
     end += rune > 0xFFFF ? 2 : 1;

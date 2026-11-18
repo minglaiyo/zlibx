@@ -99,6 +99,7 @@ class UpdateManifest {
     final p = path.toLowerCase();
     return p == repo || p.startsWith('$repo/');
   }
+
   static const _maxNameChars = 20;
   // [FORCE] 只认独占一行的标记（multiLine + ^...$）：正文里行内提及
   // “移除了 [FORCE] 标记”之类的措辞不再误触发强制更新。发布时若要

@@ -22,10 +22,7 @@ class RecommendationSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 20),
-        SectionHeader(
-          icon: Icons.shuffle_rounded,
-          title: t.recommended,
-        ),
+        SectionHeader(icon: Icons.shuffle_rounded, title: t.recommended),
         SettingsCard(
           child: SwitchListTile(
             title: Text(t.recommendationRandom),

@@ -16,12 +16,12 @@ import '../../utils/app_snack.dart';
 import '../../utils/date_text.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/confirm_dialog.dart';
-import '../../widgets/entrance.dart';
+import '../../widgets/motion/motion.dart';
 import '../../widgets/gradient_app_bar.dart';
 import '../../widgets/loading_widget.dart';
-import '../../widgets/state_transition_switch.dart';
 import 'comment_book_ref.dart';
 import 'comment_book_ref_controller.dart';
+
 /// One comment the signed-in user posted, as shown on the website's
 /// profile "Comments" tab: which book it was on, the text, when, and
 /// how many likes it has.
@@ -117,20 +117,19 @@ class _MyCommentsScreenState extends ConsumerState<MyCommentsScreen> {
       final response = await api.getMyComments();
       if (response.success && response.data != null) {
         comments = response.data!.entries
-            .map((e) => MyComment(
-                  id: e.comment.id,
-                  bookId: e.bookId,
-                  bookTitle: e.bookTitle,
-                  text: e.comment.text,
-                  date: commentDateText(
-                    e.comment.dateRelative,
-                    e.comment.date,
-                  ),
-                  likeCount: e.comment.likeCount,
-                  userId: e.comment.userId,
-                  userAvatar: e.comment.userAvatar,
-                  userHash: e.comment.userHash,
-                ))
+            .map(
+              (e) => MyComment(
+                id: e.comment.id,
+                bookId: e.bookId,
+                bookTitle: e.bookTitle,
+                text: e.comment.text,
+                date: commentDateText(e.comment.dateRelative, e.comment.date),
+                likeCount: e.comment.likeCount,
+                userId: e.comment.userId,
+                userAvatar: e.comment.userAvatar,
+                userHash: e.comment.userHash,
+              ),
+            )
             .toList();
       }
     } catch (error) {
@@ -146,9 +145,7 @@ class _MyCommentsScreenState extends ConsumerState<MyCommentsScreen> {
     });
     unawaited(
       _bookRefController.prefetch(
-        _comments
-            .map((c) => (bookId: c.bookId, title: c.bookTitle))
-            .toList(),
+        _comments.map((c) => (bookId: c.bookId, title: c.bookTitle)).toList(),
       ),
     );
   }
@@ -163,10 +160,7 @@ class _MyCommentsScreenState extends ConsumerState<MyCommentsScreen> {
   void _openComments(MyComment comment) {
     AppRoutes.openBookComments(
       context,
-      BookCommentsArgs(
-        bookId: comment.bookId,
-        bookTitle: comment.bookTitle,
-      ),
+      BookCommentsArgs(bookId: comment.bookId, bookTitle: comment.bookTitle),
     );
   }
 
@@ -193,8 +187,7 @@ class _MyCommentsScreenState extends ConsumerState<MyCommentsScreen> {
         if (!mounted) return;
         AppRoutes.openBookDetailForBook(context, book);
       },
-      onFail: () =>
-          _showSnack(AppLocalizations.of(context)!.openBookFailed),
+      onFail: () => _showSnack(AppLocalizations.of(context)!.openBookFailed),
     );
   }
 
@@ -274,15 +267,14 @@ class _MyCommentsScreenState extends ConsumerState<MyCommentsScreen> {
           itemBuilder: (context, index) {
             final comment = _comments[index];
             final userName = ref.read(authProvider).user?.name ?? '';
-            return EntranceSlideFade(
+            return MotionEntrance(
               index: index,
               child: _MyCommentCard(
                 comment: comment,
                 userName: userName,
                 coverUrl:
                     _bookRefController.refFor(comment.bookId)?.cover ?? '',
-                isOpeningBook:
-                    _bookRefController.isOpening(comment.bookId),
+                isOpeningBook: _bookRefController.isOpening(comment.bookId),
                 onCardTap: () => _openComments(comment),
                 onBookTap: () => _openBookDetail(comment),
                 onAvatarTap: () => _openProfile(comment),
@@ -298,7 +290,7 @@ class _MyCommentsScreenState extends ConsumerState<MyCommentsScreen> {
     return Scaffold(
       appBar: GradientAppBar(title: l10n.myComments),
       // loading → 登录态 → 空态 → 列表：统一淡入淡出（此前硬切）。
-      body: StateTransitionSwitch(child: body),
+      body: MotionSwitch(child: body),
     );
   }
 }
@@ -372,8 +364,9 @@ class _MyCommentCard extends StatelessWidget {
                         children: [
                           Text(
                             userName,
-                            style: tt.bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.w600),
+                            style: tt.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -404,9 +397,7 @@ class _MyCommentCard extends StatelessWidget {
                               const Spacer(),
                               IconButton(
                                 onPressed: onDelete,
-                                icon: const Icon(
-                                  Icons.delete_outline_rounded,
-                                ),
+                                icon: const Icon(Icons.delete_outline_rounded),
                                 iconSize: 20,
                                 tooltip: deleteTooltip,
                                 visualDensity: VisualDensity.compact,

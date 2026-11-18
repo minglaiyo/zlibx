@@ -15,26 +15,27 @@ class BookData {
   /// records that predate tagging (trending rows, older caches).
   final String? source;
 
-  BookData(
-      {required this.title,
-      this.author,
-      this.thumbnail,
-      required this.link,
-      required this.md5,
-      this.publisher,
-      this.info,
-      this.source});
+  BookData({
+    required this.title,
+    this.author,
+    this.thumbnail,
+    required this.link,
+    required this.md5,
+    this.publisher,
+    this.info,
+    this.source,
+  });
 
   BookData copyWith({String? source, String? thumbnail}) => BookData(
-        title: title,
-        author: author,
-        thumbnail: thumbnail ?? this.thumbnail,
-        link: link,
-        md5: md5,
-        publisher: publisher,
-        info: info,
-        source: source ?? this.source,
-      );
+    title: title,
+    author: author,
+    thumbnail: thumbnail ?? this.thumbnail,
+    link: link,
+    md5: md5,
+    publisher: publisher,
+    info: info,
+    source: source ?? this.source,
+  );
 }
 
 class BookInfoData extends BookData {
@@ -43,16 +44,17 @@ class BookInfoData extends BookData {
   final String? format;
   bool isFastDownload;
 
-  BookInfoData(
-      {required super.title,
-      required super.author,
-      required super.thumbnail,
-      required super.publisher,
-      required super.info,
-      required super.link,
-      required super.md5,
-      required this.format,
-      required this.mirror,
-      required this.description,
-      this.isFastDownload = false});
+  BookInfoData({
+    required super.title,
+    required super.author,
+    required super.thumbnail,
+    required super.publisher,
+    required super.info,
+    required super.link,
+    required super.md5,
+    required this.format,
+    required this.mirror,
+    required this.description,
+    this.isFastDownload = false,
+  });
 }

@@ -65,9 +65,9 @@ class NetworkSection extends ConsumerWidget {
             title: Text(t.mirrors),
             subtitle: Text(t.mirrorsSubtitle),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const MirrorsPage()),
-            ),
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const MirrorsPage())),
           ),
         ),
       ],
@@ -135,7 +135,9 @@ class _LineStatus extends StatelessWidget {
     final status = domainLatencyStatus(latency);
     if (status == DomainLatencyStatus.untested) {
       return (
-        testing ? (AppLocalizations.of(context)!.speedTesting) : (AppLocalizations.of(context)!.speedUntested),
+        testing
+            ? (AppLocalizations.of(context)!.speedTesting)
+            : (AppLocalizations.of(context)!.speedUntested),
         cs.onSurfaceVariant,
       );
     }

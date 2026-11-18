@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../theme/motion.dart';
+import '../../../widgets/motion/motion.dart';
 import '../../../theme/app_metrics.dart';
 import '../../../widgets/loading_widget.dart';
 
@@ -49,8 +51,8 @@ class CommentComposer extends StatelessWidget {
         children: [
           // “正在回复”横幅：出现/收起带尺寸过渡，不打断输入框布局。
           AnimatedSize(
-            duration: AppMotion.quick,
-            curve: Curves.easeOut,
+            duration: context.motionDuration(AppMotion.quick),
+            curve: MotionCurves.enter,
             alignment: Alignment.bottomCenter,
             child: replyBannerText == null
                 ? const SizedBox(width: double.infinity)
@@ -141,9 +143,9 @@ class _ReplyBanner extends StatelessWidget {
             child: Text(
               text,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: cs.primary,
-                    fontWeight: FontWeight.w500,
-                  ),
+                color: cs.primary,
+                fontWeight: FontWeight.w500,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -187,12 +189,10 @@ class _SendButton extends StatelessWidget {
         return IconButton.filled(
           onPressed: canSend ? onSubmit : null,
           tooltip: tooltip,
-          icon: AnimatedSwitcher(
+          icon: MotionSwitch(
+            style: MotionSwitchStyle.scale,
             duration: AppMotion.fast,
-            transitionBuilder: (child, animation) => FadeTransition(
-              opacity: animation,
-              child: ScaleTransition(scale: animation, child: child),
-            ),
+            curve: MotionCurves.emphasized,
             child: isPosting
                 ? const LoadingWidget.inline(color: Colors.white)
                 : const Icon(Icons.send_rounded, size: 20),

@@ -1,0 +1,20 @@
+# Cargo config for zlibx_parsers.
+#
+# Only the Android arm64-v8a target is compiled (matches the app's abiFilters
+# in android/app/build.gradle.kts). The host toolchain is used for `cargo
+# test` / lint only; building the .so for the device uses the Android target
+# with the NDK's clang as linker.
+#
+# The Android linker / ar are NOT pinned here — hardcoding a per-OS path
+# (D:\... on Windows, linux-x86_64 on CI) breaks the other platform. They
+# come from environment variables instead, set by whichever driver builds:
+#   - Gradle task cargoBuildRust (android/app/build.gradle.kts)
+#   - tool/cargo_build_android.sh
+#   - the release CI job (oliblite-build-android-arm64.yml)
+#   CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = <ndk>/.../aarch64-linux-android29-clang(.cmd)
+#   CC_aarch64_linux_android / AR_aarch64_linux_android / RANLIB_aarch64_linux_android
+#   (cc-rs needs the same triple for dart-sys's C glue).
+
+[build]
+# Keep all build artifacts under the crate's target/ dir (not the workspace root).
+target-dir = "target"

@@ -27,19 +27,11 @@ class AppLogger {
   factory AppLogger() => _instance;
   AppLogger._();
 
-  void debug(
-    String message, {
-    String? tag,
-    Map<String, dynamic>? metadata,
-  }) {
+  void debug(String message, {String? tag, Map<String, dynamic>? metadata}) {
     AppLog.debug(message, tag: tag, metadata: metadata);
   }
 
-  void info(
-    String message, {
-    String? tag,
-    Map<String, dynamic>? metadata,
-  }) {
+  void info(String message, {String? tag, Map<String, dynamic>? metadata}) {
     AppLog.info(message, tag: tag, metadata: metadata);
   }
 

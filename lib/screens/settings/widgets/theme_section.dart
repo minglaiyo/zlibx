@@ -32,10 +32,7 @@ class ThemeSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SectionHeader(
-          icon: Icons.palette_rounded,
-          title: t.appearance,
-        ),
+        SectionHeader(icon: Icons.palette_rounded, title: t.appearance),
         SettingsCard(
           child: ListTile(
             leading: const Icon(Icons.palette_rounded),
@@ -46,9 +43,7 @@ class ThemeSection extends ConsumerWidget {
               context: context,
               isScrollControlled: true,
               shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(20),
-                ),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
               builder: (_) => const AppearanceSheet(),
             ),
@@ -74,9 +69,7 @@ class AppearanceSheet extends ConsumerWidget {
     final floatingNav = ref.watch(floatingNavProvider);
     final hideNavOnScroll = ref.watch(hideNavOnScrollProvider);
     final adaptiveGrid = ref.watch(adaptiveGridProvider);
-    final collapseDetailDescription = ref.watch(
-      detailQuickActionsUpProvider,
-    );
+    final collapseDetailDescription = ref.watch(detailQuickActionsUpProvider);
     final t = AppLocalizations.of(context)!;
     final cs = Theme.of(context).colorScheme;
     final followingSystem = themeMode == AppThemeMode.system;
@@ -98,9 +91,9 @@ class AppearanceSheet extends ConsumerWidget {
           padding: const EdgeInsets.all(16),
           child: Text(
             t.appearance,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
           ),
         ),
         const Divider(height: 1),
@@ -110,9 +103,9 @@ class AppearanceSheet extends ConsumerWidget {
           activeThumbColor: cs.primary,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           onChanged: (value) {
-            ref.read(themeModeProvider.notifier).setThemeMode(
-                  value ? AppThemeMode.system : AppThemeMode.light,
-                );
+            ref
+                .read(themeModeProvider.notifier)
+                .setThemeMode(value ? AppThemeMode.system : AppThemeMode.light);
           },
         ),
         SwitchListTile(
@@ -123,7 +116,9 @@ class AppearanceSheet extends ConsumerWidget {
           onChanged: followingSystem
               ? null
               : (value) {
-                  ref.read(themeModeProvider.notifier).setThemeMode(
+                  ref
+                      .read(themeModeProvider.notifier)
+                      .setThemeMode(
                         value ? AppThemeMode.dark : AppThemeMode.light,
                       );
                 },
@@ -165,9 +160,9 @@ class AppearanceSheet extends ConsumerWidget {
           title: Text(t.adaptiveGridColumns),
           subtitle: Text(
             t.adaptiveGridColumnsDesc,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
           ),
           value: adaptiveGrid,
           activeThumbColor: cs.primary,
@@ -181,18 +176,16 @@ class AppearanceSheet extends ConsumerWidget {
           title: Text(t.collapseDetailDescription),
           subtitle: Text(
             t.collapseDetailDescriptionDesc,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
           ),
           value: collapseDetailDescription,
           activeThumbColor: cs.primary,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           isThreeLine: true,
           onChanged: (value) {
-            ref
-                .read(detailQuickActionsUpProvider.notifier)
-                .setEnabled(value);
+            ref.read(detailQuickActionsUpProvider.notifier).setEnabled(value);
           },
         ),
         const SizedBox(height: 16),

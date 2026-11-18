@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/display_book.dart';
+import '../theme/motion.dart';
 import '../theme/app_layout.dart';
 import '../theme/app_metrics.dart';
 import '../theme/app_colors.dart';
@@ -106,8 +107,10 @@ class BookCard extends StatefulWidget {
     final gutter = AppLayout.pageGutter(width);
     final gridWidth = (width - gutter * 2).clamp(0.0, double.infinity);
     final cellWidth =
-        ((gridWidth - AppLayout.gridSpacing * (columns - 1)) / columns)
-            .clamp(0.0, double.infinity);
+        ((gridWidth - AppLayout.gridSpacing * (columns - 1)) / columns).clamp(
+          0.0,
+          double.infinity,
+        );
     return SliverGridDelegateWithFixedCrossAxisCount(
       crossAxisCount: columns,
       crossAxisSpacing: AppLayout.gridSpacing,
@@ -153,8 +156,8 @@ class _BookCardState extends State<BookCard> {
     // Soft Card UI with press-scale feedback
     return AnimatedScale(
       scale: _scale,
-      duration: AppMotion.fast,
-      curve: Curves.easeOutCubic,
+      duration: MotionPress.duration,
+      curve: MotionPress.curve,
       child: Container(
         decoration: BoxDecoration(
           color: Theme.of(context).cardTheme.color,
@@ -162,7 +165,9 @@ class _BookCardState extends State<BookCard> {
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(
-                alpha: flatCover ? (isDark ? 0.08 : 0.025) : (isDark ? 0.2 : 0.05),
+                alpha: flatCover
+                    ? (isDark ? 0.08 : 0.025)
+                    : (isDark ? 0.2 : 0.05),
               ),
               blurRadius: flatCover ? 4 : 10,
               offset: Offset(0, flatCover ? 2 : 4),
@@ -231,8 +236,7 @@ class _BookCardState extends State<BookCard> {
     // 槽位随系统字号缩放：Text 的行高是按缩放后的字号算的，
     // 固定 33.6 在 1.5 倍字号下又变成裁半截——正是要修的那个毛病。
     final titleScale =
-        MediaQuery.textScalerOf(context).scale(_titleFontSize) /
-        _titleFontSize;
+        MediaQuery.textScalerOf(context).scale(_titleFontSize) / _titleFontSize;
     return Padding(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -245,7 +249,9 @@ class _BookCardState extends State<BookCard> {
 
           // Level 1: Title (Black, Bold, Large)
           ConstrainedBox(
-            constraints: BoxConstraints(minHeight: _titleSlotHeight * titleScale),
+            constraints: BoxConstraints(
+              minHeight: _titleSlotHeight * titleScale,
+            ),
             child: Text(
               widget.book.title,
               maxLines: _titleMaxLines,
@@ -263,9 +269,9 @@ class _BookCardState extends State<BookCard> {
               widget.book.author!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                fontSize: 11,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontSize: 11),
             ),
 
           const SizedBox(height: 8),
@@ -304,9 +310,7 @@ class _BookCardState extends State<BookCard> {
             child: Align(
               alignment: Alignment.topRight,
               child: IgnorePointer(
-                child: ExcludeSemantics(
-                  child: _buildSourceBadge(sourceLabel),
-                ),
+                child: ExcludeSemantics(child: _buildSourceBadge(sourceLabel)),
               ),
             ),
           ),
@@ -415,8 +419,7 @@ class _BookCardState extends State<BookCard> {
                     if (hasScore) _buildCoverLabel(score, rating: true),
                     if (hasScore && widget.searchResult && hasMeta)
                       const SizedBox(height: 4),
-                    if (widget.searchResult && hasMeta)
-                      _buildCoverLabel(meta),
+                    if (widget.searchResult && hasMeta) _buildCoverLabel(meta),
                   ],
                 ),
               ),
@@ -438,7 +441,11 @@ class _BookCardState extends State<BookCard> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (rating) ...[
-              const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingStar),
+              const Icon(
+                Icons.star_rounded,
+                size: 14,
+                color: AppColors.ratingStar,
+              ),
               const SizedBox(width: 3),
             ],
             Text(
@@ -467,10 +474,9 @@ class _BookCardState extends State<BookCard> {
             widget.book.title,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              height: 1.2,
-              fontSize: 14,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(height: 1.2, fontSize: 14),
           ),
           if (widget.book.author != null && widget.book.author!.isNotEmpty) ...[
             const SizedBox(height: 3),
@@ -478,7 +484,9 @@ class _BookCardState extends State<BookCard> {
               widget.book.author!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontSize: 11),
             ),
           ],
         ],
@@ -496,11 +504,7 @@ class _BookCardState extends State<BookCard> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.library_books_rounded,
-            size: 14,
-            color: Colors.white,
-          ),
+          Icon(Icons.library_books_rounded, size: 14, color: Colors.white),
           const SizedBox(width: 4),
           Flexible(
             child: Text(
@@ -522,7 +526,8 @@ class _BookCardState extends State<BookCard> {
   /// Build the top meta row (tag + tagExtra)
   Widget _buildMetaRow() {
     final hasTag = widget.book.tag != null && widget.book.tag!.isNotEmpty;
-    final hasTagExtra = widget.book.tagExtra != null && widget.book.tagExtra!.isNotEmpty;
+    final hasTagExtra =
+        widget.book.tagExtra != null && widget.book.tagExtra!.isNotEmpty;
 
     if (!hasTag && !hasTagExtra) {
       // Return a minimal spacer if no meta info available
@@ -546,8 +551,7 @@ class _BookCardState extends State<BookCard> {
               ),
             ),
           ),
-        if (hasTag && hasTagExtra)
-          const SizedBox(width: 4),
+        if (hasTag && hasTagExtra) const SizedBox(width: 4),
         // 两边都得是 Flexible：自适应三列把卡片压到 ~100dp，字号再放大
         // 一档（系统字体 1.5×）时"分类 + 年份"这行的自然宽度就超过格子，
         // 后半段不包 Flexible 就是整行溢出（黄黑斜条）。包上之后按内容
@@ -558,10 +562,7 @@ class _BookCardState extends State<BookCard> {
               hasTag ? '• ${widget.book.tagExtra}' : widget.book.tagExtra!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontSize: 10,
-              ),
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 10),
             ),
           ),
       ],

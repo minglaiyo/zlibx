@@ -8,9 +8,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import '../services/download_foreground_service.dart';
+import '../services/hive_service.dart';
 import '../services/http_client.dart';
 import '../services/media_store.dart';
 import '../services/pending_uri_writer.dart';
@@ -209,24 +211,24 @@ class DownloadNotifier extends _DownloadNotifierBase
   }
 }
 
-final downloadProvider =
-    NotifierProvider<DownloadNotifier, List<DownloadTask>>(
-      DownloadNotifier.new,
-    );
+final downloadProvider = NotifierProvider<DownloadNotifier, List<DownloadTask>>(
+  DownloadNotifier.new,
+);
 
 /// One download task by id. Watching this instead of [downloadProvider]
 /// rebuilds a widget only when ITS task changes: [_updateTask] keeps the
 /// identity of every untouched task, so `select` sees no change for them.
 /// Use it in per-book widgets (action bars, list tiles) so one progress
 /// tick no longer rebuilds every listener of the whole list.
-final downloadTaskProvider =
-    Provider.autoDispose.family<DownloadTask?, String>((ref, id) {
-  return ref.watch(
-    downloadProvider.select((tasks) {
-      for (final t in tasks) {
-        if (t.id == id) return t;
-      }
-      return null;
-    }),
-  );
-});
+final downloadTaskProvider = Provider.autoDispose.family<DownloadTask?, String>(
+  (ref, id) {
+    return ref.watch(
+      downloadProvider.select((tasks) {
+        for (final t in tasks) {
+          if (t.id == id) return t;
+        }
+        return null;
+      }),
+    );
+  },
+);

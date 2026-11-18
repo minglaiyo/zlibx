@@ -123,9 +123,7 @@ class SpeedTestNotifier extends Notifier<SpeedTestState> {
         _cacheKey,
         jsonEncode({
           'timestamp': DateTime.now().millisecondsSinceEpoch,
-          'results': {
-            for (final r in results) r.domain: r.latencyMs ?? -1,
-          },
+          'results': {for (final r in results) r.domain: r.latencyMs ?? -1},
         }),
       );
     } on Object catch (e) {
@@ -233,7 +231,8 @@ class SpeedTestNotifier extends Notifier<SpeedTestState> {
     // re-run against the current list. Bounded to one retry — the list
     // only changes when SLUM data arrives, so a second move mid-retry
     // is not expected; the retry's results stand in that case.
-    if (!isRetry && !_sameDomains(testedDomains, ref.read(domainListProvider))) {
+    if (!isRetry &&
+        !_sameDomains(testedDomains, ref.read(domainListProvider))) {
       _domains = ref.read(domainListProvider);
       state = SpeedTestState(
         results: _domains.map((d) => DomainTestResult(d)).toList(),
@@ -304,5 +303,6 @@ class SpeedTestNotifier extends Notifier<SpeedTestState> {
 }
 
 /// Global speed test state — cached across the app lifecycle.
-final speedTestProvider =
-    NotifierProvider<SpeedTestNotifier, SpeedTestState>(SpeedTestNotifier.new);
+final speedTestProvider = NotifierProvider<SpeedTestNotifier, SpeedTestState>(
+  SpeedTestNotifier.new,
+);

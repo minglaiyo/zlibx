@@ -78,6 +78,10 @@ class Book {
   final int? readlistBookId;
   final String? note;
 
+  /// 详情页 HTML 上的关键词（`/terms/<词>` 链接的文本，去重）。
+  /// eapi 不携带，仅从详情页解析而来（见 parseBookDetailKeywords）。
+  final List<String>? keywords;
+
   const Book({
     required this.id,
     required this.title,
@@ -106,6 +110,7 @@ class Book {
     this.ratingQuality,
     this.readlistBookId,
     this.note,
+    this.keywords,
     this.downloadedAt,
   });
 
@@ -160,6 +165,7 @@ class Book {
       downloadedAt: _asDateTime(
         json['downloadedAt'] ?? json['downloaded_at'],
       ),
+      keywords: _asStringList(json['keywords']),
     );
   }
 
@@ -203,6 +209,7 @@ class Book {
     if (ipfsCidBlake2b != null) 'ipfsCidBlake2b': ipfsCidBlake2b,
     if (readlistBookId != null) 'readlistBookId': readlistBookId,
     if (note != null) 'note': note,
+    if (keywords != null && keywords!.isNotEmpty) 'keywords': keywords,
     if (downloadedAt != null) 'downloadedAt': downloadedAt!.toIso8601String(),
   };
 
@@ -238,6 +245,7 @@ class Book {
     String? ratingQuality,
     int? readlistBookId,
     String? note,
+    List<String>? keywords,
     DateTime? downloadedAt,
   }) {
     return Book(
@@ -268,6 +276,7 @@ class Book {
       ratingQuality: ratingQuality ?? this.ratingQuality,
       readlistBookId: readlistBookId ?? this.readlistBookId,
       note: note ?? this.note,
+      keywords: keywords ?? this.keywords,
       downloadedAt: downloadedAt ?? this.downloadedAt,
     );
   }
@@ -349,4 +358,15 @@ class Book {
     if (s.isEmpty) return null;
     return DateTime.tryParse(s);
   }
+}
+
+/// String 列表容错读取：列表里非字符串项跳过，非列表输入返回 null。
+List<String>? _asStringList(Object? value) {
+  if (value is! List) return null;
+  final result = value
+      .whereType<String>()
+      .map((item) => item.trim())
+      .where((item) => item.isNotEmpty)
+      .toList();
+  return result.isEmpty ? null : result;
 }

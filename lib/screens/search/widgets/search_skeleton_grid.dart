@@ -6,10 +6,7 @@ import '../../../widgets/cover_placeholder.dart';
 
 /// 从 search_screen 抽出的零状态段：搜索加载骨架网格。
 class SearchSkeletonGrid extends StatelessWidget {
-  const SearchSkeletonGrid({
-    super.key,
-    this.adaptiveGridColumns = false,
-  });
+  const SearchSkeletonGrid({super.key, this.adaptiveGridColumns = false});
 
   /// 与 SearchResultsView 的书本网格同一开关、同一分支：加载完成后
   /// 列数不能跳一下。两个文件的 delegate 参数要改就一起改（自适应档直接
@@ -24,9 +21,7 @@ class SearchSkeletonGrid extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final gutter = adaptiveGridColumns
-            ? AppLayout.pageGutter(width)
-            : 16.0;
+        final gutter = adaptiveGridColumns ? AppLayout.pageGutter(width) : 16.0;
         return GridView.builder(
           physics: const NeverScrollableScrollPhysics(),
           padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 16),

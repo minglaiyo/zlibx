@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_metrics.dart';
+import 'motion/motion.dart';
 
 class EmptyState extends StatelessWidget {
   final IconData icon;
@@ -15,11 +16,6 @@ class EmptyState extends StatelessWidget {
     this.action,
   });
 
-  /// 入场动画只跑一次：复用同一个 tween，父级重建不会重播；
-  /// 系统关动画时（[MediaQuery.disableAnimationsOf]）直接出最终态。
-  /// 注意：Tween 的构造不是 const，所以这里只能是 static final。
-  static final _entranceTween = Tween<double>(begin: 0.0, end: 1.0);
-
   @override
   Widget build(BuildContext context) {
     final content = Center(
@@ -31,7 +27,9 @@ class EmptyState extends StatelessWidget {
             Icon(
               icon,
               size: 80,
-              color: Theme.of(context).colorScheme.primary.withValues(alpha:0.5),
+              color: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 24),
             Text(
@@ -47,26 +45,17 @@ class EmptyState extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
             ],
-            if (action != null) ...[
-              const SizedBox(height: 24),
-              action!,
-            ],
+            if (action != null) ...[const SizedBox(height: 24), action!],
           ],
         ),
       ),
     );
-    if (MediaQuery.disableAnimationsOf(context)) return content;
-    return TweenAnimationBuilder<double>(
-      tween: _entranceTween,
+
+    // 空态一次性入场：slower 档 + 16px 上滑（无 index，不做错峰）。
+    return MotionEntrance(
+      index: 0,
       duration: AppMotion.slower,
-      curve: Curves.easeOutCubic,
-      builder: (context, value, child) => Opacity(
-        opacity: value,
-        child: Transform.translate(
-          offset: Offset(0, 16 * (1 - value)),
-          child: child,
-        ),
-      ),
+      offsetY: 16.0,
       child: content,
     );
   }

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
@@ -303,6 +304,7 @@ class _FakeCategoryApi implements ZLibraryApi {
     int categoryId, {
     int page = 1,
     String? order,
+    CancelToken? cancelToken,
   }) async {
     requests.add((categoryId: categoryId, page: page));
     return ApiResponse.ok(

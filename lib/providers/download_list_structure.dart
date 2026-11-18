@@ -56,22 +56,31 @@ int _downloadPriority(DownloadStatus status) => switch (status) {
 final downloadListStructureProvider = Provider<DownloadListStructure>((ref) {
   return ref.watch(
     downloadProvider.select((tasks) {
-      final ongoing = tasks
-          .where((task) => task.status != DownloadStatus.completed)
-          .toList()
-        ..sort(
-          (a, b) => _downloadPriority(
-            a.status,
-          ).compareTo(_downloadPriority(b.status)),
-        );
-      final completed = tasks
-          .where((task) => task.status == DownloadStatus.completed)
-          .toList()
-        ..sort(
-          (a, b) => (b.downloadedAt ?? DateTime(0)).compareTo(
-            a.downloadedAt ?? DateTime(0),
-          ),
-        );
+      final ongoing =
+          tasks
+              .where((task) => task.status != DownloadStatus.completed)
+              .toList()
+            ..sort(
+              (a, b) {
+                final byPriority = _downloadPriority(
+                  a.status,
+                ).compareTo(_downloadPriority(b.status));
+                if (byPriority != 0) return byPriority;
+                // 同优先级里置顶（E2）的 pending 排最前；Dart 的 sort
+                // 不稳定，必须有显式平局规则。
+                if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+                return 0;
+              },
+            );
+      final completed =
+          tasks
+              .where((task) => task.status == DownloadStatus.completed)
+              .toList()
+            ..sort(
+              (a, b) => (b.downloadedAt ?? DateTime(0)).compareTo(
+                a.downloadedAt ?? DateTime(0),
+              ),
+            );
       return DownloadListStructure(
         ongoingIds: ongoing.map((task) => task.id).toList(),
         completedIds: completed.map((task) => task.id).toList(),

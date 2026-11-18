@@ -16,7 +16,8 @@
 import 'package:dio/dio.dart';
 
 /// Desktop-Chrome User-Agent shared by the app's HTTP clients.
-const String kDefaultUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+const String kDefaultUserAgent =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
     'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 '
     'Safari/537.36';
 
@@ -33,10 +34,7 @@ Dio createDio({
       connectTimeout: connectTimeout,
       sendTimeout: sendTimeout,
       receiveTimeout: receiveTimeout,
-      headers: {
-        'User-Agent': kDefaultUserAgent,
-        ...?headers,
-      },
+      headers: {'User-Agent': kDefaultUserAgent, ...?headers},
     ),
   );
 }

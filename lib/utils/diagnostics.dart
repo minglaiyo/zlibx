@@ -66,8 +66,7 @@ class Diagnostics {
   // Matches a Dart stack frame such as
   // `#0 Foo.bar (package:zlibx/services/foo.dart:123:45)` and captures
   // the file path (group 1) and the line number (group 2).
-  static final _zlibxFrameRe =
-      RegExp(r'package:zlibx/([^:)\s]+):(\d+)');
+  static final _zlibxFrameRe = RegExp(r'package:zlibx/([^:)\s]+):(\d+)');
 
   /// The HTTP status code carried by a network error, if any.
   static int? _httpStatus(Object error) {

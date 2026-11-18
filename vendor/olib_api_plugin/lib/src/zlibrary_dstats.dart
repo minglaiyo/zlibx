@@ -68,7 +68,7 @@ mixin ZLibraryDownloadHistory on ZLibraryApiBase {
         statusCode: status,
       );
     }
-    return ApiResponse.ok(parseDownloadStatsPage(body));
+    return ApiResponse.ok(await parseDownloadStatsPageH(body));
   }
 
   /// The full URL of one download-history page — the WebView solver

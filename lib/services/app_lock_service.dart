@@ -164,8 +164,7 @@ class AppLockController {
   /// 机器靠后者才算支持，所以两个都要问。
   Future<bool> canAuthenticate() async {
     try {
-      return await _auth.canCheckBiometrics ||
-          await _auth.isDeviceSupported();
+      return await _auth.canCheckBiometrics || await _auth.isDeviceSupported();
     } on Object catch (error) {
       logIgnored('app_lock', error);
       return false;
@@ -236,8 +235,8 @@ class AppLockController {
         HiveService.settingsBox
             .put(appLockLeftForegroundKey, at.millisecondsSinceEpoch)
             .catchError((Object error) {
-          logIgnored('app_lock', error);
-        }),
+              logIgnored('app_lock', error);
+            }),
       );
     } on Object catch (error) {
       logIgnored('app_lock', error);
@@ -247,9 +246,9 @@ class AppLockController {
   void _clearLeftForeground() {
     try {
       unawaited(
-        HiveService.settingsBox
-            .delete(appLockLeftForegroundKey)
-            .catchError((Object error) {
+        HiveService.settingsBox.delete(appLockLeftForegroundKey).catchError((
+          Object error,
+        ) {
           logIgnored('app_lock', error);
         }),
       );

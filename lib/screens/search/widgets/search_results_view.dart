@@ -7,9 +7,8 @@ import '../../../theme/app_layout.dart';
 import '../../../widgets/book_card.dart';
 import '../../../widgets/book_quick_actions_sheet.dart';
 import '../../../widgets/book_list_tile.dart';
-import '../../../widgets/entrance.dart';
+import '../../../widgets/motion/motion.dart';
 import '../../../widgets/loading_widget.dart';
-import '../../../widgets/state_transition_switch.dart';
 import 'article_tile.dart';
 import 'fulltext_hit_tile.dart';
 
@@ -18,9 +17,9 @@ import 'fulltext_hit_tile.dart';
 ///
 /// 从 search_screen 抽出（此前 1007 行编排页里约 260 行是这段展示
 /// 逻辑）。三处视觉/动效升级：
-/// 1. 网格↔列表切换由硬切改为 [StateTransitionSwitch] 淡入淡出——
+/// 1. 网格↔列表切换由硬切改为 [MotionSwitch] 淡入淡出——
 ///    四个分支各自带互不相同的 Key，模式间切换同样有过渡；
-/// 2. 每种结果条目接入一次性进场动画（[EntranceSlideFade]，前 8 条
+/// 2. 每种结果条目接入一次性进场动画（[MotionEntrance]，前 8 条
 ///    错峰入场，滚动加载的新条目不再触发，尊重系统关闭动画设置）；
 /// 3. 滚动加载监听从 ScrollController 换成交接页编排的
 ///    NotificationListener——AnimatedSwitcher 过渡期间新旧两个列表
@@ -98,7 +97,7 @@ class SearchResultsView extends StatelessWidget {
         _header(context),
         if (error != null) _loadMoreErrorBanner(context),
         Expanded(
-          child: StateTransitionSwitch(
+          child: MotionSwitch(
             child: isFullTextMode
                 ? _fullTextList(context)
                 : isArticleMode
@@ -140,9 +139,9 @@ class SearchResultsView extends StatelessWidget {
               l10n.searchPageProgress(currentPage, totalPagesText),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: cs.onSurfaceVariant,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
             ),
           ),
           // 文章/全文模式没有网格卡片，视图切换只对书本分支有意义。
@@ -168,10 +167,7 @@ class SearchResultsView extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: Text(l10n.searchMoreFailed)),
-          TextButton(
-            onPressed: onRetryLoadMore,
-            child: Text(l10n.searchRetry),
-          ),
+          TextButton(onPressed: onRetryLoadMore, child: Text(l10n.searchRetry)),
         ],
       ),
     );
@@ -187,7 +183,7 @@ class SearchResultsView extends StatelessWidget {
           return const LoadingWidget.more();
         }
         final hit = hits[index];
-        return EntranceSlideFade(
+        return MotionEntrance(
           index: index,
           child: FullTextHitTile(
             hit: hit,
@@ -209,7 +205,7 @@ class SearchResultsView extends StatelessWidget {
           return const LoadingWidget.more();
         }
         final article = articles[index];
-        return EntranceSlideFade(
+        return MotionEntrance(
           index: index,
           child: ArticleTile(
             article: article,
@@ -231,7 +227,7 @@ class SearchResultsView extends StatelessWidget {
           return const LoadingWidget.more();
         }
         final book = books[index];
-        return EntranceSlideFade(
+        return MotionEntrance(
           index: index,
           child: BookListTile(
             book: book,
@@ -254,9 +250,7 @@ class SearchResultsView extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final gutter = adaptiveGridColumns
-            ? AppLayout.pageGutter(width)
-            : 16.0;
+        final gutter = adaptiveGridColumns ? AppLayout.pageGutter(width) : 16.0;
         return GridView.builder(
           key: const ValueKey('grid'),
           padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 16),
@@ -274,7 +268,7 @@ class SearchResultsView extends StatelessWidget {
               return const LoadingWidget.more();
             }
             final book = books[index];
-            return EntranceSlideFade(
+            return MotionEntrance(
               index: index,
               child: BookCard(
                 book: book,

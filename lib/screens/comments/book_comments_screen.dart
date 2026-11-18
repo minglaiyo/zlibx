@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/zlibrary_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../theme/app_metrics.dart';
+import '../../theme/motion.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/gradient_app_bar.dart';
 import '../../widgets/loading_widget.dart';
@@ -18,15 +19,13 @@ import 'widgets/comment_composer.dart';
 import 'widgets/comment_list.dart';
 
 import '../../utils/app_snack.dart';
+
 /// Arguments for BookCommentsScreen
 class BookCommentsArgs {
   final int bookId;
   final String bookTitle;
 
-  const BookCommentsArgs({
-    required this.bookId,
-    required this.bookTitle,
-  });
+  const BookCommentsArgs({required this.bookId, required this.bookTitle});
 }
 
 /// Book comments — view, post, reply and like.
@@ -40,8 +39,7 @@ class BookCommentsScreen extends ConsumerStatefulWidget {
   const BookCommentsScreen({super.key, required this.args});
 
   @override
-  ConsumerState<BookCommentsScreen> createState() =>
-      _BookCommentsScreenState();
+  ConsumerState<BookCommentsScreen> createState() => _BookCommentsScreenState();
 }
 
 class _BookCommentsScreenState extends ConsumerState<BookCommentsScreen> {
@@ -69,9 +67,7 @@ class _BookCommentsScreenState extends ConsumerState<BookCommentsScreen> {
     );
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _c.loadFirst(
-        signedIn: ref.read(authProvider).user != null,
-      ),
+      (_) => _c.loadFirst(signedIn: ref.read(authProvider).user != null),
     );
   }
 
@@ -115,11 +111,13 @@ class _BookCommentsScreenState extends ConsumerState<BookCommentsScreen> {
       // 新顶层评论插在最前，滚回顶部让用户立刻看到自己的评论；
       // 回复则原地不动（父评论就在视口附近）。
       if (!wasReply && _scrollController.hasClients) {
-        unawaited(_scrollController.animateTo(
-          0,
-          duration: AppMotion.slower,
-          curve: Curves.easeOutCubic,
-        ));
+        unawaited(
+          _scrollController.animateTo(
+            0,
+            duration: AppMotion.slower,
+            curve: MotionCurves.enter,
+          ),
+        );
       }
     }
   }
@@ -168,8 +166,8 @@ class _BookCommentsScreenState extends ConsumerState<BookCommentsScreen> {
                 title: args.bookTitle,
                 commentCount:
                     c.loggedIn && !c.disabled && !c.hasError && !c.isLoading
-                        ? c.comments.length
-                        : null,
+                    ? c.comments.length
+                    : null,
               ),
               Expanded(child: _buildBody(c, l10n)),
               if (c.loggedIn && !c.disabled && !c.isLoading)
@@ -211,10 +209,7 @@ class _BookCommentsScreenState extends ConsumerState<BookCommentsScreen> {
         icon: Icons.error_outline,
         title: l10n.error,
         message: c.errorMessage,
-        action: FilledButton(
-          onPressed: _reload,
-          child: Text(l10n.retry),
-        ),
+        action: FilledButton(onPressed: _reload, child: Text(l10n.retry)),
       );
     }
     if (c.disabled) {
@@ -224,10 +219,7 @@ class _BookCommentsScreenState extends ConsumerState<BookCommentsScreen> {
       );
     }
     if (c.comments.isEmpty) {
-      return EmptyState(
-        icon: Icons.comment_outlined,
-        title: l10n.noComments,
-      );
+      return EmptyState(icon: Icons.comment_outlined, title: l10n.noComments);
     }
     return CommentList(
       controller: c,

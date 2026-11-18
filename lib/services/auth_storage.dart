@@ -57,8 +57,11 @@ class AuthStorage {
 
   Future<void> _runMigration() async {
     final box = HiveService.authBox;
-    final hasLegacy = box.containsKey(_keyUserId) ||
+    final hasLegacy =
+        box.containsKey(_keyUserId) ||
         box.containsKey(_keyUserKey) ||
+        box.containsKey(_keyUserEmail) ||
+        box.containsKey(_keyUserName) ||
         box.containsKey(_keyAccounts) ||
         box.containsKey(_legacyKeyPassword) ||
         _legacyBackendKeys.any((key) => box.containsKey(key));
@@ -89,8 +92,7 @@ class AuthStorage {
     // Read everything back before touching the legacy copy: if secure
     // storage silently failed, keep the old data and retry next time.
     if ((userId != null && await SecureStorage.read(_keyUserId) != userId) ||
-        (userKey != null &&
-            await SecureStorage.read(_keyUserKey) != userKey) ||
+        (userKey != null && await SecureStorage.read(_keyUserKey) != userKey) ||
         (accountsJson != null &&
             await SecureStorage.read(_keyAccounts) != accountsJson)) {
       throw StateError('secure storage write verification failed');
@@ -185,10 +187,13 @@ class AuthStorage {
   Future<void>? _accountsWriteChain;
 
   Future<T> _serializeAccountsWrite<T>(Future<T> Function() action) {
-    final run =
-        (_accountsWriteChain ?? Future<void>.value()).then((_) => action());
-    _accountsWriteChain =
-        run.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    final run = (_accountsWriteChain ?? Future<void>.value()).then(
+      (_) => action(),
+    );
+    _accountsWriteChain = run.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace __) {},
+    );
     return run;
   }
 

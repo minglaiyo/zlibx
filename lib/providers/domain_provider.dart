@@ -110,8 +110,9 @@ final domainDownHostsProvider = Provider<Set<String>>((ref) {
   };
 });
 
-final domainProvider =
-    NotifierProvider<DomainNotifier, String>(DomainNotifier.new);
+final domainProvider = NotifierProvider<DomainNotifier, String>(
+  DomainNotifier.new,
+);
 
 class DomainNotifier extends Notifier<String> {
   // Getter, not `late final`: ref.invalidate re-runs build() on the SAME
@@ -225,10 +226,7 @@ class DomainNotifier extends Notifier<String> {
   bool setCustomDomain(String domain) {
     final cleanDomain = normalizeCustomDomain(domain);
     if (!isValidCustomDomain(cleanDomain)) return false;
-    setDomain(
-      cleanDomain,
-      reverifySession: isBuiltInDomain(cleanDomain),
-    );
+    setDomain(cleanDomain, reverifySession: isBuiltInDomain(cleanDomain));
     return true;
   }
 

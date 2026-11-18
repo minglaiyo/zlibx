@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../l10n/generated/app_localizations.dart';
+import '../theme/motion.dart';
+import '../theme/app_metrics.dart';
 
 /// Lightweight M3 Expressive-inspired morphing indicator for unknown durations.
 /// Determinate transfers continue to use progress indicators with real values.
@@ -33,7 +35,7 @@ class _ExpressiveLoadingIndicatorState extends State<ExpressiveLoadingIndicator>
     with SingleTickerProviderStateMixin {
   late final _controller = AnimationController(
     vsync: this,
-    duration: const Duration(seconds: 7),
+    duration: AppMotion.shimmer,
   );
 
   @override
@@ -53,7 +55,7 @@ class _ExpressiveLoadingIndicatorState extends State<ExpressiveLoadingIndicator>
     if (value != null) {
       _controller.stop();
       _controller.value = value.clamp(0.0, 1.0);
-    } else if (MediaQuery.disableAnimationsOf(context) ||
+    } else if (context.disableAnimations ||
         !TickerMode.valuesOf(context).enabled) {
       _controller.stop();
     } else if (!_controller.isAnimating) {
@@ -69,25 +71,24 @@ class _ExpressiveLoadingIndicatorState extends State<ExpressiveLoadingIndicator>
 
   @override
   Widget build(BuildContext context) => Semantics(
-        label: AppLocalizations.of(context)!.loading,
-        child: RepaintBoundary(
-          child: SizedBox.square(
-            dimension: widget.size,
-            child: CustomPaint(
-              painter: _MorphingShapePainter(
-                animation: _controller,
-                color:
-                    widget.color ?? Theme.of(context).colorScheme.primary,
-              ),
-            ),
+    label: AppLocalizations.of(context)!.loading,
+    child: RepaintBoundary(
+      child: SizedBox.square(
+        dimension: widget.size,
+        child: CustomPaint(
+          painter: _MorphingShapePainter(
+            animation: _controller,
+            color: widget.color ?? Theme.of(context).colorScheme.primary,
           ),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _MorphingShapePainter extends CustomPainter {
   _MorphingShapePainter({required this.animation, required this.color})
-      : super(repaint: animation);
+    : super(repaint: animation);
 
   final Animation<double> animation;
   final Color color;
@@ -97,7 +98,7 @@ class _MorphingShapePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final phase = animation.value * _lobes.length;
     final index = phase.floor() % _lobes.length;
-    final blend = Curves.easeInOutCubic.transform(phase - phase.floor());
+    final blend = MotionCurves.loop.transform(phase - phase.floor());
     final radius = size.shortestSide * 0.43;
     final path = Path();
     for (var i = 0; i <= 120; i++) {

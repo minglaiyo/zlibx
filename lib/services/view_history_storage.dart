@@ -68,8 +68,7 @@ class ViewHistoryStore {
     for (final key in box.keys) {
       final value = box.get(key);
       if (value is! Map) continue;
-      final viewedAt =
-          DateTime.tryParse(value['viewedAt']?.toString() ?? '');
+      final viewedAt = DateTime.tryParse(value['viewedAt']?.toString() ?? '');
       pairs.add((key, viewedAt ?? DateTime.fromMillisecondsSinceEpoch(0)));
     }
     pairs.sort((a, b) => a.$2.compareTo(b.$2));

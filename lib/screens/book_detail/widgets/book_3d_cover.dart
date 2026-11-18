@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../theme/motion.dart';
 import '../../../theme/app_metrics.dart';
 import '../../../widgets/cover_placeholder.dart';
 
@@ -45,8 +46,7 @@ class _Book3DCoverState extends State<Book3DCover>
   /// 事件只重跑 AnimatedBuilder 的 builder（Transform/阴影），预构建
   /// 的 _bookFaces 子树不再每帧重建（审查批动画发现 11）。
   /// dx = rotationY（水平），dy = rotationX（垂直），与原字段一一对应。
-  final ValueNotifier<Offset> _dragRotation =
-      ValueNotifier(const Offset(0, 0));
+  final ValueNotifier<Offset> _dragRotation = ValueNotifier(const Offset(0, 0));
   bool _dragging = false;
 
   @override
@@ -54,8 +54,7 @@ class _Book3DCoverState extends State<Book3DCover>
     super.initState();
     // initState 里没有 MediaQuery：用 platformDispatcher 判定系统
     // 「关闭动画」可达性设置（与 empty_state / entrance 的处理一致）。
-    final animationsEnabled = !WidgetsBinding
-        .instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    final animationsEnabled = !Motion.disabled(null);
     if (widget.animate && animationsEnabled) _motion.repeat(reverse: true);
   }
 
@@ -63,8 +62,7 @@ class _Book3DCoverState extends State<Book3DCover>
   void didUpdateWidget(covariant Book3DCover oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.animate == oldWidget.animate) return;
-    final animationsEnabled = !WidgetsBinding
-        .instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    final animationsEnabled = !Motion.disabled(null);
     if (widget.animate && animationsEnabled) {
       _motion.repeat(reverse: true);
     } else {
@@ -303,14 +301,14 @@ class _Book3DCoverState extends State<Book3DCover>
                               semanticLabel: widget.title,
                             )
                           : widget.loading
-                              ? const CoverPlaceholder.shimmer()
-                              : const Center(
-                                  child: Icon(
-                                    Icons.menu_book_rounded,
-                                    size: 42,
-                                    color: Colors.white70,
-                                  ),
-                                ),
+                          ? const CoverPlaceholder.shimmer()
+                          : const Center(
+                              child: Icon(
+                                Icons.menu_book_rounded,
+                                size: 42,
+                                color: Colors.white70,
+                              ),
+                            ),
                     ),
                     const IgnorePointer(
                       child: DecoratedBox(

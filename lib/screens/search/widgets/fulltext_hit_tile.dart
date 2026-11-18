@@ -33,8 +33,7 @@ class FullTextHitTile extends StatelessWidget {
     final book = hit.book;
     final metaParts = <String>[
       if (book.year != null && book.year != 0) '${book.year}',
-      if (book.language != null && book.language!.isNotEmpty)
-        book.language!,
+      if (book.language != null && book.language!.isNotEmpty) book.language!,
       if (book.extension != null && book.extension!.isNotEmpty)
         book.extension!.toUpperCase(),
       if (book.filesizeString != null && book.filesizeString!.isNotEmpty)
@@ -86,9 +85,7 @@ class FullTextHitTile extends StatelessWidget {
                             book.title,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleSmall
+                            style: Theme.of(context).textTheme.titleSmall
                                 ?.copyWith(fontWeight: FontWeight.w600),
                           ),
                           if (book.author != null &&
@@ -98,9 +95,7 @@ class FullTextHitTile extends StatelessWidget {
                               book.author!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
+                              style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(color: cs.onSurfaceVariant),
                             ),
                           ],
@@ -110,9 +105,7 @@ class FullTextHitTile extends StatelessWidget {
                               metaParts.join(' · '),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
+                              style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(color: cs.onSurfaceVariant),
                             ),
                           ],
@@ -130,10 +123,9 @@ class FullTextHitTile extends StatelessWidget {
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     text: TextSpan(
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
                       children: [
                         for (final part in hit.snippet)
                           TextSpan(
@@ -165,9 +157,9 @@ class FullTextHitTile extends StatelessWidget {
                   child: Text(
                     removedLabel,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: cs.onErrorContainer,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      color: cs.onErrorContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],

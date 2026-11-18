@@ -106,25 +106,25 @@ void main() {
     );
   });
 
-  test('repository 解析守卫：非 dstats 文档返回 null，不当成空历史', () {
+  test('repository 解析守卫：非 dstats 文档返回 null，不当成空历史', () async {
     final repo = DownloadStatsRepository(ZLibraryApi());
     // solver 落在登录页/别的页面：没有 dstats 标记 → null（调用方保留
     // 原始墙错误）。
     expect(
-      repo.parsePage(
+      await repo.parsePage(
         '<html><body><form class="login-form"></form></body></html>',
       ),
       isNull,
     );
     // 真 dstats 页但 0 行（空历史）：空列表，是合法结果。
     expect(
-      repo.parsePage(
+      await repo.parsePage(
         '<html><body><div class="dstats-content">'
         '<form class="dstats-form"></form></div></body></html>',
       ),
       isEmpty,
     );
     // 带记录的正常页。
-    expect(repo.parsePage(_pageHtml)!.length, 3);
+    expect((await repo.parsePage(_pageHtml))!.length, 3);
   });
 }

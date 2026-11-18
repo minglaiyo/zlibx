@@ -100,11 +100,15 @@ class FulltextRepository {
   /// search form's `q` input (the same wrong-page guard the Dio path
   /// applies): a solver landing on the default listing for a stale
   /// token echoes a different query or none, and must not be painted.
-  FullTextSearchPage? parsePage(
+  ///
+  /// Async since phase 2: with the host's `fulltextParseOverride`
+  /// injected, the parse runs through the Rust bridge (a Future); the
+  /// Dart implementation stays as the synchronous fallback.
+  Future<FullTextSearchPage?> parsePage(
     String html, {
     required String baseUrl,
     String? expectedQuery,
-  }) {
+  }) async {
     FullTextSearchPage? page;
     String? error;
     if (!html.contains('searchResultBox')) {
@@ -112,9 +116,8 @@ class FulltextRepository {
     } else if (expectedQuery != null) {
       final capped =
           expectedQuery.length > ZLibraryFullText.fulltextMaxQueryLength
-              ? expectedQuery.substring(
-                  0, ZLibraryFullText.fulltextMaxQueryLength)
-              : expectedQuery;
+          ? expectedQuery.substring(0, ZLibraryFullText.fulltextMaxQueryLength)
+          : expectedQuery;
       final echoed = extractFulltextQuery(html);
       if (echoed == null || echoed != capped.trim()) {
         error = fulltextTokenUnavailable;
@@ -122,7 +125,9 @@ class FulltextRepository {
     }
     if (error == null) {
       try {
-        page = parseFullTextSearchPage(html, baseUrl: baseUrl);
+        page = fulltextParseOverride != null
+            ? await fulltextParseOverride!(html, baseUrl)
+            : parseFullTextSearchPage(html, baseUrl: baseUrl);
       } catch (_) {
         error = 'parse failed';
       }
@@ -156,7 +161,9 @@ class FulltextRepository {
     }
     try {
       final html = await WebviewChallengeSolver.fetchHtmlAfterChallenge(url);
-      if (html == null || html.isEmpty || BooklistSolver.isChallengeHtml(html)) {
+      if (html == null ||
+          html.isEmpty ||
+          BooklistSolver.isChallengeHtml(html)) {
         return null;
       }
       await bridgeWallCookies(_api, url);

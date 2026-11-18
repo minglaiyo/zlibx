@@ -41,10 +41,7 @@ class GradientAppBar extends StatelessWidget implements PreferredSizeWidget {
       iconTheme: IconThemeData(color: cs.onSurface),
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(1.0),
-        child: Container(
-          color: cs.outlineVariant,
-          height: 1.0,
-        ),
+        child: Container(color: cs.outlineVariant, height: 1.0),
       ),
     );
   }

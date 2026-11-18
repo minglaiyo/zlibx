@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/unified_shelf_item.dart';
+import '../../../theme/motion.dart';
+import '../../../widgets/motion/motion.dart';
 import '../../../theme/app_metrics.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/cover_placeholder.dart';
@@ -316,8 +318,8 @@ class _ShelfCover extends StatelessWidget {
             (constraints.maxWidth * MediaQuery.devicePixelRatioOf(context))
                 .ceil();
         return AnimatedContainer(
-          duration: AppMotion.quick,
-          curve: Curves.easeOutCubic,
+          duration: context.motionDuration(AppMotion.quick),
+          curve: MotionCurves.enter,
           decoration: BoxDecoration(
             borderRadius: borderRadius,
             border: selected ? Border.all(color: cs.primary, width: 2.5) : null,
@@ -372,11 +374,7 @@ class _RatingPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.star_rounded,
-            size: 12,
-            color: AppColors.ratingStar,
-          ),
+          const Icon(Icons.star_rounded, size: 12, color: AppColors.ratingStar),
           const SizedBox(width: 2),
           Text(
             text,
@@ -462,8 +460,10 @@ class _SelectMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return AnimatedSwitcher(
+    return MotionSwitch(
+      style: MotionSwitchStyle.scale,
       duration: AppMotion.fast,
+      curve: MotionCurves.emphasized,
       child: selected
           ? _CircleBadge(
               key: const ValueKey(true),

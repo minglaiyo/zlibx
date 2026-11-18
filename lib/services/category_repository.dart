@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import 'booklist_solver.dart';
@@ -25,8 +26,8 @@ class CategoryRepository {
     required int categoryId,
     int page = 1,
     String? order,
-  }) =>
-      _api.getCategoryBooks(categoryId, page: page, order: order);
+    CancelToken? cancelToken,
+  }) => _api.getCategoryBooks(categoryId, page: page, order: order, cancelToken: cancelToken);
 
   /// One page of an in-category search (see
   /// [ZLibraryApi.searchInCategory]).
@@ -42,20 +43,21 @@ class CategoryRepository {
     List<String>? contentTypes,
     String? order,
     int page = 1,
-  }) =>
-      _api.searchInCategory(
-        categoryId: categoryId,
-        slug: slug,
-        query: query,
-        exact: exact,
-        yearFrom: yearFrom,
-        yearTo: yearTo,
-        languages: languages,
-        extensions: extensions,
-        contentTypes: contentTypes,
-        order: order,
-        page: page,
-      );
+    CancelToken? cancelToken,
+  }) => _api.searchInCategory(
+    categoryId: categoryId,
+    slug: slug,
+    query: query,
+    exact: exact,
+    yearFrom: yearFrom,
+    yearTo: yearTo,
+    languages: languages,
+    extensions: extensions,
+    contentTypes: contentTypes,
+    order: order,
+    page: page,
+    cancelToken: cancelToken,
+  );
 
   /// The full URL of one category page — the solver fallback's URL
   /// (the WebView follows the bare-id redirect itself).
@@ -63,8 +65,7 @@ class CategoryRepository {
     required int categoryId,
     int page = 1,
     String? order,
-  }) =>
-      _api.categoryPageUrl(categoryId, page: page, order: order);
+  }) => _api.categoryPageUrl(categoryId, page: page, order: order);
 
   /// The full URL of an in-category search page — the solver
   /// fallback's URL in search mode.
@@ -80,20 +81,19 @@ class CategoryRepository {
     List<String>? contentTypes,
     String? order,
     int page = 1,
-  }) =>
-      _api.categorySearchUrl(
-        categoryId: categoryId,
-        slug: slug,
-        query: query,
-        exact: exact,
-        yearFrom: yearFrom,
-        yearTo: yearTo,
-        languages: languages,
-        extensions: extensions,
-        contentTypes: contentTypes,
-        order: order,
-        page: page,
-      );
+  }) => _api.categorySearchUrl(
+    categoryId: categoryId,
+    slug: slug,
+    query: query,
+    exact: exact,
+    yearFrom: yearFrom,
+    yearTo: yearTo,
+    languages: languages,
+    extensions: extensions,
+    contentTypes: contentTypes,
+    order: order,
+    page: page,
+  );
 
   /// The plugin's short error for a browser-check wall (plus the older
   /// shapes a wall can surface as).
@@ -104,9 +104,14 @@ class CategoryRepository {
   /// it fails to parse. A parse failure here must not escape the load
   /// (which runs from a microtask) and leave the screen loading
   /// forever — treat a broken page like a fetch failure.
-  CategoryPage? parseBooks(String html, {required String baseUrl}) {
+  /// Async since phase 3: the parse routes through the Rust bridge
+  /// when injected (the Dart implementation stays as the fallback).
+  Future<CategoryPage?> parseBooks(
+    String html, {
+    required String baseUrl,
+  }) async {
     try {
-      return parseCategoryBooksPage(html, baseUrl: baseUrl);
+      return await parseCategoryBooksPageH(html, baseUrl: baseUrl);
     } catch (_) {
       return null;
     }
@@ -124,8 +129,7 @@ class CategoryRepository {
     String? userId,
     String? userKey,
   }) async {
-    final hasSession =
-        userId != null && userKey != null && userKey.isNotEmpty;
+    final hasSession = userId != null && userKey != null && userKey.isNotEmpty;
     if (hasSession) {
       await installSessionCookies(
         userId: userId,
@@ -145,6 +149,23 @@ class CategoryRepository {
     } finally {
       // O8: the session only lives for this solve (see BooklistSolver).
       if (hasSession) await deleteSessionCookies(pageUrl: url);
+    }
+  }
+
+  /// F1 分类目录树：Dio 直取（双通道的第一条腿）。
+  Future<ApiResponse<CategoriesDirectoryPage>> fetchDirectory() =>
+      _api.getCategoriesDirectory();
+
+  /// 目录页的绝对地址——solver 回退用（WebView 需要完整 URL）。
+  String get categoriesDirectoryUrl => _api.categoriesDirectoryUrl;
+
+  /// Parses solver-fetched directory HTML, or null when it fails to
+  /// parse (same contract as [parseBooks]).
+  Future<CategoriesDirectoryPage?> parseDirectory(String html) async {
+    try {
+      return await parseCategoriesDirectoryH(html);
+    } catch (_) {
+      return null;
     }
   }
 }

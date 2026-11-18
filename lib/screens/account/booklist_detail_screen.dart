@@ -99,9 +99,7 @@ class _BooklistDetailScreenState extends ConsumerState<BooklistDetailScreen> {
           autofocus: true,
           maxLines: 4,
           minLines: 1,
-          decoration: InputDecoration(
-            labelText: l10n.booklistNote,
-          ),
+          decoration: InputDecoration(labelText: l10n.booklistNote),
         ),
         actions: [
           TextButton(
@@ -119,8 +117,7 @@ class _BooklistDetailScreenState extends ConsumerState<BooklistDetailScreen> {
     controller.dispose();
     if (note == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
-    final response =
-        await ref.read(_provider.notifier).saveNote(book, note);
+    final response = await ref.read(_provider.notifier).saveNote(book, note);
     if (!mounted) return;
     showAppSnackOn(
       messenger,
@@ -259,10 +256,10 @@ class _BooklistDetailScreenState extends ConsumerState<BooklistDetailScreen> {
                     child: Text(
                       note,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontStyle: FontStyle.italic,
-                            height: 1.35,
-                          ),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontStyle: FontStyle.italic,
+                        height: 1.35,
+                      ),
                     ),
                   ),
               ],

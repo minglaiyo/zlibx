@@ -1,4 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 import 'package:olib_api_plugin/src/download_range.dart';
 
 // The two download engines (the plugin's Z-Library path and the app's
@@ -68,6 +71,84 @@ void main() {
       expect(DownloadRange.looksLikeHtml('\n  <HTML>'.codeUnits), isTrue);
       expect(DownloadRange.looksLikeHtml([0x50, 0x4B, 3, 4]), isFalse);
       expect(DownloadRange.looksLikeHtml(const []), isFalse);
+    });
+  });
+
+  // Phase 5: the rules that used to live twice (once per engine) —
+  // metaPathFor / readValidator / resumeHeaders / validatorFromResponse
+  // now land here once, and these tests pin them.
+  group('DownloadRange.metaPathFor', () {
+    test('appends .meta to the save path', () {
+      expect(DownloadRange.metaPathFor('/a/b/book.part'), '/a/b/book.part.meta');
+    });
+  });
+
+  group('DownloadRange.readValidator', () {
+    test('reads back a written validator and trims it', () async {
+      final dir = await Directory.systemTemp.createTemp('drange');
+      try {
+        final meta = File('${dir.path}/book.part.meta');
+        await meta.writeAsString('  "etag-1"  \n');
+        expect(await DownloadRange.readValidator(meta), '"etag-1"');
+      } finally {
+        await dir.delete(recursive: true);
+      }
+    });
+
+    test('null for a missing, empty or unreadable sidecar', () async {
+      final dir = await Directory.systemTemp.createTemp('drange');
+      try {
+        expect(
+          await DownloadRange.readValidator(File('${dir.path}/none.meta')),
+          isNull,
+        );
+        final empty = File('${dir.path}/empty.meta')..writeAsStringSync('   ');
+        expect(await DownloadRange.readValidator(empty), isNull);
+      } finally {
+        await dir.delete(recursive: true);
+      }
+    });
+  });
+
+  group('DownloadRange.resumeHeaders', () {
+    test('start 0 carries only Accept-Encoding identity', () {
+      final h = DownloadRange.resumeHeaders({'Cookie': 'x'}, 0, validator: null);
+      expect(h['Accept-Encoding'], 'identity');
+      expect(h.containsKey('Range'), isFalse);
+      expect(h.containsKey('If-Range'), isFalse);
+      // The input map is not mutated.
+      expect(h.containsKey('Cookie'), isTrue);
+    });
+
+    test('start > 0 adds Range, and If-Range only with a validator', () {
+      final without = DownloadRange.resumeHeaders(const {}, 12, validator: null);
+      expect(without['Range'], 'bytes=12-');
+      expect(without.containsKey('If-Range'), isFalse);
+
+      final withV = DownloadRange.resumeHeaders(
+        const {},
+        12,
+        validator: '"etag-1"',
+      );
+      expect(withV['Range'], 'bytes=12-');
+      expect(withV['If-Range'], '"etag-1"');
+    });
+  });
+
+  group('DownloadRange.validatorFromResponse', () {
+    test('ETag wins over Last-Modified; neither gives null', () {
+      final both = Headers.fromMap({
+        HttpHeaders.etagHeader: ['"e1"'],
+        HttpHeaders.lastModifiedHeader: ['yesterday'],
+      });
+      expect(DownloadRange.validatorFromResponse(both), '"e1"');
+
+      final onlyLm = Headers.fromMap({
+        HttpHeaders.lastModifiedHeader: ['yesterday'],
+      });
+      expect(DownloadRange.validatorFromResponse(onlyLm), 'yesterday');
+
+      expect(DownloadRange.validatorFromResponse(Headers()), isNull);
     });
   });
 }

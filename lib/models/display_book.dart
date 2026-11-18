@@ -74,12 +74,10 @@ class DisplayBook {
   Book? get asZLibBook => isZLibrary ? original as Book? : null;
 
   /// 获取原始 Anna's Archive BookData（仅当 source == annasArchive 时有效）
-  BookData? get asAnnaBookData =>
-      isAnnasArchive ? original as BookData? : null;
+  BookData? get asAnnaBookData => isAnnasArchive ? original as BookData? : null;
 
   /// 获取原始 LibGen BookData（仅当 source == libgen 时有效）
   BookData? get asLibgenBookData => isLibGen ? original as BookData? : null;
-
 }
 
 // ═══════════════════════════════════════════════════════════════════

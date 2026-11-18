@@ -77,8 +77,5 @@ String _decodeHtmlEntities(String text) {
 /// literally (no `$1` group interpolation — that is what `replaceAllMapped`
 /// is for), so a `$1` replacement here would have written a literal "$1"
 /// into the text; use `replaceAllMapped` and return the captured group.
-String _fixCjkPunctuationSpacing(String paragraph) =>
-    paragraph.replaceAllMapped(
-      RegExp(r' ([，。；：、！？）】》」』])'),
-      (match) => match[1]!,
-    );
+String _fixCjkPunctuationSpacing(String paragraph) => paragraph
+    .replaceAllMapped(RegExp(r' ([，。；：、！？）】》」』])'), (match) => match[1]!);

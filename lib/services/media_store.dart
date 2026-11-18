@@ -98,10 +98,7 @@ class MediaStoreFiles {
     try {
       final uri = await _channel.invokeMethod<String>(
         'createPendingDownload',
-        <String, Object>{
-          'displayName': displayName,
-          'mimeType': mimeType,
-        },
+        <String, Object>{'displayName': displayName, 'mimeType': mimeType},
       );
       return (uri != null && uri.isNotEmpty) ? uri : null;
     } on PlatformException catch (e) {
@@ -121,14 +118,10 @@ class MediaStoreFiles {
       // Uint8List crosses the channel as a byte[]; a plain List<int>
       // would arrive as ArrayList<Integer> on the Kotlin side. Reuse
       // the buffer when it already is one (no extra 256 KB copy).
-      final payload =
-          bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
+      final payload = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
       return await _channel.invokeMethod<bool>(
             'writePendingChunk',
-            <String, Object>{
-              'uri': uri,
-              'bytes': payload,
-            },
+            <String, Object>{'uri': uri, 'bytes': payload},
           ) ??
           false;
     } on PlatformException {

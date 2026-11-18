@@ -16,11 +16,11 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
   // ── Download ───────────────────────────────────────────────────────
 
   /// Sidecar file holding the resume validator for [savePath].
-  /// Same contract as `ResumableDownloader.metaPathFor` (the external
-  /// path): the validator (ETag, else Last-Modified) seen when the
-  /// partial file was started is stored next to it and sent back as
-  /// `If-Range`.
-  static String metaPathFor(String savePath) => '$savePath.meta';
+  /// Delegates to the shared [DownloadRange.metaPathFor] (phase 5):
+  /// the twin engine (`ResumableDownloader.metaPathFor`, the external
+  /// path) used to carry the identical one-liner.
+  static String metaPathFor(String savePath) =>
+      DownloadRange.metaPathFor(savePath);
 
   /// Total size from a `Content-Range: bytes */N` header — the form a
   /// 416 answer carries — or null when the header is absent or does
@@ -180,7 +180,8 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
     // to re-transfer a whole book on every pause / retry / cold start,
     // because a pending entry can only be recreated - that is what the
     // 206 trust check below replaced (2026-11-15 perf).
-    final validator = start > 0 ? await _readValidator(meta) : null;
+    final validator =
+        start > 0 ? await DownloadRange.readValidator(meta) : null;
     // A pending entry cannot be truncated, only recreated: if the resume
     // offset ever is dropped, reset the writer before the request.
     if (pendingWriter != null &&
@@ -190,19 +191,14 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
         throw StateError('cannot restart the pending MediaStore entry');
       }
     }
-    final reqHeaders = Map<String, String>.from(headers);
-    // File downloads want the raw bytes (see ResumableDownloader):
-    // a gzipped answer would make Content-Length disagree with the
-    // decompressed bytes received (O13).
-    reqHeaders['Accept-Encoding'] = 'identity';
-    if (start > 0) {
-      reqHeaders['Range'] = 'bytes=$start-';
-      // Only with a real validator: an `If-Range` value the server cannot
-      // recognise makes it answer 200 with the whole body, which throws
-      // the resume away anyway. Without one the 206 is judged by its
-      // Content-Range below.
-      if (validator != null) reqHeaders['If-Range'] = validator;
-    }
+    // Phase 5: the resume header build is shared with the twin engine
+    // (Range / If-Range / Accept-Encoding identity, O13) so the three
+    // rules land once.
+    final reqHeaders = DownloadRange.resumeHeaders(
+      headers,
+      start,
+      validator: validator,
+    );
     final res = await _dio.get<ResponseBody>(
       link,
       options: Options(
@@ -320,8 +316,9 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
 
     // The validator for this body, for the next resume: ETag, else
     // Last-Modified. Recorded on a fresh (non-resumed) download only.
-    final newValidator = res.headers.value(HttpHeaders.etagHeader) ??
-        res.headers.value(HttpHeaders.lastModifiedHeader);
+    // Phase 5: shared extraction (was inline, identical in the twin).
+    final newValidator =
+        DownloadRange.validatorFromResponse(res.headers);
 
     // With a pending writer there is no file sink at all; bytes go
     // through the writer's buffered channel. When the server answered
@@ -415,17 +412,6 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
     return res;
   }
 
-  /// Reads the resume validator recorded next to [meta] (`<part>.meta`).
-  /// Returns null when there is none, it is empty, or it cannot be read.
-  static Future<String?> _readValidator(File meta) async {
-    try {
-      if (!await meta.exists()) return null;
-      final v = (await meta.readAsString()).trim();
-      return v.isEmpty ? null : v;
-    } on FileSystemException {
-      return null;
-    }
-  }
 
   /// True when the finished file at [file] must not be recorded as a
   /// book: an HTML challenge/error page under any name, or bytes that do

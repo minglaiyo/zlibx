@@ -29,7 +29,10 @@ mixin _DownloadHistoryMixin on _DownloadNotifierBase {
           ),
         );
       }
-      final loadedTasks = [for (final task in tasks) if (task != null) task];
+      final loadedTasks = [
+        for (final task in tasks)
+          if (task != null) task,
+      ];
 
       // Merge by id instead of overwriting: the user may already have
       // started a new download while this async history load was in

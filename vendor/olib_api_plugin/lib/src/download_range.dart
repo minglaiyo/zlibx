@@ -4,9 +4,16 @@
 /// sniff and the Content-Range parsing in one place means an O5 /
 /// integrity fix only needs to land once — the two engines must stay in
 /// step, and a duplicated rule is a drift waiting to happen.
+///
+/// Phase 5 adds the remaining duplicated rules: the sidecar path, the
+/// validator read, the resume request-header build and the ETag /
+/// Last-Modified extraction.
 library;
 
 import 'dart:convert';
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 
 class DownloadRange {
   DownloadRange._();
@@ -72,4 +79,61 @@ class DownloadRange {
         .firstMatch(contentRange);
     return m == null ? null : int.tryParse(m.group(1)!);
   }
+
+// ──────────────────────────────────────────────────────────────────
+// Phase 5: the remaining rules that used to live twice, once per
+// engine. Each one below existed verbatim in both
+// `ZLibraryDownloads` and `ResumableDownloader` — a fix had to land
+// twice, and a missed copy was a drift.
+// ──────────────────────────────────────────────────────────────────
+
+/// Sidecar file holding the resume validator for [savePath]
+/// (`<part>.meta`). Both engines used the identical one-liner.
+static String metaPathFor(String savePath) => '$savePath.meta';
+
+/// Reads the resume validator recorded next to [meta] (`<part>.meta`).
+/// Returns null when there is none, it is empty, or it cannot be read.
+/// Was `_readValidator` in both engines, byte-for-byte identical.
+static Future<String?> readValidator(File meta) async {
+  try {
+    if (!await meta.exists()) return null;
+    final v = (await meta.readAsString()).trim();
+    return v.isEmpty ? null : v;
+  } on FileSystemException {
+    return null;
+  }
+}
+
+/// Request headers for resuming [savePath] at [start]:
+///
+///  * `Accept-Encoding: identity` — file downloads want raw bytes (O13):
+///    a gzipped answer makes Content-Length disagree with the received
+///    bytes, skewing progress and the truncation check;
+///  * `Range: bytes=[start]-` when there is something to resume;
+///  * `If-Range` only when a real [validator] exists — an
+///    unrecognised value is answered with the full body, losing the
+///    resume either way.
+///
+/// Returns a copy; [headers] is not mutated. Was built inline in both
+/// engines with the same three rules.
+static Map<String, String> resumeHeaders(
+  Map<String, String> headers,
+  int start, {
+  required String? validator,
+}) {
+  final req = Map<String, String>.from(headers);
+  req['Accept-Encoding'] = 'identity';
+  if (start > 0) {
+    req['Range'] = 'bytes=$start-';
+    if (validator != null) req['If-Range'] = validator;
+  }
+  return req;
+}
+
+/// The validator for this body, for the next resume: ETag, else
+/// Last-Modified. Recorded on a fresh (non-resumed) download only.
+/// Was extracted inline in both engines.
+static String? validatorFromResponse(Headers headers) =>
+    headers.value(HttpHeaders.etagHeader) ??
+    headers.value(HttpHeaders.lastModifiedHeader);
 }

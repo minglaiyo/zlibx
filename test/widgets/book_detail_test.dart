@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
@@ -207,9 +208,11 @@ void main() {
   // the tapped name as the query (the search screen pre-fills it and
   // runs it). The route generator captures the pushed arguments; the
   // dummy page stands in for the real search screen.
-  testWidgets('tapping the author opens a search for that author',
+  testWidgets('tapping the author opens the author aggregation page',
       (tester) async {
-    SearchScreenArgs? pushed;
+    // 方案 F2：作者点击 → /author/{名} 聚合页（作者串原样传参）；
+    // 聚合页空态里才有"按作者搜索"回退。
+    String? pushedAuthor;
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(
@@ -217,11 +220,13 @@ void main() {
           supportedLocales: AppLocalizations.supportedLocales,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           onGenerateRoute: (settings) {
-            if (settings.arguments is SearchScreenArgs) {
-              pushed = settings.arguments as SearchScreenArgs;
+            if (settings.name == '/author' &&
+                settings.arguments is String &&
+                (settings.arguments as String).isNotEmpty) {
+              pushedAuthor = settings.arguments as String;
             }
             return MaterialPageRoute(
-              builder: (_) => const Scaffold(body: Text('search')),
+              builder: (_) => const Scaffold(body: Text('author')),
             );
           },
           home: Scaffold(
@@ -235,9 +240,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text(book.author!));
     await tester.pumpAndSettle();
-    expect(pushed, isNotNull);
-    expect(pushed!.query, book.author);
-    expect(pushed!.categoryId, isNull);
+    expect(pushedAuthor, book.author);
     expect(tester.takeException(), isNull);
   });
 
@@ -275,6 +278,65 @@ void main() {
     expect(pushed!.query, book.publisher);
     expect(pushed!.categoryId, isNull);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('IPFS CID rows copy their own CID on tap', (tester) async {
+    const ipfsBook = Book(
+      id: 9,
+      title: 'Book with IPFS CIDs',
+      author: 'An author',
+      year: 2020,
+      extension: 'pdf',
+      filesizeString: '1 MB',
+      hash: 'sample',
+      ipfsCid: 'QmPrimaryCidValue',
+      ipfsCidBlake2b: 'bafkBlake2bCidValue',
+    );
+    // Clipboard 是平台通道，测试里用 mock 处理器截住写入值。
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+
+    await tester.pumpWidget(app(
+      CustomScrollView(slivers: [BookInfoSection(book: ipfsBook)]),
+    ));
+    await tester.pumpAndSettle();
+
+    // 两行 CID 各自成行（此前是一格塞两行、不可复制）。
+    expect(find.text('QmPrimaryCidValue'), findsOneWidget);
+    expect(find.text('bafkBlake2bCidValue'), findsOneWidget);
+
+    // 点主 CID 行：复制主 CID，弹已复制提示。
+    await tester.tap(find.text('QmPrimaryCidValue'));
+    await tester.pumpAndSettle();
+    expect(copied, 'QmPrimaryCidValue');
+    expect(find.text('Copied to clipboard'), findsOneWidget);
+
+    // Blake2b 行复制的是自己的值，不是主 CID。
+    await tester.ensureVisible(find.text('bafkBlake2bCidValue'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('bafkBlake2bCidValue'));
+    await tester.pumpAndSettle();
+    expect(copied, 'bafkBlake2bCidValue');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a book without IPFS CIDs shows no CID rows', (tester) async {
+    await tester.pumpWidget(app(
+      CustomScrollView(slivers: [BookInfoSection(book: book)]),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('IPFS'), findsNothing);
+    expect(find.text('CID Blake2b'), findsNothing);
   });
   // 详情页要渲染的书本体 = 入参→eapi→附加字段，逐层覆盖。
   // 2026-11-15 提速后附加字段是独立的一条腿：正文必须在它到达

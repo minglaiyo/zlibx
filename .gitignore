@@ -75,6 +75,17 @@ lib/l10n/generated/
 *.dSYM.zip
 *.dSYM
 
+# ========================================
+# Rust / flutter_rust_bridge (phase 1 scaffold)
+# ========================================
+# Rust build artifacts — generated, never committed.
+/rust/**/target/
+# FRB codegen output IS committed (tool/frb_codegen.sh regenerates it;
+# CI has no Rust toolchain, so checkout must carry the generated Dart to
+# keep `flutter analyze` / `flutter test` green). Never hand-edit these.
+# The built .so itself stays out (copied into jniLibs each build).
+/android/app/src/main/jniLibs/arm64-v8a/libzlibx_parsers.so
+
 # Publish page
 api_dump/
 debug/

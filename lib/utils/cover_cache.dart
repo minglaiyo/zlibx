@@ -27,8 +27,5 @@ int coverCacheHeight(double logicalHeight, BuildContext context) =>
 /// 宽度钳在 100~800（800 是实测过的最大值）。
 String coverUrlAtWidth(String url, int width) {
   final w = width.clamp(100, 800);
-  return url.replaceFirstMapped(
-    RegExp(r'/covers\d+/'),
-    (m) => '/covers$w/',
-  );
+  return url.replaceFirstMapped(RegExp(r'/covers\d+/'), (m) => '/covers$w/');
 }

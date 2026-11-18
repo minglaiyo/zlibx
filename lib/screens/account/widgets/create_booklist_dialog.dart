@@ -33,8 +33,9 @@ class CreateBooklistDialog extends StatefulWidget {
 }
 
 class CreateBooklistDialogState extends State<CreateBooklistDialog> {
-  late final TextEditingController _titleController =
-      TextEditingController(text: widget.initialTitle);
+  late final TextEditingController _titleController = TextEditingController(
+    text: widget.initialTitle,
+  );
   late final TextEditingController _descriptionController =
       TextEditingController(text: widget.initialDescription);
   late int _color = widget.initialColor ?? 0;
@@ -80,9 +81,7 @@ class CreateBooklistDialogState extends State<CreateBooklistDialog> {
               controller: _titleController,
               autofocus: true,
               textInputAction: TextInputAction.next,
-              decoration: InputDecoration(
-                labelText: l10n.booklistTitle,
-              ),
+              decoration: InputDecoration(labelText: l10n.booklistTitle),
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 12),

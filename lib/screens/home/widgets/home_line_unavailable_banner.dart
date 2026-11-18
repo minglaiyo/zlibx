@@ -23,8 +23,11 @@ class HomeLineUnavailableBanner extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
-                Icon(Icons.cloud_off_outlined,
-                    color: Colors.orange.shade800, size: 20),
+                Icon(
+                  Icons.cloud_off_outlined,
+                  color: Colors.orange.shade800,
+                  size: 20,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -48,8 +51,11 @@ class HomeLineUnavailableBanner extends StatelessWidget {
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right,
-                    color: Colors.orange.shade700, size: 20),
+                Icon(
+                  Icons.chevron_right,
+                  color: Colors.orange.shade700,
+                  size: 20,
+                ),
               ],
             ),
           ),

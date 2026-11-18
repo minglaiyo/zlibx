@@ -22,6 +22,7 @@ part 'zlibrary_search.dart';
 part 'zlibrary_articles.dart';
 part 'zlibrary_booklists.dart';
 part 'zlibrary_categories.dart';
+part 'zlibrary_authors.dart';
 part 'zlibrary_dstats.dart';
 part 'zlibrary_fulltext.dart';
 part 'zlibrary_downloads.dart';
@@ -285,6 +286,7 @@ abstract class ZLibraryApiBase {
     Map<String, String>? extraHeaders,
     Map<String, dynamic>? queryParameters,
     Duration? receiveTimeout,
+    CancelToken? cancelToken,
   }) async {
     var url = '$_base$path';
     var headers = Map<String, String>.from(_headers);
@@ -323,6 +325,7 @@ abstract class ZLibraryApiBase {
                 // so bare list keys encode as `key[]=…`.
                 listFormat: ListFormat.multiCompatible,
               ),
+              cancelToken: cancelToken,
             );
           case _RedirectMethod.delete:
             res = await _dio.delete<String>(
@@ -422,6 +425,7 @@ abstract class ZLibraryApiBase {
     Map<String, String>? extraHeaders,
     Map<String, dynamic>? queryParameters,
     Duration? receiveTimeout,
+    CancelToken? cancelToken,
   }) {
     return _sendFollowing(
       path,
@@ -429,6 +433,7 @@ abstract class ZLibraryApiBase {
       extraHeaders: extraHeaders,
       queryParameters: queryParameters,
       receiveTimeout: receiveTimeout,
+      cancelToken: cancelToken,
     );
   }
 
@@ -621,6 +626,10 @@ abstract class ZLibraryApiBase {
           status: status,
           json: decoded,
           cookies: cookies,
+          // Keep the raw text only when a Rust-backed `booksParseOverride`
+          // is injected — otherwise discard it to avoid doubling memory for
+          // every JSON response. The host app sets this hook in main().
+          body: booksParseOverride != null ? body : null,
           rejectedByMessage: !_isSuccess(decoded) &&
               rejectsSessionMessage(_jsonErrorMessage(decoded)),
         );
@@ -910,7 +919,10 @@ abstract class ZLibraryApiBase {
         statusCode: raw.status,
       );
     }
-    return ApiResponse.ok(_booksOf(raw.json!), meta: _metaOf(raw.json!));
+    return ApiResponse.ok(
+      await ZLibraryApiBase.booksOfH(raw.json!, rawBody: raw.body),
+      meta: _metaOf(raw.json!),
+    );
   }
 
   Future<String?> resolveEapiHash(String bookId, String title) async {
@@ -942,7 +954,46 @@ abstract class ZLibraryApiBase {
         .map(Book.fromJson)
         .toList();
   }
+
+  /// Hook-aware entry mirroring the other `parseXxxH` wrappers. When the
+  /// host app injects [booksParseOverride] and a raw body is available, the
+  /// whole decode runs on the Rust thread pool; otherwise it falls back to
+  /// the synchronous Dart [_booksOf]. Behavior is identical either way —
+  /// test/services/json_books_test.dart is the contract for both.
+  static Future<List<Book>> booksOfH(
+    Map<String, dynamic> json, {
+    String? rawBody,
+  }) async {
+    final override = booksParseOverride;
+    if (override != null && rawBody != null && rawBody.isNotEmpty) {
+      return override(rawBody);
+    }
+    return _booksOf(json);
+  }
+
+  /// Public Dart-only fallback: decodes the raw JSON text through the same
+  /// `_booksOf` + `Book.fromJson` pipeline. The host app's Rust hook calls
+  /// this when the bridge is unavailable, so the fallback path stays in one
+  /// place and never drifts from the primary parser.
+  static List<Book> fallbackBooksOf(String rawJsonText) {
+    // Mirror the Rust parser: invalid JSON is an empty list, never a throw.
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(rawJsonText);
+    } on FormatException {
+      return const [];
+    }
+    if (decoded is! Map<String, dynamic>) return const [];
+    return _booksOf(decoded);
+  }
 }
+
+/// Injectable Rust parse hook for the eapi book-list JSON (the `_booksOf`
+/// hot path). The host app sets this to a flutter_rust_bridge-backed
+/// implementation returning the SAME `List<Book>`; when null (default) the
+/// Dart `_booksOf` above is the fallback. Takes the raw response text (not
+/// the decoded map) so the Rust side owns the whole decode + map pipeline.
+Future<List<Book>> Function(String json)? booksParseOverride;
 
 /// Z-Library client, rewritten from the call sites in olib-mobile.
 ///
@@ -963,7 +1014,7 @@ abstract class ZLibraryApiBase {
 ///   send_code, verify_code. Those methods fall back or fail loudly rather
 ///   than silently returning wrong data; see their doc comments.
 
-class ZLibraryApi extends ZLibraryApiBase with ZLibraryAuth, ZLibrarySearch, ZLibraryArticles, ZLibraryBooklists, ZLibraryCategories, ZLibraryFullText, ZLibraryDownloads, ZLibraryDownloadHistory {
+class ZLibraryApi extends ZLibraryApiBase with ZLibraryAuth, ZLibrarySearch, ZLibraryArticles, ZLibraryBooklists, ZLibraryCategories, ZLibraryAuthors, ZLibraryFullText, ZLibraryDownloads, ZLibraryDownloadHistory {
   ZLibraryApi({super.domain, super.dio});
 
   String get domain => _domain;

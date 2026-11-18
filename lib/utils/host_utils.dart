@@ -67,7 +67,17 @@ bool isAnnasFamilyHost(String rawHost) {
 /// Language prefixes some mirrors put in front of the domain
 /// (`zh.z-lib.fm`); the reader never lives under them.
 const _readerLangPrefixes = {
-  'zh', 'en', 'de', 'fr', 'es', 'it', 'pt', 'ja', 'ko', 'ru', 'ar',
+  'zh',
+  'en',
+  'de',
+  'fr',
+  'es',
+  'it',
+  'pt',
+  'ja',
+  'ko',
+  'ru',
+  'ar',
 };
 
 /// Reader host for the current line [lineDomain]:

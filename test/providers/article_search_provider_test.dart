@@ -24,6 +24,11 @@ class _FakeZLibraryApi implements ZLibraryApi {
   String? lastQuery;
   String? lastOrder;
   int? lastPage;
+  List<String>? lastLanguages;
+  List<String>? lastExtensions;
+  int? lastYearFrom;
+  int? lastYearTo;
+  bool? lastExact;
 
   /// Every (query, page) pair the fake served — prefetch makes the
   /// notifier fetch one page ahead, so call-count assertions read
@@ -46,8 +51,18 @@ class _FakeZLibraryApi implements ZLibraryApi {
     required String query,
     String? order,
     int page = 1,
+    List<String>? languages,
+    List<String>? extensions,
+    int? yearFrom,
+    int? yearTo,
+    bool exact = false,
   }) async {
     lastOrder = order;
+    lastLanguages = languages;
+    lastExtensions = extensions;
+    lastYearFrom = yearFrom;
+    lastYearTo = yearTo;
+    lastExact = exact;
     _record(query, page);
     if (error != null) return ApiResponse.fail(error!);
     return ApiResponse.ok(
@@ -65,6 +80,11 @@ class _FakeZLibraryApi implements ZLibraryApi {
     required String query,
     String? order,
     int page = 1,
+    List<String>? languages,
+    List<String>? extensions,
+    int? yearFrom,
+    int? yearTo,
+    bool exact = false,
   }) =>
       'https://example.com/s/$query?content_type=article&page=$page';
 }
@@ -186,6 +206,35 @@ void main() {
     // One page (total 1) → no prefetch; only page 1 was fetched.
     expect(api.calls, 1);
     expect(api.fetched, {'synthetic#1'});
+  });
+
+  test('article filters ride through to the fetch (site-verified names)',
+      () async {
+    final api = _FakeZLibraryApi(pages: {
+      1: ArticleSearchPage(articles: [_article(1)], total: 1, totalPages: 1),
+    });
+    final container = _container(api);
+    await container
+        .read(articleSearchProvider.notifier)
+        .search(
+          const ArticleSearchParams(
+            query: 'synthetic',
+            order: 'date',
+            exact: true,
+            yearFrom: 2020,
+            yearTo: 2024,
+            languages: ['chinese'],
+            extensions: ['EPUB'],
+          ),
+        );
+
+    expect(api.lastExact, isTrue);
+    expect(api.lastYearFrom, 2020);
+    expect(api.lastYearTo, 2024);
+    expect(api.lastLanguages, ['chinese']);
+    expect(api.lastExtensions, ['EPUB']);
+    // 单页 → 无 prefetch。
+    expect(api.calls, 1);
   });
 
   test('reset returns the state to its initial value', () async {

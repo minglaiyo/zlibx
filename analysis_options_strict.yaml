@@ -11,6 +11,9 @@
 # strict-casts, strict-raw-types, use_build_context_synchronously,
 # cancel_subscriptions, close_sinks, prefer_final_locals.
 #
+# Phase 4/5: FRB-generated files are committed (CI has no Rust) but
+# excluded from the strict count — generated code is never hand-edited,
+# so lint findings there are unfixable by definition.
 # Baseline (enforced by the ratchet step from
 # scripts/strict_lint_baseline.txt; 2026-11-15, lib/, fresh gen-l10n
 # output): 285 findings — avoid_catches_without_on_clauses 155,
@@ -31,6 +34,14 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  exclude:
+    # FRB-generated files are committed (CI has no Rust) but excluded
+    # from the strict count — generated code is never hand-edited.
+    - lib/frb_generated.dart
+    - lib/frb_generated.io.dart
+    - lib/frb_generated.web.dart
+    - lib/lib.dart
+    - lib/models.dart
   language:
     strict-casts: true
     strict-raw-types: true

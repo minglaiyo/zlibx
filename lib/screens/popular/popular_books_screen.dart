@@ -11,7 +11,7 @@ import '../../utils/error_text.dart';
 import '../../widgets/book_card.dart';
 import '../../widgets/book_quick_actions_sheet.dart';
 import '../../widgets/empty_state.dart';
-import '../../widgets/entrance.dart';
+import '../../widgets/motion/motion.dart';
 import '../../widgets/gradient_app_bar.dart';
 
 /// 热门——官网首页"最受欢迎"栏目的承载页。`/eapi/book/most_popular`
@@ -37,8 +37,7 @@ class PopularBooksScreen extends ConsumerStatefulWidget {
   const PopularBooksScreen({super.key});
 
   @override
-  ConsumerState<PopularBooksScreen> createState() =>
-      _PopularBooksScreenState();
+  ConsumerState<PopularBooksScreen> createState() => _PopularBooksScreenState();
 }
 
 class _PopularBooksScreenState extends ConsumerState<PopularBooksScreen> {
@@ -125,9 +124,7 @@ class _PopularBooksScreenState extends ConsumerState<PopularBooksScreen> {
             return LayoutBuilder(
               builder: (context, constraints) {
                 final width = constraints.maxWidth;
-                final gutter = adaptive
-                    ? AppLayout.pageGutter(width)
-                    : 16.0;
+                final gutter = adaptive ? AppLayout.pageGutter(width) : 16.0;
                 return GridView.builder(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(gutter, 12, gutter, 24),
@@ -136,21 +133,21 @@ class _PopularBooksScreenState extends ConsumerState<PopularBooksScreen> {
                   // （coverOnly），信息区不再占高度。关掉时保持本页原来
                   // 的固定委托：两列、间距 12，比例换成纯封面的 0.7。
                   gridDelegate: adaptive
-                          ? BookCard.adaptiveGridDelegate(
-                              context,
-                              width,
-                              coverOnly: true,
-                            )
-                          : const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              childAspectRatio: BookCard.coverAspectRatio,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                            ),
+                      ? BookCard.adaptiveGridDelegate(
+                          context,
+                          width,
+                          coverOnly: true,
+                        )
+                      : const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          childAspectRatio: BookCard.coverAspectRatio,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                        ),
                   itemCount: books.length,
                   itemBuilder: (context, index) {
                     final book = books[index];
-                    return EntranceSlideFade(
+                    return MotionEntrance(
                       index: index,
                       child: BookCard(
                         book: book.toDisplay(),

@@ -47,9 +47,11 @@ class ChallengeHtmlCache {
     while (_entries.length > maxEntries || _totalChars > maxTotalChars) {
       _remove(_entries.keys.first);
     }
-    _logger.debug('Cached challenge HTML',
-        tag: 'ChallengeCache',
-        metadata: {'size': html.length, 'entries': _entries.length});
+    _logger.debug(
+      'Cached challenge HTML',
+      tag: 'ChallengeCache',
+      metadata: {'size': html.length, 'entries': _entries.length},
+    );
   }
 
   /// Returns the cached HTML for [url] if it is fresh, otherwise null.

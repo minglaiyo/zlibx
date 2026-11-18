@@ -130,10 +130,16 @@ mixin ZLibrarySearch on ZLibraryApiBase {
         statusCode: status,
       );
     }
+    // Phase 3: the host-injected Rust hook parses when present; the
+    // Dart implementation stays as the fallback.
+    final metadata = bookDetailParseOverride != null
+        ? await bookDetailParseOverride!(html)
+        : parseBookDetailProperties(html);
+    // 关键词独立提取：Rust 钩子只负责 metadata 行，/terms/ 链接是
+    // Dart-only 的一遍查询（site-verified 2026-11-19）。
+    final keywords = parseBookDetailKeywords(html);
     return ApiResponse.ok(
-      BookDetailExtras(
-        metadata: parseBookDetailProperties(html),
-      ),
+      BookDetailExtras(metadata: metadata, keywords: keywords),
     );
   }
 
@@ -194,8 +200,9 @@ mixin ZLibrarySearch on ZLibraryApiBase {
     // 404 / 无 body / success:0 / 空列表：四种情况都回退 popular 排序
     // 搜索（社区镜像常用 success:0 或空 payload 回答本接口，回退是常态）。
     final json = raw.json;
-    final books =
-        json == null ? const <Book>[] : ZLibraryApiBase._booksOf(json);
+    final books = json == null
+        ? const <Book>[]
+        : await ZLibraryApiBase.booksOfH(json, rawBody: raw.body);
     if (raw.status == 404 ||
         json == null ||
         !ZLibraryApiBase._isSuccess(json) ||
@@ -241,7 +248,7 @@ mixin ZLibrarySearch on ZLibraryApiBase {
     // success:1 with no books — an empty personalised feed, not a
     // failure. Returned as-is so the UI can tell the two apart.
     return ApiResponse.ok(
-      ZLibraryApiBase._booksOf(raw.json!),
+      await ZLibraryApiBase.booksOfH(raw.json!, rawBody: raw.body),
       meta: <String, dynamic>{...?ZLibraryApiBase._metaOf(raw.json!)},
     );
   }
@@ -277,7 +284,7 @@ mixin ZLibrarySearch on ZLibraryApiBase {
         statusCode: raw.status,
       );
     }
-    final books = ZLibraryApiBase._booksOf(raw.json!);
+    final books = await ZLibraryApiBase.booksOfH(raw.json!, rawBody: raw.body);
     if (books.isEmpty) {
       return search(order: 'date', limit: 20, page: page);
     }
@@ -306,7 +313,9 @@ mixin ZLibrarySearch on ZLibraryApiBase {
         statusCode: raw.status,
       );
     }
-    return ApiResponse.ok(ZLibraryApiBase._booksOf(raw.json!), meta: ZLibraryApiBase._metaOf(raw.json!));
+    return ApiResponse.ok(
+        await ZLibraryApiBase.booksOfH(raw.json!, rawBody: raw.body),
+        meta: ZLibraryApiBase._metaOf(raw.json!));
   }
 
   Future<ApiResponse<List<Book>>> getUserDownloaded({
@@ -331,7 +340,9 @@ mixin ZLibrarySearch on ZLibraryApiBase {
         statusCode: raw.status,
       );
     }
-    return ApiResponse.ok(ZLibraryApiBase._booksOf(raw.json!), meta: ZLibraryApiBase._metaOf(raw.json!));
+    return ApiResponse.ok(
+        await ZLibraryApiBase.booksOfH(raw.json!, rawBody: raw.body),
+        meta: ZLibraryApiBase._metaOf(raw.json!));
   }
 
   /// Save to "My library". Mirrors the confirmed unsave path.
@@ -399,7 +410,9 @@ mixin ZLibrarySearch on ZLibraryApiBase {
         statusCode: raw.status,
       );
     }
-    return ApiResponse.ok(ZLibraryApiBase._booksOf(raw.json!), meta: ZLibraryApiBase._metaOf(raw.json!));
+    return ApiResponse.ok(
+        await ZLibraryApiBase.booksOfH(raw.json!, rawBody: raw.body),
+        meta: ZLibraryApiBase._metaOf(raw.json!));
   }
 
   /// Book comments, view-only. The site's own `papi/` JSON API, NOT eapi:

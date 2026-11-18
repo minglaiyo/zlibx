@@ -111,10 +111,7 @@ class SearchActiveFilterChips extends StatelessWidget {
     // chip can appear there — the other filters are never applied.
     if (mode != SearchMode.article) {
       if (selectedCategoryName != null) {
-        addChip(
-          '${l10n.category}: $selectedCategoryName',
-          onResetCategory,
-        );
+        addChip('${l10n.category}: $selectedCategoryName', onResetCategory);
       }
       if (selectedContentType != null) {
         addChip(
@@ -129,10 +126,7 @@ class SearchActiveFilterChips extends StatelessWidget {
         );
       }
       if (selectedExtension != 'all') {
-        addChip(
-          '${extensionNames[selectedExtension]}',
-          onResetExtension,
-        );
+        addChip('${extensionNames[selectedExtension]}', onResetExtension);
       }
       if (selectedYearFrom != null || selectedYearTo != null) {
         addChip(_yearLabel(), () {
@@ -145,10 +139,7 @@ class SearchActiveFilterChips extends StatelessWidget {
       }
     }
     if (selectedOrder != _defaultOrder) {
-      addChip(
-        '${l10n.sort}: ${orderNames[selectedOrder]}',
-        onResetOrder,
-      );
+      addChip('${l10n.sort}: ${orderNames[selectedOrder]}', onResetOrder);
     }
 
     return SizedBox(

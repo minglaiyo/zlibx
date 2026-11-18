@@ -5,10 +5,16 @@ part of 'annas_archieve.dart';
 /// NetworkError conversion.
 mixin _AnnasClientMixin on _AnnasArchieveBase {
   // Convert DioException to user-friendly NetworkError with async diagnostics
-  Future<NetworkError> _handleErrorAsync(dynamic error,
-      {String? responseBody, String? targetHost}) async {
-    return await NetworkError.fromExceptionAsync(error,
-        responseBody: responseBody, targetHost: targetHost);
+  Future<NetworkError> _handleErrorAsync(
+    dynamic error, {
+    String? responseBody,
+    String? targetHost,
+  }) async {
+    return await NetworkError.fromExceptionAsync(
+      error,
+      responseBody: responseBody,
+      targetHost: targetHost,
+    );
   }
 
   // Try request with optimized retry logic - fast failure and fallback
@@ -22,8 +28,10 @@ mixin _AnnasClientMixin on _AnnasArchieveBase {
     final urls = await _instanceManager.enabledUrls(MirrorService.annasArchive);
 
     if (urls.isEmpty) {
-      _logger.error('No attemptable Anna\'s Archive mirror',
-          tag: 'AnnasArchive');
+      _logger.error(
+        'No attemptable Anna\'s Archive mirror',
+        tag: 'AnnasArchive',
+      );
       throw await _handleErrorAsync(
         Exception('No Anna\'s Archive mirror is available right now'),
       );
@@ -44,8 +52,9 @@ mixin _AnnasClientMixin on _AnnasArchieveBase {
       for (int attempt = 0; attempt <= retriesForThis; attempt++) {
         try {
           // First mirror gets the full timeout; later mirrors get half.
-          final timeoutSeconds =
-              i == 0 ? AnnasArchieve.requestTimeoutSeconds : AnnasArchieve.subsequentRequestTimeoutSeconds;
+          final timeoutSeconds = i == 0
+              ? AnnasArchieve.requestTimeoutSeconds
+              : AnnasArchieve.subsequentRequestTimeoutSeconds;
           // One token per attempt: on timeout the underlying Dio
           // request is cancelled instead of downloading in the
           // background while the retry loop moves on. The TimeoutException
@@ -58,28 +67,40 @@ mixin _AnnasClientMixin on _AnnasArchieveBase {
             onTimeout: () {
               cancelToken.cancel();
               throw TimeoutException(
-                  "Request timed out after ${timeoutSeconds}s");
+                "Request timed out after ${timeoutSeconds}s",
+              );
             },
           );
 
           // Success - log which mirror worked
-          _logger.debug('Request succeeded on attempt ${attempt + 1}',
-              tag: 'AnnasArchive', metadata: {'mirror': baseUrl});
+          _logger.debug(
+            'Request succeeded on attempt ${attempt + 1}',
+            tag: 'AnnasArchive',
+            metadata: {'mirror': baseUrl},
+          );
 
           return result;
         } catch (e) {
           lastException = e is Exception ? e : Exception(e.toString());
 
-          _logger.debug('Instance failed', tag: 'AnnasArchive', metadata: {
-            'mirror': baseUrl,
-            'attempt': attempt + 1,
-            'error': e.toString().substring(
-                0, (e.toString().length > 50) ? 50 : e.toString().length),
-          });
+          _logger.debug(
+            'Instance failed',
+            tag: 'AnnasArchive',
+            metadata: {
+              'mirror': baseUrl,
+              'attempt': attempt + 1,
+              'error': e.toString().substring(
+                0,
+                (e.toString().length > 50) ? 50 : e.toString().length,
+              ),
+            },
+          );
 
           // Short delay before retry (only if we're retrying this instance)
           if (attempt < retriesForThis) {
-            await Future.delayed(const Duration(milliseconds: AnnasArchieve.retryDelayMs));
+            await Future.delayed(
+              const Duration(milliseconds: AnnasArchieve.retryDelayMs),
+            );
           }
         }
       }
@@ -114,10 +135,7 @@ mixin _AnnasClientMixin on _AnnasArchieveBase {
     // [_ensureResponseStatus].
     return await dio.get(
       url,
-      options: Options(
-        headers: requestHeaders,
-        validateStatus: (_) => true,
-      ),
+      options: Options(headers: requestHeaders, validateStatus: (_) => true),
       cancelToken: cancelToken,
     );
   }
@@ -129,13 +147,15 @@ mixin _AnnasClientMixin on _AnnasArchieveBase {
   void _ensureResponseStatus(Response<dynamic> response, String url) {
     final status = response.statusCode ?? 0;
     if (status >= 200 && status < 300) return;
-    _logger.warning('Anna\'s Archive returned an error status',
-        tag: 'AnnasArchive',
-        metadata: {
-          'status': status,
-          'url': url,
-          'length': response.data?.toString().length ?? 0
-        });
+    _logger.warning(
+      'Anna\'s Archive returned an error status',
+      tag: 'AnnasArchive',
+      metadata: {
+        'status': status,
+        'url': url,
+        'length': response.data?.toString().length ?? 0,
+      },
+    );
     throw DioException.badResponse(
       statusCode: status,
       requestOptions: response.requestOptions,
@@ -154,8 +174,10 @@ mixin _AnnasClientMixin on _AnnasArchieveBase {
     final cached = ChallengeHtmlCache.get(url);
     if (cached == null) return null;
     if (WebviewChallengeSolver.isChallengeHtml(cached)) {
-      _logger.warning('Ignoring cached challenge HTML for $url',
-          tag: 'AnnasArchive');
+      _logger.warning(
+        'Ignoring cached challenge HTML for $url',
+        tag: 'AnnasArchive',
+      );
       return null;
     }
     return cached;
@@ -170,10 +192,10 @@ mixin _AnnasClientMixin on _AnnasArchieveBase {
   /// returns false — that is the no-mirror error, which
   /// [_requestWithRetry] already reports.
   Future<bool> _shouldSkipDio() async {
-    final urls =
-        await _instanceManager.enabledUrls(MirrorService.annasArchive);
+    final urls = await _instanceManager.enabledUrls(MirrorService.annasArchive);
     if (urls.isEmpty) return false;
-    return !await _instanceManager
-        .hasUnprotectedMirror(MirrorService.annasArchive);
+    return !await _instanceManager.hasUnprotectedMirror(
+      MirrorService.annasArchive,
+    );
   }
 }

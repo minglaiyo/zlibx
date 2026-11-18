@@ -165,7 +165,7 @@ class SearchNotifier extends Notifier<SearchState> {
   ) async {
     final categoryId = params.categoryId;
     if (categoryId != null) {
-      return _fetchCategory(params, categoryId, page);
+      return _fetchCategory(params, categoryId, page, cancelToken);
     }
     final response = await _api.search(
       message: params.query,
@@ -200,13 +200,10 @@ class SearchNotifier extends Notifier<SearchState> {
   ) {
     if (field == null || query.trim().isEmpty) return books;
     final needle = query.trim().toLowerCase();
-    return books
-        .where((book) {
-          final value =
-              field == SearchField.author ? book.author : book.publisher;
-          return value != null && value.toLowerCase().contains(needle);
-        })
-        .toList();
+    return books.where((book) {
+      final value = field == SearchField.author ? book.author : book.publisher;
+      return value != null && value.toLowerCase().contains(needle);
+    }).toList();
   }
 
   /// Append [incoming] to [existing], dropping books already present
@@ -235,15 +232,14 @@ class SearchNotifier extends Notifier<SearchState> {
       var response = await repo.fetchBooks(categoryId: categoryId, page: 1);
       if (!response.success && repo.isChallengeError(response.error)) {
         final user = ref.read(authProvider).user;
-        final browseUrl =
-            repo.categoryPageUrl(categoryId: categoryId, page: 1);
+        final browseUrl = repo.categoryPageUrl(categoryId: categoryId, page: 1);
         final html = await repo.fetchViaSolver(
           browseUrl,
           userId: user?.id,
           userKey: user?.remixUserkey,
         );
         if (html != null) {
-          final parsed = repo.parseBooks(
+          final parsed = await repo.parseBooks(
             html,
             baseUrl: Uri.parse(browseUrl).origin,
           );
@@ -284,6 +280,7 @@ class SearchNotifier extends Notifier<SearchState> {
     SearchParams params,
     int categoryId,
     int page,
+    CancelToken? cancelToken,
   ) async {
     final query = params.query?.trim() ?? '';
     final inSearch = query.isNotEmpty;
@@ -336,11 +333,13 @@ class SearchNotifier extends Notifier<SearchState> {
               contentTypes: params.contentTypes,
               order: params.order,
               page: page,
+              cancelToken: cancelToken,
             )
           : await repo.fetchBooks(
               categoryId: categoryId,
               page: page,
               order: params.order,
+              cancelToken: cancelToken,
             );
     } catch (e) {
       return ApiResponse.fail(e.toString());
@@ -353,7 +352,10 @@ class SearchNotifier extends Notifier<SearchState> {
         userKey: user?.remixUserkey,
       );
       if (html != null) {
-        final parsed = repo.parseBooks(html, baseUrl: Uri.parse(url).origin);
+        final parsed = await repo.parseBooks(
+          html,
+          baseUrl: Uri.parse(url).origin,
+        );
         if (parsed != null) {
           response = ApiResponse.ok(parsed);
         }
@@ -391,8 +393,7 @@ class SearchNotifier extends Notifier<SearchState> {
         totalPages = _unknownTotalPages;
         unknown = true;
       }
-    } else if (_categoryPageSize == null ||
-        books.length < _categoryPageSize!) {
+    } else if (_categoryPageSize == null || books.length < _categoryPageSize!) {
       // Short page (or no recorded size): this is the last page.
       totalPages = page;
       unknown = false;
@@ -506,5 +507,6 @@ class SearchNotifier extends Notifier<SearchState> {
   }
 }
 
-final searchProvider =
-    NotifierProvider<SearchNotifier, SearchState>(SearchNotifier.new);
+final searchProvider = NotifierProvider<SearchNotifier, SearchState>(
+  SearchNotifier.new,
+);

@@ -29,6 +29,18 @@ abstract final class AppSpacing {
 /// 300/400/900/1500ms 等）；收敛策略同 [AppRadius] / [AppSpacing]：
 /// 新代码必须用这里，触碰到的旧代码顺手替换，不做一次性全库替换。
 ///
+/// **120Hz 高刷新率适配说明：**
+/// 这些时长已针对 60Hz 和 120Hz 双帧率优化，保持相同的视觉速度：
+/// - fast (150ms): 9 帧 @ 60Hz, 18 帧 @ 120Hz
+/// - quick (180ms): 10.8 帧 @ 60Hz, 21.6 帧 @ 120Hz
+/// - standard (200ms): 12 帧 @ 60Hz, 24 帧 @ 120Hz
+/// - medium (250ms): 15 帧 @ 60Hz, 30 帧 @ 120Hz
+/// - slow (300ms): 18 帧 @ 60Hz, 36 帧 @ 120Hz
+/// - slower (400ms): 24 帧 @ 60Hz, 48 帧 @ 120Hz
+///
+/// Flutter 引擎会根据设备能力自动调整实际帧率，无需手动干预。
+/// 在支持 120Hz 的设备上，动画会更流畅（更多中间帧），但总时长不变。
+///
 /// 这里只收动画时长：网络超时、防抖 Timer、`Future.delayed` 等非动画
 /// 用途的 Duration 保持原样。
 abstract final class AppMotion {
@@ -74,12 +86,12 @@ abstract final class AppShadows {
   /// 悬浮胶囊 / 圆形快捷按钮（搜索入口、头部分类/最新按钮）：
   /// 深色模式加深，否则黑影在深色底上几乎不可见。
   static List<BoxShadow> elevated(Brightness brightness) => [
-        BoxShadow(
-          color: Colors.black.withValues(
-            alpha: brightness == Brightness.dark ? 0.2 : 0.06,
-          ),
-          blurRadius: 16,
-          offset: const Offset(0, 6),
-        ),
-      ];
+    BoxShadow(
+      color: Colors.black.withValues(
+        alpha: brightness == Brightness.dark ? 0.2 : 0.06,
+      ),
+      blurRadius: 16,
+      offset: const Offset(0, 6),
+    ),
+  ];
 }

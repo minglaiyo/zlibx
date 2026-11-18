@@ -243,6 +243,17 @@ class MainActivity : FlutterFragmentActivity() {
                         )
                         result.success(null)
                     }
+                    "notifyCompleted" -> {
+                        // E3+F4: 完成通知（副文本带当日剩余额度），点击直达文件。
+                        DownloadForegroundService.notifyCompleted(
+                            this,
+                            call.argument<String>("title") ?: "zlibx",
+                            call.argument<String>("uri") ?: "",
+                            call.argument<String>("mimeType") ?: "*/*",
+                            call.argument<String>("detail") ?: "下载完成",
+                        )
+                        result.success(null)
+                    }
                     "setActionChannel" -> {
                         _downloadActionChannel = MethodChannel(
                             flutterEngine.dartExecutor.binaryMessenger,

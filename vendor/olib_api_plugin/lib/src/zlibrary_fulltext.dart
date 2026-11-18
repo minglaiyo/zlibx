@@ -278,9 +278,14 @@ mixin ZLibraryFullText on ZLibraryApiBase {
     // Parse on a background isolate: a 50-hit page is a large HTML
     // document and the parse is pure work on a string; the result is
     // plain data (sendable), so the main isolate never blocks on it.
-    final pageResult = await Isolate.run(
-      () => parseFullTextSearchPage(html, baseUrl: _base),
-    );
+    // Phase 2: when the host app injects `fulltextParseOverride`
+    // (flutter_rust_bridge-backed), the parse runs on the Rust thread
+    // pool instead; the Dart isolate path stays as the fallback.
+    final pageResult = fulltextParseOverride != null
+        ? await fulltextParseOverride!(html, _base)
+        : await Isolate.run(
+            () => parseFullTextSearchPage(html, baseUrl: _base),
+          );
     return ApiResponse.ok(pageResult);
   }
 

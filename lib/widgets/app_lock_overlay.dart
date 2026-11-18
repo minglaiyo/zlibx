@@ -90,8 +90,7 @@ class _LockGateState extends ConsumerState<_LockGate>
     if (_autoAttempted || _authenticating) return;
     // activity 还没 resumed 时弹 BiometricPrompt 会被系统立刻取消，
     // 白挨一次失败提示；等 resumed 再说。
-    if (WidgetsBinding.instance.lifecycleState !=
-        AppLifecycleState.resumed) {
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
       return;
     }
     _autoAttempted = true;
@@ -104,8 +103,9 @@ class _LockGateState extends ConsumerState<_LockGate>
     setState(() => _authenticating = true);
     final AppLockAuthResult result;
     try {
-      result = await AppLockController.instance
-          .authenticate(l10n.appLockAuthReason);
+      result = await AppLockController.instance.authenticate(
+        l10n.appLockAuthReason,
+      );
     } finally {
       if (mounted) setState(() => _authenticating = false);
     }
@@ -185,17 +185,17 @@ class _LockGateState extends ConsumerState<_LockGate>
                       l10n.appLockGateHint,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: cs.onSurfaceVariant,
-                          ),
+                        color: cs.onSurfaceVariant,
+                      ),
                     ),
                     if (message != null) ...[
                       const SizedBox(height: 12),
                       Text(
                         message,
                         textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: cs.error,
-                            ),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(color: cs.error),
                       ),
                     ],
                     const SizedBox(height: 24),
@@ -209,8 +209,9 @@ class _LockGateState extends ConsumerState<_LockGate>
                     if (credentialGone) ...[
                       const SizedBox(height: 8),
                       TextButton(
-                        onPressed:
-                            _authenticating ? null : _disableLockAndUnlock,
+                        onPressed: _authenticating
+                            ? null
+                            : _disableLockAndUnlock,
                         child: Text(l10n.appLockTurnOffAndUnlock),
                       ),
                     ],

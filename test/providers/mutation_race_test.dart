@@ -69,6 +69,9 @@ class _FakeZLibraryApi implements ZLibraryApi {
   /// page>1 的排队网关（dispose 竞态测试用）。
   final loadMoreGates = <Completer<ApiResponse<BooklistsPage>>>[];
 
+  /// 下一次 mine 首屏刷新返回的列表颜色（P2-3：模拟刷新已替换数据）。
+  int? refreshColor;
+
   @override
   Future<ApiResponse<BooklistsPage>> searchMyBooklists({
     String query = '',
@@ -77,6 +80,16 @@ class _FakeZLibraryApi implements ZLibraryApi {
   }) async {
     if (page > 1 && loadMoreGates.isNotEmpty) {
       return loadMoreGates.removeAt(0).future;
+    }
+    final override = refreshColor;
+    if (override != null) {
+      refreshColor = null;
+      return ApiResponse.ok(
+        BooklistsPage(
+          lists: [_list('7001', color: override), _list('7002')],
+          totalPages: 2,
+        ),
+      );
     }
     return ApiResponse.ok(_minePage(page: page));
   }
@@ -217,6 +230,45 @@ void main() {
       final after = _find(container, '7001')!;
       expect(after.color, 1, reason: 'color 回滚到快照值');
       expect(after.isPrivate, isTrue, reason: '同期成功字段不得被整旧对象覆盖');
+    });
+  });
+
+  group('刷新后的迟到回滚（P2-3）', () {
+    test('乐观改色挂起期间页面刷新：失败不得写回旧快照值', () async {
+      final api = _FakeZLibraryApi();
+      final container = _container(api);
+      await _waitUntil(
+        container,
+        (s) => s.phase == BooklistsPhase.ready && s.lists.isNotEmpty,
+      );
+
+      final list = _find(container, '7001')!;
+      final gate = Completer<ApiResponse<bool>>();
+      api.colorGates[7001] = gate;
+      final colorOp = container
+          .read(booklistsControllerProvider.notifier)
+          .setBooklistColor(list, 4);
+      await Future<void>.delayed(Duration.zero);
+      expect(_find(container, '7001')!.color, 4);
+
+      // 刷新：新数据把该列表颜色置 9（服务器已换状态），generation 前移。
+      api.refreshColor = 9;
+      await container.read(booklistsControllerProvider.notifier).loadFirst();
+      await _waitUntil(
+        container,
+        (s) => _find(container, '7001')?.color == 9,
+      );
+
+      // 迟到的失败回滚：generation 守卫必须拦住（旧代码会把 9 抹成
+      // 快照里的 1——拿"操作前"覆盖刷新后的新真值）。
+      gate.complete(ApiResponse.fail('server said no'));
+      final resp = await colorOp;
+      expect(resp.success, isFalse);
+      expect(
+        _find(container, '7001')!.color,
+        9,
+        reason: '刷新后的数据是权威，过期回滚不得落笔',
+      );
     });
   });
 

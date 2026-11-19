@@ -185,11 +185,11 @@ void main() {
     tempDir =
         await Directory.systemTemp.createTemp('booklist_detail_state_test');
     Hive.init(tempDir.path);
-    await Hive.openBox(BooklistHtmlCache.boxName);
+    await Hive.openLazyBox(BooklistHtmlCache.boxName);
   });
 
   setUp(() async {
-    await Hive.box(BooklistHtmlCache.boxName).clear();
+    await Hive.lazyBox(BooklistHtmlCache.boxName).clear();
     BooklistHtmlCache.debugResetTokenSweep();
   });
 

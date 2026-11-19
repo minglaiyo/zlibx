@@ -83,11 +83,11 @@ void main() {
   setUpAll(() async {
     tempDir = await Directory.systemTemp.createTemp('booklist_remove');
     Hive.init(tempDir.path);
-    await Hive.openBox(BooklistHtmlCache.boxName);
+    await Hive.openLazyBox(BooklistHtmlCache.boxName);
   });
 
   setUp(() async {
-    await Hive.box(BooklistHtmlCache.boxName).clear();
+    await Hive.lazyBox(BooklistHtmlCache.boxName).clear();
   });
 
   tearDownAll(() async {

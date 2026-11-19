@@ -32,15 +32,28 @@ class BooklistRepository {
 
   /// Cached books of one detail JSON page (`#json-page=N`), or null
   /// when never cached, stale or corrupt.
-  List<Book>? cachedBooksPage(String url, int page, {String? accountId}) {
-    return BooklistHtmlCache.getBooksPage(url, page, accountId: accountId);
+  /// Synchronous buffer hit (fresh same-process stores); null means
+  /// "ask the async path". See [BooklistHtmlCache.peekBooksPage].
+  List<Book>? peekBooksPage(String url, int page, {String? accountId}) =>
+      BooklistHtmlCache.peekBooksPage(url, page, accountId: accountId);
+
+  String? peekDetailHtml(String url, {String? accountId}) {
+    final html = BooklistHtmlCache.peekHtml(url, accountId: accountId);
+    if (html == null || BooklistSolver.isChallengeHtml(html)) return null;
+    return html;
   }
+
+  Future<List<Book>?> cachedBooksPage(
+    String url,
+    int page, {
+    String? accountId,
+  }) => BooklistHtmlCache.getBooksPage(url, page, accountId: accountId);
 
   /// The cached raw detail HTML when it is usable — present and not a
   /// challenge page — else null. A stored challenge page must never be
   /// parsed as an (empty) first page.
-  String? cachedDetailHtml(String url, {String? accountId}) {
-    final cachedHtml = BooklistHtmlCache.get(url, accountId: accountId);
+  Future<String?> cachedDetailHtml(String url, {String? accountId}) async {
+    final cachedHtml = await BooklistHtmlCache.get(url, accountId: accountId);
     return (cachedHtml != null && !BooklistSolver.isChallengeHtml(cachedHtml))
         ? cachedHtml
         : null;
@@ -70,7 +83,10 @@ class BooklistRepository {
   /// cache miss and the caller falls through to the network path.
   /// Async since phase 3 (Rust bridge when injected).
   Future<BooklistsPage?> cachedListPage(String url, {String? accountId}) async {
-    final cachedHtml = BooklistHtmlCache.get(url, accountId: accountId);
+    final cachedHtml = await BooklistHtmlCache.get(
+      url,
+      accountId: accountId,
+    );
     if (cachedHtml == null || BooklistSolver.isChallengeHtml(cachedHtml)) {
       return null;
     }

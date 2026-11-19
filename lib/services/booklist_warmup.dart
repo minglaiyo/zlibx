@@ -107,7 +107,7 @@ class BooklistWarmup {
       // is ALSO persisted for 7 days (BooklistHtmlCache). Without this
       // second check every cold start re-ran a headless solve (up to a
       // minute of WebView work) for a page the app already had on disk.
-      if (BooklistHtmlCache.get(url, accountId: accountId) != null) {
+      if (await BooklistHtmlCache.get(url, accountId: accountId) != null) {
         return true;
       }
       bool installed = false;

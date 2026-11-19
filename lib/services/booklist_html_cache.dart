@@ -10,7 +10,7 @@ import 'hive_service.dart';
 
 /// Persistent (Hive) cache for booklist HTML pages, keyed by the
 /// page's full URL — the same key convention as the in-memory
-/// ChallengeHtmlCache (10-minute TTL, dies on restart).
+/// ChallengeHtmlCache.
 ///
 /// Screens paint the last-known page from here instantly, then refresh
 /// in the background (stale-while-revalidate); a failed refresh keeps
@@ -30,6 +30,27 @@ import 'hive_service.dart';
 /// does not expose the raw JSON body to the app layer, so this is
 /// the one place where parsed-model serialization is used. JSON
 /// entries share the box-wide TTL and entry cap with the HTML pages.
+///
+/// ── LazyBox storage (审查1 P-2 / 审查3 P3-1) ──
+/// The box is a [LazyBox]: a regular Box parses every value into
+/// memory at open (~20 MB of page HTML), the LazyBox keeps only the
+/// key index and reads values from disk on demand. Two consequences
+/// are absorbed here so callers keep working:
+///
+/// * `LazyBox.get` is async (hive 2.2.3) — [get]/[getBooksPage]/[has]
+///   return Futures; the callers were all already inside async chains.
+/// * `LazyBox.put` becomes readable only after its disk write awaits —
+///   a plain fire-and-forget would silently break "store then read
+///   immediately". The [_pending] write-through buffer restores the
+///   old synchronous visibility: values live there from [store] until
+///   their flush completes (normally microseconds), so same-flow and
+///   test reads are deterministic without touching disk.
+///
+/// Eviction accounting (timestamps + approximate bytes) lives in a
+/// small index persisted to the settings box, so the per-store caps
+/// are enforced WITHOUT reading every value back — the old in-memory
+/// Box implementation decoded all values on every store just to
+/// measure them.
 class BooklistHtmlCache {
   BooklistHtmlCache._();
 
@@ -56,64 +77,119 @@ class BooklistHtmlCache {
   /// of kilobytes); the oldest entries are evicted on store.
   static const int maxEntries = 50;
 
-  /// Upper bound on the total bytes stored in the box (P1). A regular
-  /// Hive [Box] loads every value into memory when it opens, so the
-  /// entry count alone does not bound memory: 50 detail pages at
-  /// ~300 KB each is ~15 MB. The byte cap evicts the oldest entries
-  /// until the box fits under it (see [_evictOldest]). A full LazyBox
-  /// migration would need every sync reader
-  /// (`BooklistRepository.cachedDetailHtml` and friends) to become
-  /// async — the same ~7-file refactor the user already skipped for
-  /// the settings box (item 2) — so the byte cap is the fix, not the
-  /// box type.
+  /// Upper bound on the total bytes stored in the box. With the index
+  /// the cap is advisory for RAM (values no longer live in memory) and
+  /// primarily bounds DISK usage; the entry cap remains the RAM proxy.
   static const int maxBytes = 20 * 1024 * 1024;
 
-  static Box<dynamic> get _box {
-    final box = HiveService.booklistHtmlBox;
-    _sweepTokenHtmlOnce(box);
-    return box;
-  }
+  static LazyBox<dynamic> get _box => HiveService.booklistHtmlBox;
 
   /// True when the booklist_html box is open. The box is opened after
   /// the first frame (O2), so until then every access is a cache miss
   /// (reads) or a no-op (writes) — see the guards on the public methods.
   static bool get _ready => Hive.isBoxOpen(boxName);
 
-  /// One-time purge of pre-existing cached HTML that still carries the
-  /// signed-in user's `user_token` JWT. Older app versions stored the
-  /// raw detail HTML verbatim; [store] now strips the token, so any
-  /// entry that still has one predates the strip and is dropped once
-  /// (the box is a rebuildable cache — it refills from the network).
-  /// Runs at most once per process; entries without a token are
-  /// untouched, and the 7-day TTL / 50-entry cap are unchanged.
-  static bool _tokenSweepDone = false;
+  // ── write-through buffer ──────────────────────────────────────────────
+  // key → value pending a flush, or null = pending delete. Entries are
+  // removed the moment the box flush completes; a reader consults this
+  // FIRST, so store→read within the same flow sees the write (the
+  // guarantee the pre-LazyBox in-memory Box gave for free).
+  static final Map<Object, Object?> _pending = {};
 
-  static void _sweepTokenHtmlOnce(Box<dynamic> box) {
-    if (_tokenSweepDone) return;
-    _tokenSweepDone = true;
-    // Delete only the entries that actually contain a legacy token.
-    // The cache box also stores safe HTML and parsed JSON pages; wiping
-    // every key because one old HTML page is sensitive needlessly drops
-    // unrelated, reusable cache entries.
-    final sensitiveKeys = <dynamic>[];
-    for (final key in box.keys) {
-      final value = box.get(key);
-      if (value is Map &&
-          value['html'] is String &&
-          (value['html'] as String).contains('user_token=')) {
-        sensitiveKeys.add(key);
+  // ── eviction index (persisted as one tiny settings-box entry) ─────────
+  // key → (storedAtMs, approxBytes). Advisory: reads never REQUIRE it
+  // (values carry their own 'at'); it exists so store-time eviction
+  // measures the box without decoding every page.
+  static const _indexKey = 'booklist_html_index_v1';
+  static Map<String, ({int at, int bytes})>? _index;
+
+  static Map<String, ({int at, int bytes})> get _idx =>
+      _index ??= _loadIndex();
+  static Map<String, ({int at, int bytes})> _loadIndex() {
+    final out = <String, ({int at, int bytes})>{};
+    // Settings box unopened (unit tests, exotic boot order): the index
+    // degrades to in-memory-only for the process. Production always
+    // opens settings before initSecondary.
+    if (!Hive.isBoxOpen(HiveService.settingsBoxName)) return out;
+    try {
+      final raw = HiveService.settingsBox.get(_indexKey);
+      if (raw is Map) {
+        for (final entry in raw.entries) {
+          final value = entry.value;
+          if (value is List && value.length >= 2 &&
+              value[0] is int && value[1] is int) {
+            out[entry.key.toString()] = (
+              at: value[0] as int,
+              bytes: value[1] as int,
+            );
+          }
+        }
       }
+    } on Object catch (error) {
+      logIgnored('cache_index_load', error);
     }
-    if (sensitiveKeys.isNotEmpty) {
-      // Hive applies deletes to its in-memory store synchronously; the
-      // Future only represents the disk flush.
-      _safeCacheOp('cache_token_sweep', box.deleteAll(sensitiveKeys));
-    }
+    return out;
+  }
+
+  static void _persistIndex() {
+    if (!Hive.isBoxOpen(HiveService.settingsBoxName)) return;
+    final encoded = <String, List<int>>{
+      for (final entry in _idx.entries)
+        entry.key: [entry.value.at, entry.value.bytes],
+    };
+    _safeCacheOp('cache_index', HiveService.settingsBox.put(_indexKey, encoded));
+  }
+
+  /// One-time-per-process reconciliation of entries that predate the
+  /// index (written by older app versions): read each unindexed value
+  /// once, register it, and drop any that still carries the legacy
+  /// `user_token` JWT. Runs off the critical path (fire-and-forget);
+  /// correctness does not depend on it — [get] independently refuses
+  /// to ever return a token-bearing page.
+  static bool _reconcileDone = false;
+
+  static void _reconcileLegacyOnce() {
+    if (_reconcileDone || !_ready) return;
+    _reconcileDone = true;
+    unawaited(() async {
+      try {
+        for (final key in _box.keys.toList()) {
+          final k = key.toString();
+          // The token check is UNCONDITIONAL (index row or not): a
+          // direct box write can overwrite an indexed key with a
+          // legacy token page, and skipping "known" keys would keep
+          // that credential on disk for the rest of the TTL.
+          if (_pending.containsKey(key)) continue;
+          final raw = await _box.get(key);
+          if (raw is! Map) continue;
+          final at = raw['at'];
+          final html = raw['html'];
+          final books = raw['books'];
+          if (html is String && html.contains('user_token=')) {
+            await _drop(key);
+            continue;
+          }
+          if (!_idx.containsKey(k) &&
+              at is int &&
+              (html is String || books is List)) {
+            _idx[k] = (
+              at: at,
+              bytes: _entryBytes(
+                Map<Object?, Object?>.from(raw),
+              ),
+            );
+          }
+        }
+        _persistIndex();
+      } on Object catch (error) {
+        logIgnored('cache_reconcile', error);
+      }
+    }());
   }
 
   @visibleForTesting
   static void debugResetTokenSweep() {
-    _tokenSweepDone = false;
+    _reconcileDone = false;
   }
 
   /// Removes session credentials from cached HTML before it is
@@ -218,17 +294,31 @@ class BooklistHtmlCache {
     return wasInvalidatedAfter(url, fetchedAt, accountId: accountId);
   }
 
-  static void _put(Object key, Map<String, Object> value) {
-    final box = _box;
-    // Hive writes to memory synchronously, so the entry is visible to
-    // readers (and to the eviction below) immediately; the returned
-    // Future only covers the disk flush, which is intentionally
-    // fire-and-forget.
-    _safeCacheOp('cache_put', box.put(key, value));
-    _evictOldest(box);
-    // The byte cap applies even when the entry count is under the cap:
-    // a few very large pages can exceed it on their own.
-    _evictOversize(box);
+  /// Value lookup honoring the write-through buffer: pending value →
+  /// disk read. Returns the RAW stored object (Map) or null; shape /
+  /// TTL validation happens at each typed caller.
+  static Future<Object?> _readRaw(dynamic key) async {
+    if (_pending.containsKey(key)) return _pending[key];
+    return _box.get(key);
+  }
+
+  /// Registers a write with the buffer + index and kicks the flush.
+  static void _put(String key, Map<String, Object> value, int bytes) {
+    final at = value['at'];
+    if (at is int) _idx[key] = (at: at, bytes: bytes);
+    _pending[key] = value;
+    unawaited(() async {
+      try {
+        await _box.put(key, value);
+      } finally {
+        // The value is readable from disk from here on; drop the
+        // buffer copy. A delete that raced in meanwhile left a null
+        // tombstone — only clear it if WE are still the pending entry.
+        if (identical(_pending[key], value)) _pending.remove(key);
+      }
+    }());
+    _evictToCaps();
+    _persistIndex();
   }
 
   /// Stores one HTML page. [fetchedAt] is when the fetch that
@@ -245,10 +335,12 @@ class BooklistHtmlCache {
     if (url.isEmpty || html.isEmpty) return;
     if (!_ready) return; // O2: box opens after the first frame.
     if (_isStaleWrite(url, accountId, fetchedAt)) return;
+    _reconcileLegacyOnce();
+    final clean = _stripSensitive(html);
     _put(_key(url, accountId), {
       'at': DateTime.now().millisecondsSinceEpoch,
-      'html': _stripSensitive(html),
-    });
+      'html': clean,
+    }, clean.length * 2);
   }
 
   /// Drops every cached entry for one booklist: the raw detail HTML
@@ -266,8 +358,7 @@ class BooklistHtmlCache {
     // resolves, regardless of whether the box is ready.
     _invalidatedAt[_key(url, accountId)] = stamp();
     if (!_ready) return;
-    final box = _box;
-    _safeCacheOp('cache_invalidate', box.delete(_key(url, accountId)));
+    _dropSync(_key(url, accountId));
     invalidateBooklistPages(url, accountId: accountId);
   }
 
@@ -281,68 +372,191 @@ class BooklistHtmlCache {
     if (url.isEmpty) return;
     _invalidatedAt[_key(url, accountId)] = stamp();
     if (!_ready) return; // O2: box opens after the first frame.
-    final box = _box;
     final prefix = '$url#json-page=';
     final suffix = accountId == null ? null : '#account=$accountId';
-    final keys = box.keys.whereType<String>().where((key) {
-      if (!key.startsWith(prefix)) return false;
+    bool matches(dynamic key) {
+      if (key is! String || !key.startsWith(prefix)) return false;
       if (suffix == null) return !key.contains('#account=');
       return key.endsWith(suffix);
-    }).toList();
-    for (final key in keys) {
-      _safeCacheOp('cache_evict', box.delete(key));
     }
+    // The write-through buffer MUST be scanned too: a store whose
+    // disk flush has not landed yet is invisible to box.keys, and the
+    // delete below is enqueued behind that flush (hive serializes per
+    // box), so the late write is still removed in the end.
+    final keys = <dynamic>{..._box.keys, ..._pending.keys}
+        .where(matches)
+        .toList();
+    for (final key in keys) {
+      _dropSync(key);
+    }
+    if (keys.isNotEmpty) _persistIndex();
   }
 
-  /// Deletes every entry older than [ttl] (and every entry with no
-  /// usable timestamp). Expired entries otherwise linger until the
-  /// 50-entry cap evicts them.
-  static void pruneExpired() {
-    if (!_ready) return; // O2: box opens after the first frame.
-    final box = _box;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final keys = box.keys.where((key) {
-      final raw = box.get(key);
-      if (raw is! Map) return true;
-      final at = raw['at'];
-      if (at is! int) return true;
-      return now - at > ttl.inMilliseconds;
-    }).toList();
-    for (final key in keys) {
-      _safeCacheOp('cache_evict', box.delete(key));
+  /// Marks a key deleted everywhere at once: pending tombstone (so a
+  /// reader never hits the write-through copy), index row, and the
+  /// disk delete (fire-and-forget).
+  static void _dropSync(dynamic key) {
+    _pending[key as Object] = null;
+    _idx.remove(key.toString());
+    unawaited(() async {
+      try {
+        await _box.delete(key);
+      } finally {
+        if (_pending[key] == null) _pending.remove(key);
+      }
+    }());
+  }
+
+  static Future<void> _drop(dynamic key) async {
+    // Awaited variant (read-path cleanup): the tombstone keeps every
+    // reader away immediately AND the disk delete completes before the
+    // caller resumes, so `box.containsKey(key)` is false right after
+    // get()/getBooksPage() returned (the fire-and-forget _dropSync
+    // cannot promise that on a LazyBox).
+    _pending[key as Object] = null;
+    _idx.remove(key.toString());
+    try {
+      await _box.delete(key);
+    } on Object catch (error) {
+      logIgnored('cache_evict', error);
+    } finally {
+      _pending.remove(key);
     }
+    _persistIndex();
+  }
+
+  /// Deletes every entry older than [ttl] (and every index row whose
+  /// value vanished). Expired entries otherwise linger until the
+  /// 50-entry cap evicts them. Index-driven: no value is read.
+  static Future<void> pruneExpired() async {
+    if (!_ready) return; // O2: box opens after the first frame.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final victims = <Object>[];
+    for (final entry in _idx.entries.toList()) {
+      if (now - entry.value.at > ttl.inMilliseconds) {
+        victims.add(entry.key);
+      }
+    }
+    // Entries the index does not know (direct writes, legacy rows from
+    // before the index): read once — same contract as the old
+    // full-value scan, just scoped to the unknown remainder.
+    for (final key in _box.keys.toList()) {
+      final k = key.toString();
+      if (_idx.containsKey(k) || _pending.containsKey(key)) continue;
+      final raw = await _box.get(key);
+      final at = raw is Map ? raw['at'] : null;
+      if (raw is! Map || at is! int || now - at > ttl.inMilliseconds) {
+        victims.add(key as Object);
+      }
+    }
+    if (victims.isEmpty) return;
+    for (final key in victims) {
+      _pending[key] = null;
+      _idx.remove(key.toString());
+    }
+    try {
+      // Awaited so callers that observe the raw box (tests, the
+      // startup bookkeeping path) see the deletes land, matching the
+      // synchronous visibility the pre-LazyBox Box gave.
+      await _box.deleteAll(victims);
+    } on Object catch (error) {
+      logIgnored('cache_evict', error);
+    } finally {
+      for (final key in victims) {
+        _pending.remove(key);
+      }
+    }
+    _persistIndex();
   }
 
   /// The cached HTML for [url], or null when never cached or stale
   /// (older than [ttl]). A stored challenge page is returned as-is —
   /// callers reject it with the solver's challenge check, the same
   /// way they treat the in-memory cache. Expired or corrupt entries
-  /// are deleted on read instead of lingering until eviction.
-  static String? get(String url, {String? accountId}) {
+  /// are deleted on read instead of lingering until eviction. A
+  /// legacy entry that still carries the `user_token` JWT is dropped
+  /// on sight and never returned (see the class doc).
+  /// Synchronous fast path over the write-through buffer, for the
+  /// "paint from cache the instant a load starts" callers: a page this
+  /// process stored moments ago is still flushing (LazyBox only becomes
+  /// readable after its disk write), but the buffer holds it. A miss
+  /// here is not authoritative — cold-cache callers fall through to the
+  /// async [get]/[getBooksPage], which reads the disk too. Nothing is
+  /// validated away or deleted on this path beyond shape + TTL; corrupt
+  /// or expired rows simply read as absent and the async path cleans
+  /// them.
+  static String? peekHtml(String url, {String? accountId}) {
+    if (url.isEmpty) return null;
+    final raw = _pending[_key(url, accountId)];
+    if (raw is! Map) return null;
+    final at = raw['at'];
+    final html = raw['html'];
+    if (at is! int || html is! String) return null;
+    if (DateTime.now().millisecondsSinceEpoch - at > ttl.inMilliseconds) {
+      return null;
+    }
+    if (html.contains('user_token=')) return null;
+    return html;
+  }
+
+  /// [peekHtml]'s JSON-page sibling: the buffer copy of one detail
+  /// page's books, or null when not (yet) buffered.
+  static List<Book>? peekBooksPage(
+    String url,
+    int page, {
+    String? accountId,
+  }) {
+    if (url.isEmpty) return null;
+    final raw = _pending[_key('$url#json-page=$page', accountId)];
+    if (raw is! Map) return null;
+    final at = raw['at'];
+    final books = raw['books'];
+    if (at is! int || books is! List) return null;
+    if (DateTime.now().millisecondsSinceEpoch - at > ttl.inMilliseconds) {
+      return null;
+    }
+    final good = <Book>[];
+    for (final item in books) {
+      if (item is! Map) continue;
+      try {
+        good.add(Book.fromJson(Map<String, dynamic>.from(item)));
+      } on Object catch (error) {
+        logIgnored('booklist_html_cache', error);
+      }
+    }
+    if (good.isEmpty && books.isNotEmpty) return null;
+    return good;
+  }
+
+  static Future<String?> get(String url, {String? accountId}) async {
     if (url.isEmpty) return null;
     if (!_ready) return null; // O2: box opens after the first frame.
-    final box = _box;
+    _reconcileLegacyOnce();
     final key = _key(url, accountId);
-    final raw = box.get(key);
+    final raw = await _readRaw(key);
     if (raw is! Map) {
-      if (raw != null) _safeCacheOp('cache_evict', box.delete(key));
+      if (raw != null) await _drop(key);
       return null;
     }
     final at = raw['at'];
     final html = raw['html'];
     if (at is! int || html is! String) {
-      _safeCacheOp('cache_evict', box.delete(key));
+      await _drop(key);
+      return null;
+    }
+    if (html.contains('user_token=')) {
+      await _drop(key);
       return null;
     }
     if (DateTime.now().millisecondsSinceEpoch - at > ttl.inMilliseconds) {
-      _safeCacheOp('cache_evict', box.delete(key));
+      await _drop(key);
       return null;
     }
     return html;
   }
 
-  static bool has(String url, {String? accountId}) =>
-      get(url, accountId: accountId) != null;
+  static Future<bool> has(String url, {String? accountId}) async =>
+      await get(url, accountId: accountId) != null;
 
   /// Books of one detail page (page 1 is HTML; page 2+ is JSON), or null
   /// when never cached, stale, or corrupt. The key is the detail URL + page,
@@ -354,24 +568,28 @@ class BooklistHtmlCache {
   /// only a page whose every entry is bad counts as corrupt and is
   /// deleted. An empty stored list is a valid empty page, not a
   /// corrupt one.
-  static List<Book>? getBooksPage(String url, int page, {String? accountId}) {
+  static Future<List<Book>?> getBooksPage(
+    String url,
+    int page, {
+    String? accountId,
+  }) async {
     if (url.isEmpty) return null;
     if (!_ready) return null; // O2: box opens after the first frame.
-    final box = _box;
+    _reconcileLegacyOnce();
     final key = _key('$url#json-page=$page', accountId);
-    final raw = box.get(key);
+    final raw = await _readRaw(key);
     if (raw is! Map) {
-      if (raw != null) _safeCacheOp('cache_evict', box.delete(key));
+      if (raw != null) await _drop(key);
       return null;
     }
     final at = raw['at'];
     final books = raw['books'];
     if (at is! int || books is! List) {
-      _safeCacheOp('cache_evict', box.delete(key));
+      await _drop(key);
       return null;
     }
     if (DateTime.now().millisecondsSinceEpoch - at > ttl.inMilliseconds) {
-      _safeCacheOp('cache_evict', box.delete(key));
+      await _drop(key);
       return null;
     }
     final good = <Book>[];
@@ -379,13 +597,13 @@ class BooklistHtmlCache {
       if (item is! Map) continue;
       try {
         good.add(Book.fromJson(Map<String, dynamic>.from(item)));
-      } catch (error) {
+      } on Object catch (error) {
         logIgnored('booklist_html_cache', error);
       }
     }
     if (good.isEmpty && books.isNotEmpty) {
       // Every entry was bad: the page itself is corrupt.
-      _safeCacheOp('cache_evict', box.delete(key));
+      await _drop(key);
       return null;
     }
     return good;
@@ -401,15 +619,20 @@ class BooklistHtmlCache {
     if (url.isEmpty) return;
     if (!_ready) return; // O2: box opens after the first frame.
     if (_isStaleWrite(url, accountId, fetchedAt)) return;
+    _reconcileLegacyOnce();
+    final jsonBooks = books.map((book) => book.toJson()).toList();
     _put(_key('$url#json-page=$page', accountId), {
       'at': DateTime.now().millisecondsSinceEpoch,
-      'books': books.map((book) => book.toJson()).toList(),
-    });
+      'books': jsonBooks,
+    }, _estimateBooksBytes(jsonBooks));
   }
 
   static Future<void> clear() async {
     if (!_ready) return; // O2: box opens after the first frame.
     await _box.clear();
+    _pending.clear();
+    _idx.clear();
+    _persistIndex();
   }
 
   /// Approximate stored size of one entry, in bytes. HTML entries
@@ -418,69 +641,70 @@ class BooklistHtmlCache {
   /// safety bound, not a quota); JSON book pages are measured by the
   /// serialized books list. Corrupt entries count as 0 so they are
   /// evicted first by age, not by size.
-  static int _entryBytes(Object? raw) {
-    if (raw is! Map) return 0;
+  static int _entryBytes(Map<Object?, Object?> raw) {
     final html = raw['html'];
     if (html is String) return html.length * 2;
     final books = raw['books'];
-    if (books is List) {
-      var bytes = 0;
-      for (final item in books) {
-        if (item is Map) bytes += item.length * 64;
-      }
-      return bytes;
-    }
+    if (books is List) return _estimateBooksBytes(books);
     return 0;
   }
 
-  static void _evictOldest(Box<dynamic> box) {
-    if (box.length <= maxEntries) return;
-    // Entries carry their own timestamp; drop the oldest until the
-    // cap holds. A corrupt entry (no usable timestamp) counts as
-    // oldest so it is evicted first.
-    final atByKey = <Object?, int>{};
-    for (final key in box.keys) {
-      final raw = box.get(key);
-      var at = 0;
-      if (raw is Map && raw['at'] is int) at = raw['at'] as int;
-      atByKey[key] = at;
+  static int _estimateBooksBytes(List<Object?> books) {
+    var bytes = 0;
+    for (final item in books) {
+      if (item is Map) bytes += item.length * 64;
     }
-    final keys = atByKey.keys.toList()
-      ..sort((a, b) => atByKey[a]!.compareTo(atByKey[b]!));
-    for (var i = 0; i < keys.length - maxEntries; i++) {
-      _safeCacheOp('cache_evict', box.delete(keys[i]));
-    }
+    return bytes;
   }
 
-  /// Evicts the oldest entries until the box fits under [maxBytes]
-  /// (P1). Runs after every store (via [_evictOldest]) so the box
-  /// never grows past the cap. A single entry larger than the cap is
-  /// kept — dropping it would make its URL uncacheable forever — but
-  /// it still counts toward the total, so the next store evicts
-  /// everything older than it.
-  static void _evictOversize(Box<dynamic> box) {
+  /// Trims the box back under both caps after every store — using the
+  /// index for age/size and `LazyBox.keys` insertion order as the
+  /// tie-breaker for legacy entries the index does not know. No value
+  /// is read here (the pre-LazyBox implementation decoded every entry
+  /// on every single store just to measure them).
+  static void _evictToCaps() {
+    // Effective live keys: on disk (keystore order ≈ insertion order)
+    // minus the delete tombstones still flushing.
+    // Live = flushed keys plus the write-through entries still awaiting
+    // their put — the store that triggered this eviction is itself one
+    // of those, and dropping it from the count lets the cap overshoot.
+    bool alive(dynamic key) => !_pending.containsKey(key) || _pending[key] != null;
+    final live = <dynamic>{..._box.keys, ..._pending.keys}.where(alive).toList();
+    int ageOf(dynamic key) => _idx[key.toString()]?.at ?? 0;
+    int bytesOf(dynamic key) => _idx[key.toString()]?.bytes ?? 0;
+
+    // Stable order: indexed age first; un-indexed entries (direct
+    // writes, fixtures) keep keystore insertion order and count as
+    // oldest — same semantics as the pre-LazyBox implementation,
+    // without reading a single value. List.sort is NOT stable, so the
+    // tie-break is explicit.
+    final enumerated = [
+      for (var i = 0; i < live.length; i++) (ageOf(live[i]), i, live[i]),
+    ];
+    enumerated.sort((a, b) => a.$1 != b.$1
+        ? a.$1.compareTo(b.$1)
+        : a.$2.compareTo(b.$2));
+    final ordered = [for (final e in enumerated) e.$3];
+    // Entry cap first: it is the RAM proxy (reads are one value deep).
+    var over = ordered.length - maxEntries;
     var total = 0;
-    final bytesByKey = <Object?, int>{};
-    for (final key in box.keys) {
-      final bytes = _entryBytes(box.get(key));
-      bytesByKey[key] = bytes;
-      total += bytes;
+    for (final key in ordered) {
+      total += bytesOf(key);
     }
-    if (total <= maxBytes) return;
-    final atByKey = <Object?, int>{};
-    for (final key in box.keys) {
-      final raw = box.get(key);
-      var at = 0;
-      if (raw is Map && raw['at'] is int) at = raw['at'] as int;
-      atByKey[key] = at;
+    var index = 0;
+    while (index < ordered.length && over > 0) {
+      total -= bytesOf(ordered[index]);
+      _dropSync(ordered[index]);
+      index++;
+      over--;
     }
-    final keys = atByKey.keys.toList()
-      ..sort((a, b) => atByKey[a]!.compareTo(atByKey[b]!));
-    for (final key in keys) {
-      if (total <= maxBytes) break;
-      if (box.length <= 1) break;
-      total -= bytesByKey[key] ?? 0;
-      _safeCacheOp('cache_evict', box.delete(key));
+    // Then the disk byte cap. Unknown-age legacy entries counted as 0
+    // bytes are also bounded by the entry cap above.
+    while (index < ordered.length && total > maxBytes) {
+      if (ordered.length - index <= 1) break;
+      total -= bytesOf(ordered[index]);
+      _dropSync(ordered[index]);
+      index++;
     }
   }
 }

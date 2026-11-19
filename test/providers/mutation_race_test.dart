@@ -162,7 +162,7 @@ void main() {
     _hiveDir = await Directory.systemTemp.createTemp('mutation_race_test');
     Hive.init(_hiveDir!.path);
     await Hive.openBox(HiveService.settingsBoxName);
-    await Hive.openBox(HiveService.booklistHtmlBoxName);
+    await Hive.openLazyBox(HiveService.booklistHtmlBoxName);
   });
 
   tearDownAll(() async {

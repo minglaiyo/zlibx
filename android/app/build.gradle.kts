@@ -119,31 +119,62 @@ tasks.register<Exec>("cargoBuildRust") {
     group = "rust"
     description = "Build zlibx_parsers Rust crate for Android arm64-v8a"
 
-    // --- Toolchain paths (overridable via env vars) ---
-    val cargoHome = System.getenv("CARGO_HOME")
+    // --- Toolchain paths ---
+    // 审查（可移植性）：旧版把维护者本机盘符当默认值（D:/mingw64、
+    // D:/Android/Sdk），新机器克隆后必然静默失效。解析顺序改为
+    // env → local.properties(不入库) → AGP 解析值，Windows 缺 MinGW
+    // 直接显式报错，不再猜路径。
+    val os = org.gradle.internal.os.OperatingSystem.current()
+    val pathSep = if (os.isWindows) ";" else ":"
+    val localProps = Properties().apply {
+        val f = rootProject.file("local.properties")
+        if (f.exists()) load(FileInputStream(f))
+    }
+    val cargoHome: String = System.getenv("CARGO_HOME")
         ?: "${System.getProperty("user.home")}/.cargo"
-    val mingwBin = System.getenv("MINGW_BIN") ?: "D:/mingw64/mingw64/bin"
-    val androidHome = System.getenv("ANDROID_HOME") ?: "D:/Android/Sdk"
-    val ndkHome = System.getenv("ANDROID_NDK_HOME")
-        ?: "$androidHome/ndk/28.2.13676358"
+    val sdkDirProp: String? = localProps.getProperty("sdk.dir")?.replace("\\", "/")
+    val androidHome: String = System.getenv("ANDROID_HOME")
+        ?: sdkDirProp
+        ?: android.sdkDirectory.path
+    val ndkHomeEnv: String? = System.getenv("ANDROID_NDK_HOME")
+    val ndkHome: String = ndkHomeEnv
+        ?: "$androidHome/ndk/${android.ndkVersion}"
+    // Windows 上 cargo 的 host 构建脚本（proc-macro 编译到
+    // x86_64-pc-windows-gnu）需要 MinGW gcc；其他平台没有这个角色。
+    // 显式 null 标注绕开 Gradle kts 对平台类型 elvis 的误报。
+    val mingwBin: String? = if (os.isWindows) {
+        val envBin: String? = System.getenv("MINGW_BIN")
+        val propBin: String? = localProps.getProperty("mingw.bin")
+        envBin ?: propBin ?: throw GradleException(
+            "Building the Rust parsers on Windows needs a MinGW-w64 " +
+            "bin dir on PATH: set MINGW_BIN env or add " +
+            "`mingw.bin=C:/path/to/mingw64/bin` to android/local.properties.",
+        )
+    } else {
+        null
+    }
     // NDK prebuilt dir name follows the BUILD host, not the target:
     // windows-x86_64 / linux-x86_64 / darwin-x86_64. CI (ubuntu) needs
     // linux-x86_64 — a hardcoded windows dir made cc-rs fall back to
     // its own NDK probe and fail (device/CI-proven).
     val hostTag = when {
-        org.gradle.internal.os.OperatingSystem.current().isWindows -> "windows-x86_64"
-        org.gradle.internal.os.OperatingSystem.current().isMacOsX -> "darwin-x86_64"
+        os.isWindows -> "windows-x86_64"
+        os.isMacOsX -> "darwin-x86_64"
         else -> "linux-x86_64"
     }
     val ndkBin = "$ndkHome/toolchains/llvm/prebuilt/$hostTag/bin"
 
     // --- Environment for cargo + cc-rs ---
-    environment("PATH", "$mingwBin;$cargoHome/bin;${System.getenv("PATH")}")
+    environment(
+        "PATH",
+        listOfNotNull(mingwBin, "$cargoHome/bin", System.getenv("PATH"))
+            .joinToString(pathSep),
+    )
     environment("ANDROID_HOME", androidHome)
     environment("ANDROID_NDK_HOME", ndkHome)
     // cc-rs and rustc need explicit tool overrides for the Android
     // target (.cargo/config.toml no longer pins a per-OS linker path).
-    val isWindows = org.gradle.internal.os.OperatingSystem.current().isWindows
+    val isWindows = os.isWindows
     val clangName = if (isWindows) "aarch64-linux-android29-clang.cmd" else "aarch64-linux-android29-clang"
     environment("CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER", "$ndkBin/$clangName")
     environment("CC_aarch64_linux_android", "$ndkBin/$clangName")

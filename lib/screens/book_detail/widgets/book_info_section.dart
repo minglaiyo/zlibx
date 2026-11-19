@@ -21,7 +21,17 @@ import 'book_detail_content.dart';
 class BookInfoSection extends ConsumerStatefulWidget {
   final Book book;
 
-  const BookInfoSection({super.key, required this.book});
+  /// 该书页 HTML 解析出的关联书单（见 `parseRelatedBooklists`，由
+  /// 详情页装配传入）。非空时在快捷入口区多出"关联书单"一行，
+  /// 点击进 [RelatedBooklistsScreen]——与相似书籍同款交互；空则
+  /// 整行不出现。
+  final List<Booklist> relatedBooklists;
+
+  const BookInfoSection({
+    super.key,
+    required this.book,
+    this.relatedBooklists = const [],
+  });
 
   @override
   ConsumerState<BookInfoSection> createState() => _BookInfoSectionState();
@@ -205,8 +215,13 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
   /// 相似书籍 / 加入书单 / 评论三行入口（每行 Divider 分隔）。简介
   /// 折叠模式下渲染在标题正下方，否则保持在页面底部（原位置）。
   List<Widget> _actionTiles(Book book, AppLocalizations l10n, ColorScheme cs) {
+    final hasSimilar = book.hash?.isNotEmpty ?? false;
+    final hasRelated = widget.relatedBooklists.isNotEmpty;
+    // 用户定稿 2026-11-19:关联书单紧跟相似书籍之下(加入书单/评论
+    // 依次后移)。first 标记 = 列表里实际渲染的第一行,只留一份
+    // 顶部 20px 呼吸。
     return [
-      if (book.hash?.isNotEmpty ?? false)
+      if (hasSimilar)
         _actionTile(
           icon: Icons.auto_stories_outlined,
           label: l10n.similarBooks,
@@ -221,11 +236,21 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
             ),
           ),
         ),
+      // 关联书单：书被收录进的公开书单，点进列表页再看单。
+      if (hasRelated)
+        _actionTile(
+          icon: Icons.collections_outlined,
+          label: l10n.relatedBooklists,
+          cs: cs,
+          first: !hasSimilar,
+          onTap: () =>
+              AppRoutes.openRelatedBooklists(context, widget.relatedBooklists),
+        ),
       _actionTile(
         icon: Icons.collections_bookmark_outlined,
         label: l10n.addToBooklist,
         cs: cs,
-        first: book.hash?.isNotEmpty != true,
+        first: !hasSimilar && !hasRelated,
         // Add this book to one of the user's own booklists.
         onTap: () => _addToBooklist(context, book),
       ),

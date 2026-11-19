@@ -13,7 +13,6 @@ import '../services/storage_service.dart';
 import 'auth_provider.dart';
 import 'zlibrary_provider.dart';
 
-
 // ── Book Details ────────────────────────────────────────────────────
 
 /// 详情页附加信息（卷/ISBN/IPFS/评分）的新鲜窗口：卷/ISBN/IPFS 是
@@ -49,12 +48,17 @@ String bookDetailExtrasKey(String href) {
 bool _extrasFresh(Map<String, dynamic> extras) {
   final fetchedAt = extras['fetchedAt'];
   if (fetchedAt is! int) return false;
+  // 格式标记：关联书单上线后写出的条目都带 `booklists` 键（可为空
+  // 表）。上线前写入的旧条目没有它——按过期处理、重抓一次补齐，
+  // 否则新特性会被 7 天 TTL 的旧缓存整周遮住（覆盖安装保留 Hive
+  // 数据，装机当天就会踩中）。
+  if (extras['booklists'] is! List) return false;
   return DateTime.now().millisecondsSinceEpoch - fetchedAt <
       _bookDetailExtrasTtl.inMilliseconds;
 }
 
-/// [BookDetailExtras] → 可持久化的 JSON（7 个 metadata 字段 + 关键
-/// 词列表；fetchedAt 由 storage 层盖章）。
+/// [BookDetailExtras] → 可持久化的 JSON（7 个 metadata 字段 + 关键词
+/// 列表 + 关联书单最小卡片；fetchedAt 由 storage 层盖章）。
 Map<String, dynamic> _extrasJsonOf(BookDetailExtras extras) {
   final json = <String, dynamic>{
     'volume': extras.metadata.volume,
@@ -65,8 +69,53 @@ Map<String, dynamic> _extrasJsonOf(BookDetailExtras extras) {
     'ratingInterest': extras.metadata.ratingInterest,
     'ratingQuality': extras.metadata.ratingQuality,
     if (extras.keywords.isNotEmpty) 'keywords': extras.keywords,
+    // 恒写（含空表）：键的存在即新格式标记，见 [_extrasFresh]。
+    'booklists': [
+      for (final list in extras.relatedBooklists) _relatedBooklistJson(list),
+    ],
   };
   return json;
+}
+
+/// 关联书单卡片的持久化形态：只存展示与导航需要的字段（id/name/url/
+/// cover/count）。previewBooks 不进缓存——点开书单页会自己拉正文，
+/// 卡片列表本身不带它们也无损。
+Map<String, dynamic> _relatedBooklistJson(Booklist list) => {
+  'id': list.id,
+  'name': list.name,
+  'url': list.url,
+  if (list.coverUrl.isNotEmpty) 'cover': list.coverUrl,
+  if (list.count != null) 'count': list.count,
+};
+
+/// 缓存 JSON → 关联书单列表（[bookDetailExtrasProvider] 那条腿的
+/// `booklists` 键）。逐条容错：坏条目跳过、键缺失给空——旧缓存没有
+/// 这一键时就是空列表（下次 TTL 过期自然补上），绝不让详情页报错。
+List<Booklist> bookDetailRelatedBooklists(Map<String, dynamic>? extras) {
+  final raw = extras == null ? null : extras['booklists'];
+  if (raw is! List) return const [];
+  final lists = <Booklist>[];
+  for (final entry in raw) {
+    if (entry is! Map) continue;
+    final id = entry['id'];
+    final name = entry['name'];
+    final url = entry['url'];
+    if (id is! String || id.isEmpty) continue;
+    if (name is! String || name.isEmpty) continue;
+    if (url is! String || url.isEmpty) continue;
+    final count = entry['count'];
+    final cover = entry['cover'];
+    lists.add(
+      Booklist(
+        id: id,
+        name: name,
+        url: url,
+        coverUrl: cover is String ? cover : '',
+        count: count is int ? count : int.tryParse('${count ?? ''}'),
+      ),
+    );
+  }
+  return lists;
 }
 
 /// 缓存 JSON → 合并进书本体。逐字段容错取值：缓存是手改/旧版本的

@@ -135,6 +135,7 @@ class _FakeZLibraryApi implements ZLibraryApi {
   @override
   String booklistsPageUrl({
     required bool mine,
+    bool favorite = false,
     String query = '',
     String? order,
     int page = 1,

@@ -5,9 +5,7 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/app_metrics.dart';
 import '../theme/motion.dart';
-import '../utils/booklist_colors.dart';
 import '../utils/cover_cache.dart';
-
 
 /// Rounded booklist cover with a soft shadow and a themed placeholder.
 class BooklistCover extends StatelessWidget {
@@ -146,168 +144,21 @@ enum BooklistMenuAction {
   delete,
 }
 
-/// One booklist as a card: cover, name, creator, meta pills and a short
-/// description. Used by the booklists screen. [onLongPress] deletes the
-/// list (mine tab only); null disables it (discover tab).
-///
-/// A private list shows a lock next to its name; a favorited list a
-/// filled heart. The list's color renders as a thin gradient strip on
-/// the card's left edge. [onMenuSelected] wires the "…" menu (edit,
-/// color, public/private, favorite, share, delete); null hides it.
-class BooklistCard extends StatelessWidget {
-  final Booklist list;
-  final VoidCallback onTap;
-  final VoidCallback? onLongPress;
-  final bool isMine;
-  final ValueChanged<BooklistMenuAction>? onMenuSelected;
-
-  const BooklistCard({
-    super.key,
-    required this.list,
-    required this.onTap,
-    this.onLongPress,
-    this.isMine = false,
-    this.onMenuSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final gradient = BooklistColors.gradientFor(list.color);
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        // IntrinsicHeight bounds the Row height: the Row stretches its
-        // children so the color strip fills the card, but a sliver child
-        // gets unbounded height, and a stretch Row hands its flex child
-        // a tight infinite height. That throws "BoxConstraints forces an
-        // infinite height" in debug builds (the widget test runs debug;
-        // release strips the assert, which is why the card renders fine
-        // on device).
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (gradient != null)
-                Container(
-                  width: 5,
-                  decoration: BoxDecoration(gradient: gradient),
-                ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      BooklistCover(url: list.coverUrl),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    list.name,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.titleMedium
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w700,
-                                          height: 1.25,
-                                        ),
-                                  ),
-                                ),
-                                if (list.isPrivate) ...[
-                                  const SizedBox(width: 6),
-                                  Icon(
-                                    Icons.lock_outline_rounded,
-                                    size: 16,
-                                    color: cs.onSurfaceVariant,
-                                  ),
-                                ],
-                                if (list.isFavorite) ...[
-                                  const SizedBox(width: 6),
-                                  Icon(
-                                    Icons.favorite_rounded,
-                                    size: 16,
-                                    color: cs.primary,
-                                  ),
-                                ],
-                              ],
-                            ),
-                            if (list.author.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.person_outline_rounded,
-                                    size: 15,
-                                    color: cs.onSurfaceVariant,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      list.author,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: cs.onSurfaceVariant,
-                                          ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                            const SizedBox(height: 8),
-                            BooklistMetaPills(list: list),
-                            if (list.description.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                list.description,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: cs.onSurfaceVariant,
-                                  height: 1.35,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      if (onMenuSelected != null)
-                        _BooklistMenuButton(
-                          list: list,
-                          isMine: isMine,
-                          onSelected: onMenuSelected!,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+// 2026-11-19 UI 整体重写(视觉稿 ①—③):横版 BooklistCard 与网格
+// BooklistGridCard 都退役,列表呈现统一走 widgets/booklist_tile.dart
+// 的 BooklistCoverCard(封面流/瀑布流)。本文件只保留仍在复用的
+// 封面块、胶囊与菜单件。
 
 /// The "…" menu on a booklist card. Own lists get edit / color /
 /// public-private / delete; any list gets favorite / share.
-class _BooklistMenuButton extends StatelessWidget {
+/// 公开:书单主页「我的」tab 的长按面板复用它的菜单项。
+class BooklistMenuButton extends StatelessWidget {
   final Booklist list;
   final bool isMine;
   final ValueChanged<BooklistMenuAction> onSelected;
 
-  const _BooklistMenuButton({
+  const BooklistMenuButton({
+    super.key,
     required this.list,
     required this.isMine,
     required this.onSelected,
@@ -356,122 +207,6 @@ class _BooklistMenuButton extends StatelessWidget {
             child: Text(l10n.delete),
           ),
       ],
-    );
-  }
-}
-
-/// One booklist as a grid tile: large cover, name, counts. Used by the
-/// booklists screen's grid view. The color strip renders along the
-/// tile's top edge; a private list shows a lock, a favorited list a
-/// filled heart.
-class BooklistGridCard extends StatelessWidget {
-  final Booklist list;
-  final VoidCallback onTap;
-  final VoidCallback? onLongPress;
-  final bool isMine;
-  final ValueChanged<BooklistMenuAction>? onMenuSelected;
-
-  const BooklistGridCard({
-    super.key,
-    required this.list,
-    required this.onTap,
-    this.onLongPress,
-    this.isMine = false,
-    this.onMenuSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final gradient = BooklistColors.gradientFor(list.color);
-    final placeholder = ColoredBox(
-      color: cs.primaryContainer,
-      child: Center(
-        child: Icon(
-          Icons.collections_bookmark_rounded,
-          size: 36,
-          color: cs.onPrimaryContainer.withValues(alpha: 0.7),
-        ),
-      ),
-    );
-    return Card(
-      margin: const EdgeInsets.all(6),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (gradient != null)
-              Container(
-                height: 4,
-                decoration: BoxDecoration(gradient: gradient),
-              ),
-            AspectRatio(
-              aspectRatio: 4 / 3,
-              child: list.coverUrl.isEmpty
-                  ? placeholder
-                  : CachedNetworkImage(
-                      imageUrl: list.coverUrl,
-                      fit: BoxFit.cover,
-                      memCacheWidth: coverCacheWidth(320, context),
-                      memCacheHeight: coverCacheHeight(240, context),
-                      placeholder: (_, __) => placeholder,
-                      errorWidget: (_, __, ___) => placeholder,
-                    ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          list.name,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            height: 1.25,
-                          ),
-                        ),
-                      ),
-                      if (list.isPrivate)
-                        Icon(
-                          Icons.lock_outline_rounded,
-                          size: 15,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      if (list.isFavorite) ...[
-                        const SizedBox(width: 4),
-                        Icon(
-                          Icons.favorite_rounded,
-                          size: 15,
-                          color: cs.primary,
-                        ),
-                      ],
-                    ],
-                  ),
-                  if (list.count != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      l10n.booklistBookCount(list.count!),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -530,9 +265,10 @@ class _BooklistSkeletonListState extends State<BooklistSkeletonList>
       ),
     );
     return FadeTransition(
-      opacity: Tween<double>(begin: 0.45, end: 1).animate(
-        CurvedAnimation(parent: _controller, curve: MotionCurves.loop),
-      ),
+      opacity: Tween<double>(
+        begin: 0.45,
+        end: 1,
+      ).animate(CurvedAnimation(parent: _controller, curve: MotionCurves.loop)),
       child: Column(
         children: [
           for (var i = 0; i < widget.count; i++)

@@ -7,8 +7,11 @@ import '../services/booklist_repository.dart';
 import 'auth_provider.dart';
 import 'zlibrary_provider.dart';
 
-
-enum BooklistTab { mine, discover }
+/// 书单页三个 tab,与官方站的三个入口一一对应:
+/// `mine`=我的书集 /booklists/my、`discover`=公开专栏 /booklists、
+/// `favorite`=最喜欢的书单 /booklists/favorite(2026-11-19 新增,
+/// 长按收藏的他人书单落在这里)。
+enum BooklistTab { mine, discover, favorite }
 
 /// What the booklists screen should show.
 enum BooklistsPhase { loading, loggedOut, error, ready }
@@ -113,11 +116,12 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
 
   bool _isCurrent(int generation) => _alive && generation == _generation;
 
-  /// Cache partition: the own-lists tab is account-scoped (the same URL
-  /// serves another account's lists after a switch); discover is public.
-  String? _accountIdFor(BooklistTab tab) => tab == BooklistTab.mine
-      ? (ref.read(authProvider).user?.id ?? 'signed-out')
-      : null;
+  /// Cache partition: the own-lists and favorites tabs are
+  /// account-scoped (the same URL serves another account's lists
+  /// after a switch); discover is public.
+  String? _accountIdFor(BooklistTab tab) => tab == BooklistTab.discover
+      ? null
+      : (ref.read(authProvider).user?.id ?? 'signed-out');
 
   void setTab(BooklistTab tab) {
     if (tab == state.tab) return;
@@ -452,30 +456,74 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
       return ApiResponse.fail('favorite booklist not available');
     }
     final updated = _withFavorite(list, favorite);
-    _replaceList(updated);
+    // 在收藏 tab 上取消收藏 = 这条目即将从这一页消失:乐观移除
+    // (同 delete 的模式),失败再插回原位;其余场景只翻转心形。
+    final removeFromFavoriteTab =
+        state.tab == BooklistTab.favorite && !favorite;
+    final removedIndex = removeFromFavoriteTab
+        ? state.lists.indexWhere((l) => l.id == list.id)
+        : -1;
+    if (removeFromFavoriteTab && removedIndex >= 0) {
+      state = state.copyWith(lists: [...state.lists]..removeAt(removedIndex));
+    } else {
+      _replaceList(updated);
+    }
     final generation = _generation;
     try {
       final response = favorite
           ? await _repository.favoriteBooklist(listId)
           : await _repository.unfavoriteBooklist(listId);
       if (!_alive) return response;
-      if (response.success) return response;
+      if (response.success) {
+        // 服务器端收藏集合变了:失效收藏页缓存,收藏 tab 的下一次
+        // 加载必须重拉,不能把旧集合画回去。
+        _invalidateFavoritePage();
+        return response;
+      }
       if (generation == _generation) {
-        _rollbackFrom(
-          list,
-          (current) => _withFavorite(current, list.isFavorite),
-        );
+        if (removeFromFavoriteTab && removedIndex >= 0) {
+          _restoreDeleted(generation, list, removedIndex);
+        } else {
+          _rollbackFrom(
+            list,
+            (current) => _withFavorite(current, list.isFavorite),
+          );
+        }
       }
       return response;
     } catch (_) {
       if (_alive && generation == _generation) {
-        _rollbackFrom(
-          list,
-          (current) => _withFavorite(current, list.isFavorite),
-        );
+        if (removeFromFavoriteTab && removedIndex >= 0) {
+          _restoreDeleted(generation, list, removedIndex);
+        } else {
+          _rollbackFrom(
+            list,
+            (current) => _withFavorite(current, list.isFavorite),
+          );
+        }
       }
       return ApiResponse.fail('favorite booklist failed');
     }
+  }
+
+  /// Invalidate the cached favorites list page so the favorites tab
+  /// refetches after a favorite/unfavorite. Best-effort on the query/
+  /// order key: while the favorites tab itself is showing, the current
+  /// query/order hit exactly; from any other tab the default page
+  /// (empty search, the screen's own order) is invalidated, and a
+  /// user-narrowed favorites page settles on its next SWR refresh.
+  void _invalidateFavoritePage() {
+    final onFavoriteTab = state.tab == BooklistTab.favorite;
+    _repository.invalidateBooklist(
+      _repository.booklistsPageUrl(
+        mine: false,
+        favorite: true,
+        query: onFavoriteTab ? state.query : '',
+        order: onFavoriteTab ? state.order : 'popular',
+        page: 1,
+      ),
+      accountId: _accountIdFor(BooklistTab.favorite),
+    );
   }
 
   /// Rebuild [list] with a new color, copying every other field.
@@ -555,9 +603,10 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
 
   Future<void> loadFirst() async {
     if (!_alive) return;
-    // Only the own-lists tab needs a login; the discover tab is
-    // public, so a signed-out user must still be able to browse it.
-    if (state.tab == BooklistTab.mine && ref.read(authProvider).user == null) {
+    // Only the discover tab is public; own-lists and favorites tabs
+    // need a login (the favorites page is the account's own list).
+    if (state.tab != BooklistTab.discover &&
+        ref.read(authProvider).user == null) {
       state = state.copyWith(phase: BooklistsPhase.loggedOut, lists: const []);
       return;
     }
@@ -566,6 +615,7 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
     final accountId = _accountIdFor(tab);
     final url = _repository.booklistsPageUrl(
       mine: tab == BooklistTab.mine,
+      favorite: tab == BooklistTab.favorite,
       query: state.query,
       order: state.order,
       page: 1,
@@ -655,17 +705,23 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
       state = state.copyWith(isLoadingMore: true);
     }
     try {
-      final response = tab == BooklistTab.mine
-          ? await _repository.searchMyBooklists(
-              query: query,
-              order: state.order,
-              page: page,
-            )
-          : await _repository.searchPublicBooklists(
-              query: query,
-              order: state.order,
-              page: page,
-            );
+      final response = switch (tab) {
+        BooklistTab.mine => await _repository.searchMyBooklists(
+          query: query,
+          order: state.order,
+          page: page,
+        ),
+        BooklistTab.favorite => await _repository.searchFavoriteBooklists(
+          query: query,
+          order: state.order,
+          page: page,
+        ),
+        BooklistTab.discover => await _repository.searchPublicBooklists(
+          query: query,
+          order: state.order,
+          page: page,
+        ),
+      };
       if (!_isCurrent(generation)) return;
       final data = response.data;
       if (response.success && data != null) {
@@ -704,8 +760,9 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
   }
 
   /// Fetch one list page through the WebView solver and parse it. The
-  /// own-lists page needs the login session. A failure reports the fast
-  /// path's original error, so retry re-runs fast-then-solver.
+  /// own-lists and favorites pages need the login session; discover
+  /// does not. A failure reports the fast path's original error, so
+  /// retry re-runs fast-then-solver.
   Future<void> _loadViaSolver(
     int page,
     String originalError, {
@@ -716,13 +773,14 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
     final tab = state.tab;
     final url = _repository.booklistsPageUrl(
       mine: tab == BooklistTab.mine,
+      favorite: tab == BooklistTab.favorite,
       query: state.query,
       order: state.order,
       page: page,
     );
     String? userId;
     String? userKey;
-    if (tab == BooklistTab.mine) {
+    if (tab != BooklistTab.discover) {
       final user = ref.read(authProvider).user;
       userKey = user?.remixUserkey;
       if (user == null || userKey == null || userKey.isEmpty) {

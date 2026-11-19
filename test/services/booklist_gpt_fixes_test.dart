@@ -98,11 +98,14 @@ class _FakeZLibraryApi implements ZLibraryApi {
   @override
   String booklistsPageUrl({
     bool mine = true,
+    bool favorite = false,
     String query = '',
     String? order,
     int page = 1,
   }) {
-    return mine
+    return favorite
+        ? 'https://example.com/booklists/favorite?page=$page'
+        : mine
         ? 'https://example.com/booklists/my?page=$page'
         : 'https://example.com/booklists?page=$page';
   }

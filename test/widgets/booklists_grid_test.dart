@@ -6,55 +6,40 @@ import 'package:zlibx/l10n/generated/app_localizations.dart';
 import 'package:zlibx/providers/booklists_provider.dart';
 import 'package:zlibx/providers/recommended_booklists_provider.dart';
 import 'package:zlibx/screens/account/booklists_screen.dart';
-import 'package:zlibx/widgets/booklist_card.dart';
+import 'package:zlibx/widgets/booklist_tile.dart';
 
-/// Repro for the discover-tab grid-blank bug (device-verified 2026-11-11):
-/// on the Discover booklists tab, list mode loads and shows the lists,
-/// but tapping the grid-view toggle leaves the area below the sort row
-/// blank, and the lists do not come back in list mode until the app is
-/// killed and relaunched. The same grid renders fine on the own-lists
-/// tab, so the test seeds discover-shaped data (color -1, synthetic
-/// covers) and drives the real toggle.
+/// 书单主页(2026-11-19 整体重设计,视觉稿 ①)的渲染契约:发现 tab
+/// 的 seed 数据必须画成横向封面流——每张书单一张 BooklistCoverCard、
+/// 名称与册数文字齐全,不许出现空白区(旧版"网格切换白屏"bug 的
+/// 现代对应:新结构里封面流缺席/残缺都算回归)。
 ///
-/// The state is seeded by overriding both controllers the screen watches
-/// with fakes that return a ready discover state, so no repository,
-/// network or WebView solver ever runs. The fakes also no-op every
-/// controller call the screen can reach (the scroll listener calls
-/// `loadMore` whenever the remaining extent is under 300, which is
-/// true whenever all content fits the viewport).
-
-/// Ten discover-shaped fake lists: no color (`color: -1`, as the site
-/// reports for lists that are not the signed-in user's own), a synthetic
-/// cover URL that fails fast to the cards' error placeholder, and a
-/// book count, so the grid card renders exactly as it would for real
-/// discover data. No real URLs and no real tokens anywhere here.
+/// 两个被 watch 的 controller 都用 fake 覆盖:ready 的 discover 态 +
+/// 空推荐位;所有 controller 调用 no-op,网络与 WebView 永不触发。
 List<Booklist> _fakeDiscoverLists() => [
-      for (var i = 1; i <= 10; i++)
-        Booklist(
-          id: '9000$i',
-          name: 'Synthetic List $i',
-          author: 'Synthetic Author',
-          count: 2 + i,
-          color: -1,
-          coverUrl: 'https://example.invalid/covers/$i.jpg',
-          url: 'https://example.invalid/booklist/9000$i',
-        ),
-    ];
+  for (var i = 1; i <= 10; i++)
+    Booklist(
+      id: '9000$i',
+      name: 'Synthetic List $i',
+      author: 'Synthetic Author',
+      count: 2 + i,
+      color: -1,
+      coverUrl: 'https://example.invalid/covers/$i.jpg',
+      url: 'https://example.invalid/booklist/9000$i',
+    ),
+];
 
-/// Fake main controller: returns the seeded ready discover state and
-/// never touches the network. Every public call the screen can reach
-/// is a no-op, so a scroll-listener `loadMore` or a stray `loadFirst`
-/// cannot hit the real controller's uninitialised repository.
 class _FakeBooklistsController extends BooklistsController {
+  BooklistTab? lastSetTab;
+
   @override
   BooklistsState build() => BooklistsState(
-        tab: BooklistTab.discover,
-        phase: BooklistsPhase.ready,
-        lists: _fakeDiscoverLists(),
-        order: 'popular',
-        nextPage: 2,
-        hasMore: true,
-      );
+    tab: BooklistTab.discover,
+    phase: BooklistsPhase.ready,
+    lists: _fakeDiscoverLists(),
+    order: 'popular',
+    nextPage: 2,
+    hasMore: true,
+  );
 
   @override
   Future<void> loadFirst() async {}
@@ -72,12 +57,11 @@ class _FakeBooklistsController extends BooklistsController {
   void setOrder(String order) {}
 
   @override
-  void setTab(BooklistTab tab) {}
+  void setTab(BooklistTab tab) {
+    lastSetTab = tab;
+  }
 }
 
-/// Fake recommendations controller: an empty section, so no real
-/// recommended-booklists fetch runs and the grid assertion below only
-/// counts the main list's tiles.
 class _FakeRecommendedBooklistsController
     extends RecommendedBooklistsController {
   @override
@@ -85,24 +69,14 @@ class _FakeRecommendedBooklistsController
       const RecommendedBooklistsState(isLoading: false, lists: []);
 }
 
-/// Pumps the real screen on a surface tall enough for all ten grid
-/// tiles to build (five rows at the 0.82 aspect ratio plus the header),
-/// with the generated localizations delegates and animations disabled
-/// so the pump can never hang on a repeating animation.
-///
-/// The toggle is a synchronous `setState` and the seeded state is
-/// already in the provider, so a few frames are enough; the fake cover
-/// URLs fail fast to the cards' error placeholders and the test never
-/// waits on image loading.
-Future<void> _pumpScreen(WidgetTester tester) async {
+Future<_FakeBooklistsController> _pumpScreen(WidgetTester tester) async {
+  final fake = _FakeBooklistsController();
   await tester.binding.setSurfaceSize(const Size(800, 3200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        booklistsControllerProvider.overrideWith(
-          _FakeBooklistsController.new,
-        ),
+        booklistsControllerProvider.overrideWith(() => fake),
         recommendedBooklistsProvider.overrideWith(
           _FakeRecommendedBooklistsController.new,
         ),
@@ -121,47 +95,46 @@ Future<void> _pumpScreen(WidgetTester tester) async {
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 200));
   await tester.pump(const Duration(milliseconds: 200));
+  return fake;
 }
 
 void main() {
-  testWidgets('discover list mode renders the seeded lists', (tester) async {
+  testWidgets('discover tab 把 seed 数据画成横向封面流', (tester) async {
     await _pumpScreen(tester);
-    // The seed actually reached the screen: all ten list cards paint,
-    // with their names, and no grid tile is on screen yet.
-    expect(find.byType(BooklistCard), findsNWidgets(10));
-    expect(find.byType(BooklistGridCard), findsNothing);
+
+    // 封面卡至少铺满首屏视口;名称与「作者 · 册数」meta 行齐全。
+    expect(find.byType(BooklistCoverCard), findsWidgets);
     expect(find.text('Synthetic List 1'), findsOneWidget);
-    expect(find.text('Synthetic List 10'), findsOneWidget);
+    expect(find.text('Synthetic Author · 3 books'), findsOneWidget);
+    // 排字 tab:三项都在。
+    expect(find.text('My Booklists'), findsOneWidget);
+    expect(find.text('Discover Booklists'), findsOneWidget);
+    expect(find.text('Favorited booklists'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('grid toggle paints grid cards and back restores list cards',
-      (tester) async {
+  testWidgets('视图切换按钮随封面流退役;排序行保留', (tester) async {
     await _pumpScreen(tester);
-    expect(find.byType(BooklistCard), findsNWidgets(10));
 
-    // In list mode the toggle shows the grid icon; tapping it must
-    // paint one grid tile per list and nothing else must throw.
-    await tester.tap(find.byIcon(Icons.grid_view_rounded));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 200));
-    await tester.pump(const Duration(milliseconds: 200));
-    expect(find.byIcon(Icons.view_list_rounded), findsOneWidget);
-    expect(find.byType(BooklistGridCard), findsNWidgets(10));
-    expect(find.byType(BooklistCard), findsNothing);
-    expect(find.text('Synthetic List 1'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    expect(find.byIcon(Icons.grid_view_rounded), findsNothing);
+    expect(find.byIcon(Icons.view_list_rounded), findsNothing);
+    expect(find.byIcon(Icons.swap_vert_rounded), findsOneWidget);
+  });
 
-    // Tapping back must restore the list cards: on device the lists
-    // did not come back after the grid tap until the app was killed
-    // and relaunched, so this half of the round-trip is the bug too.
-    await tester.tap(find.byIcon(Icons.view_list_rounded));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 200));
-    await tester.pump(const Duration(milliseconds: 200));
-    expect(find.byIcon(Icons.grid_view_rounded), findsOneWidget);
-    expect(find.byType(BooklistCard), findsNWidgets(10));
-    expect(find.byType(BooklistGridCard), findsNothing);
+  testWidgets('左右滑动切板块:板块序 我的/收藏/发现,从发现右滑回收藏',
+      (tester) async {
+    final fake = await _pumpScreen(tester);
+
+    // 新板块序里 discover 是最后一页;向右甩 = 上一页(收藏)。
+    // 起点用 PageView 中心偏下,避开边缘卡片的热区。
+    await tester.flingFrom(
+      tester.getCenter(find.byType(PageView)) + const Offset(0, 120),
+      const Offset(350, 0),
+      900,
+    );
+    await tester.pumpAndSettle();
+
+    expect(fake.lastSetTab, BooklistTab.favorite);
     expect(tester.takeException(), isNull);
   });
 }

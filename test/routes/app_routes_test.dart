@@ -19,6 +19,7 @@ void main() {
         AppRoutes.bookComments,
         AppRoutes.booklists,
         AppRoutes.booklistDetail,
+        AppRoutes.relatedBooklists,
         AppRoutes.myComments,
         AppRoutes.userProfile,
         AppRoutes.reader,
@@ -30,9 +31,9 @@ void main() {
 
       final routes = buildAppRoutes();
 
-      expect(expected.length, 21);
+      expect(expected.length, 22);
       expect(routes.keys.toSet(), expected);
-      expect(routes.length, 21);
+      expect(routes.length, 22);
     });
   });
 }

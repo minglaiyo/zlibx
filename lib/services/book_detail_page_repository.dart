@@ -4,10 +4,9 @@ import 'booklist_solver.dart';
 import 'wall_cookie_bridge.dart';
 import 'webview_challenge_solver.dart';
 
-
 /// Data layer for one book detail page: the payload
-/// ([BookDetailExtras] — metadata rows) the
-/// detail screen merges onto the eapi book.
+/// ([BookDetailExtras] — metadata rows, keywords and the related-
+/// booklists block) the detail screen merges onto the eapi book.
 ///
 /// The page is an HTML route behind the DiamWall, so fetching runs in
 /// two stages, like every other HTML route (booklists / full-text /
@@ -105,7 +104,13 @@ class BookDetailPageRepository {
       final metadata = bookDetailParseOverride != null
           ? await bookDetailParseOverride!(html)
           : parseBookDetailProperties(html);
-      return BookDetailExtras(metadata: metadata);
+      // 与 Dio 路径 (fetchBookDetailExtras) 对齐：关键词与关联书单
+      // 同样从文档里解析，两条路径产出同一份数据。
+      return BookDetailExtras(
+        metadata: metadata,
+        keywords: parseBookDetailKeywords(html),
+        relatedBooklists: parseRelatedBooklists(html, baseUrl: baseUrl),
+      );
     } catch (_) {
       return null;
     }

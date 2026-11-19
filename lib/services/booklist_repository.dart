@@ -199,6 +199,14 @@ class BooklistRepository {
     int page = 1,
   }) => _api.searchPublicBooklists(query: query, order: order, page: page);
 
+  /// One page of the signed-in user's FAVORITED booklists
+  /// (`/booklists/favorite`, the official "最喜欢的书单" page).
+  Future<ApiResponse<BooklistsPage>> searchFavoriteBooklists({
+    String query = '',
+    String? order,
+    int page = 1,
+  }) => _api.searchFavoriteBooklists(query: query, order: order, page: page);
+
   /// Creates a booklist owned by the signed-in user. [color] (0–5),
   /// [isPrivate] and [bookId] ("create and add this book in one call")
   /// are sent only when given.
@@ -286,15 +294,21 @@ class BooklistRepository {
     int booklistsCount = 10,
   }) => _api.getRecommendedBooklists(booklistsCount: booklistsCount);
 
-  /// The full URL of one own/discover list page — also the cache key
-  /// the list pages are stored under.
+  /// The full URL of one own/discover/favorite list page — also the
+  /// cache key the list pages are stored under.
   String booklistsPageUrl({
     bool mine = true,
+    bool favorite = false,
     String query = '',
     String? order,
     int page = 1,
-  }) =>
-      _api.booklistsPageUrl(mine: mine, query: query, order: order, page: page);
+  }) => _api.booklistsPageUrl(
+    mine: mine,
+    favorite: favorite,
+    query: query,
+    order: order,
+    page: page,
+  );
 
   /// The readlist ENTRY id of one (book, list) membership row — the id
   /// remove-book takes, never the book id (see

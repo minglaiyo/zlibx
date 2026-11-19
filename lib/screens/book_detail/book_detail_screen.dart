@@ -177,7 +177,15 @@ class BookDetailScreen extends ConsumerWidget {
             ),
 
           // ── 2. Content Body ──
-          BookInfoSection(book: book),
+          // 关联书单随附加字段腿到达后并入快捷入口区（非空才出现
+          // "关联书单"一行，点击进 RelatedBooklistsScreen——与相似
+          // 书籍同款交互）。
+          BookInfoSection(
+            book: book,
+            relatedBooklists: bookDetailRelatedBooklists(
+              extrasAsync?.valueOrNull,
+            ),
+          ),
         ],
       ),
     );

@@ -13,14 +13,17 @@ import '../../providers/recommended_booklists_provider.dart';
 import '../../providers/zlibrary_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../theme/app_metrics.dart';
+import '../../theme/motion.dart';
 import '../../utils/app_snack.dart';
 import '../../widgets/booklist_card.dart';
+import '../../widgets/booklist_quick_actions_sheet.dart';
+import '../../widgets/booklist_tile.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/loading_widget.dart';
+import '../../widgets/motion/entrance.dart';
 import 'widgets/booklist_color_dialog.dart';
 import 'widgets/create_booklist_dialog.dart';
-
 
 /// Booklists: the signed-in user's own booklists and public booklists to
 /// discover, with search on both; sort and list/grid view live on
@@ -44,25 +47,51 @@ class BooklistsScreen extends ConsumerStatefulWidget {
 }
 
 class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
-  final ScrollController _scrollController = ScrollController();
+  /// 板块顺序(2026-11-19 用户定稿):我的 / 收藏 / 发现。PageView
+  /// 三页同序,排字 tab 与页面双向联动;_TypoTabs 必须用同一顺序。
+  static const _tabOrder = [
+    BooklistTab.mine,
+    BooklistTab.favorite,
+    BooklistTab.discover,
+  ];
+
   final TextEditingController _searchController = TextEditingController();
-  bool _isGridView = false;
+
+  late final PageController _pageController = PageController(
+    initialPage: _tabOrder.indexOf(ref.read(booklistsControllerProvider).tab),
+  );
+
+  /// 每个 tab 一条独立的竖向滚动(各自记住位置、各自翻页)。
+  final Map<BooklistTab, ScrollController> _scrolls = {
+    for (final tab in _tabOrder) tab: ScrollController(),
+  };
+
+  /// 每个 tab 最近一次非 loading 的整态快照:左右滑动的过程中,
+  /// 相邻页先画上次的书单(不白屏),setTab 落地后由实时 state 接管。
+  final Map<BooklistTab, BooklistsState> _snapshots = {};
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
+    for (final entry in _scrolls.entries) {
+      entry.value.addListener(() => _maybeLoadMore(entry.key, entry.value));
+    }
   }
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    for (final c in _scrolls.values) {
+      c.dispose();
+    }
+    _pageController.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
-  void _onScroll() {
-    if (_scrollController.position.extentAfter < 300) {
+  void _maybeLoadMore(BooklistTab tab, ScrollController scroll) {
+    if (!mounted || !scroll.hasClients) return;
+    if (ref.read(booklistsControllerProvider).tab != tab) return;
+    if (scroll.position.extentAfter < 300) {
       ref.read(booklistsControllerProvider.notifier).loadMore();
     }
   }
@@ -239,6 +268,89 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
     }
   }
 
+  /// 封面流里"我的"卡没有可锚定的"…"按钮:长按弹出同动作的底部
+  /// 面板(编辑/配色/公开/收藏/分享/删除),执行仍走 [_onMenuSelected]。
+  Future<void> _showOwnMenu(Booklist list) async {
+    final l10n = AppLocalizations.of(context)!;
+    final action = await showModalBottomSheet<BooklistMenuAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Text(
+                list.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  sheetContext,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: Text(l10n.booklistEdit),
+              onTap: () => Navigator.pop(sheetContext, BooklistMenuAction.edit),
+            ),
+            ListTile(
+              leading: const Icon(Icons.palette_outlined),
+              title: Text(l10n.booklistChangeColor),
+              onTap: () =>
+                  Navigator.pop(sheetContext, BooklistMenuAction.changeColor),
+            ),
+            ListTile(
+              leading: Icon(
+                list.isPrivate
+                    ? Icons.lock_open_rounded
+                    : Icons.lock_outline_rounded,
+              ),
+              title: Text(
+                list.isPrivate
+                    ? l10n.booklistMakePublic
+                    : l10n.booklistMakePrivate,
+              ),
+              onTap: () =>
+                  Navigator.pop(sheetContext, BooklistMenuAction.togglePublic),
+            ),
+            ListTile(
+              leading: Icon(
+                list.isFavorite
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+              ),
+              title: Text(
+                list.isFavorite
+                    ? l10n.unfavoriteBooklist
+                    : l10n.favoriteBooklist,
+              ),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                BooklistMenuAction.toggleFavorite,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.share_outlined),
+              title: Text(l10n.share),
+              onTap: () =>
+                  Navigator.pop(sheetContext, BooklistMenuAction.share),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline_rounded),
+              title: Text(l10n.delete),
+              onTap: () =>
+                  Navigator.pop(sheetContext, BooklistMenuAction.delete),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    await _onMenuSelected(list, action);
+  }
+
   /// Delete one of the user's own lists: confirm first (destructive),
   /// then the controller's optimistic removal; on failure the list is
   /// restored and the error is shown, on success nothing more is
@@ -287,35 +399,19 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
     final state = ref.watch(booklistsControllerProvider);
     final recommended = ref.watch(recommendedBooklistsProvider);
     final controller = ref.read(booklistsControllerProvider.notifier);
+    // 快照:每次拿到非 loading 的整态都记一份,给相邻页兜底。
+    if (state.phase != BooklistsPhase.loading) {
+      _snapshots[state.tab] = state;
+    }
     final showFab =
         state.tab == BooklistTab.mine &&
         state.phase != BooklistsPhase.loggedOut;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          state.tab == BooklistTab.mine
-              ? l10n.booklists
-              : l10n.discoverBooklists,
-        ),
-        actions: [
-          IconButton(
-            tooltip: state.tab == BooklistTab.mine
-                ? l10n.discoverBooklists
-                : l10n.myBooklists,
-            icon: Icon(
-              state.tab == BooklistTab.mine
-                  ? Icons.explore_outlined
-                  : Icons.person_outline_rounded,
-            ),
-            onPressed: () => controller.setTab(
-              state.tab == BooklistTab.mine
-                  ? BooklistTab.discover
-                  : BooklistTab.mine,
-            ),
-          ),
-        ],
-      ),
+      // 2026-11-19 整体重设计(视觉稿 ①):大标题与排字 tab 固定在
+      // 顶部,AppBar 只留返回键;三个板块是同一屏的三页,左右滑动
+      // 切换,tab 点击与滑动双向联动。
+      appBar: AppBar(title: const SizedBox.shrink()),
       floatingActionButton: showFab
           ? FloatingActionButton.extended(
               onPressed: _createBooklist,
@@ -323,16 +419,24 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
               label: Text(l10n.createBooklist),
             )
           : null,
-      body: RefreshIndicator(
-        onRefresh: controller.refresh,
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(child: _header(l10n, state, controller)),
-            ..._body(l10n, state, controller, recommended),
-          ],
-        ),
+      body: Column(
+        children: [
+          _header(l10n, state, controller),
+          Expanded(
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: _tabOrder.length,
+              onPageChanged: (index) {
+                final tab = _tabOrder[index];
+                if (tab != ref.read(booklistsControllerProvider).tab) {
+                  controller.setTab(tab);
+                }
+              },
+              itemBuilder: (context, index) =>
+                  _page(_tabOrder[index], l10n, state, controller, recommended),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -345,30 +449,45 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _searchBar(l10n, controller),
-          // Sort + view toggle live on discover only: my own lists
-          // need neither, and always render as a grid (see _body).
-          if (state.tab == BooklistTab.discover) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                TextButton.icon(
-                  onPressed: () => _pickSortOrder(state.order),
-                  icon: const Icon(Icons.swap_vert_rounded, size: 18),
-                  label: Text(_sortLabel(l10n, state.order)),
-                ),
-                const Spacer(),
-                IconButton(
-                  tooltip: _isGridView ? l10n.listView : l10n.gridView,
-                  icon: Icon(
-                    _isGridView
-                        ? Icons.view_list_rounded
-                        : Icons.grid_view_rounded,
-                  ),
-                  onPressed: () => setState(() => _isGridView = !_isGridView),
-                ),
-              ],
+          Text(
+            l10n.booklists,
+            style: Theme.of(context).textTheme.displaySmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 10),
+          // 排字式 tab:选中项大号加粗 + 短墨条,未选中回小字灰色。
+          _TypoTabs(
+            active: state.tab,
+            labels: {
+              BooklistTab.mine: l10n.myBooklists,
+              BooklistTab.discover: l10n.discoverBooklists,
+              BooklistTab.favorite: l10n.booklistsFavoriteTab,
+            },
+            onSelect: (tab) {
+              controller.setTab(tab);
+              _pageController.animateToPage(
+                _tabOrder.indexOf(tab),
+                duration: AppMotion.medium,
+                curve: MotionCurves.enter,
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          SizedBox(width: double.infinity, child: _searchBar(l10n, controller)),
+          // 排序只在发现/收藏出现;视图切换被封面流取代,删。
+          if (state.tab != BooklistTab.mine) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => _pickSortOrder(state.order),
+                icon: const Icon(Icons.swap_vert_rounded, size: 18),
+                label: Text(_sortLabel(l10n, state.order)),
+              ),
             ),
           ],
         ],
@@ -418,122 +537,108 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
     );
   }
 
-  List<Widget> _body(
+  /// 一页 = 一个 tab 的内容。当前页吃 controller 的实时 state;
+  /// 相邻页吃 [_snapshots] 的旧数据,滑动过程里不白屏。
+  Widget _page(
+    BooklistTab tab,
     AppLocalizations l10n,
-    BooklistsState state,
+    BooklistsState live,
     BooklistsController controller,
     RecommendedBooklistsState recommended,
   ) {
-    switch (state.phase) {
-      case BooklistsPhase.loading:
-        return const [SliverToBoxAdapter(child: BooklistSkeletonList())];
-      case BooklistsPhase.loggedOut:
-        return [
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: EmptyState(
-              icon: Icons.login_rounded,
-              title: l10n.loginToViewBooklists,
-              action: FilledButton(
-                onPressed: () => AppRoutes.openLogin(context),
-                child: Text(l10n.login),
-              ),
+    final isLive = tab == live.tab;
+    final state = isLive ? live : _snapshots[tab];
+
+    Widget content;
+    if (state == null || state.phase == BooklistsPhase.loading) {
+      content = ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [BooklistSkeletonList()],
+      );
+    } else if (state.phase == BooklistsPhase.loggedOut) {
+      content = ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          const SizedBox(height: 96),
+          EmptyState(
+            icon: Icons.login_rounded,
+            title: l10n.loginToViewBooklists,
+            action: FilledButton(
+              onPressed: () => AppRoutes.openLogin(context),
+              child: Text(l10n.login),
             ),
           ),
-        ];
-      case BooklistsPhase.error:
-        return [
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: EmptyState(
-              icon: Icons.error_outline,
-              title: l10n.error,
-              message: state.error,
-              action: FilledButton(
-                onPressed: controller.loadFirst,
-                child: Text(l10n.retry),
-              ),
-            ),
+        ],
+      );
+    } else if (state.phase == BooklistsPhase.error) {
+      content = ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          const SizedBox(height: 96),
+          EmptyState(
+            icon: Icons.error_outline,
+            title: l10n.error,
+            message: state.error,
+            action: isLive
+                ? FilledButton(
+                    onPressed: controller.loadFirst,
+                    child: Text(l10n.retry),
+                  )
+                : null,
           ),
-        ];
-      case BooklistsPhase.ready:
-        if (state.lists.isEmpty) {
-          return [
-            SliverFillRemaining(
-              hasScrollBody: false,
+        ],
+      );
+    } else {
+      content = ListView(
+        controller: _scrolls[tab],
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
+        children: [
+          if (tab == BooklistTab.discover && recommended.lists.isNotEmpty)
+            _RecommendedSection(l10n: l10n, lists: recommended.lists),
+          if (state.lists.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 80),
               child: EmptyState(
                 icon: Icons.collections_bookmark_outlined,
                 title: l10n.noBooklists,
               ),
-            ),
-          ];
-        }
-        return [
-          if (state.tab == BooklistTab.discover && recommended.lists.isNotEmpty)
-            SliverToBoxAdapter(
-              child: _RecommendedSection(l10n: l10n, lists: recommended.lists),
-            ),
-          // My own lists always render as a grid (no sort or view
-          // controls on that tab); discover follows the toggle.
-          if (state.tab == BooklistTab.mine || _isGridView)
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              sliver: SliverGrid.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.82,
-                  mainAxisSpacing: 4,
-                  crossAxisSpacing: 4,
-                ),
-                itemCount: state.lists.length,
-                itemBuilder: (context, index) {
-                  final list = state.lists[index];
-                  return BooklistGridCard(
-                    list: list,
-                    isMine: state.tab == BooklistTab.mine,
-                    onTap: () => AppRoutes.openBooklistDetail(
-                      context,
-                      BooklistDetailArgs(
-                        booklist: list,
-                        canEdit: state.tab == BooklistTab.mine,
-                      ),
-                    ),
-                    onLongPress: state.tab == BooklistTab.mine
-                        ? () => _confirmDelete(list)
-                        : null,
-                    onMenuSelected: (action) => _onMenuSelected(list, action),
-                  );
-                },
-              ),
             )
           else
-            SliverList.builder(
-              itemCount: state.lists.length,
-              itemBuilder: (context, index) {
-                final list = state.lists[index];
-                return BooklistCard(
-                  list: list,
-                  isMine: state.tab == BooklistTab.mine,
-                  onTap: () => AppRoutes.openBooklistDetail(
-                    context,
-                    BooklistDetailArgs(
-                      booklist: list,
-                      canEdit: state.tab == BooklistTab.mine,
-                    ),
-                  ),
-                  onLongPress: state.tab == BooklistTab.mine
-                      ? () => _confirmDelete(list)
-                      : null,
-                  onMenuSelected: (action) => _onMenuSelected(list, action),
-                );
+            BooklistMasonryGrid(
+              lists: state.lists,
+              showFavoriteBadge: tab != BooklistTab.mine,
+              onOpen: (list) => AppRoutes.openBooklistDetail(
+                context,
+                BooklistDetailArgs(
+                  booklist: list,
+                  canEdit: tab == BooklistTab.mine,
+                ),
+              ),
+              onLongPress: (list) {
+                if (tab == BooklistTab.mine) {
+                  _showOwnMenu(list);
+                } else {
+                  showBooklistQuickActionsSheet(context, list);
+                }
               },
             ),
           if (state.isLoadingMore)
-            const SliverToBoxAdapter(child: LoadingWidget.more()),
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: LoadingWidget.more(),
+            ),
           // Room for the floating action button.
-          const SliverToBoxAdapter(child: SizedBox(height: 96)),
-        ];
+          const SizedBox(height: 96),
+        ],
+      );
     }
+    // 下拉刷新只对当前页有实义;相邻页给空 future,避免把上一个
+    // tab 的刷新误当成本页数据。
+    return RefreshIndicator(
+      onRefresh: isLive ? controller.refresh : () async {},
+      child: content,
+    );
   }
 }
 
@@ -560,29 +665,131 @@ class _RecommendedSection extends StatelessWidget {
             ),
           ),
         ),
-        SizedBox(
-          height: 236,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            itemCount: lists.length,
-            itemBuilder: (context, index) {
-              final list = lists[index];
-              return SizedBox(
-                width: 168,
-                child: BooklistGridCard(
-                  list: list,
-                  onTap: () => AppRoutes.openBooklistDetail(
-                    context,
-                    BooklistDetailArgs(booklist: list),
-                  ),
-                ),
-              );
-            },
+        _CoverFlow(
+          lists: lists,
+          onOpen: (list) => AppRoutes.openBooklistDetail(
+            context,
+            BooklistDetailArgs(booklist: list),
           ),
+          onLongPress: (list) => showBooklistQuickActionsSheet(context, list),
         ),
         const SizedBox(height: 8),
       ],
+    );
+  }
+}
+
+/// 推荐区专用横向封面条(主体已改上下两列,见 BooklistMasonryGrid):
+/// 158×224 大卡横向惯性滑动、错峰入场;不分页。
+class _CoverFlow extends StatelessWidget {
+  final List<Booklist> lists;
+  final ValueChanged<Booklist> onOpen;
+  final ValueChanged<Booklist> onLongPress;
+
+  const _CoverFlow({
+    required this.lists,
+    required this.onOpen,
+    required this.onLongPress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 252,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+        itemCount: lists.length,
+        itemBuilder: (context, index) {
+          final list = lists[index];
+          return Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: MotionEntrance(
+              index: index,
+              child: BooklistCoverCard(
+                list: list,
+                width: 158,
+                height: 224,
+                onTap: () => onOpen(list),
+                onLongPress: () => onLongPress(list),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 排字式 tab:选中项 22px 加粗 + 短墨条(AnimatedContainer 展开),
+/// 未选中回小字灰;取代系统胶囊分段器(视觉稿 ①)。
+class _TypoTabs extends StatelessWidget {
+  final BooklistTab active;
+  final Map<BooklistTab, String> labels;
+  final ValueChanged<BooklistTab> onSelect;
+
+  const _TypoTabs({
+    required this.active,
+    required this.labels,
+    required this.onSelect,
+  });
+
+  // 与 _tabOrder 同序:我的 / 收藏 / 发现。
+  static const _order = [
+    BooklistTab.mine,
+    BooklistTab.favorite,
+    BooklistTab.discover,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // 排字号 + 英文长标签可能超过屏宽:横向可滚,滚动条不显。
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < _order.length; i++) ...[
+            if (i > 0) const SizedBox(width: 18),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => onSelect(_order[i]),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedDefaultTextStyle(
+                    duration: AppMotion.fast,
+                    style: _order[i] == active
+                        ? theme.textTheme.titleLarge!.copyWith(
+                            fontWeight: FontWeight.w800,
+                          )
+                        : theme.textTheme.bodyMedium!.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                    child: Text(labels[_order[i]]!),
+                  ),
+                  const SizedBox(height: 5),
+                  AnimatedContainer(
+                    duration: AppMotion.fast,
+                    curve: Curves.easeOutCubic,
+                    height: 3,
+                    width: _order[i] == active ? 22 : 0,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

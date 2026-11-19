@@ -115,6 +115,20 @@ Map<String, dynamic> _cachedFields({String volume = '第一卷'}) => {
   'ipfsCidBlake2b': null,
   'ratingInterest': '3.0',
   'ratingQuality': '5.0',
+  // 新格式标记：关联书单上线后写出的条目恒带此键（可为空表）。
+  'booklists': <Object>[],
+  'fetchedAt': DateTime.now().millisecondsSinceEpoch,
+};
+
+/// 关联书单上线之前写出的旧格式条目：没有 `booklists` 键。
+Map<String, dynamic> _legacyFields({String volume = '旧版卷'}) => {
+  'volume': volume,
+  'isbn10': null,
+  'isbn13': '9780000000002',
+  'ipfsCid': 'cid-1',
+  'ipfsCidBlake2b': null,
+  'ratingInterest': '3.0',
+  'ratingQuality': '5.0',
   'fetchedAt': DateTime.now().millisecondsSinceEpoch,
 };
 
@@ -280,6 +294,83 @@ void main() {
     await expectLater(
       container.read(bookDetailsProvider(_identifier(href: _pagePath)).future),
       throwsA(isA<StateError>()),
+    );
+  });
+
+  test('关联书单：extras JSON 往返（抓取回写、缓存读回 Booklist）', () async {
+    final lists = [
+      Booklist(
+        id: '498889',
+        name: '1',
+        url: 'https://zh.z-library.sk/booklist/498889/f77552/1.html',
+        coverUrl: 'https://example.com/c1.jpg',
+        count: 32,
+      ),
+      Booklist(
+        id: '4007439',
+        name: '学习',
+        url: 'https://zh.z-library.sk/booklist/4007439/2c889e/学习.html',
+      ),
+    ];
+    final api = _FakeDetailApi()
+      ..extras = BookDetailExtras(
+        metadata: _metadata(),
+        relatedBooklists: lists,
+      );
+    final storage = _FakeStorage();
+    final container = _container(api, storage);
+
+    final json = await container.read(
+      bookDetailExtrasProvider(_pagePath).future,
+    );
+    final restored = bookDetailRelatedBooklists(json);
+    expect(restored.map((l) => l.id), ['498889', '4007439']);
+    expect(restored[0].name, '1');
+    expect(restored[0].count, 32);
+    expect(restored[0].coverUrl, 'https://example.com/c1.jpg');
+    expect(restored[1].coverUrl, isEmpty);
+    expect(restored[1].count, isNull);
+
+    // 旧缓存没有 booklists 键：空列表、不报错。
+    expect(bookDetailRelatedBooklists(_cachedFields()), isEmpty);
+    expect(bookDetailRelatedBooklists(null), isEmpty);
+  });
+
+  test('旧格式缓存（无 booklists 键）：即使 TTL 内也按过期重抓', () async {
+    // 覆盖安装保留 Hive：上线前的 extras 条目没有 booklists 键，
+    // 若仍按“新鲜”直接返回，新特性会被旧缓存遮住最多 7 天。
+    final api = _FakeDetailApi()
+      ..extras = BookDetailExtras(
+        metadata: _metadata(),
+        relatedBooklists: [
+          Booklist(
+            id: '498889',
+            name: '学习',
+            url: 'https://zh.z-library.sk/booklist/498889/f77552/1.html',
+          ),
+        ],
+      );
+    final storage = _FakeStorage()
+      ..extrasCache[_pagePath] = _legacyFields();
+    final container = _container(api, storage);
+
+    final json = await container.read(
+      bookDetailExtrasProvider(_pagePath).future,
+    );
+    expect(api.extrasCalls, 1);
+    expect(
+      bookDetailRelatedBooklists(json).map((l) => l.id),
+      ['498889'],
+    );
+
+    // 重抓回写后的条目已是新格式：再次读取直接命中缓存、不再抓。
+    final json2 = await container.read(
+      bookDetailExtrasProvider(_pagePath).future,
+    );
+    expect(api.extrasCalls, 1);
+    expect(
+      bookDetailRelatedBooklists(json2).map((l) => l.id),
+      ['498889'],
     );
   });
 }

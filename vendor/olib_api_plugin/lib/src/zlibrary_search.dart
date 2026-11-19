@@ -138,8 +138,15 @@ mixin ZLibrarySearch on ZLibraryApiBase {
     // 关键词独立提取：Rust 钩子只负责 metadata 行，/terms/ 链接是
     // Dart-only 的一遍查询（site-verified 2026-11-19）。
     final keywords = parseBookDetailKeywords(html);
+    // 关联书单同理：`z-booklist` 卡片是服务端渲染进同一文档的
+    // （site-verified 2026-11-12），一次抓取顺带解析，无需额外请求。
+    final relatedBooklists = parseRelatedBooklists(html, baseUrl: _base);
     return ApiResponse.ok(
-      BookDetailExtras(metadata: metadata, keywords: keywords),
+      BookDetailExtras(
+        metadata: metadata,
+        keywords: keywords,
+        relatedBooklists: relatedBooklists,
+      ),
     );
   }
 

@@ -57,11 +57,8 @@ class _FakeAuthNotifier extends AuthNotifier {
   }
 }
 
-Booklist _list(String id) => Booklist(
-      id: id,
-      name: 'List $id',
-      url: 'https://example.com/booklist/$id',
-    );
+Booklist _list(String id) =>
+    Booklist(id: id, name: 'List $id', url: 'https://example.com/booklist/$id');
 
 /// Canned mine pages. The default query returns two 10-item pages
 /// (totalPages 2, so page 1 hasMore); a changed query/order returns a
@@ -134,21 +131,67 @@ class _FakeZLibraryApi implements ZLibraryApi {
     );
   }
 
+  /// 收藏页数据:两单，其中 950 带 favorite 属性（收藏页的卡片形状）。
+  int searchFavoriteCalls = 0;
+
   @override
-  String booklistsPageUrl({
-    required bool mine,
+  Future<ApiResponse<BooklistsPage>> searchFavoriteBooklists({
     String query = '',
     String? order,
     int page = 1,
-  }) =>
-      mine
-          ? 'https://example.com/booklists/my?page=$page'
-          : 'https://example.com/booklists?page=$page';
+  }) async {
+    searchFavoriteCalls++;
+    return ApiResponse.ok(
+      BooklistsPage(lists: [_favorite('950'), _favorite('951')], totalPages: 1),
+    );
+  }
+
+  int favoriteCalls = 0;
+  int unfavoriteCalls = 0;
+
+  /// When true the next favorite/unfavorite write fails (rollback path).
+  bool failFavoriteWrite = false;
+
+  @override
+  Future<ApiResponse<bool>> favoriteBooklist(int id) async {
+    favoriteCalls++;
+    return failFavoriteWrite
+        ? ApiResponse.fail('favorite failed')
+        : ApiResponse.ok(true);
+  }
+
+  @override
+  Future<ApiResponse<bool>> unfavoriteBooklist(int id) async {
+    unfavoriteCalls++;
+    return failFavoriteWrite
+        ? ApiResponse.fail('unfavorite failed')
+        : ApiResponse.ok(true);
+  }
+
+  @override
+  String booklistsPageUrl({
+    required bool mine,
+    bool favorite = false,
+    String query = '',
+    String? order,
+    int page = 1,
+  }) => favorite
+      ? 'https://example.com/booklists/favorite?page=$page'
+      : mine
+      ? 'https://example.com/booklists/my?page=$page'
+      : 'https://example.com/booklists?page=$page';
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw UnsupportedError('unexpected call: ${invocation.memberName}');
 }
+
+Booklist _favorite(String id) => Booklist(
+  id: id,
+  name: 'Fav $id',
+  url: 'https://example.com/booklist/$id',
+  isFavorite: true,
+);
 
 /// Minimal cached `/booklists/my` page (two lists), modelled on
 /// test/parsers/booklist_page_test.dart's fixture. The URL must match
@@ -194,11 +237,8 @@ Future<ProviderContainer> _loadedContainer(
   return container;
 }
 
-List<String> _ids(ProviderContainer container) => container
-    .read(booklistsControllerProvider)
-    .lists
-    .map((l) => l.id)
-    .toList();
+List<String> _ids(ProviderContainer container) =>
+    container.read(booklistsControllerProvider).lists.map((l) => l.id).toList();
 
 /// Polls until [condition] holds (the loadFirst/setTab/search paths
 /// are fire-and-forget, so there is no future to await). Same shape
@@ -218,8 +258,7 @@ Future<void> _waitForList(
   );
 }
 
-Future<void> _pump() =>
-    Future<void>.delayed(const Duration(milliseconds: 100));
+Future<void> _pump() => Future<void>.delayed(const Duration(milliseconds: 100));
 
 void main() {
   late Directory tempDir;
@@ -240,8 +279,7 @@ void main() {
     await tempDir.delete(recursive: true);
   });
 
-  test('(a) stale mine response does not overwrite the discover tab',
-      () async {
+  test('(a) stale mine response does not overwrite the discover tab', () async {
     final api = _FakeZLibraryApi();
     final container = await _loadedContainer(api);
     final notifier = container.read(booklistsControllerProvider.notifier);
@@ -270,8 +308,7 @@ void main() {
     expect(_ids(container), ['900', '901']);
   });
 
-  test('(b) changing the search query drops the old page-2 loadMore',
-      () async {
+  test('(b) changing the search query drops the old page-2 loadMore', () async {
     final api = _FakeZLibraryApi();
     final container = await _loadedContainer(api);
     final notifier = container.read(booklistsControllerProvider.notifier);
@@ -326,132 +363,200 @@ void main() {
   });
 
   test(
-      '(c) loadMore during a refresh requests the page once and appends once',
-      () async {
-    final api = _FakeZLibraryApi();
-    final container = await _loadedContainer(api);
-    final notifier = container.read(booklistsControllerProvider.notifier);
-    expect(_ids(container), List.generate(10, (i) => '${100 + i}'));
+    '(c) loadMore during a refresh requests the page once and appends once',
+    () async {
+      final api = _FakeZLibraryApi();
+      final container = await _loadedContainer(api);
+      final notifier = container.read(booklistsControllerProvider.notifier);
+      expect(_ids(container), List.generate(10, (i) => '${100 + i}'));
 
-    // Hold the refresh's page-1 fetch on a gate.
-    final mineGate = Completer<ApiResponse<BooklistsPage>>();
-    api.searchMyGate = mineGate;
-    final refresh = notifier.refresh();
-    // While the refresh is in flight, loadMore page 2 (held on its
-    // own gate). A page-1 refresh does not set isLoadingMore, so the
-    // loadMore is not blocked by design — it shares the refresh's
-    // generation and both responses are current.
-    final page2Gate = Completer<ApiResponse<BooklistsPage>>();
-    api.searchCompleters.add(page2Gate);
-    final loadMore = notifier.loadMore();
-    expect(
-      container.read(booklistsControllerProvider).isLoadingMore,
-      isTrue,
-    );
+      // Hold the refresh's page-1 fetch on a gate.
+      final mineGate = Completer<ApiResponse<BooklistsPage>>();
+      api.searchMyGate = mineGate;
+      final refresh = notifier.refresh();
+      // While the refresh is in flight, loadMore page 2 (held on its
+      // own gate). A page-1 refresh does not set isLoadingMore, so the
+      // loadMore is not blocked by design — it shares the refresh's
+      // generation and both responses are current.
+      final page2Gate = Completer<ApiResponse<BooklistsPage>>();
+      api.searchCompleters.add(page2Gate);
+      final loadMore = notifier.loadMore();
+      expect(container.read(booklistsControllerProvider).isLoadingMore, isTrue);
 
-    // Release the refresh first, then the page-2 fetch.
-    mineGate.complete(ApiResponse.ok(_minePage('', 'popular', 1)));
-    await refresh;
-    page2Gate.complete(ApiResponse.ok(_minePage('', 'popular', 2)));
-    await loadMore;
-    await _pump();
+      // Release the refresh first, then the page-2 fetch.
+      mineGate.complete(ApiResponse.ok(_minePage('', 'popular', 1)));
+      await refresh;
+      page2Gate.complete(ApiResponse.ok(_minePage('', 'popular', 2)));
+      await loadMore;
+      await _pump();
 
-    final state = container.read(booklistsControllerProvider);
-    expect(_ids(container), [
-      ...List.generate(10, (i) => '${100 + i}'),
-      ...List.generate(10, (i) => '${200 + i}'),
-    ]);
-    expect(state.nextPage, 3);
-    expect(state.hasMore, isFalse);
-    // The same page must not have been requested twice.
-    expect(api.searchMyPages.where((p) => p == 2).length, 1);
-  });
+      final state = container.read(booklistsControllerProvider);
+      expect(_ids(container), [
+        ...List.generate(10, (i) => '${100 + i}'),
+        ...List.generate(10, (i) => '${200 + i}'),
+      ]);
+      expect(state.nextPage, 3);
+      expect(state.hasMore, isFalse);
+      // The same page must not have been requested twice.
+      expect(api.searchMyPages.where((p) => p == 2).length, 1);
+    },
+  );
 
   test(
-      '(d) cache hit followed by a failed background refresh keeps the old list',
-      () async {
-    final api = _FakeZLibraryApi()..failSearchMy = true;
-    // Seed the mine page-1 cache for user A.
-    BooklistHtmlCache.store(
-      _cachedMineUrl,
-      _cachedMineHtml,
-      accountId: _userA.id,
-    );
-    final container = _container(api);
-    // The cached page paints instantly; the background refresh fails.
-    await _waitForList(
-      container,
-      (s) => s.phase == BooklistsPhase.ready && s.lists.length == 2,
-    );
-    // Wait for the background refresh to run and fail.
-    final deadline = DateTime.now().add(const Duration(seconds: 3));
-    while (api.searchMyCalls == 0 && DateTime.now().isBefore(deadline)) {
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-    }
-    expect(api.searchMyCalls, greaterThanOrEqualTo(1));
-    await _pump();
-    // The old (cached) lists are kept, not cleared, and no error is shown.
-    final state = container.read(booklistsControllerProvider);
-    expect(state.phase, BooklistsPhase.ready);
-    expect(_ids(container), ['4088695', '4090055']);
-    expect(state.error, isNull);
-  });
+    '(d) cache hit followed by a failed background refresh keeps the old list',
+    () async {
+      final api = _FakeZLibraryApi()..failSearchMy = true;
+      // Seed the mine page-1 cache for user A.
+      BooklistHtmlCache.store(
+        _cachedMineUrl,
+        _cachedMineHtml,
+        accountId: _userA.id,
+      );
+      final container = _container(api);
+      // The cached page paints instantly; the background refresh fails.
+      await _waitForList(
+        container,
+        (s) => s.phase == BooklistsPhase.ready && s.lists.length == 2,
+      );
+      // Wait for the background refresh to run and fail.
+      final deadline = DateTime.now().add(const Duration(seconds: 3));
+      while (api.searchMyCalls == 0 && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(api.searchMyCalls, greaterThanOrEqualTo(1));
+      await _pump();
+      // The old (cached) lists are kept, not cleared, and no error is shown.
+      final state = container.read(booklistsControllerProvider);
+      expect(state.phase, BooklistsPhase.ready);
+      expect(_ids(container), ['4088695', '4090055']);
+      expect(state.error, isNull);
+    },
+  );
 
   test(
-      '(f) account switch reloads the controller under the new account',
-      () async {
+    '(f) account switch reloads the controller under the new account',
+    () async {
+      final api = _FakeZLibraryApi();
+      // Seed A's cached mine page so A's lists are distinguishable.
+      BooklistHtmlCache.store(
+        _cachedMineUrl,
+        _cachedMineHtml,
+        accountId: _userA.id,
+      );
+      // Hold the background refresh: loadFirst paints the cached page
+      // and then revalidates in the background, and the fake answers
+      // instantly — without the gate the 10 network lists overwrite
+      // the 2 cached lists before any poll can observe them.
+      final refreshGate = Completer<ApiResponse<BooklistsPage>>();
+      api.searchMyGate = refreshGate;
+      final container = _container(api);
+      // Load as A (paints A's cached page).
+      await _waitForList(
+        container,
+        (s) => s.phase == BooklistsPhase.ready && s.lists.length == 2,
+      );
+      expect(_ids(container), ['4088695', '4090055']);
+      // Release the background refresh and let it paint the network page.
+      refreshGate.complete(ApiResponse.ok(_minePage('', 'popular', 1)));
+      await _waitForList(
+        container,
+        (s) => s.phase == BooklistsPhase.ready && s.lists.length == 10,
+      );
+
+      // Switch the account the way the real AuthNotifier does: the
+      // switch invalidates every account-scoped provider, including
+      // this controller, so it must reload under B instead of keeping
+      // A's lists on screen.
+      final authNotifier =
+          container.read(authProvider.notifier) as _FakeAuthNotifier;
+      authNotifier.setUser(_userB);
+      invalidateAccountScopedProviders(container.read(_refCaptureProvider));
+
+      // The invalidation rebuilds the autoDispose controller, so its
+      // state resets to the initial loading state.
+      final stateAfterInvalidate = container.read(booklistsControllerProvider);
+      expect(stateAfterInvalidate.phase, BooklistsPhase.loading);
+      expect(stateAfterInvalidate.lists, isEmpty);
+
+      // Wait for the rebuild's own load (build() kicks off loadFirst
+      // in a microtask): polling is the deterministic way to observe
+      // it — calling loadFirst() here would race that microtask load,
+      // take a newer generation and have its own result dropped, then
+      // assert before the microtask load has applied. The fresh load
+      // under B must come from the network, NOT from A's cached page.
+      await _waitForList(
+        container,
+        (s) => s.phase == BooklistsPhase.ready && s.lists.length == 10,
+      );
+      expect(_ids(container), List.generate(10, (i) => '${100 + i}'));
+    },
+  );
+
+  // ── 收藏 tab(长按收藏他人书单功能,2026-11-19) ──────────────────
+
+  test('收藏 tab 加载:拉收藏页并展示收藏条目', () async {
     final api = _FakeZLibraryApi();
-    // Seed A's cached mine page so A's lists are distinguishable.
-    BooklistHtmlCache.store(
-      _cachedMineUrl,
-      _cachedMineHtml,
-      accountId: _userA.id,
-    );
-    // Hold the background refresh: loadFirst paints the cached page
-    // and then revalidates in the background, and the fake answers
-    // instantly — without the gate the 10 network lists overwrite
-    // the 2 cached lists before any poll can observe them.
-    final refreshGate = Completer<ApiResponse<BooklistsPage>>();
-    api.searchMyGate = refreshGate;
     final container = _container(api);
-    // Load as A (paints A's cached page).
+    container
+        .read(booklistsControllerProvider.notifier)
+        .setTab(BooklistTab.favorite);
     await _waitForList(
       container,
-      (s) => s.phase == BooklistsPhase.ready && s.lists.length == 2,
+      (s) =>
+          s.tab == BooklistTab.favorite &&
+          s.phase == BooklistsPhase.ready &&
+          s.lists.isNotEmpty,
     );
-    expect(_ids(container), ['4088695', '4090055']);
-    // Release the background refresh and let it paint the network page.
-    refreshGate.complete(ApiResponse.ok(_minePage('', 'popular', 1)));
+    expect(api.searchFavoriteCalls, greaterThan(0));
+    expect(_ids(container), ['950', '951']);
+  });
+
+  test('收藏 tab 未登录:loggedOut,不发任何收藏页请求', () async {
+    final api = _FakeZLibraryApi();
+    final container = ProviderContainer(
+      overrides: [
+        zlibraryApiProvider.overrideWithValue(api),
+        authProvider.overrideWith(() => _FakeAuthNotifier(AuthState())),
+      ],
+    );
+    container.listen(booklistsControllerProvider, (_, _) {});
+    addTearDown(container.dispose);
+    container
+        .read(booklistsControllerProvider.notifier)
+        .setTab(BooklistTab.favorite);
     await _waitForList(
       container,
-      (s) => s.phase == BooklistsPhase.ready && s.lists.length == 10,
+      (s) =>
+          s.tab == BooklistTab.favorite && s.phase == BooklistsPhase.loggedOut,
     );
+    expect(api.searchFavoriteCalls, 0);
+  });
 
-    // Switch the account the way the real AuthNotifier does: the
-    // switch invalidates every account-scoped provider, including
-    // this controller, so it must reload under B instead of keeping
-    // A's lists on screen.
-    final authNotifier =
-        container.read(authProvider.notifier) as _FakeAuthNotifier;
-    authNotifier.setUser(_userB);
-    invalidateAccountScopedProviders(container.read(_refCaptureProvider));
-
-    // The invalidation rebuilds the autoDispose controller, so its
-    // state resets to the initial loading state.
-    final stateAfterInvalidate = container.read(booklistsControllerProvider);
-    expect(stateAfterInvalidate.phase, BooklistsPhase.loading);
-    expect(stateAfterInvalidate.lists, isEmpty);
-
-    // Wait for the rebuild's own load (build() kicks off loadFirst
-    // in a microtask): polling is the deterministic way to observe
-    // it — calling loadFirst() here would race that microtask load,
-    // take a newer generation and have its own result dropped, then
-    // assert before the microtask load has applied. The fresh load
-    // under B must come from the network, NOT from A's cached page.
+  test('收藏 tab 取消收藏:成功乐观移除,失败原位回滚', () async {
+    final api = _FakeZLibraryApi();
+    final container = _container(api);
+    final controller = container.read(booklistsControllerProvider.notifier);
+    controller.setTab(BooklistTab.favorite);
     await _waitForList(
       container,
-      (s) => s.phase == BooklistsPhase.ready && s.lists.length == 10,
+      (s) =>
+          s.tab == BooklistTab.favorite &&
+          s.phase == BooklistsPhase.ready &&
+          s.lists.isNotEmpty,
     );
-    expect(_ids(container), List.generate(10, (i) => '${100 + i}'));
+    final target = container.read(booklistsControllerProvider).lists.first;
+
+    // 写失败:条目必须回到原位(乐观移除的完整逆操作)。
+    api.failFavoriteWrite = true;
+    final failed = await controller.setBooklistFavorite(target, false);
+    expect(failed.success, isFalse);
+    expect(api.unfavoriteCalls, 1);
+    expect(_ids(container), ['950', '951']);
+
+    // 写成功:乐观移除生效,无需等页面刷新。
+    api.failFavoriteWrite = false;
+    final ok = await controller.setBooklistFavorite(target, false);
+    expect(ok.success, isTrue);
+    expect(_ids(container), ['951']);
   });
 }

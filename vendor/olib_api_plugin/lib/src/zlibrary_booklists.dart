@@ -69,25 +69,51 @@ mixin ZLibraryBooklists on ZLibraryApiBase {
     );
   }
 
+  /// The favorite booklists of the signed-in user
+  /// (`GET /booklists/favorite?searchQuery={q}&page={n}`) — the
+  /// site's "最喜欢的书单" nav entry (site-verified 2026-11-19: the
+  /// link is in the /booklists header even logged out; the page
+  /// itself needs the session). Same `<z-booklist>` HTML shape as
+  /// the public and own list pages, parsed identically. [order] is
+  /// omitted when null (this page's own default order).
+  Future<ApiResponse<BooklistsPage>> searchFavoriteBooklists({
+    String query = '',
+    String? order,
+    int page = 1,
+  }) async {
+    return _searchBooklists(
+      '/booklists/favorite',
+      query: query,
+      order: order,
+      page: page,
+    );
+  }
+
   /// Absolute URL of a booklist list page, for callers that fetch the
   /// HTML themselves (e.g. through the WebView challenge solver when
   /// the mirror walls Dio with a 503 browser-check page). Same path +
   /// query construction as [_searchBooklists] — the app must not
-  /// rebuild it.
+  /// rebuild it. [favorite] selects the favorites page (mutually
+  /// exclusive with [mine]; favorite wins when both are set).
   String booklistsPageUrl({
     required bool mine,
+    bool favorite = false,
     String query = '',
     String? order,
     int page = 1,
   }) {
-    final uri = Uri.parse('$_base${mine ? '/booklists/my' : '/booklists'}')
-        .replace(
-          queryParameters: _booklistListParams(
-            query: query,
-            order: order,
-            page: page,
-          ).map((key, value) => MapEntry(key, value.toString())),
-        );
+    final path = favorite
+        ? '/booklists/favorite'
+        : mine
+        ? '/booklists/my'
+        : '/booklists';
+    final uri = Uri.parse('$_base$path').replace(
+      queryParameters: _booklistListParams(
+        query: query,
+        order: order,
+        page: page,
+      ).map((key, value) => MapEntry(key, value.toString())),
+    );
     return uri.toString();
   }
 

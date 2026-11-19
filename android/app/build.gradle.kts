@@ -153,7 +153,7 @@ tasks.register<Exec>("cargoBuildRust") {
     val cargoBin = file("$cargoHome/bin/cargo.exe")
     commandLine(
         if (cargoBin.exists()) cargoBin else "cargo",
-        "build", "--release",
+        "build", "--release", "--locked",
         "--target", "aarch64-linux-android",
     ).workingDir(rustCrateDir)
 

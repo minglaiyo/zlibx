@@ -7,6 +7,7 @@
 //! spans, NOT in the row text. The rating spans are hidden with the
 //! extra class `none` for unrated books and must parse to None.
 
+use crate::sel;
 use scraper::{ElementRef, Selector};
 
 use crate::models::BookDetailMetadata;
@@ -19,9 +20,9 @@ use crate::models::BookDetailMetadata;
 /// Mirrors `parseBookDetailProperties(String html)`.
 pub(crate) fn parse_book_detail_properties(html: &str) -> BookDetailMetadata {
     let doc = scraper::Html::parse_document(html);
-    let book_property_sel = Selector::parse("div.bookProperty").unwrap();
-    let label_sel = Selector::parse("div.property_label").unwrap();
-    let value_sel = Selector::parse("div.property_value").unwrap();
+    let book_property_sel = sel!("div.bookProperty");
+    let label_sel = sel!("div.property_label");
+    let value_sel = sel!("div.property_value");
 
     // All bookProperty rows, collected once.
     let rows: Vec<ElementRef> = doc.select(&book_property_sel).collect();
@@ -89,7 +90,7 @@ pub(crate) fn parse_book_detail_properties(html: &str) -> BookDetailMetadata {
             Some(s) => s,
             None => return Vec::new(),
         };
-        let data_copy_sel = Selector::parse("span[data-copy]").unwrap();
+        let data_copy_sel = sel!("span[data-copy]");
         scope
             .select(&data_copy_sel)
             .filter_map(|span| {

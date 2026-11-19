@@ -70,7 +70,7 @@ dependencies:
   # rust/zlibx_parsers/; flutter_rust_bridge generates the Dart↔Rust bindings
   # (frb_generated.dart) at build time. Phase 2 will route the Z-Library
   # parsers (vendor/olib_api_plugin) through this bridge, replacing Isolate.run.
-  flutter_rust_bridge: ^2.14.0-beta.2
+  flutter_rust_bridge: 2.14.0-beta.2
 
   # Storage
   hive: ^2.2.3

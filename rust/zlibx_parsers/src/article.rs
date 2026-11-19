@@ -8,6 +8,7 @@
 //! and `termshash` is deliberately not read), and the total regex
 //! accepting both the zh (`文章`) and English (`Articles`) tab labels.
 
+use crate::sel;
 use scraper::{ElementRef, Selector};
 
 use crate::fulltext::{attr, hash_from_href, pages_re, resolve_card_url};
@@ -26,13 +27,13 @@ pub(crate) fn parse_article_search_page(
 ) -> ArticleSearchPage {
     let doc = scraper::Html::parse_document(html);
 
-    let box_sel = Selector::parse("#searchResultBox").unwrap();
-    let item_sel = Selector::parse(".book-item").unwrap();
-    let card_sel = Selector::parse("z-bookcard").unwrap();
-    let counter_sel = Selector::parse(".counter").unwrap();
-    let img_sel = Selector::parse("img").unwrap();
-    let title_sel = Selector::parse(r#"div[slot="title"]"#).unwrap();
-    let author_sel = Selector::parse(r#"div[slot="author"]"#).unwrap();
+    let box_sel = sel!("#searchResultBox");
+    let item_sel = sel!(".book-item");
+    let card_sel = sel!("z-bookcard");
+    let counter_sel = sel!(".counter");
+    let img_sel = sel!("img");
+    let title_sel = sel!(r#"div[slot="title"]"#);
+    let author_sel = sel!(r#"div[slot="author"]"#);
 
     // Same scoping/fallback as the full-text parser: cards live in
     // `#searchResultBox`; fall back to the whole document when absent.
@@ -172,7 +173,7 @@ pub(crate) fn parse_article_search_page(
 /// as the full-text one.
 pub(crate) fn extract_article_search_query(html: &str) -> Option<String> {
     let doc = scraper::Html::parse_document(html);
-    let sel = Selector::parse(r#"input[name="q"]"#).unwrap();
+    let sel = sel!(r#"input[name="q"]"#);
     let value = doc
         .select(&sel)
         .next()

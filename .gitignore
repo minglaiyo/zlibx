@@ -113,3 +113,7 @@ secrets/
 
 #test scripts
 scripts/
+
+# signing sidecars — never commit
+.release-key-info.txt
+analysis_options.base.yaml

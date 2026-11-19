@@ -2,6 +2,7 @@
 //! `vendor/olib_api_plugin/lib/src/booklist.dart` (the HTML entries;
 //! `parseRecommendedBooklists` is a JSON parser and stays in Dart).
 
+use crate::sel;
 use scraper::{ElementRef, Node, Selector};
 
 use crate::fulltext::{attr, hash_from_href, resolve_card_url};
@@ -20,7 +21,7 @@ use crate::models::{Book, Booklist, BooklistsPage};
 /// the colon (unlike the fulltext/article variant); kept verbatim.
 pub(crate) fn parse_booklists_page(html: &str, base_url: &str) -> BooklistsPage {
     let doc = scraper::Html::parse_document(html);
-    let sel = Selector::parse("z-booklist").unwrap();
+    let sel = sel!("z-booklist");
     let lists: Vec<Booklist> = doc
         .select(&sel)
         .filter_map(|el| booklist_from_element(&el, base_url))
@@ -45,12 +46,12 @@ pub(crate) fn parse_user_profile_booklists(
     base_url: &str,
 ) -> Vec<Booklist> {
     let doc = scraper::Html::parse_document(html);
-    let tab_sel = Selector::parse(r#"div[z-tab="booklists"]"#).unwrap();
+    let tab_sel = sel!(r#"div[z-tab="booklists"]"#);
     let tab = match doc.select(&tab_sel).next() {
         Some(t) => t,
         None => return Vec::new(),
     };
-    let sel = Selector::parse("z-booklist").unwrap();
+    let sel = sel!("z-booklist");
     tab.select(&sel)
         .filter_map(|el| booklist_from_element(&el, base_url))
         .collect()
@@ -65,8 +66,8 @@ pub(crate) fn parse_booklist_detail_books(
     base_url: Option<&str>,
 ) -> Vec<Book> {
     let doc = scraper::Html::parse_document(html);
-    let view_sel = Selector::parse(".readlist-view").unwrap();
-    let card_sel = Selector::parse("z-bookcard").unwrap();
+    let view_sel = sel!(".readlist-view");
+    let card_sel = sel!("z-bookcard");
     let cards: Vec<ElementRef> = match doc.select(&view_sel).next() {
         Some(view) => view.select(&card_sel).collect(),
         None => doc.select(&card_sel).collect(),
@@ -84,7 +85,7 @@ pub(crate) fn parse_booklist_detail_books(
             continue;
         }
         let href = card.attr("href").unwrap_or("").trim().to_string();
-        let img = card.select(&Selector::parse("img").unwrap()).next();
+        let img = card.select(&sel!("img")).next();
         let cover_raw = img
             .and_then(|i| {
                 i.attr("data-src")
@@ -93,21 +94,21 @@ pub(crate) fn parse_booklist_detail_books(
             })
             .unwrap_or_default();
         let title = card
-            .select(&Selector::parse(r#"div[slot="title"]"#).unwrap())
+            .select(&sel!(r#"div[slot="title"]"#))
             .next()
             .map(|e| e.text().collect::<String>())
             .unwrap_or_default()
             .trim()
             .to_string();
         let author = card
-            .select(&Selector::parse(r#"div[slot="author"]"#).unwrap())
+            .select(&sel!(r#"div[slot="author"]"#))
             .next()
             .map(|e| e.text().collect::<String>())
             .unwrap_or_default()
             .trim()
             .to_string();
         let note = card
-            .select(&Selector::parse(r#"div[slot="note"]"#).unwrap())
+            .select(&sel!(r#"div[slot="note"]"#))
             .next()
             .map(|e| e.text().collect::<String>())
             .unwrap_or_default()
@@ -185,8 +186,8 @@ fn booklist_from_element(el: &ElementRef, base_url: &str) -> Option<Booklist> {
     // Cover: the first z-cover's img data-src; fall back to the
     // whole-element scan (first non-empty img data-src) only when
     // there is no carousel at all.
-    let cover_sel = Selector::parse("z-cover").unwrap();
-    let img_sel = Selector::parse("img").unwrap();
+    let cover_sel = sel!("z-cover");
+    let img_sel = sel!("img");
     let mut cover_url = String::new();
     let first_cover = el.select(&cover_sel).next();
     let first_src = first_cover

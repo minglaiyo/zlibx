@@ -6,6 +6,7 @@
 //! extractions (total count, pagesTotal, token format) done on the raw
 //! HTML string in Dart.
 
+use crate::sel;
 use scraper::{ElementRef, Node, Selector};
 
 use crate::models::{Book, FullTextHit, FullTextSearchPage, FullTextSnippetPart};
@@ -23,13 +24,13 @@ pub(crate) fn parse_fulltext_search_page(
 ) -> FullTextSearchPage {
     let doc = scraper::Html::parse_document(html);
 
-    let box_sel = Selector::parse("#searchResultBox").unwrap();
-    let item_sel = Selector::parse(".book-item").unwrap();
-    let card_sel = Selector::parse("z-bookcard").unwrap();
-    let counter_sel = Selector::parse(".counter").unwrap();
-    let img_sel = Selector::parse("img").unwrap();
-    let title_sel = Selector::parse(r#"div[slot="title"]"#).unwrap();
-    let author_sel = Selector::parse(r#"div[slot="author"]"#).unwrap();
+    let box_sel = sel!("#searchResultBox");
+    let item_sel = sel!(".book-item");
+    let card_sel = sel!("z-bookcard");
+    let counter_sel = sel!(".counter");
+    let img_sel = sel!("img");
+    let title_sel = sel!(r#"div[slot="title"]"#);
+    let author_sel = sel!(r#"div[slot="author"]"#);
 
     // Cards live in `#searchResultBox`; scope the query to it so a card
     // elsewhere cannot leak. Fall back to the whole document when the
@@ -179,7 +180,7 @@ pub(crate) fn parse_fulltext_search_page(
 /// page carries no token input, or the value is not an 8-hex token.
 pub(crate) fn extract_fulltext_token(html: &str) -> Option<String> {
     let doc = scraper::Html::parse_document(html);
-    let sel = Selector::parse(r#"input[name="token"]"#).unwrap();
+    let sel = sel!(r#"input[name="token"]"#);
     let value = doc
         .select(&sel)
         .next()
@@ -204,7 +205,7 @@ pub(crate) fn extract_fulltext_token(html: &str) -> Option<String> {
 /// submitted query.
 pub(crate) fn extract_fulltext_query(html: &str) -> Option<String> {
     let doc = scraper::Html::parse_document(html);
-    let sel = Selector::parse(r#"input[name="q"]"#).unwrap();
+    let sel = sel!(r#"input[name="q"]"#);
     let value = doc
         .select(&sel)
         .next()
@@ -310,7 +311,7 @@ pub(crate) fn resolve_card_url(raw: &str, base_url: &str) -> String {
 /// Mirrors `_parseSnippet`.
 fn parse_snippet(card: &ElementRef) -> Vec<FullTextSnippetPart> {
     let sel =
-        Selector::parse(".hulltext .ft_highlight .ft_highlight_part").unwrap();
+        sel!(".hulltext .ft_highlight .ft_highlight_part");
     let part = match card.select(&sel).next() {
         Some(p) => p,
         None => return Vec::new(),

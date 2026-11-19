@@ -10,6 +10,7 @@
 //! Option<String> and the Dart mapping layer converts it back to a
 //! DateTime with identical wall-clock values.
 
+use crate::sel;
 use scraper::{ElementRef, Selector};
 
 use crate::fulltext::hash_from_href;
@@ -22,10 +23,10 @@ use crate::models::Book;
 /// Mirrors `parseDownloadStatsPage(String html)`.
 pub(crate) fn parse_download_stats_page(html: &str) -> Vec<Book> {
     let doc = scraper::Html::parse_document(html);
-    let row_sel = Selector::parse("tr.dstats-row").unwrap();
-    let link_sel = Selector::parse(".book-title a").unwrap();
-    let span_sel = Selector::parse("span").unwrap();
-    let p_sel = Selector::parse("p").unwrap();
+    let row_sel = sel!("tr.dstats-row");
+    let link_sel = sel!(".book-title a");
+    let span_sel = sel!("span");
+    let p_sel = sel!("p");
 
     static DATE_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let date_re = DATE_RE.get_or_init(|| regex::Regex::new(r"^\d{1,2}\.\d{1,2}\.\d{4}$").unwrap());

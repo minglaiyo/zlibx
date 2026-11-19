@@ -38,17 +38,22 @@ class AuthState {
 
   bool get isAuthenticated => user != null;
 
+  /// `error: null` keeps the previous error (the copyWith idiom), so
+  /// clearing needs the explicit [clearError] flag — a new login that
+  /// only passed `error: null` used to leave the last failure on
+  /// screen (审查3 P1).
   AuthState copyWith({
     User? user,
     bool? isLoading,
     String? error,
+    bool clearError = false,
     bool? lineUnavailable,
     bool? storageUnavailable,
   }) {
     return AuthState(
       user: user ?? this.user,
       isLoading: isLoading ?? this.isLoading,
-      error: error ?? this.error,
+      error: clearError ? null : (error ?? this.error),
       lineUnavailable: lineUnavailable ?? this.lineUnavailable,
       storageUnavailable: storageUnavailable ?? this.storageUnavailable,
     );
@@ -217,7 +222,7 @@ class AuthNotifier extends Notifier<AuthState> {
     // otherwise the plugin's rpc-login fallback could mistake the old
     // in-memory pair for a successful login and "log in" the wrong user.
     _api.clearSession();
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true, clearError: true);
 
     try {
       final response = await _api.login(email, password);
@@ -251,7 +256,7 @@ class AuthNotifier extends Notifier<AuthState> {
     ChallengeHtmlCache.clear();
     final epoch = ++_epoch;
     _api.clearSession();
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true, clearError: true);
 
     try {
       final response = await _api.loginWithToken(userId, userKey);

@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderObject, RenderProxyBox;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
@@ -124,6 +126,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     }
     return _displayBooks;
   }
+
+  // ── 毛玻璃遮罩头部(2026-11-20,与首页同款)──
+  // 搜索框 + 建议面板 + chips 头部悬浮,结果从底下穿过;头部高度由
+  // _MeasureSize 在布局期实时上报(折叠/建议面板/键盘都会变),结果区
+  // 的让位 padding 用 ValueListenableBuilder 跟随。
+  final ValueNotifier<double> _glassHeaderHeight = ValueNotifier(68);
 
   // ── Filters (edited on the filter page, applied on 使用) ──
   String _selectedLanguage = 'all';
@@ -885,104 +893,21 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       body: SafeArea(
         top: true,
         bottom: false,
-        child: Column(
+        // 2026-11-20:顶部改悬浮毛玻璃遮罩(与首页同款,blurEnabled
+        // 门控)——结果区铺满全屏从头部底下穿过,滚动时搜索框/chips
+        // 后面是实时模糊的结果流。
+        child: Stack(
           children: [
-            SearchBarField(
-              l10n: l10n,
-              controller: _searchController,
-              focusNode: _searchFocus,
-              isExternal: isExternal,
-              activeFilterCount: _activeFilterCount,
-              isQueryEmpty: _isQueryEmpty,
-              hintText: _mode == SearchMode.fulltext
-                  ? l10n.fullTextSearchHint
-                  : null,
-              onSubmitted: _performSearch,
-              onFilterTap: _openFilterDialogForCurrentLocale,
-              onClear: _clearSearch,
-            ),
-            // 搜索建议（D1）：正在输入新查询时列出本地匹配（最近搜索
-            // + 浏览历史），选中即回填并搜索。提交后查询与
-            // _lastSubmittedQuery 相同，面板随之收起。
-            if (_searchFocus.hasFocus &&
-                !_isQueryEmpty &&
-                _searchController.text.trim() != _lastSubmittedQuery)
-              SearchSuggestionsPanel(
-                suggestions: ref.watch(
-                  searchSuggestionsProvider(_searchController.text),
+            Positioned.fill(
+              child: ValueListenableBuilder<double>(
+                valueListenable: _glassHeaderHeight,
+                builder: (context, headerHeight, child) => AnimatedPadding(
+                  duration: AppMotion.standard,
+                  padding: EdgeInsets.only(top: headerHeight),
+                  child: child!,
                 ),
-                onSelect: (text) {
-                  _searchController.text = text;
-                  _searchController.selection = TextSelection.collapsed(
-                    offset: text.length,
-                  );
-                  _performSearch();
-                },
-              ),
-            // The source / mode / filter-chip header folds away
-            // (animated) while the user scrolls down through the
-            // results, and folds back in when scrolling back up —
-            // the search bar above stays put. The height animates
-            // (SizeTransition, top-anchored) plus a fade, on the
-            // standard 200 ms (MotionSwitch.size). The chips row is
-            // conditional, so the height is never hard-coded.
-            MotionSwitch(
-              style: MotionSwitchStyle.size,
-              duration: AppMotion.standard,
-              child: _headerVisible || !showResults
-                  ? Column(
-                      key: const ValueKey('search-header'),
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SearchSourceSelector(
-                          l10n: l10n,
-                          selected: _source,
-                          onSwitch: _switchSource,
-                        ),
-                        if (!isExternal)
-                          SearchModeSelector(
-                            l10n: l10n,
-                            mode: _mode,
-                            onSwitch: _switchMode,
-                          ),
-                        if (!isExternal && _activeFilterCount > 0)
-                          SearchActiveFilterChips(
-                            l10n: l10n,
-                            mode: _mode,
-                            languageNames: languageNames,
-                            orderNames: orderNames,
-                            extensionNames: extensionNames,
-                            contentTypeNames: {
-                              'book': l10n.contentTypeBook,
-                              'article': l10n.contentTypeArticle,
-                            },
-                            selectedLanguage: _selectedLanguage,
-                            selectedOrder: _selectedOrder,
-                            selectedExtension: _selectedExtension,
-                            selectedYearFrom: _selectedYearFrom,
-                            selectedYearTo: _selectedYearTo,
-                            exact: _mode == SearchMode.fulltext
-                                ? _fullTextExact
-                                : _generalExact,
-                            selectedCategoryName: _selectedCategoryName,
-                            selectedContentType: _selectedContentType,
-                            onResetLanguage: _resetLanguageFilter,
-                            onResetOrder: _resetOrderFilter,
-                            onResetExtension: _resetExtensionFilter,
-                            onResetYearFrom: _resetYearFromFilter,
-                            onResetYearTo: _resetYearToFilter,
-                            onResetExact: _resetExactFilter,
-                            onResetCategory: _resetCategoryFilter,
-                            onResetContentType: _resetContentTypeFilter,
-                          ),
-                      ],
-                    )
-                  : const SizedBox.shrink(
-                      key: ValueKey('search-header-hidden'),
-                    ),
-            ),
-            Expanded(
-              child: _isQueryEmpty && _selectedCategoryId == null
+                child:
+                _isQueryEmpty && _selectedCategoryId == null
                   ? SearchEmptyQueryView(
                       l10n: l10n,
                       recentSearches: _recentSearches,
@@ -1049,10 +974,185 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         onRetryLoadMore: _loadMore,
                       ),
                     ),
+              ),
             ),
+            // 毛玻璃遮罩头部(与首页同款,blurEnabled 门控):搜索框 +
+            // 建议面板 + chips;结果从它底下穿过,滚动时头部后面是实时
+            // 模糊的结果流。
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _glassSurface(
+                context,
+                _MeasureSize(
+                  onChange: (size) => _glassHeaderHeight.value = size.height,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                    SearchBarField(
+                      l10n: l10n,
+                      controller: _searchController,
+                      focusNode: _searchFocus,
+                      isExternal: isExternal,
+                      activeFilterCount: _activeFilterCount,
+                      isQueryEmpty: _isQueryEmpty,
+                      hintText: _mode == SearchMode.fulltext
+                          ? l10n.fullTextSearchHint
+                          : null,
+                      onSubmitted: _performSearch,
+                      onFilterTap: _openFilterDialogForCurrentLocale,
+                      onClear: _clearSearch,
+                    ),
+                    // 搜索建议（D1）：正在输入新查询时列出本地匹配（最近搜索
+                    // + 浏览历史），选中即回填并搜索。提交后查询与
+                    // _lastSubmittedQuery 相同，面板随之收起。
+                    if (_searchFocus.hasFocus &&
+                        !_isQueryEmpty &&
+                        _searchController.text.trim() != _lastSubmittedQuery)
+                      SearchSuggestionsPanel(
+                        suggestions: ref.watch(
+                          searchSuggestionsProvider(_searchController.text),
+                        ),
+                        onSelect: (text) {
+                          _searchController.text = text;
+                          _searchController.selection = TextSelection.collapsed(
+                            offset: text.length,
+                          );
+                          _performSearch();
+                        },
+                      ),
+                    // The source / mode / filter-chip header folds away
+                    // (animated) while the user scrolls down through the
+                    // results, and folds back in when scrolling back up.
+                    MotionSwitch(
+                      style: MotionSwitchStyle.size,
+                      duration: AppMotion.standard,
+                      child: _headerVisible || !showResults
+                          ? Column(
+                              key: const ValueKey('search-header'),
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SearchSourceSelector(
+                                  l10n: l10n,
+                                  selected: _source,
+                                  onSwitch: _switchSource,
+                                ),
+                                if (!isExternal)
+                                  SearchModeSelector(
+                                    l10n: l10n,
+                                    mode: _mode,
+                                    onSwitch: _switchMode,
+                                  ),
+                                if (!isExternal && _activeFilterCount > 0)
+                                  SearchActiveFilterChips(
+                                    l10n: l10n,
+                                    mode: _mode,
+                                    languageNames: languageNames,
+                                    orderNames: orderNames,
+                                    extensionNames: extensionNames,
+                                    contentTypeNames: {
+                                      'book': l10n.contentTypeBook,
+                                      'article': l10n.contentTypeArticle,
+                                    },
+                                    selectedLanguage: _selectedLanguage,
+                                    selectedOrder: _selectedOrder,
+                                    selectedExtension: _selectedExtension,
+                                    selectedYearFrom: _selectedYearFrom,
+                                    selectedYearTo: _selectedYearTo,
+                                    exact: _mode == SearchMode.fulltext
+                                        ? _fullTextExact
+                                        : _generalExact,
+                                    selectedCategoryName: _selectedCategoryName,
+                                    selectedContentType: _selectedContentType,
+                                    onResetLanguage: _resetLanguageFilter,
+                                    onResetOrder: _resetOrderFilter,
+                                    onResetExtension: _resetExtensionFilter,
+                                    onResetYearFrom: _resetYearFromFilter,
+                                    onResetYearTo: _resetYearToFilter,
+                                    onResetExact: _resetExactFilter,
+                                    onResetCategory: _resetCategoryFilter,
+                                    onResetContentType: _resetContentTypeFilter,
+                                  ),
+                              ],
+                            )
+                          : const SizedBox.shrink(
+                              key: ValueKey('search-header-hidden'),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  /// 毛玻璃遮罩容器(与首页同款):blurEnabled(外观设置)开 = 半透明
+  /// surface + BackdropFilter 14;关 = 纯色实底。
+  Widget _glassSurface(BuildContext context, Widget child) {
+    final blurEnabled = ref.watch(blurEnabledProvider);
+    final cs = Theme.of(context).colorScheme;
+    final surface = Container(
+      decoration: BoxDecoration(
+        color: blurEnabled ? cs.surface.withValues(alpha: 0.65) : cs.surface,
+        border: Border(
+          bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.4)),
+        ),
+      ),
+      child: child,
+    );
+    if (!blurEnabled) return surface;
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: surface,
+      ),
+    );
+  }
+}
+
+/// 布局期尺寸上报：子组件尺寸任何变化即时回调。头部高度用它驱动
+/// 结果区的让位 padding（ValueNotifier + ValueListenableBuilder），
+/// 不依赖后帧 setState——折叠动画/建议面板/键盘的每一次高度变化
+/// 都会在同一帧内生效。
+class _MeasureSize extends SingleChildRenderObjectWidget {
+  const _MeasureSize({required this.onChange, required super.child});
+
+  final ValueChanged<Size> onChange;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderMeasureSize(onChange);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderMeasureSize renderObject,
+  ) {
+    renderObject.onChange = onChange;
+  }
+}
+
+class _RenderMeasureSize extends RenderProxyBox {
+  _RenderMeasureSize(this.onChange);
+
+  ValueChanged<Size> onChange;
+  Size? _oldSize;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    final newSize = child?.size;
+    if (newSize == null) return;
+    if (_oldSize == null ||
+        _oldSize!.width != newSize.width ||
+        _oldSize!.height != newSize.height) {
+      _oldSize = newSize;
+      onChange(newSize);
+    }
   }
 }

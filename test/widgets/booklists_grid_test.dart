@@ -5,8 +5,15 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/l10n/generated/app_localizations.dart';
 import 'package:zlibx/providers/booklists_provider.dart';
 import 'package:zlibx/providers/recommended_booklists_provider.dart';
+import 'package:zlibx/providers/settings_provider.dart';
 import 'package:zlibx/screens/account/booklists_screen.dart';
 import 'package:zlibx/widgets/booklist_tile.dart';
+
+/// 毛玻璃开关默认走 Hive 同步读;测试里不开 Hive,固定给默认档(开)。
+class _FixedBlur extends BlurNotifier {
+  @override
+  bool build() => true;
+}
 
 /// 书单主页(2026-11-19 整体重设计,视觉稿 ①)的渲染契约:发现 tab
 /// 的 seed 数据必须画成横向封面流——每张书单一张 BooklistCoverCard、
@@ -80,6 +87,7 @@ Future<_FakeBooklistsController> _pumpScreen(WidgetTester tester) async {
         recommendedBooklistsProvider.overrideWith(
           _FakeRecommendedBooklistsController.new,
         ),
+        blurEnabledProvider.overrideWith(_FixedBlur.new),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -106,7 +114,8 @@ void main() {
     expect(find.byType(BooklistCoverCard), findsWidgets);
     expect(find.text('Synthetic List 1'), findsOneWidget);
     expect(find.text('Synthetic Author · 3 books'), findsOneWidget);
-    // 排字 tab:三项都在。
+    // 排字 tab:三项都在("我的书单"只在 tab 行——五轮定稿后 AppBar
+    // 整个退役,标题文字不再单独出现)。
     expect(find.text('My Booklists'), findsOneWidget);
     expect(find.text('Discover Booklists'), findsOneWidget);
     expect(find.text('Favorited booklists'), findsOneWidget);

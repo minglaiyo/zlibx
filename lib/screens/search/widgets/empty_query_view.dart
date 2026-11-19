@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../providers/trending_provider.dart';
-import '../../../routes/app_routes.dart';
 import '../../../services/open_library.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/loading_widget.dart';
@@ -64,15 +63,8 @@ class SearchEmptyQueryView extends ConsumerWidget {
             onRemove: onRemoveSearch,
             onClear: onClearHistory,
           ),
-        // 分类目录树入口（方案 F1）：与热搜并列的另一种发现路径。
-        const SizedBox(height: 28),
-        ListTile(
-          leading: const Icon(Icons.category_outlined),
-          title: Text(l10n.categoriesDirectory),
-          subtitle: Text(l10n.categoriesDirectoryHint),
-          trailing: const Icon(Icons.chevron_right_rounded, size: 20),
-          onTap: () => AppRoutes.openCategoriesDirectory(context),
-        ),
+        // 分类目录入口已于 2026-11-20 移除(用户定):分类路径改由书单
+        // 与搜索过滤承担,目录树页(routes/categoriesDirectory)暂留未删。
         if (trendingBooks.isNotEmpty) ...[
           const SizedBox(height: 8),
           SearchTrendingSection(

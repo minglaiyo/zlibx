@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../providers/booklist_detail_provider.dart';
 import '../../providers/booklists_provider.dart';
 import '../../providers/recommended_booklists_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../providers/zlibrary_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../theme/app_metrics.dart';
@@ -408,10 +410,10 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
         state.phase != BooklistsPhase.loggedOut;
 
     return Scaffold(
-      // 2026-11-19 整体重设计(视觉稿 ①):大标题与排字 tab 固定在
-      // 顶部,AppBar 只留返回键;三个板块是同一屏的三页,左右滑动
-      // 切换,tab 点击与滑动双向联动。
-      appBar: AppBar(title: const SizedBox.shrink()),
+      // 2026-11-19 整体重设计(视觉稿 ①);2026-11-20 五轮定稿:AppBar
+      // 整个去掉,玻璃遮罩从状态栏一路包下来(首页同款)——返回键进
+      // 玻璃头部,封面流全程从玻璃底下穿过,顶部不再有实底断层。
+      // 三个板块是同一屏的三页,左右滑动切换,tab 点击与滑动双向联动。
       floatingActionButton: showFab
           ? FloatingActionButton.extended(
               onPressed: _createBooklist,
@@ -419,10 +421,12 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
               label: Text(l10n.createBooklist),
             )
           : null,
-      body: Column(
+      // 2026-11-20:头部改为悬浮毛玻璃遮罩(与首页同款,blurEnabled 门
+      // 控)——三个板块的内容从头部底下穿过,滚动时搜索框/tab 后面是
+      // 实时模糊的封面流,不再是硬切。
+      body: Stack(
         children: [
-          _header(l10n, state, controller),
-          Expanded(
+          Positioned.fill(
             child: PageView.builder(
               controller: _pageController,
               itemCount: _tabOrder.length,
@@ -432,67 +436,124 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
                   controller.setTab(tab);
                 }
               },
-              itemBuilder: (context, index) =>
-                  _page(_tabOrder[index], l10n, state, controller, recommended),
+              itemBuilder: (context, index) => _page(
+                _tabOrder[index],
+                l10n,
+                state,
+                controller,
+                recommended,
+                topPadding: _feedTopPadding(state),
+              ),
             ),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _glassHeader(l10n, state, controller),
           ),
         ],
       ),
     );
   }
 
-  Widget _header(
+  /// 毛玻璃遮罩头部(与首页完全同款):从状态栏一路包下来,半透明
+  /// surface + BackdropFilter 14,blurEnabled(外观设置)关掉时回纯色
+  /// 实底。内容 = 返回键 + 搜索框 + 排字 tab(发现/收藏另有排序行)。
+  Widget _glassHeader(
     AppLocalizations l10n,
     BooklistsState state,
     BooklistsController controller,
   ) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+    final blurEnabled = ref.watch(blurEnabledProvider);
+    final cs = Theme.of(context).colorScheme;
+    final topInset = MediaQuery.of(context).padding.top;
+    final header = Container(
+      decoration: BoxDecoration(
+        color: blurEnabled ? cs.surface.withValues(alpha: 0.65) : cs.surface,
+        border: Border(
+          bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.4)),
+        ),
+      ),
+      padding: EdgeInsets.fromLTRB(0, topInset, 0, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            l10n.booklists,
-            style: Theme.of(context).textTheme.displaySmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.5,
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: BackButton(),
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            child: SizedBox(
+              width: double.infinity,
+              child: _searchBar(l10n, controller),
             ),
           ),
-          const SizedBox(height: 10),
-          // 排字式 tab:选中项大号加粗 + 短墨条,未选中回小字灰色。
-          _TypoTabs(
-            active: state.tab,
-            labels: {
-              BooklistTab.mine: l10n.myBooklists,
-              BooklistTab.discover: l10n.discoverBooklists,
-              BooklistTab.favorite: l10n.booklistsFavoriteTab,
-            },
-            onSelect: (tab) {
-              controller.setTab(tab);
-              _pageController.animateToPage(
-                _tabOrder.indexOf(tab),
-                duration: AppMotion.medium,
-                curve: MotionCurves.enter,
-              );
-            },
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            child: _TypoTabs(
+              active: state.tab,
+              labels: {
+                BooklistTab.mine: l10n.myBooklists,
+                BooklistTab.discover: l10n.discoverBooklists,
+                BooklistTab.favorite: l10n.booklistsFavoriteTab,
+              },
+              onSelect: (tab) {
+                controller.setTab(tab);
+                _pageController.animateToPage(
+                  _tabOrder.indexOf(tab),
+                  duration: AppMotion.medium,
+                  curve: MotionCurves.enter,
+                );
+              },
+            ),
           ),
-          const SizedBox(height: 14),
-          SizedBox(width: double.infinity, child: _searchBar(l10n, controller)),
           // 排序只在发现/收藏出现;视图切换被封面流取代,删。
           if (state.tab != BooklistTab.mine) ...[
             const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => _pickSortOrder(state.order),
-                icon: const Icon(Icons.swap_vert_rounded, size: 18),
-                label: Text(_sortLabel(l10n, state.order)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => _pickSortOrder(state.order),
+                  icon: const Icon(Icons.swap_vert_rounded, size: 18),
+                  label: Text(_sortLabel(l10n, state.order)),
+                ),
               ),
             ),
           ],
         ],
       ),
     );
+    if (!blurEnabled) return header;
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: header,
+      ),
+    );
+  }
+
+  /// 信息流内容的顶部预留 = 状态栏 + 玻璃头部高度。头部各行内容固定,
+  /// 按行高累加;排序行只在发现/收藏出现,PageView 页各自取值。
+  double _feedTopPadding(BooklistsState state) {
+    final inset = MediaQuery.of(context).padding.top;
+    final base =
+        inset +
+        8 +
+        48 + // 返回键行
+        4 +
+        44 + // 搜索框
+        12 +
+        36 + // tab 行
+        10 +
+        8;
+    return state.tab == BooklistTab.mine ? base : base + 54; // 排序行
   }
 
   /// The current sort order's label for the sort button.
@@ -519,17 +580,25 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
           onSubmitted: controller.search,
           decoration: InputDecoration(
             hintText: l10n.searchBooklists,
-            prefixIcon: const Icon(Icons.search_rounded),
-            suffixIcon: value.text.isEmpty
-                ? null
-                : IconButton(
+            // 用户定稿(2026-11-20):占位文字靠左,放大镜在最右;输入
+            // 非空时清空钮并排出现在放大镜左侧。
+            prefixIcon: null,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 10,
+            ),
+            suffixIcon: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (value.text.isNotEmpty)
+                  IconButton(
                     tooltip: l10n.clear,
-                    icon: const Icon(Icons.close_rounded),
+                    icon: const Icon(Icons.close_rounded, size: 20),
                     onPressed: _clearSearch,
                   ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 14,
+                const Icon(Icons.search_rounded),
+                const SizedBox(width: 12),
+              ],
             ),
           ),
         ),
@@ -538,14 +607,16 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
   }
 
   /// 一页 = 一个 tab 的内容。当前页吃 controller 的实时 state;
-  /// 相邻页吃 [_snapshots] 的旧数据,滑动过程里不白屏。
+  /// 相邻页吃 [_snapshots] 的旧数据,滑动过程里不白屏。[topPadding]
+  /// 给毛玻璃头部让位(2026-11-20 悬浮头部改版)。
   Widget _page(
     BooklistTab tab,
     AppLocalizations l10n,
     BooklistsState live,
     BooklistsController controller,
-    RecommendedBooklistsState recommended,
-  ) {
+    RecommendedBooklistsState recommended, {
+    double topPadding = 0,
+  }) {
     final isLive = tab == live.tab;
     final state = isLive ? live : _snapshots[tab];
 
@@ -553,13 +624,14 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
     if (state == null || state.phase == BooklistsPhase.loading) {
       content = ListView(
         physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.only(top: topPadding),
         children: const [BooklistSkeletonList()],
       );
     } else if (state.phase == BooklistsPhase.loggedOut) {
       content = ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          const SizedBox(height: 96),
+          SizedBox(height: topPadding + 96),
           EmptyState(
             icon: Icons.login_rounded,
             title: l10n.loginToViewBooklists,
@@ -574,7 +646,7 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
       content = ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          const SizedBox(height: 96),
+          SizedBox(height: topPadding + 96),
           EmptyState(
             icon: Icons.error_outline,
             title: l10n.error,
@@ -592,7 +664,7 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
       content = ListView(
         controller: _scrolls[tab],
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.zero,
+        padding: EdgeInsets.only(top: topPadding),
         children: [
           if (tab == BooklistTab.discover && recommended.lists.isNotEmpty)
             _RecommendedSection(l10n: l10n, lists: recommended.lists),

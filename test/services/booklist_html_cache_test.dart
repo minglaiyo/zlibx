@@ -5,6 +5,21 @@ import 'package:hive/hive.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/services/booklist_html_cache.dart';
 
+/// Raw-box assertions read DISK state, but the cache's writes and
+/// eviction deletes are fire-and-forget (hive serializes them per box,
+/// the delete queues behind the triggering put). Under load (CI) one
+/// pumpEventQueue round does not guarantee they landed — poll, bounded,
+/// until [settled] holds; if it never does, the assertions below still
+/// fail and point at the real problem.
+Future<void> _settleRawBox(
+  LazyBox<dynamic> box,
+  bool Function() settled,
+) async {
+  for (var rounds = 0; rounds < 200 && !settled(); rounds++) {
+    await pumpEventQueue();
+  }
+}
+
 void main() {
   late Directory tempDir;
 
@@ -97,13 +112,13 @@ void main() {
       'https://example.com/new',
       '<html>new</html>',
     );
-    // LazyBox flushes land on later event-loop turns: pump before
+    // LazyBox flushes land on later event-loop turns: settle before
     // asserting raw box state (cache-API reads are tombstone-accurate
     // immediately and stay un-pumped elsewhere).
-    await pumpEventQueue();
-    expect(box.length, BooklistHtmlCache.maxEntries);
-    expect(box.containsKey('https://example.com/0'), isFalse);
-    expect(box.containsKey('https://example.com/1'), isTrue);
+    await _settleRawBox(box, () =>
+        box.length == BooklistHtmlCache.maxEntries &&
+        !box.containsKey('https://example.com/0') &&
+        box.containsKey('https://example.com/1'));
     expect(
       (await BooklistHtmlCache.get('https://example.com/new')),
       '<html>new</html>',
@@ -230,7 +245,9 @@ void main() {
       const [Book(id: 1, title: 'New')],
       accountId: '111',
     );
-    await pumpEventQueue();
+    await _settleRawBox(box, () =>
+        box.length == BooklistHtmlCache.maxEntries &&
+        !box.containsKey('https://example.com/0'));
     expect(box.length, BooklistHtmlCache.maxEntries);
     expect(box.containsKey('https://example.com/0'), isFalse);
     expect(

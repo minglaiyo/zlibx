@@ -260,6 +260,28 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
     state = state.copyWith(lists: lists);
   }
 
+  /// 发起 mutation 时的页面上下文（审查3 P2-3）。tab/query/order/
+  /// account 任一变化都会伴随一次 loadFirst（generation 前移），所以
+  /// 回滚用 generation 相等即可判定"页面还是我乐观更新过的那页"；
+  /// 成功侧的合并刻意不绑 generation（刷新吞掉合法写入是审查点名的
+  /// 反模式），只比上下文元组。缓存失效同样不吃上下文——服务器确实
+  /// 变了，用发起时的 account 分区精确失效。
+  ({BooklistTab tab, String query, String order, String? accountId})
+  _captureScope() => (
+    tab: state.tab,
+    query: state.query,
+    order: state.order,
+    accountId: _accountIdFor(state.tab),
+  );
+
+  bool _scopeCurrent(
+    ({BooklistTab tab, String query, String order, String? accountId}) scope,
+  ) =>
+      state.tab == scope.tab &&
+      state.query == scope.query &&
+      state.order == scope.order &&
+      _accountIdFor(state.tab) == scope.accountId;
+
   /// Invalidate the cached mine list page (the URL `loadFirst` reads
   /// and writes), so a later refresh fetches fresh instead of
   /// repainting the pre-write page.
@@ -318,6 +340,7 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
     if (listId == null) {
       return ApiResponse.fail('edit booklist not available');
     }
+    final scope = _captureScope();
     try {
       final response = await _repository.editBooklist(
         id: listId,
@@ -329,11 +352,10 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
       if (!_alive) return response;
       final updated = response.data;
       if (response.success && updated != null) {
-        _repository.invalidateBooklist(
-          list.url,
-          accountId: _accountIdFor(state.tab),
-        );
-        _replaceList(updated);
+        // 失效落在发起时的 account 分区：服务器确实改了，缓存必须弃
+        // 读；但把服务端整对象并回界面只在上下文未变时进行（P2-3）。
+        _repository.invalidateBooklist(list.url, accountId: scope.accountId);
+        if (_scopeCurrent(scope)) _replaceList(updated);
       }
       return response;
     } catch (_) {
@@ -354,6 +376,10 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
     }
     final updated = _withColor(list, color);
     _replaceList(updated);
+    // 回滚许可 = 页面还是乐观更新落下的那一页：tab/query/order/账户
+    // 任何漂移都伴随 generation 前移（P2-3）。
+    final scope = _captureScope();
+    final generation = _generation;
     try {
       final response = await _repository.setBooklistColor(
         id: listId,
@@ -361,16 +387,17 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
       );
       if (!_alive) return response;
       if (response.success) {
-        _repository.invalidateBooklist(
-          list.url,
-          accountId: _accountIdFor(state.tab),
-        );
+        _repository.invalidateBooklist(list.url, accountId: scope.accountId);
         return response;
       }
-      _rollbackFrom(list, (current) => _withColor(current, list.color));
+      if (generation == _generation) {
+        _rollbackFrom(list, (current) => _withColor(current, list.color));
+      }
       return response;
     } catch (_) {
-      if (_alive) _rollbackFrom(list, (current) => _withColor(current, list.color));
+      if (_alive && generation == _generation) {
+        _rollbackFrom(list, (current) => _withColor(current, list.color));
+      }
       return ApiResponse.fail('change booklist color failed');
     }
   }
@@ -388,20 +415,21 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
     }
     final updated = _withPrivate(list, !list.isPrivate);
     _replaceList(updated);
+    final scope = _captureScope();
+    final generation = _generation;
     try {
       final response = await _repository.toggleBooklistPublic(listId);
       if (!_alive) return response;
       if (response.success) {
-        _repository.invalidateBooklist(
-          list.url,
-          accountId: _accountIdFor(state.tab),
-        );
+        _repository.invalidateBooklist(list.url, accountId: scope.accountId);
         return response;
       }
-      _rollbackFrom(list, (current) => _withPrivate(current, list.isPrivate));
+      if (generation == _generation) {
+        _rollbackFrom(list, (current) => _withPrivate(current, list.isPrivate));
+      }
       return response;
     } catch (_) {
-      if (_alive) {
+      if (_alive && generation == _generation) {
         _rollbackFrom(list, (current) => _withPrivate(current, list.isPrivate));
       }
       return ApiResponse.fail('change booklist visibility failed');
@@ -425,16 +453,22 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
     }
     final updated = _withFavorite(list, favorite);
     _replaceList(updated);
+    final generation = _generation;
     try {
       final response = favorite
           ? await _repository.favoriteBooklist(listId)
           : await _repository.unfavoriteBooklist(listId);
       if (!_alive) return response;
       if (response.success) return response;
-      _rollbackFrom(list, (current) => _withFavorite(current, list.isFavorite));
+      if (generation == _generation) {
+        _rollbackFrom(
+          list,
+          (current) => _withFavorite(current, list.isFavorite),
+        );
+      }
       return response;
     } catch (_) {
-      if (_alive) {
+      if (_alive && generation == _generation) {
         _rollbackFrom(
           list,
           (current) => _withFavorite(current, list.isFavorite),

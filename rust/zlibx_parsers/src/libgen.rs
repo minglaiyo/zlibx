@@ -6,6 +6,7 @@
 //! Handles both table layouts in the wild: the libgen.li/vg
 //! "tablelibgen" table and the older table.c.
 
+use crate::sel;
 use scraper::{ElementRef, Selector};
 
 use crate::models::{LibgenBookData, LibgenBookInfoData};
@@ -21,8 +22,8 @@ pub(crate) fn parse_results(html: &str, base_url: &str) -> Vec<LibgenBookData> {
 
     // The libgen.li/vg family marks its results table with an id. The
     // older libgen layout uses a table.c; rows live in its tbody.
-    let li_sel = Selector::parse("#tablelibgen tr").unwrap();
-    let td_sel = Selector::parse("td").unwrap();
+    let li_sel = sel!("#tablelibgen tr");
+    let td_sel = sel!("td");
     let li_rows: Vec<ElementRef> = document.select(&li_sel).collect();
     let li_layout = li_rows.iter().any(|row| {
         row.select(&td_sel).count() >= 9
@@ -34,7 +35,7 @@ pub(crate) fn parse_results(html: &str, base_url: &str) -> Vec<LibgenBookData> {
             .collect();
     }
 
-    let legacy_sel = Selector::parse("table.c tbody tr").unwrap();
+    let legacy_sel = sel!("table.c tbody tr");
     document
         .select(&legacy_sel)
         .filter_map(|row| legacy_row_to_book(&row, base_url))
@@ -42,7 +43,7 @@ pub(crate) fn parse_results(html: &str, base_url: &str) -> Vec<LibgenBookData> {
 }
 
 fn cells_of<'a>(row: &ElementRef<'a>) -> Vec<ElementRef<'a>> {
-    let td_sel = Selector::parse("td").unwrap();
+    let td_sel = sel!("td");
     row.select(&td_sel).collect()
 }
 
@@ -66,8 +67,8 @@ fn li_row_to_book(row: &ElementRef, base_url: &str) -> Option<LibgenBookData> {
     // The first link points at series.php - the work's own title. The
     // edition links below describe specific editions and would drown
     // the real title out.
-    let series_sel = Selector::parse(r#"a[href*="series.php"], a[href*="index.php?"]"#).unwrap();
-    let a_sel = Selector::parse("a").unwrap();
+    let series_sel = sel!(r#"a[href*="series.php"], a[href*="index.php?"]"#);
+    let a_sel = sel!("a");
     let series_link = title_cell.select(&series_sel).next();
     let title = series_link
         .or_else(|| title_cell.select(&a_sel).next())
@@ -77,12 +78,12 @@ fn li_row_to_book(row: &ElementRef, base_url: &str) -> Option<LibgenBookData> {
 
     // An md5 download link from the mirrors cell, if present. Fall
     // back to the edition link's id - unique per book either way.
-    let md5_link_sel = Selector::parse(r#"a[href*="md5="]"#).unwrap();
+    let md5_link_sel = sel!(r#"a[href*="md5="]"#);
     let md5_links: Vec<String> = cells[8]
         .select(&md5_link_sel)
         .filter_map(|a| a.attr("href").map(|h| h.to_string()))
         .collect();
-    let id_sel = Selector::parse(r#"a[href*="id="]"#).unwrap();
+    let id_sel = sel!(r#"a[href*="id="]"#);
     static ID_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let id_re = ID_RE.get_or_init(|| regex::Regex::new(r"id=(\d+)").unwrap());
     let id_matches: Vec<String> = cells[0]
@@ -164,7 +165,7 @@ fn legacy_row_to_book(row: &ElementRef, base_url: &str) -> Option<LibgenBookData
     }
 
     let title_cell = cells[2];
-    let title_link = title_cell.select(&Selector::parse("a").unwrap()).next();
+    let title_link = title_cell.select(&sel!("a")).next();
     let href = title_link.and_then(|a| a.attr("href")).map(|h| h.to_string())?;
     let title = title_link
         .map(|a| a.text().collect::<String>())
@@ -242,7 +243,7 @@ fn md5_from_hrefs(hrefs: &[String]) -> Option<String> {
 pub(crate) fn parse_ads_cover(html: &str, base_url: &str) -> Option<String> {
     let document = scraper::Html::parse_document(html);
     let img = document
-        .select(&Selector::parse("table#main img").unwrap())
+        .select(&sel!("table#main img"))
         .next()?;
     let src = img.attr("src")?;
     if src.is_empty() {
@@ -354,20 +355,20 @@ pub(crate) fn parse_ads_page(
     let document = scraper::Html::parse_document(html);
 
     let get_href = document
-        .select(&Selector::parse(r#"a[href*="get.php?md5="]"#).unwrap())
+        .select(&sel!(r#"a[href*="get.php?md5="]"#))
         .next()?
         .attr("href")?
         .to_string();
 
     let main_table = document
-        .select(&Selector::parse("table#main").unwrap())
+        .select(&sel!("table#main"))
         .next()?;
 
     // The metadata row: "Title: ... <br> Author(s): ... <br> ..." —
     // fields are split on their labels.
     static WS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let ws = WS.get_or_init(|| regex::Regex::new(r"\s+").unwrap());
-    let tr_sel = Selector::parse("tr").unwrap();
+    let tr_sel = sel!("tr");
     let mut row_text = String::new();
     for row in main_table.select(&tr_sel) {
         let text = row.text().collect::<String>();
@@ -396,7 +397,7 @@ pub(crate) fn parse_ads_page(
         .unwrap_or_else(|| title.clone());
 
     let src = main_table
-        .select(&Selector::parse("img").unwrap())
+        .select(&sel!("img"))
         .next()
         .and_then(|img| img.attr("src"))
         .map(|s| s.to_string());

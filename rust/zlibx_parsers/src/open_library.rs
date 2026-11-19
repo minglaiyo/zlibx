@@ -6,6 +6,7 @@
 //! selector carries a trailing space inside the value — both must be
 //! reproduced verbatim.
 
+use crate::sel;
 use scraper::{ElementRef, Selector};
 
 use crate::models::TrendingBookData;
@@ -16,9 +17,9 @@ pub(crate) fn parse_trending(html: &str) -> Vec<TrendingBookData> {
     let document = scraper::Html::parse_document(html);
     // Full attribute-value matches, exactly as Dart wrote them
     // (including the trailing space in the img selector).
-    let item_sel = Selector::parse(r#"li[class="searchResultItem sri--w-main"]"#).unwrap();
-    let title_sel = Selector::parse(r#"h3[class="booktitle"]"#).unwrap();
-    let img_sel = Selector::parse(r#"img[itemprop="image" ]"#).unwrap();
+    let item_sel = sel!(r#"li[class="searchResultItem sri--w-main"]"#);
+    let title_sel = sel!(r#"h3[class="booktitle"]"#);
+    let img_sel = sel!(r#"img[itemprop="image" ]"#);
 
     let mut trending = Vec::new();
     for element in document.select(&item_sel) {

@@ -11,6 +11,7 @@
 //! - The md5-link fallback dedupes containers by ego-tree NodeId,
 //!   matching Dart's Set-by-element-identity.
 
+use crate::sel;
 use std::collections::HashSet;
 
 use scraper::{ElementRef, Node, Selector};
@@ -248,8 +249,8 @@ pub(crate) fn parse_search_results(
     file_type: &str,
 ) -> Vec<ArchiveBook> {
     let document = scraper::Html::parse_document(html);
-    let container_sel = Selector::parse("div.flex.pt-3.pb-3.border-b").unwrap();
-    let md5_link_sel = Selector::parse(r#"a[href*="/md5/"]"#).unwrap();
+    let container_sel = sel!("div.flex.pt-3.pb-3.border-b");
+    let md5_link_sel = sel!(r#"a[href*="/md5/"]"#);
 
     let mut containers: Vec<ElementRef> =
         document.select(&container_sel).collect();
@@ -285,10 +286,9 @@ pub(crate) fn parse_search_results(
         }
     }
 
-    let main_link_sel =
-        Selector::parse(r"a.line-clamp-\[3\].js-vim-focus").unwrap();
-    let thumb_sel = Selector::parse(r#"a[href*="/md5/"] img"#).unwrap();
-    let info_sel = Selector::parse("div.text-gray-800").unwrap();
+    let main_link_sel = sel!(r"a.line-clamp-\[3\].js-vim-focus");
+    let thumb_sel = sel!(r#"a[href*="/md5/"] img"#);
+    let info_sel = sel!("div.text-gray-800");
 
     let mut books = Vec::new();
     for container in containers {
@@ -376,13 +376,13 @@ pub(crate) fn parse_book_details(
     base_url: &str,
 ) -> Option<ArchiveBookDetails> {
     let document = scraper::Html::parse_document(html);
-    let main = document.select(&Selector::parse("div.main-inner").unwrap()).next()?;
+    let main = document.select(&sel!("div.main-inner")).next()?;
     let title_element = main
-        .select(&Selector::parse("div.font-semibold.text-2xl").unwrap())
+        .select(&sel!("div.font-semibold.text-2xl"))
         .next()?;
 
     let slow_links: Vec<ElementRef> = main
-        .select(&Selector::parse(r#"ul.list-inside a[href*="/slow_download/"]"#).unwrap())
+        .select(&sel!(r#"ul.list-inside a[href*="/slow_download/"]"#))
         .collect();
     let slow_download = slow_links
         .first()
@@ -391,7 +391,7 @@ pub(crate) fn parse_book_details(
         .map(|h| resolve_url(base_url, h));
 
     let author_element = main
-        .select(&Selector::parse(r#"a[href^="/search?q="].text-base"#).unwrap())
+        .select(&sel!(r#"a[href^="/search?q="].text-base"#))
         .next();
     let publisher_element = author_element
         .and_then(|a| sibling_after((*a)))
@@ -402,15 +402,14 @@ pub(crate) fn parse_book_details(
         });
 
     let thumbnail_element = main
-        .select(&Selector::parse(r#"div[id^="list_cover_"] img"#).unwrap())
+        .select(&sel!(r#"div[id^="list_cover_"] img"#))
         .next();
 
     let description_label = main
         .select(
-            &Selector::parse(
-                "div.js-md5-top-box-description div.text-xs.text-gray-500.uppercase",
-            )
-            .unwrap(),
+            &sel!(
+                "div.js-md5-top-box-description div.text-xs.text-gray-500.uppercase"
+            ),
         )
         .next();
     let description_element = if description_label
@@ -434,7 +433,7 @@ pub(crate) fn parse_book_details(
             .map(|e| e.text().collect::<String>().trim().to_string())
             .unwrap_or_else(|| "unknown".to_string()),
     );
-    let info = visible_text(main.select(&Selector::parse("div.text-gray-800").unwrap()).next().as_ref());
+    let info = visible_text(main.select(&sel!("div.text-gray-800")).next().as_ref());
 
     Some(ArchiveBookDetails {
         title,
@@ -456,15 +455,15 @@ pub(crate) fn extract_slow_download_link(html: &str, page_url: &str) -> Option<S
     // Class-combining selector first; the exact attribute match stays
     // as a fallback.
     let paragraph = document
-        .select(&Selector::parse("p.mb-4.text-xl.font-bold").unwrap())
+        .select(&sel!("p.mb-4.text-xl.font-bold"))
         .next()
         .or_else(|| {
             document
-                .select(&Selector::parse(r#"p[class="mb-4 text-xl font-bold"]"#).unwrap())
+                .select(&sel!(r#"p[class="mb-4 text-xl font-bold"]"#))
                 .next()
         })?;
     let href = paragraph
-        .select(&Selector::parse("a").unwrap())
+        .select(&sel!("a"))
         .next()?
         .attr("href")?
         .to_string();

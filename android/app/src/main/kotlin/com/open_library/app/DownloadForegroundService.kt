@@ -25,10 +25,12 @@ import androidx.core.app.NotificationCompat
  * the active download.
  *
  * Android 15+ caps dataSync foreground services at a cumulative time
- * limit per 24 h; when the system stops the service on that limit, the
- * Dart download is interrupted but its `.part` file is already on disk,
- * so the next start resumes from it (the resume mechanism needs no
- * change here).
+ * limit per 24 h; [onTimeout] pauses every download through [onAction]
+ * (the `.part` + `.meta` files make the next start resume), stops the
+ * service and leaves a notification pointing the user back to the app.
+ * The service is START_NOT_STICKY: after a process kill the Dart engine
+ * is gone, and resume lives in Dart on next launch — a restarted idle
+ * service would own nothing to do.
  */
 class DownloadForegroundService : Service() {
 
@@ -67,9 +69,6 @@ class DownloadForegroundService : Service() {
             activeCount++
             val intent = Intent(context, DownloadForegroundService::class.java)
                 .setAction(ACTION_START)
-            // START_STICKY: if the system kills the service, restart it so
-            // an in-flight download is not silently lost (the .part file
-            // keeps the bytes; the Dart side resumes on next start).
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
@@ -153,7 +152,16 @@ class DownloadForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        // START_NOT_STICKY (审查 A2): a restart after a process kill used
+        // to deliver a null-intent service with activeCount == 0 and no
+        // Dart engine — an idle, self-restarting foreground service. The
+        // real resume lives in Dart (history + .part on next launch), so
+        // there is nothing for a sticky restart to recover.
+        if (intent == null) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        when (intent.action) {
             ACTION_START -> startForegroundCompat()
             ACTION_PROGRESS -> {
                 progressText = intent.getStringExtra("text")
@@ -162,7 +170,61 @@ class DownloadForegroundService : Service() {
             ACTION_PAUSE -> onAction?.invoke(ACTION_PAUSE)
             ACTION_CANCEL -> onAction?.invoke(ACTION_CANCEL)
         }
-        return START_STICKY
+        return START_NOT_STICKY
+    }
+
+    /**
+     * Android 15+ (审查 A1): a dataSync foreground service accumulates a
+     * time budget (~6 h per 24 h); on exceeding it the system calls this
+     * and expects the service to come down. Pause EVERY download through
+     * the existing action channel (the Dart handler loops all cancel
+     * tokens — .part + .meta survive), stop the service, and leave one
+     * notification explaining why and where to continue.
+     */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        activeCount = 0
+        progressText = null
+        try {
+            onAction?.invoke(ACTION_PAUSE)
+        } catch (e: Exception) {
+            android.util.Log.w("ZlibxDownload", "timeout pause dispatch failed", e)
+        }
+        stopSelf(startId)
+        showTimeoutNotice()
+    }
+
+    private fun showTimeoutNotice() {
+        try {
+            val nm = getSystemService(NotificationManager::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                nm.createNotificationChannel(
+                    NotificationChannel(
+                        DONE_CHANNEL_ID,
+                        "下载完成",
+                        NotificationManager.IMPORTANCE_DEFAULT,
+                    ).apply { description = "书籍下载完成提醒" },
+                )
+            }
+            val openApp = packageManager.getLaunchIntentForPackage(packageName)
+            val builder = NotificationCompat.Builder(this, DONE_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setContentTitle("下载已被系统暂停")
+                .setContentText("后台下载时长达到系统上限；全部任务已暂停，回到应用点继续即可续传")
+                .setAutoCancel(true)
+            if (openApp != null) {
+                builder.setContentIntent(
+                    PendingIntent.getActivity(
+                        this,
+                        "timeout".hashCode(),
+                        openApp,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                    ),
+                )
+            }
+            nm.notify("timeout".hashCode(), builder.build())
+        } catch (e: Exception) {
+            android.util.Log.w("ZlibxDownload", "timeout notice failed", e)
+        }
     }
 
     override fun onCreate() {

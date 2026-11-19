@@ -16,7 +16,7 @@ name: Build Android APK
 #                          generate locally with: base64 -w 0 android/app/olib-release-key.jks
 #   KEYSTORE_PASSWORD      storePassword from android/key.properties
 #   KEY_PASSWORD           keyPassword from android/key.properties
-#   KEY_ALIAS              keyAlias from android/key.properties (currently "olib")
+#   KEY_ALIAS              keyAlias from android/key.properties (currently "olib-release")
 #
 # NOTE: olib_api_plugin is NO LONGER fetched from a private repo.
 # The package now lives in this repo at vendor/olib_api_plugin/ (a
@@ -88,6 +88,29 @@ jobs:
 
       - name: Test
         run: flutter test
+
+      # ── Rust parsers (审查 C1): the differential tests are the core
+      # safety net for the parse layer — until now they only ran on a
+      # developer machine, so a release could ship a Rust parser that
+      # disagreed with its Dart twin.
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+          targets: aarch64-linux-android
+
+      - name: Cache cargo (tests)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/zlibx_parsers/target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('rust/zlibx_parsers/Cargo.lock') }}-rs1.100.0
+
+      - name: Rust parser tests
+        working-directory: rust/zlibx_parsers
+        run: cargo test --release --locked
 
       # Strict-lint ratchet (M8 + O12): runs the stricter profile
       # (analysis_options_strict.yaml) and FAILS the check when the
@@ -167,21 +190,27 @@ jobs:
       # rust/zlibx_parsers for arm64 during the APK build, so the
       # release runner needs the toolchain + the Android linker.
       - name: Set up Rust
-                # @stable, not SHA-pinned: pin AFTER the first green CI run proves the
-        # step works (a wrong pin here would fail every release build).
-        uses: dtolnay/rust-toolchain@stable
+        # SHA-pinned (first green @stable run: 44459250057). Exact
+        # version + target live here, NOT in a rust-toolchain.toml:
+        # the toml hijacks Windows dev boxes onto the msvc variant of
+        # the pinned version (their local toolchain line is
+        # windows-gnu + MinGW). CI is the release path — pin it here.
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
+          toolchain: "1.100.0"
           targets: aarch64-linux-android
 
       - name: Cache cargo
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            ~/.cargo
+            ~/.cargo/registry
+            ~/.cargo/git
             rust/zlibx_parsers/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/zlibx_parsers/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          # No restore-keys on purpose (审查 C2): a fuzzy prefix hit can
+          # resurrect artifacts from an older toolchain/lock; a miss
+          # simply rebuilds.
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/zlibx_parsers/Cargo.lock') }}-rs1.100.0
 
       - name: Point cargo at the NDK toolchain
         run: |

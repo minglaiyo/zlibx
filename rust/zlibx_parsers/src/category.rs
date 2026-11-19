@@ -8,6 +8,7 @@
 //! total), and the search form's slug is extracted (the in-category
 //! search only serves the slugged URL).
 
+use crate::sel;
 use scraper::{ElementRef, Selector};
 
 use crate::fulltext::{attr, hash_from_href, resolve_card_url};
@@ -21,13 +22,13 @@ pub(crate) fn parse_category_books_page(
     base_url: Option<&str>,
 ) -> CategoryPage {
     let doc = scraper::Html::parse_document(html);
-    let box_sel = Selector::parse("#searchResultBox").unwrap();
-    let item_sel = Selector::parse(".book-item").unwrap();
-    let card_sel = Selector::parse("z-bookcard").unwrap();
-    let counter_sel = Selector::parse(".counter").unwrap();
-    let img_sel = Selector::parse("img").unwrap();
-    let title_sel = Selector::parse(r#"div[slot="title"]"#).unwrap();
-    let author_sel = Selector::parse(r#"div[slot="author"]"#).unwrap();
+    let box_sel = sel!("#searchResultBox");
+    let item_sel = sel!(".book-item");
+    let card_sel = sel!("z-bookcard");
+    let counter_sel = sel!(".counter");
+    let img_sel = sel!("img");
+    let title_sel = sel!(r#"div[slot="title"]"#);
+    let author_sel = sel!(r#"div[slot="author"]"#);
 
     let mut cards: Vec<ElementRef> = Vec::new();
     match doc.select(&box_sel).next() {
@@ -153,7 +154,7 @@ pub(crate) fn parse_category_books_page(
         regex::Regex::new(r"/category/\d+/([^/]+)/s/").unwrap()
     });
     let mut search_slug: Option<String> = None;
-    let form_sel = Selector::parse("form").unwrap();
+    let form_sel = sel!("form");
     'outer: for form in doc.select(&form_sel) {
         let action = form.attr("action").unwrap_or("");
         if let Some(m) = slug_re.captures(action) {

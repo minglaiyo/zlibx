@@ -19,6 +19,27 @@ pub(crate) mod regex_utils;
 pub(crate) mod json_books;
 pub(crate) mod hash_utils;
 
+/// Cached CSS selector. Each expansion owns a block-scoped LazyLock,
+/// so the literal is parsed exactly once per call site for the whole
+/// process lifetime — the same OnceLock rationale as the regex cache
+/// (re-parsing selectors per card/per row showed up in parse hot
+/// paths; scraper's Selector::parse is pure CPU and dominates small
+/// DOM walks otherwise). The expansion yields an owned clone so every
+/// call site keeps the exact types it had with Selector::parse
+/// (select() is generic over &S — a &-typed macro result would break
+/// inference); cloning a small combinator vec is far cheaper than
+/// re-parsing.
+#[macro_export]
+macro_rules! sel {
+    ($s:literal) => {{
+        static SELECTOR: ::std::sync::LazyLock<::scraper::Selector> =
+            ::std::sync::LazyLock::new(|| {
+                ::scraper::Selector::parse($s).expect("static selector must parse")
+            });
+        SELECTOR.clone()
+    }};
+}
+
 use flutter_rust_bridge::frb;
 
 /// Phase 1 smoke-test function: a trivial pure function to verify the

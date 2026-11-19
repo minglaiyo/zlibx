@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
@@ -10,8 +9,8 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../routes/app_routes.dart';
-import '../../../utils/app_snack.dart';
 import '../../comments/book_comments_screen.dart';
+import '../related_booklists_screen.dart' show RelatedBooklistsArgs;
 import '../../search/search_screen.dart';
 import '../../similar/similar_books_screen.dart';
 import 'add_to_booklist_dialog.dart';
@@ -21,16 +20,15 @@ import 'book_detail_content.dart';
 class BookInfoSection extends ConsumerStatefulWidget {
   final Book book;
 
-  /// 该书页 HTML 解析出的关联书单（见 `parseRelatedBooklists`，由
-  /// 详情页装配传入）。非空时在快捷入口区多出"关联书单"一行，
-  /// 点击进 [RelatedBooklistsScreen]——与相似书籍同款交互；空则
-  /// 整行不出现。
-  final List<Booklist> relatedBooklists;
+  /// 关联书单落地页的抓取键（书的详情页路径，由详情页装配传入）。
+  /// 入口行在有 href 时恒显——数据不在详情页抓，点进
+  /// [RelatedBooklistsScreen] 才开始（用户定稿 2026-11-20）。
+  final String? relatedHref;
 
   const BookInfoSection({
     super.key,
     required this.book,
-    this.relatedBooklists = const [],
+    this.relatedHref,
   });
 
   @override
@@ -90,23 +88,9 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
       if (book.publisher?.isNotEmpty ?? false) l10n.publisher: book.publisher!,
       if (book.pages != null && book.pages != 0) l10n.pages: '${book.pages}',
       if (book.language?.isNotEmpty ?? false) l10n.language: book.language!,
-      // Detail-page-only metadata (parsed from the detail HTML, not
-      // the eapi): shown only when the fetch returned them.
-      if (book.volume?.isNotEmpty ?? false) l10n.volume: book.volume!,
-      if (book.isbn13?.isNotEmpty ?? false) l10n.isbn13: book.isbn13!,
-      if (book.isbn10?.isNotEmpty ?? false) l10n.isbn10: book.isbn10!,
-      // Both CIDs, one per row: the Blake2b CID must stay reachable,
-      // never silently dropped. Each row is tappable and copies its
-      // own CID (was: one display-only cell joining both values —
-      // a CID is untyped hex nobody can transcribe by hand).
-      if (book.ipfsCid?.isNotEmpty ?? false) l10n.ipfs: book.ipfsCid!,
-      if (book.ipfsCidBlake2b?.isNotEmpty ?? false)
-        l10n.ipfsCidBlake2b: book.ipfsCidBlake2b!,
+      // 卷/ISBN/IPFS 这些书页 HTML 装饰行已随附加字段腿撤下（用户
+      // 定稿 2026-11-20：详情页不再为几行装饰抓几百 KB 的 HTML）。
     };
-    // 关键词 chips（方案 F3）：来自详情页 HTML 的 /terms/ 链接（附加
-    // 字段腿解析），点击 → 站内搜索该词（/terms/ 页本身就是一个搜索
-    // 落地页，站内语义一致）。
-    final keywordChips = book.keywords ?? const <String>[];
 
     // A missing description must stay absent rather than rendering as
     // the literal word "null".
@@ -147,31 +131,6 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
                 ),
               ),
             ],
-            if (keywordChips.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              // 关键词 chips（/terms/ 链接）：点击搜索该词。
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (var i = 0; i < keywordChips.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 8),
-                      InkWell(
-                        borderRadius: BorderRadius.circular(6),
-                        onTap: () => AppRoutes.openSearchWithQuery(
-                          context,
-                          keywordChips[i],
-                        ),
-                        child: BookDetailTag(
-                          icon: Icons.sell_outlined,
-                          text: keywordChips[i],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
             // 快捷入口上移开关（用户批 2026-11-14 两轮调整后的最终形
             // 态）：相似书籍 / 加入书单 / 评论提到标题正下方（首屏直达
             // ）；简介与出版信息保持原位、正常显示——反正都在下面，
@@ -188,14 +147,8 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
                 // Tap handlers keyed by the row label (the same string
                 // used as the map key in [fields]). Tapping the
                 // publisher searches for that publisher (field-scoped
-                // for the same reason as the author tap above); tapping
-                // an IPFS row copies that row's CID to the clipboard.
+                // for the same reason as the author tap above).
                 onFieldTap: {
-                  if (book.ipfsCid?.isNotEmpty ?? false)
-                    l10n.ipfs: () => _copyIpfsCid(context, book.ipfsCid!),
-                  if (book.ipfsCidBlake2b?.isNotEmpty ?? false)
-                    l10n.ipfsCidBlake2b: () =>
-                        _copyIpfsCid(context, book.ipfsCidBlake2b!),
                   if (book.publisher?.isNotEmpty ?? false)
                     l10n.publisher: () => AppRoutes.openSearchWithQuery(
                       context,
@@ -216,7 +169,7 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
   /// 折叠模式下渲染在标题正下方，否则保持在页面底部（原位置）。
   List<Widget> _actionTiles(Book book, AppLocalizations l10n, ColorScheme cs) {
     final hasSimilar = book.hash?.isNotEmpty ?? false;
-    final hasRelated = widget.relatedBooklists.isNotEmpty;
+    final hasRelated = widget.relatedHref?.isNotEmpty ?? false;
     // 用户定稿 2026-11-19:关联书单紧跟相似书籍之下(加入书单/评论
     // 依次后移)。first 标记 = 列表里实际渲染的第一行,只留一份
     // 顶部 20px 呼吸。
@@ -236,15 +189,18 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
             ),
           ),
         ),
-      // 关联书单：书被收录进的公开书单，点进列表页再看单。
+      // 关联书单：书被收录进的公开书单。入口恒显（有 href 即可点），
+      // 数据进落地页才抓（用户定稿 2026-11-20）。
       if (hasRelated)
         _actionTile(
           icon: Icons.collections_outlined,
           label: l10n.relatedBooklists,
           cs: cs,
           first: !hasSimilar,
-          onTap: () =>
-              AppRoutes.openRelatedBooklists(context, widget.relatedBooklists),
+          onTap: () => AppRoutes.openRelatedBooklists(
+            context,
+            RelatedBooklistsArgs(href: widget.relatedHref!),
+          ),
         ),
       _actionTile(
         icon: Icons.collections_bookmark_outlined,
@@ -299,13 +255,4 @@ Future<void> _addToBooklist(BuildContext context, Book book) async {
   if (loginRequested && context.mounted) {
     await AppRoutes.openLogin(context);
   }
-}
-
-/// Copy an IPFS CID to the clipboard, with the usual confirmation
-/// snack. There is no shared clipboard helper yet (first Clipboard
-/// use in the app); when a second caller appears, promote this.
-Future<void> _copyIpfsCid(BuildContext context, String cid) async {
-  await Clipboard.setData(ClipboardData(text: cid));
-  if (!context.mounted) return;
-  showAppSnack(context, AppLocalizations.of(context)!.copiedToClipboard);
 }

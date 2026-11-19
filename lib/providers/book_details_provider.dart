@@ -190,6 +190,10 @@ final bookDetailsProvider = FutureProvider.autoDispose
 ///  * 失败/超时 → 退回过期缓存（可能为 null），永不抛。
 ///
 /// 返回 null 意思是“这一轮拿不到附加字段”，不是错误状态。
+///
+/// 预算只是 UI 的等待上限：超时后同一条在途抓取（见
+/// [loadBookDetailExtrasDeduped]）在后台继续跑完并回写缓存——
+/// 慢链路上这一轮的放弃不再作废整次下载，下次打开直接命中。
 final bookDetailExtrasProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>?, String>((ref, href) async {
       final key = bookDetailExtrasKey(href);
@@ -200,31 +204,86 @@ final bookDetailExtrasProvider = FutureProvider.autoDispose
       // 会话取快照（同旧行为）：登录态变化由
       // invalidateAccountScopedProviders 统一重跑，这里不自己转圈。
       final user = ref.read(authProvider).user;
-      try {
-        final result = await BookDetailPageRepository(api)
-            .fetch(
-              href: href,
-              userId: user?.id,
-              userKey: user?.remixUserkey,
-              allowVisibleSolver: false,
-              solverTimeout: _bookDetailExtrasSolverTimeout,
-            )
-            .timeout(_bookDetailExtrasBudget);
-        if (result.success && result.data != null) {
-          final json = _extrasJsonOf(result.data!);
-          unawaited(storage.mergeBookDetailExtras(key, json));
-          return json;
-        }
-        logIgnored(
-          'book_details_metadata',
-          StateError(result.error ?? 'book detail page failed'),
-        );
-      } on Object catch (error) {
-        // 含 TimeoutException：慢链路/求解卡住时放弃这一轮。
-        logIgnored('book_details_metadata', error);
-      }
-      return cached;
+      final json = await loadBookDetailExtrasDeduped(
+        api,
+        storage,
+        href,
+        userId: user?.id,
+        userKey: user?.remixUserkey,
+      ).timeout(_bookDetailExtrasBudget, onTimeout: () => null);
+      return json ?? cached;
     });
+
+/// 同一页面的在途加载表（键 = [bookDetailExtrasKey]，与存储键同一
+/// 套归一化——query/fragment 写法漂移的同页共享同一条 Future）：
+/// 详情页中途退出再进、搜索预取与手动打开撞车，都不再各起一条几百
+/// KB 的下载——慢链路上那是实打实的带宽，两条并行等于各减一半速。
+/// 条目在 Future 完全落定后移除（预算超时的那轮仍在里面跑，直到它
+/// 后台回写完缓存）。
+final _inflightExtras = <String, Future<Map<String, dynamic>?>>{};
+
+/// 附加字段加载的公共入口，[bookDetailExtrasProvider] 与搜索预取共
+/// 用：持久缓存新鲜 → 零请求直返；否则抓一次（Dio 先行，撞墙只允许
+/// 后台求解，[_bookDetailExtrasSolverTimeout]）并回写存储。失败返回
+/// null，永不抛。无 UI 预算——调用方要限时自己 `.timeout`。
+Future<Map<String, dynamic>?> loadBookDetailExtrasDeduped(
+  ZLibraryApi api,
+  StorageService storage,
+  String href, {
+  String? userId,
+  String? userKey,
+}) {
+  final key = bookDetailExtrasKey(href);
+  final existing = _inflightExtras[key];
+  if (existing != null) return existing;
+  final future = _loadExtrasCore(
+    api,
+    storage,
+    href,
+    userId: userId,
+    userKey: userKey,
+  );
+  _inflightExtras[key] = future;
+  unawaited(future.whenComplete(() {
+    if (identical(_inflightExtras[key], future)) {
+      _inflightExtras.remove(key);
+    }
+  }));
+  return future;
+}
+
+Future<Map<String, dynamic>?> _loadExtrasCore(
+  ZLibraryApi api,
+  StorageService storage,
+  String href, {
+  String? userId,
+  String? userKey,
+}) async {
+  final key = bookDetailExtrasKey(href);
+  final cached = storage.getBookDetailExtrasSync(key);
+  if (cached != null && _extrasFresh(cached)) return cached;
+  try {
+    final result = await BookDetailPageRepository(api).fetch(
+      href: href,
+      userId: userId,
+      userKey: userKey,
+      allowVisibleSolver: false,
+      solverTimeout: _bookDetailExtrasSolverTimeout,
+    );
+    if (result.success && result.data != null) {
+      final json = _extrasJsonOf(result.data!);
+      unawaited(storage.mergeBookDetailExtras(key, json));
+      return json;
+    }
+    logIgnored(
+      'book_details_metadata',
+      StateError(result.error ?? 'book detail page failed'),
+    );
+  } on Object catch (error) {
+    logIgnored('book_details_metadata', error);
+  }
+  return null;
+}
 
 class BookIdentifier {
   final String bookId;

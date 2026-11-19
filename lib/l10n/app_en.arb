@@ -512,6 +512,8 @@
   "recommended": "Recommended",
   "recommendedBooklists": "Recommended booklists",
   "relatedBooklists": "Related booklists",
+  "relatedBooklistsEmpty": "This book isn't in any booklist yet",
+  "relatedBooklistsFailed": "Failed to load related booklists",
   "refresh": "Refresh",
   "errorBlocked": "Blocked by the site's protection (browser check). Re-verify the line and retry.",
   "errorTimeout": "Connection timed out. Please retry.",

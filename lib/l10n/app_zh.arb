@@ -512,6 +512,8 @@
   "recommended": "推荐",
   "recommendedBooklists": "推荐书单",
   "relatedBooklists": "关联书单",
+  "relatedBooklistsEmpty": "这本书还没被收录进任何书单",
+  "relatedBooklistsFailed": "关联书单加载失败",
   "refresh": "刷新",
   "errorBlocked": "被网站防护拦截（浏览器验证），请到设置重新验证线路后重试。",
   "errorTimeout": "连接超时，请重试。",

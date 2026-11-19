@@ -512,6 +512,8 @@
   "recommended": "おすすめ",
   "recommendedBooklists": "おすすめのブックリスト",
   "relatedBooklists": "関連ブックリスト",
+  "relatedBooklistsEmpty": "この本はまだどのブックリストにも収録されていません",
+  "relatedBooklistsFailed": "関連ブックリストの読み込みに失敗しました",
   "refresh": "更新",
   "errorBlocked": "サイトの保護（ブラウザ確認）にブロックされました。設定で回線を再認証してから再試行してください。",
   "errorTimeout": "接続がタイムアウトしました。再試行してください。",

@@ -24,6 +24,10 @@ class _FakeDetailApi implements ZLibraryApi {
   /// 那条腿：正文不许被它拖住）。
   bool hangExtras = false;
 
+  /// 非零时 fetchBookDetailExtras 延迟该时长再返回（在途共享的
+  /// 撞车夹具）。
+  Duration extrasDelay = Duration.zero;
+
   /// 置为 true 后 getBookInfo 返回失败（eapi 失败传播用）。
   bool failDetail = false;
 
@@ -58,6 +62,7 @@ class _FakeDetailApi implements ZLibraryApi {
     extrasCalls++;
     detailCallsWhenExtrasStarted = detailCalls;
     if (hangExtras) return Completer<ApiResponse<BookDetailExtras>>().future;
+    if (extrasDelay > Duration.zero) await Future.delayed(extrasDelay);
     if (extrasError != null) return ApiResponse.fail(extrasError!);
     final extras = this.extras;
     if (extras == null) return ApiResponse.fail('no extras fixture');
@@ -248,18 +253,22 @@ void main() {
   test('HTML 卡死：正文照样到位（不再等那条腿）', () async {
     // 1.5.8~1.6.0 的形态：eapi 已到、HTML 那条 await 不返回，整页
     // 卡在加载。拆分后正文与它无耦合——这个 await 必须能完成。
+    //
+    // 用专属路径：在途去重表是模块级的，挂死条目永不落定，会毒死
+    // 本文件里后续所有用同一路径的用例。
+    const hangPath = '/book/hang/never.html';
     final api = _FakeDetailApi()..hangExtras = true;
     final storage = _FakeStorage();
     final container = _container(api, storage);
 
     // 先把卡死的那条腿发出去，再等正文。
     final extrasFuture = container.read(
-      bookDetailExtrasProvider(_pagePath).future,
+      bookDetailExtrasProvider(hangPath).future,
     );
     unawaited(extrasFuture);
 
     final book = await container
-        .read(bookDetailsProvider(_identifier(href: _pagePath)).future)
+        .read(bookDetailsProvider(_identifier(href: hangPath)).future)
         .timeout(const Duration(seconds: 2));
 
     expect(api.extrasCalls, 1);
@@ -372,5 +381,25 @@ void main() {
       bookDetailRelatedBooklists(json2).map((l) => l.id),
       ['498889'],
     );
+  });
+
+  test('在途共享：预取与点进撞车只发一次抓取', () async {
+    // 几百 KB 的页面下载两遍等于各减一半速：同一页面的第二条
+    // 入口（直连或 provider）必须等到同一条 Future。去重键与存储键
+    // 同一套归一化（剥 query/fragment）：带 query 的写法同指一页。
+    final api = _FakeDetailApi()
+      ..extras = BookDetailExtras(metadata: _metadata())
+      ..extrasDelay = const Duration(milliseconds: 50);
+    final storage = _FakeStorage();
+    final container = _container(api, storage);
+
+    final viaProvider = container.read(
+      bookDetailExtrasProvider('$_pagePath?query=1').future,
+    );
+    final viaDirect = loadBookDetailExtrasDeduped(api, storage, _pagePath);
+    expect(await viaProvider, isNotNull);
+    expect(await viaDirect, isNotNull);
+    expect(api.extrasCalls, 1);
+    expect(storage.mergedKeys, [_pagePath]);
   });
 }

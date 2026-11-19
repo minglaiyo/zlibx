@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
@@ -280,67 +279,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('IPFS CID rows copy their own CID on tap', (tester) async {
-    const ipfsBook = Book(
-      id: 9,
-      title: 'Book with IPFS CIDs',
-      author: 'An author',
-      year: 2020,
-      extension: 'pdf',
-      filesizeString: '1 MB',
-      hash: 'sample',
-      ipfsCid: 'QmPrimaryCidValue',
-      ipfsCidBlake2b: 'bafkBlake2bCidValue',
-    );
-    // Clipboard 是平台通道，测试里用 mock 处理器截住写入值。
-    String? copied;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          copied = (call.arguments as Map)['text'] as String?;
-        }
-        return null;
-      },
-    );
-    addTearDown(() => tester.binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, null));
-
-    await tester.pumpWidget(app(
-      CustomScrollView(slivers: [BookInfoSection(book: ipfsBook)]),
-    ));
-    await tester.pumpAndSettle();
-
-    // 两行 CID 各自成行（此前是一格塞两行、不可复制）。
-    expect(find.text('QmPrimaryCidValue'), findsOneWidget);
-    expect(find.text('bafkBlake2bCidValue'), findsOneWidget);
-
-    // 点主 CID 行：复制主 CID，弹已复制提示。
-    await tester.tap(find.text('QmPrimaryCidValue'));
-    await tester.pumpAndSettle();
-    expect(copied, 'QmPrimaryCidValue');
-    expect(find.text('Copied to clipboard'), findsOneWidget);
-
-    // Blake2b 行复制的是自己的值，不是主 CID。
-    await tester.ensureVisible(find.text('bafkBlake2bCidValue'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('bafkBlake2bCidValue'));
-    await tester.pumpAndSettle();
-    expect(copied, 'bafkBlake2bCidValue');
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('a book without IPFS CIDs shows no CID rows', (tester) async {
-    await tester.pumpWidget(app(
-      CustomScrollView(slivers: [BookInfoSection(book: book)]),
-    ));
-    await tester.pumpAndSettle();
-    expect(find.text('IPFS'), findsNothing);
-    expect(find.text('CID Blake2b'), findsNothing);
-  });
-  // 详情页要渲染的书本体 = 入参→eapi→附加字段，逐层覆盖。
-  // 2026-11-15 提速后附加字段是独立的一条腿：正文必须在它到达
-  // 之前就是完整的，到达后再补上卷/ISBN/评分。
+  // 详情页要渲染的书本体 = 入参 → eapi，逐层覆盖。附加字段腿已于
+  // 2026-11-20 从详情页撤下（卷/ISBN/IPFS/评分等书页 HTML 装饰随之
+  // 消失），本组合并规则只剩这两层 + eapi interestScore 评分兜底。
   group('bookDetailPayload', () {
     final eapiBook = Book(
       id: 7,
@@ -351,44 +292,27 @@ void main() {
       hash: 'sample',
       href: '/book/sample/7.html',
     );
-    const extras = {'volume': '第一卷', 'ratingInterest': '3.0'};
 
     test('eapi 未到：用入参书本体', () {
       final payload = bookDetailPayload(
         initialBook: book,
         details: const AsyncValue<Book>.loading(),
-        extras: null,
       );
       expect(payload.author, book.author);
       expect(payload.volume, isNull);
     });
 
-    test('eapi 已到、附加字段未到：正文已完整', () {
+    test('eapi 已到：正文被它覆盖，且完整', () {
       final payload = bookDetailPayload(
         initialBook: book,
         details: AsyncValue<Book>.data(eapiBook),
-        extras: null,
       );
       expect(payload.author, 'eapi 作者');
       expect(payload.description, 'eapi 简介');
-      expect(payload.volume, isNull);
-    });
-
-    test('附加字段后到：只补行，不抹 eapi 已有的字段', () {
-      final payload = bookDetailPayload(
-        initialBook: book,
-        details: AsyncValue<Book>.data(eapiBook),
-        extras: extras,
-      );
-      expect(payload.volume, '第一卷');
-      expect(payload.ratingInterest, '3.0');
-      expect(payload.author, 'eapi 作者');
-      // 附加字段里没有的列（值为 null）不许抹掉 eapi 已有的。
       expect(payload.filesizeString, '9 MB');
-      expect(payload.ratingQuality, isNull);
     });
 
-    test('附加字段缺失时评分用 eapi interestScore 兜底', () {
+    test('评分用 eapi interestScore 兜底', () {
       final withScore = Book(
         id: 7,
         title: book.title,
@@ -399,18 +323,8 @@ void main() {
         bookDetailPayload(
           initialBook: withScore,
           details: AsyncValue<Book>.data(withScore),
-          extras: null,
         ).ratingInterest,
         '4.2',
-      );
-      // HTML 的评分到了就归它说了算。
-      expect(
-        bookDetailPayload(
-          initialBook: withScore,
-          details: AsyncValue<Book>.data(withScore),
-          extras: extras,
-        ).ratingInterest,
-        '3.0',
       );
     });
   });

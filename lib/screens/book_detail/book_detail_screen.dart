@@ -15,38 +15,31 @@ import 'widgets/book_info_section.dart';
 import 'widgets/download_quota_dialog.dart';
 import 'widgets/external_book_action_bar.dart';
 
-/// 详情页当前该渲染的书本体：入参书本体 → eapi 正文 → 已到达的
-/// 附加字段，后到的覆盖先到的（[applyBookDetailExtras] 的空值语义是
-/// “保留原值”，所以附加字段只补行、不抹行）。
+/// 详情页当前该渲染的书本体：入参书本体 → eapi 正文，后到的覆盖
+/// 先到的。
 ///
-/// 拆成函数是为了能脱屏测这条合并规则：2026-11-15 提速把附加字段挪
-/// 成了独立的一条腿，"正文不等它、它到了再并进来" 就是这次改动的全
-/// 部意义，值得单独钉住。
+/// 拆成函数是为了能脱屏测这条合并规则。附加字段那条腿已于
+/// 2026-11-20 从详情页整体撤下（卷/ISBN/IPFS/评分/关键词这些书页
+/// HTML 装饰随之消失；关联书单改为静态入口、点进落地页才抓）——
+/// eapi 的 interestScore 评分兜底保留。
 @visibleForTesting
 Book bookDetailPayload({
   required Book initialBook,
   required AsyncValue<Book>? details,
-  required Map<String, dynamic>? extras,
 }) {
   // 加载中沿用入参书本体；失败（valueOrNull == null）同理。
   final baseBook = details == null || details.isLoading
       ? initialBook
       : (details.valueOrNull ?? initialBook);
-  final withExtras = extras == null
-      ? baseBook
-      : applyBookDetailExtras(baseBook, extras);
-  // Rating fallback: when the detail-page HTML fetch failed (slow
-  // link / walled page) the provider book carries no rating, but the
-  // entry book already has the eapi interest score — the same ★ the
-  // search card shows. Use it for the interest side so the tag is
-  // not empty; the HTML value wins whenever it exists. The quality
-  // side has no eapi equivalent and stays HTML-only.
+  // Rating fallback: when the entry book already carries the eapi
+  // interest score — the same ★ the search card shows — use it so the
+  // hero badge is not empty. The quality side has no eapi equivalent.
   final needsRatingFallback =
-      (withExtras.ratingInterest?.isEmpty ?? true) &&
+      (baseBook.ratingInterest?.isEmpty ?? true) &&
       (initialBook.interestScore?.isNotEmpty ?? false);
   return needsRatingFallback
-      ? withExtras.copyWith(ratingInterest: initialBook.interestScore)
-      : withExtras;
+      ? baseBook.copyWith(ratingInterest: initialBook.interestScore)
+      : baseBook;
 }
 
 class BookDetailScreen extends ConsumerWidget {
@@ -83,29 +76,18 @@ class BookDetailScreen extends ConsumerWidget {
     final details = identifier == null
         ? null
         : ref.watch(bookDetailsProvider(identifier));
-    // 附加字段（卷/ISBN/IPFS/评分/关键词/关联书单）另起一条独立的
-    // 腿：正文只等 eapi，这几行字到了再并进来看（见
-    // bookDetailExtrasProvider）。路由带的 href 优先——它第一帧就
-    // 有，两条腿因此并行；路由没带时用 eapi 返回的，那一轮才开跑。
-    //
-    // 这条腿不许被 needsDetails 门控（2026-11-15 拆分时误耦合，
-    // device-verified 2026-11-19）：eapi 搜索项自带简介与在线阅读
-    // 链接，搜索直达的书 needsDetails=false、identifier=null，若
-    // 腿跟着 identifier 一起短路，ISBN/评分/关键词/关联书单对最常
-    // 见的入口永远不显示。只要有任何一个 href 就跑——抓取本身
-    // best-effort，失败只是少几行装饰，正文不受影响。
+    // 关联书单入口只带书页 href——卷/ISBN/IPFS/评分/关键词/书单
+    // 列表那条几百 KB 的书页 HTML 腿已按用户定稿（2026-11-20）从
+    // 详情页撤下，点进关联书单落地页才开始抓（见
+    // RelatedBooklistsScreen）。路由带的 href 优先；没带时等 eapi
+    // 返回的再亮入口。
     final routeHref = initialBook.href;
-    final extrasHref = (routeHref != null && routeHref.isNotEmpty)
+    final relatedHref = (routeHref != null && routeHref.isNotEmpty)
         ? routeHref
         : details?.valueOrNull?.href;
-    final extrasAsync =
-        extrasHref == null || extrasHref.isEmpty
-        ? null
-        : ref.watch(bookDetailExtrasProvider(extrasHref));
     final book = bookDetailPayload(
       initialBook: initialBook,
       details: details,
-      extras: extrasAsync?.valueOrNull,
     );
     // 只订阅本书的任务：其他书的下载进度变化不再触发本页重建。
     // 账号额度提醒仍在下面用 ref.listen 监听整个列表，不受影响。
@@ -162,12 +144,6 @@ class BookDetailScreen extends ConsumerWidget {
                     TextButton(
                       onPressed: () {
                         ref.invalidate(bookDetailsProvider(identifier!));
-                        // 附加字段那条腿独立失败（超时/墙），重试也要
-                        // 各试一次——正文成功不代表它成功。
-                        final href = extrasHref;
-                        if (href != null && href.isNotEmpty) {
-                          ref.invalidate(bookDetailExtrasProvider(href));
-                        }
                       },
                       child: Text(AppLocalizations.of(context)!.searchRetry),
                     ),
@@ -177,15 +153,8 @@ class BookDetailScreen extends ConsumerWidget {
             ),
 
           // ── 2. Content Body ──
-          // 关联书单随附加字段腿到达后并入快捷入口区（非空才出现
-          // "关联书单"一行，点击进 RelatedBooklistsScreen——与相似
-          // 书籍同款交互）。
-          BookInfoSection(
-            book: book,
-            relatedBooklists: bookDetailRelatedBooklists(
-              extrasAsync?.valueOrNull,
-            ),
-          ),
+          // 关联书单入口行恒显（href 在手即可点），数据进落地页才抓。
+          BookInfoSection(book: book, relatedHref: relatedHref),
         ],
       ),
     );

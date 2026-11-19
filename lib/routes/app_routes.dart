@@ -128,14 +128,13 @@ class AppRoutes {
     BooklistDetailArgs args,
   ) => Navigator.of(context).pushNamed<T>(booklistDetail, arguments: args);
 
-  /// 一本书的关联书单页（详情页快捷入口）。
+  /// 一本书的关联书单页（详情页快捷入口）。参数 = 书页路径，数据
+  /// 进页才抓（用户定稿 2026-11-20：详情页不再预取这条腿）。
   static Future<T?> openRelatedBooklists<T extends Object?>(
     BuildContext context,
-    List<Booklist> booklists,
+    RelatedBooklistsArgs args,
   ) =>
-      Navigator.of(
-        context,
-      ).pushNamed<T>(relatedBooklists, arguments: booklists);
+      Navigator.of(context).pushNamed<T>(relatedBooklists, arguments: args);
 
   /// A book's comments page.
   static Future<T?> openBookComments<T extends Object?>(
@@ -374,10 +373,10 @@ Map<String, WidgetBuilder> buildAppRoutes() {
     },
     AppRoutes.relatedBooklists: (context) {
       final args = ModalRoute.of(context)!.settings.arguments;
-      // 关联书单落地页：列表由详情页附加字段腿直接带过来；参数
-      // 缺失或类型不对走同款回退页（route_args_guard_test 钉住）。
-      if (args is List<Booklist>) {
-        return RelatedBooklistsScreen(booklists: args);
+      // 关联书单落地页：参数 = 书页路径，数据进页才抓；参数缺失
+      // 或类型不对走同款回退页（route_args_guard_test 钉住）。
+      if (args is RelatedBooklistsArgs && args.href.trim().isNotEmpty) {
+        return RelatedBooklistsScreen(href: args.href);
       }
       return const _MissingRouteArgsScreen();
     },

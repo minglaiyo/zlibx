@@ -512,6 +512,8 @@
   "recommended": "推薦",
   "recommendedBooklists": "推薦書單",
   "relatedBooklists": "關聯書單",
+  "relatedBooklistsEmpty": "這本書還沒被收錄進任何書單",
+  "relatedBooklistsFailed": "關聯書單載入失敗",
   "refresh": "重新整理",
   "errorBlocked": "被網站防護攔截（瀏覽器驗證），請到設定重新驗證線路後重試。",
   "errorTimeout": "連線逾時，請重試。",

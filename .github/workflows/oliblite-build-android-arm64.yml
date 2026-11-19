@@ -163,6 +163,36 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
 
+      # ── Rust (phase 1): the Gradle cargoBuildRust task compiles
+      # rust/zlibx_parsers for arm64 during the APK build, so the
+      # release runner needs the toolchain + the Android linker.
+      - name: Set up Rust
+                # @stable, not SHA-pinned: pin AFTER the first green CI run proves the
+        # step works (a wrong pin here would fail every release build).
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Cache cargo
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo
+            rust/zlibx_parsers/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/zlibx_parsers/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Point cargo at the NDK toolchain
+        run: |
+          NDK_BIN="$ANDROID_HOME/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          {
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$NDK_BIN/aarch64-linux-android29-clang"
+            echo "CC_aarch64_linux_android=$NDK_BIN/aarch64-linux-android29-clang"
+            echo "AR_aarch64_linux_android=$NDK_BIN/llvm-ar"
+            echo "RANLIB_aarch64_linux_android=$NDK_BIN/llvm-ranlib"
+          } >> "$GITHUB_ENV"
+
       # No Analyze/Test here (O12): the `check` job runs them on the
       # same commit and `needs: check` gates this build on a green
       # check, so re-running them only costs time.

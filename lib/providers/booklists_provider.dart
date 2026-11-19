@@ -245,6 +245,21 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
     state = state.copyWith(lists: lists);
   }
 
+  /// 失败回滚：从操作开始时的 [snapshot] 只恢复本次操作改动的那一个
+  /// 字段（[restore] 收当前条目、返回字段修正后的副本），其余字段保留
+  /// 现状。旧写法 `_replaceList(snapshot)` 拿整旧对象覆盖——两个操作
+  /// 重叠时，先发起者失败会把后发起者已成功的改动一起回滚掉（审查3
+  /// P1）。
+  void _rollbackFrom(
+    Booklist snapshot,
+    Booklist Function(Booklist current) restore,
+  ) {
+    final index = state.lists.indexWhere((item) => item.id == snapshot.id);
+    if (index < 0) return;
+    final lists = [...state.lists]..[index] = restore(state.lists[index]);
+    state = state.copyWith(lists: lists);
+  }
+
   /// Invalidate the cached mine list page (the URL `loadFirst` reads
   /// and writes), so a later refresh fetches fresh instead of
   /// repainting the pre-write page.
@@ -352,10 +367,10 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
         );
         return response;
       }
-      _replaceList(list);
+      _rollbackFrom(list, (current) => _withColor(current, list.color));
       return response;
     } catch (_) {
-      if (_alive) _replaceList(list);
+      if (_alive) _rollbackFrom(list, (current) => _withColor(current, list.color));
       return ApiResponse.fail('change booklist color failed');
     }
   }
@@ -383,10 +398,12 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
         );
         return response;
       }
-      _replaceList(list);
+      _rollbackFrom(list, (current) => _withPrivate(current, list.isPrivate));
       return response;
     } catch (_) {
-      if (_alive) _replaceList(list);
+      if (_alive) {
+        _rollbackFrom(list, (current) => _withPrivate(current, list.isPrivate));
+      }
       return ApiResponse.fail('change booklist visibility failed');
     }
   }
@@ -414,16 +431,23 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
           : await _repository.unfavoriteBooklist(listId);
       if (!_alive) return response;
       if (response.success) return response;
-      _replaceList(list);
+      _rollbackFrom(list, (current) => _withFavorite(current, list.isFavorite));
       return response;
     } catch (_) {
-      if (_alive) _replaceList(list);
+      if (_alive) {
+        _rollbackFrom(
+          list,
+          (current) => _withFavorite(current, list.isFavorite),
+        );
+      }
       return ApiResponse.fail('favorite booklist failed');
     }
   }
 
   /// Rebuild [list] with a new color, copying every other field.
-  static Booklist _withColor(Booklist list, int color) => Booklist(
+  /// Nullable so a rollback can restore a snapshot that carried no
+  /// color at all.
+  static Booklist _withColor(Booklist list, int? color) => Booklist(
     id: list.id,
     name: list.name,
     description: list.description,
@@ -638,7 +662,7 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
       // currently holding the flag may release it: a newer loadMore
       // may have started since (a refresh cleared the way), and
       // clearing its flag would let a duplicate loadMore through.
-      if (tracksLoadMore && _loadMoreOwner == loadMoreToken) {
+      if (tracksLoadMore && _loadMoreOwner == loadMoreToken && _alive) {
         _loadMoreOwner = 0;
         state = state.copyWith(isLoadingMore: false);
       }
@@ -685,11 +709,15 @@ class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
       _applyFailure(page, originalError, replace: replace);
       return;
     }
-    _applyPage(
-      await _repository.parseListPage(html, baseUrl: Uri.parse(url).origin),
-      page,
-      replace: replace,
+    // parseListPage 是 Future——解析期间用户可能已经切 tab/搜索/换
+    // 排序（generation 前移），落笔前必须复检，否则旧请求会把过期
+    // 结果画进新页面（审查3 P2）。
+    final parsed = await _repository.parseListPage(
+      html,
+      baseUrl: Uri.parse(url).origin,
     );
+    if (!_isCurrent(generation)) return;
+    _applyPage(parsed, page, replace: replace);
   }
 
   void _applyPage(BooklistsPage data, int page, {bool replace = false}) {

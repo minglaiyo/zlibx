@@ -73,8 +73,13 @@ class BookDetailPageRepository {
 
   /// The absolute detail-page URL for one site-relative [href] — the
   /// solver fallback's URL (the WebView follows it with the session
-  /// cookies installed).
-  String pageUrl(String href) => 'https://${_api.domain}$href';
+  /// cookies installed). Search/eapi responses carry the ABSOLUTE
+  /// form (`https://<host>/book/…`, device-verified 2026-11-19), so
+  /// an already-absolute href passes through — naive concatenation
+  /// used to yield `https://<host>https://…` and the solve died on
+  /// DNS.
+  String pageUrl(String href) =>
+      href.startsWith('http') ? href : 'https://${_api.domain}$href';
 
   /// The plugin's short error for a browser-check wall (plus the
   /// older shapes a wall can surface as) — same matcher as the other

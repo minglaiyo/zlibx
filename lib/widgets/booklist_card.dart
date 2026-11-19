@@ -496,9 +496,9 @@ class _BooklistSkeletonListState extends State<BooklistSkeletonList>
   @override
   void initState() {
     super.initState();
-    if (!context.disableAnimations) {
-      _controller.repeat(reverse: true);
-    }
+    // 起停全在 didChangeDependencies:initState 里读 MediaQuery 是
+    // 非法依赖(2026-11-19 PageView 结构把这条潜伏违规炸了出来——
+    // 滑动中新挂载的骨架页撞上 _SelectionKeepAlive 重建即断言)。
   }
 
   @override

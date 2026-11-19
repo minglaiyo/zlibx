@@ -83,16 +83,23 @@ class BookDetailScreen extends ConsumerWidget {
     final details = identifier == null
         ? null
         : ref.watch(bookDetailsProvider(identifier));
-    // 附加字段（卷/ISBN/IPFS/评分）另起一条独立的腿：正文只等 eapi，
-    // 这几行字到了再并进来看（见 bookDetailExtrasProvider）。路由带
-    // 的 href 优先——它第一帧就有，两条腿因此并行；路由没带时用 eapi
-    // 返回的，那一轮才开跑。
+    // 附加字段（卷/ISBN/IPFS/评分/关键词/关联书单）另起一条独立的
+    // 腿：正文只等 eapi，这几行字到了再并进来看（见
+    // bookDetailExtrasProvider）。路由带的 href 优先——它第一帧就
+    // 有，两条腿因此并行；路由没带时用 eapi 返回的，那一轮才开跑。
+    //
+    // 这条腿不许被 needsDetails 门控（2026-11-15 拆分时误耦合，
+    // device-verified 2026-11-19）：eapi 搜索项自带简介与在线阅读
+    // 链接，搜索直达的书 needsDetails=false、identifier=null，若
+    // 腿跟着 identifier 一起短路，ISBN/评分/关键词/关联书单对最常
+    // 见的入口永远不显示。只要有任何一个 href 就跑——抓取本身
+    // best-effort，失败只是少几行装饰，正文不受影响。
     final routeHref = initialBook.href;
     final extrasHref = (routeHref != null && routeHref.isNotEmpty)
         ? routeHref
         : details?.valueOrNull?.href;
     final extrasAsync =
-        identifier == null || extrasHref == null || extrasHref.isEmpty
+        extrasHref == null || extrasHref.isEmpty
         ? null
         : ref.watch(bookDetailExtrasProvider(extrasHref));
     final book = bookDetailPayload(

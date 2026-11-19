@@ -149,7 +149,7 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
       userId: _args.userId.toString(),
       userHash: hash,
     );
-    final cachedHtml = BooklistHtmlCache.get(url);
+    final cachedHtml = await BooklistHtmlCache.get(url);
     if (cachedHtml != null && !_isChallengeHtml(cachedHtml)) {
       // Phase 3: parse through the Rust bridge when injected (await
       // before setState — the parse is a Future under the hook).

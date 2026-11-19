@@ -17,23 +17,26 @@ class HiveService {
     ]);
   }
 
-  /// Opens the two heavier, non-critical-for-first-frame boxes
-  /// (booklist_html, view_history) AFTER the first frame (O2). A regular
-  /// Hive Box loads every value into memory when it opens — booklist_html
-  /// can hold up to ~20 MB of cached HTML, which would delay the first
-  /// frame and spike the Dart heap. Opening them after the first frame
-  /// keeps the splash paint instant. Callers treat an unopened box as a
-  /// cache miss: BooklistHtmlCache guards every access, and
-  /// ViewHistoryStore already wraps every access in try/catch.
+  /// Opens the two heavier, non-critical-for-first-frame boxes AFTER
+  /// the first frame (O2). view_history is a regular Box: it holds
+  /// ≤200 small book-JSON rows and several read paths (search
+  /// suggestions included) hit it synchronously. booklist_html is a
+  /// [LazyBox] (审查1 P-2 / 审查3 P3-1 落地): its values are up to ~20 MB
+  /// of page HTML, and a regular Box parses EVERY value into memory at
+  /// open. LazyBox keeps only the key index; values read from disk on
+  /// demand (`get` is async in hive 2.2.3, which is why the cache API
+  /// went Future around it). Frame files are format-compatible between
+  /// the two views, so the box keeps its name and old entries load
+  /// without migration.
   static Future<void> initSecondary() async {
     await Future.wait([
-      Hive.openBox(booklistHtmlBoxName),
+      Hive.openLazyBox(booklistHtmlBoxName),
       Hive.openBox(viewHistoryBoxName),
     ]);
   }
 
   static Box<dynamic> get settingsBox => Hive.box(settingsBoxName);
   static Box<dynamic> get authBox => Hive.box(authBoxName);
-  static Box<dynamic> get booklistHtmlBox => Hive.box(booklistHtmlBoxName);
+  static LazyBox<dynamic> get booklistHtmlBox => Hive.lazyBox(booklistHtmlBoxName);
   static Box<dynamic> get viewHistoryBox => Hive.box(viewHistoryBoxName);
 }

@@ -229,11 +229,11 @@ void main() {
   setUpAll(() async {
     tempDir = await Directory.systemTemp.createTemp('booklist_p3_phase4');
     Hive.init(tempDir.path);
-    await Hive.openBox(BooklistHtmlCache.boxName);
+    await Hive.openLazyBox(BooklistHtmlCache.boxName);
   });
 
   setUp(() async {
-    await Hive.box(BooklistHtmlCache.boxName).clear();
+    await Hive.lazyBox(BooklistHtmlCache.boxName).clear();
     BooklistHtmlCache.debugResetTokenSweep();
   });
 
@@ -284,10 +284,10 @@ void main() {
   });
 
   // P3-2: one bad entry must not lose the good books on the page.
-  test('getBooksPage keeps good entries when one entry is bad', () {
-    final box = Hive.box(BooklistHtmlCache.boxName);
+  test('getBooksPage keeps good entries when one entry is bad', ()  async {
+    final box = Hive.lazyBox(BooklistHtmlCache.boxName);
     const url = 'https://example.com/booklist/1/h/x.html';
-    box.put('$url#json-page=2', {
+    await box.put('$url#json-page=2', {
       'at': DateTime.now().millisecondsSinceEpoch,
       'books': [
         {'id': 1, 'title': 'Good One'},
@@ -295,32 +295,32 @@ void main() {
         {'id': 2, 'title': 'Good Two'},
       ],
     });
-    final books = BooklistHtmlCache.getBooksPage(url, 2);
+    final books = (await BooklistHtmlCache.getBooksPage(url, 2));
     expect(books?.map((book) => book.id).toList(), [1, 2]);
     // The page itself is kept (only the bad entry is skipped).
     expect(box.containsKey('$url#json-page=2'), isTrue);
   });
 
   // P3-2: a page whose every entry is bad is corrupt: null + deleted.
-  test('getBooksPage returns null and deletes a wholly corrupt page', () {
-    final box = Hive.box(BooklistHtmlCache.boxName);
+  test('getBooksPage returns null and deletes a wholly corrupt page', ()  async {
+    final box = Hive.lazyBox(BooklistHtmlCache.boxName);
     const url = 'https://example.com/booklist/1/h/x.html';
-    box.put('$url#json-page=2', {
+    await box.put('$url#json-page=2', {
       'at': DateTime.now().millisecondsSinceEpoch,
       'books': ['not-a-map', 42],
     });
-    expect(BooklistHtmlCache.getBooksPage(url, 2), isNull);
+    expect((await BooklistHtmlCache.getBooksPage(url, 2)), isNull);
     expect(box.containsKey('$url#json-page=2'), isFalse);
   });
 
   // P3-2: a stored empty page is valid, not corrupt.
-  test('getBooksPage returns an empty list for a valid empty page', () {
+  test('getBooksPage returns an empty list for a valid empty page', ()  async {
     const url = 'https://example.com/booklist/1/h/x.html';
-    Hive.box(BooklistHtmlCache.boxName).put('$url#json-page=2', {
+    await Hive.lazyBox(BooklistHtmlCache.boxName).put('$url#json-page=2', {
       'at': DateTime.now().millisecondsSinceEpoch,
       'books': <dynamic>[],
     });
-    final books = BooklistHtmlCache.getBooksPage(url, 2);
+    final books = (await BooklistHtmlCache.getBooksPage(url, 2));
     expect(books, isNotNull);
     expect(books, isEmpty);
   });
@@ -328,20 +328,20 @@ void main() {
   // Phase-4 account-switch: a mine page cached under account A must
   // not be visible under account B, signed out, or the public key.
   test('mine page cached under account A is invisible to B and signed-out',
-      () {
+      ()  async {
     const url = 'https://example.com/booklists/my?page=1';
     BooklistHtmlCache.store(url, '<html>mine A</html>', accountId: 'A');
     expect(
-      BooklistHtmlCache.get(url, accountId: 'A'),
+      (await BooklistHtmlCache.get(url, accountId: 'A')),
       '<html>mine A</html>',
     );
-    expect(BooklistHtmlCache.get(url, accountId: 'B'), isNull);
-    expect(BooklistHtmlCache.get(url, accountId: 'signed-out'), isNull);
-    expect(BooklistHtmlCache.get(url), isNull);
+    expect((await BooklistHtmlCache.get(url, accountId: 'B')), isNull);
+    expect((await BooklistHtmlCache.get(url, accountId: 'signed-out')), isNull);
+    expect((await BooklistHtmlCache.get(url)), isNull);
   });
 
   // Phase-4 account-switch: parsed detail pages are partitioned too.
-  test('detail books page cached under account A is invisible to B', () {
+  test('detail books page cached under account A is invisible to B', ()  async {
     const url = 'https://example.com/booklist/4088695/h/001.html';
     BooklistHtmlCache.storeBooksPage(
       url,
@@ -350,31 +350,31 @@ void main() {
       accountId: 'A',
     );
     expect(
-      BooklistHtmlCache.getBooksPage(url, 2, accountId: 'A')
+      (await BooklistHtmlCache.getBooksPage(url, 2, accountId: 'A'))
           ?.map((book) => book.id)
           .toList(),
       [3, 4],
     );
-    expect(BooklistHtmlCache.getBooksPage(url, 2, accountId: 'B'), isNull);
+    expect((await BooklistHtmlCache.getBooksPage(url, 2, accountId: 'B')), isNull);
     expect(
-      BooklistHtmlCache.getBooksPage(url, 2, accountId: 'signed-out'),
+      (await BooklistHtmlCache.getBooksPage(url, 2, accountId: 'signed-out')),
       isNull,
     );
   });
 
   // Phase-4 account-switch: the public discover page is shared — it
   // is stored and read without an account partition.
-  test('discover page is shared without an account partition', () {
+  test('discover page is shared without an account partition', ()  async {
     const url = 'https://example.com/booklists?page=1';
     BooklistHtmlCache.store(url, '<html>discover</html>');
-    expect(BooklistHtmlCache.get(url), '<html>discover</html>');
+    expect((await BooklistHtmlCache.get(url)), '<html>discover</html>');
     // The public entry is not filed under any account key.
-    expect(BooklistHtmlCache.get(url, accountId: 'A'), isNull);
+    expect((await BooklistHtmlCache.get(url, accountId: 'A')), isNull);
   });
 
   // Phase-4 account-switch: invalidating one account's booklist must
   // not clear another account's entry for the same URL.
-  test('invalidateBooklist only clears the given account partition', () {
+  test('invalidateBooklist only clears the given account partition', ()  async {
     const url = 'https://example.com/booklist/4088695/h/001.html';
     BooklistHtmlCache.storeBooksPage(
       url,
@@ -389,9 +389,9 @@ void main() {
       accountId: 'B',
     );
     BooklistHtmlCache.invalidateBooklist(url, accountId: 'A');
-    expect(BooklistHtmlCache.getBooksPage(url, 2, accountId: 'A'), isNull);
+    expect((await BooklistHtmlCache.getBooksPage(url, 2, accountId: 'A')), isNull);
     expect(
-      BooklistHtmlCache.getBooksPage(url, 2, accountId: 'B')
+      (await BooklistHtmlCache.getBooksPage(url, 2, accountId: 'B'))
           ?.map((book) => book.id)
           .toList(),
       [3],

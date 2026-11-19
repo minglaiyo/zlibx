@@ -273,11 +273,11 @@ void main() {
   setUpAll(() async {
     tempDir = await Directory.systemTemp.createTemp('booklist_gpt_fixes');
     Hive.init(tempDir.path);
-    await Hive.openBox(BooklistHtmlCache.boxName);
+    await Hive.openLazyBox(BooklistHtmlCache.boxName);
   });
 
   setUp(() async {
-    await Hive.box(BooklistHtmlCache.boxName).clear();
+    await Hive.lazyBox(BooklistHtmlCache.boxName).clear();
     BooklistHtmlCache.debugResetTokenSweep();
   });
 
@@ -363,21 +363,21 @@ void main() {
         container.read(booklistDetailControllerProvider(_args).notifier);
     await notifier.loadMore();
     expect(
-      BooklistHtmlCache.getBooksPage(_detailUrl, 1, accountId: _user.id),
+      (await BooklistHtmlCache.getBooksPage(_detailUrl, 1, accountId: _user.id)),
       isNotNull,
     );
     expect(
-      BooklistHtmlCache.getBooksPage(_detailUrl, 2, accountId: _user.id),
+      (await BooklistHtmlCache.getBooksPage(_detailUrl, 2, accountId: _user.id)),
       isNotNull,
     );
     final response = await notifier.removeBook(const Book(id: 3, title: 'Three'));
     expect(response.success, isTrue);
     expect(
-      BooklistHtmlCache.getBooksPage(_detailUrl, 1, accountId: _user.id),
+      (await BooklistHtmlCache.getBooksPage(_detailUrl, 1, accountId: _user.id)),
       isNull,
     );
     expect(
-      BooklistHtmlCache.getBooksPage(_detailUrl, 2, accountId: _user.id),
+      (await BooklistHtmlCache.getBooksPage(_detailUrl, 2, accountId: _user.id)),
       isNull,
     );
     expect(
@@ -442,7 +442,7 @@ void main() {
     );
     expect(container.read(provider).isLoadingMore, isFalse);
     expect(
-      BooklistHtmlCache.getBooksPage(url, 1, accountId: _user.id),
+      (await BooklistHtmlCache.getBooksPage(url, 1, accountId: _user.id)),
       isNull,
     );
   });
@@ -487,7 +487,12 @@ void main() {
     );
     // The refresh starts while the remove is in flight: it paints the
     // still-cached page (book 1 is back) and its fetch is held.
+    // LazyBox reads are async by nature — the cached paint lands one
+    // event-loop turn after the load starts. The P1-4 guarantees
+    // (paints FROM CACHE rather than blank; the stale held fetch is
+    // dropped and retried) are timing-independent and still verified.
     final refreshFuture = notifier.loadFirst();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
     expect(
       container.read(provider).books.map((book) => book.id).toList(),
       [1, 2],
@@ -509,7 +514,7 @@ void main() {
     );
     expect(container.read(provider).isLoadingMore, isFalse);
     expect(
-      BooklistHtmlCache.getBooksPage(url, 1, accountId: _user.id)
+      (await BooklistHtmlCache.getBooksPage(url, 1, accountId: _user.id))
           ?.map((book) => book.id)
           .toList(),
       [2],
@@ -733,7 +738,7 @@ void main() {
 
   // Item 10: invalidateBooklist drops the HTML entry and every JSON
   // page for that list; other lists are untouched.
-  test('invalidateBooklist drops the HTML and all JSON pages', () {
+  test('invalidateBooklist drops the HTML and all JSON pages', ()  async {
     const url = 'https://example.com/booklist/1/h/s.html';
     const other = 'https://example.com/booklist/2/h/s.html';
     BooklistHtmlCache.store(url, '<html>detail</html>', accountId: '111');
@@ -756,17 +761,17 @@ void main() {
       accountId: '111',
     );
     BooklistHtmlCache.invalidateBooklist(url, accountId: '111');
-    expect(BooklistHtmlCache.get(url, accountId: '111'), isNull);
-    expect(BooklistHtmlCache.getBooksPage(url, 1, accountId: '111'), isNull);
-    expect(BooklistHtmlCache.getBooksPage(url, 2, accountId: '111'), isNull);
+    expect((await BooklistHtmlCache.get(url, accountId: '111')), isNull);
+    expect((await BooklistHtmlCache.getBooksPage(url, 1, accountId: '111')), isNull);
+    expect((await BooklistHtmlCache.getBooksPage(url, 2, accountId: '111')), isNull);
     expect(
-      BooklistHtmlCache.getBooksPage(other, 1, accountId: '111'),
+      (await BooklistHtmlCache.getBooksPage(other, 1, accountId: '111')),
       isNotNull,
     );
   });
 
   // Item 10: invalidateBooklistPages drops only the JSON pages.
-  test('invalidateBooklistPages drops only the JSON pages', () {
+  test('invalidateBooklistPages drops only the JSON pages', ()  async {
     const url = 'https://example.com/booklist/1/h/s.html';
     BooklistHtmlCache.store(url, '<html>detail</html>', accountId: '111');
     BooklistHtmlCache.storeBooksPage(
@@ -776,53 +781,53 @@ void main() {
       accountId: '111',
     );
     BooklistHtmlCache.invalidateBooklistPages(url, accountId: '111');
-    expect(BooklistHtmlCache.get(url, accountId: '111'), '<html>detail</html>');
-    expect(BooklistHtmlCache.getBooksPage(url, 2, accountId: '111'), isNull);
+    expect((await BooklistHtmlCache.get(url, accountId: '111')), '<html>detail</html>');
+    expect((await BooklistHtmlCache.getBooksPage(url, 2, accountId: '111')), isNull);
   });
 
   // Item 10: pruneExpired deletes stale entries and leaves fresh ones.
-  test('pruneExpired deletes stale entries only', () {
-    final box = Hive.box(BooklistHtmlCache.boxName);
+  test('pruneExpired deletes stale entries only', ()  async {
+    final box = Hive.lazyBox(BooklistHtmlCache.boxName);
     final staleAt = DateTime.now()
         .subtract(BooklistHtmlCache.ttl + const Duration(seconds: 1))
         .millisecondsSinceEpoch;
-    box.put('https://example.com/old', {
+    await box.put('https://example.com/old', {
       'at': staleAt,
       'html': '<html>old</html>',
     });
     BooklistHtmlCache.store('https://example.com/new', '<html>new</html>');
-    BooklistHtmlCache.pruneExpired();
+    await BooklistHtmlCache.pruneExpired();
     expect(box.containsKey('https://example.com/old'), isFalse);
     expect(
-      BooklistHtmlCache.get('https://example.com/new'),
+      (await BooklistHtmlCache.get('https://example.com/new')),
       '<html>new</html>',
     );
   });
 
   // Item 10: an expired entry is deleted on read, not just hidden.
-  test('expired entries are deleted on read', () {
-    final box = Hive.box(BooklistHtmlCache.boxName);
+  test('expired entries are deleted on read', ()  async {
+    final box = Hive.lazyBox(BooklistHtmlCache.boxName);
     final staleAt = DateTime.now()
         .subtract(BooklistHtmlCache.ttl + const Duration(seconds: 1))
         .millisecondsSinceEpoch;
-    box.put('https://example.com/old', {
+    await box.put('https://example.com/old', {
       'at': staleAt,
       'html': '<html>old</html>',
     });
-    expect(BooklistHtmlCache.get('https://example.com/old'), isNull);
+    expect((await BooklistHtmlCache.get('https://example.com/old')), isNull);
     expect(box.containsKey('https://example.com/old'), isFalse);
   });
 
   // Item 10: a corrupt JSON page is deleted on read, not just hidden.
-  test('corrupt JSON pages are deleted on read', () {
-    final box = Hive.box(BooklistHtmlCache.boxName);
+  test('corrupt JSON pages are deleted on read', ()  async {
+    final box = Hive.lazyBox(BooklistHtmlCache.boxName);
     const url = 'https://example.com/booklist/1/h/s.html';
-    box.put('$url#json-page=2#account=111', {
+    await box.put('$url#json-page=2#account=111', {
       'at': DateTime.now().millisecondsSinceEpoch,
       'books': 'not-a-list',
     });
     expect(
-      BooklistHtmlCache.getBooksPage(url, 2, accountId: '111'),
+      (await BooklistHtmlCache.getBooksPage(url, 2, accountId: '111')),
       isNull,
     );
     expect(box.containsKey('$url#json-page=2#account=111'), isFalse);
@@ -830,13 +835,13 @@ void main() {
 
   // Item 11: the user_token JWT is stripped from HTML before it is
   // persisted, so no session credential ever reaches Hive.
-  test('store strips the user_token from cached HTML', () {
+  test('store strips the user_token from cached HTML', ()  async {
     const url = 'https://example.com/booklist/1/h/s.html';
     BooklistHtmlCache.store(
       url,
       '<z-bookcard id="1" user_token="eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjoxfQ.sig" href="/book/x/y.html"></z-bookcard>',
     );
-    final stored = BooklistHtmlCache.get(url);
+    final stored = (await BooklistHtmlCache.get(url));
     expect(stored, isNotNull);
     expect(stored, isNot(contains('user_token')));
     expect(stored, isNot(contains('eyJhbGciOiJIUzI1NiJ9')));
@@ -847,36 +852,39 @@ void main() {
   // is swept once on first access — only the token-bearing entries
   // are dropped; clean HTML and parsed JSON pages survive (the old
   // wipe-the-whole-box behaviour dropped those too).
-  test('first access purges only pre-strip HTML carrying a token', () {
-    final box = Hive.box(BooklistHtmlCache.boxName);
-    box.put('https://example.com/booklist/1/h/s.html', {
+  test('first access purges only pre-strip HTML carrying a token', ()  async {
+    final box = Hive.lazyBox(BooklistHtmlCache.boxName);
+    await box.put('https://example.com/booklist/1/h/s.html', {
       'at': DateTime.now().millisecondsSinceEpoch,
       'html': '<z-bookcard user_token="abc.def.ghi"></z-bookcard>',
     });
-    box.put('https://example.com/booklist/2/h/s.html', {
+    await box.put('https://example.com/booklist/2/h/s.html', {
       'at': DateTime.now().millisecondsSinceEpoch,
       'html': '<html>clean</html>',
     });
-    box.put('https://example.com/booklist/2/h/s.html#json-page=2', {
+    await box.put('https://example.com/booklist/2/h/s.html#json-page=2', {
       'at': DateTime.now().millisecondsSinceEpoch,
       'books': [
         {'id': 1, 'title': 'Kept'},
       ],
     });
-    // First access runs the one-time sweep.
+    // First access runs the one-time sweep (backgrounded on the
+    // LazyBox cache: it never blocks the read that triggered it —
+    // pump so the purge lands before asserting the raw box).
     expect(
-      BooklistHtmlCache.get('https://example.com/booklist/2/h/s.html'),
+      (await BooklistHtmlCache.get('https://example.com/booklist/2/h/s.html')),
       '<html>clean</html>',
     );
+    await pumpEventQueue();
     expect(
       box.containsKey('https://example.com/booklist/1/h/s.html'),
       isFalse,
     );
     expect(
-      BooklistHtmlCache.getBooksPage(
+      (await BooklistHtmlCache.getBooksPage(
         'https://example.com/booklist/2/h/s.html',
         2,
-      ),
+      )),
       isNotNull,
     );
     expect(box.isEmpty, isFalse);

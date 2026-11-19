@@ -11,11 +11,11 @@ void main() {
   setUpAll(() async {
     tempDir = await Directory.systemTemp.createTemp('booklist_html_cache');
     Hive.init(tempDir.path);
-    await Hive.openBox(BooklistHtmlCache.boxName);
+    await Hive.openLazyBox(BooklistHtmlCache.boxName);
   });
 
   setUp(() async {
-    await Hive.box(BooklistHtmlCache.boxName).clear();
+    await Hive.lazyBox(BooklistHtmlCache.boxName).clear();
   });
 
   tearDownAll(() async {
@@ -23,72 +23,72 @@ void main() {
     await tempDir.delete(recursive: true);
   });
 
-  test('stores and returns HTML by URL', () {
+  test('stores and returns HTML by URL', ()  async {
     BooklistHtmlCache.store(
       'https://example.com/booklists/my',
       '<html>mine</html>',
     );
     expect(
-      BooklistHtmlCache.get('https://example.com/booklists/my'),
+      (await BooklistHtmlCache.get('https://example.com/booklists/my')),
       '<html>mine</html>',
     );
   });
 
-  test('returns null for unknown URLs', () {
+  test('returns null for unknown URLs', ()  async {
     expect(
-      BooklistHtmlCache.get('https://example.com/booklists'),
+      (await BooklistHtmlCache.get('https://example.com/booklists')),
       isNull,
     );
   });
 
-  test('ignores empty URL and empty HTML', () {
+  test('ignores empty URL and empty HTML', ()  async {
     BooklistHtmlCache.store('', '<html/>');
     BooklistHtmlCache.store('https://example.com/x', '');
-    expect(BooklistHtmlCache.get(''), isNull);
-    expect(BooklistHtmlCache.get('https://example.com/x'), isNull);
+    expect((await BooklistHtmlCache.get('')), isNull);
+    expect((await BooklistHtmlCache.get('https://example.com/x')), isNull);
   });
 
-  test('a newer store overwrites an older one', () {
+  test('a newer store overwrites an older one', ()  async {
     const url = 'https://example.com/booklists/my';
     BooklistHtmlCache.store(url, '<html>old</html>');
     BooklistHtmlCache.store(url, '<html>new</html>');
-    expect(BooklistHtmlCache.get(url), '<html>new</html>');
+    expect((await BooklistHtmlCache.get(url)), '<html>new</html>');
   });
 
-  test('entries older than the TTL read as absent', () {
-    final box = Hive.box(BooklistHtmlCache.boxName);
+  test('entries older than the TTL read as absent', ()  async {
+    final box = Hive.lazyBox(BooklistHtmlCache.boxName);
     final staleAt = DateTime.now()
         .subtract(BooklistHtmlCache.ttl + const Duration(seconds: 1))
         .millisecondsSinceEpoch;
-    box.put('https://example.com/old', {
+    await box.put('https://example.com/old', {
       'at': staleAt,
       'html': '<html>old</html>',
     });
-    expect(BooklistHtmlCache.get('https://example.com/old'), isNull);
+    expect((await BooklistHtmlCache.get('https://example.com/old')), isNull);
   });
 
-  test('corrupt entries read as absent', () {
-    final box = Hive.box(BooklistHtmlCache.boxName);
-    box.put('https://example.com/broken', {'nope': true});
-    box.put('https://example.com/broken-at', {
+  test('corrupt entries read as absent', ()  async {
+    final box = Hive.lazyBox(BooklistHtmlCache.boxName);
+    await box.put('https://example.com/broken', {'nope': true});
+    await box.put('https://example.com/broken-at', {
       'at': 'not-a-number',
       'html': '<html/>',
     });
-    expect(BooklistHtmlCache.get('https://example.com/broken'), isNull);
+    expect((await BooklistHtmlCache.get('https://example.com/broken')), isNull);
     expect(
-      BooklistHtmlCache.get('https://example.com/broken-at'),
+      (await BooklistHtmlCache.get('https://example.com/broken-at')),
       isNull,
     );
   });
 
-  test('evicts the oldest entries past the cap', () {
-    final box = Hive.box(BooklistHtmlCache.boxName);
+  test('evicts the oldest entries past the cap', ()  async {
+    final box = Hive.lazyBox(BooklistHtmlCache.boxName);
     // Hand-built entries with increasing timestamps: the first one
     // is the oldest and must go when one more store pushes the box
     // past the cap. (Hand-built timestamps are long past the TTL,
     // so presence is checked on the box itself, not through get.)
     for (var i = 0; i < BooklistHtmlCache.maxEntries; i++) {
-      box.put('https://example.com/$i', {
+      await box.put('https://example.com/$i', {
         'at': 1000 + i,
         'html': '<html>$i</html>',
       });
@@ -97,11 +97,15 @@ void main() {
       'https://example.com/new',
       '<html>new</html>',
     );
+    // LazyBox flushes land on later event-loop turns: pump before
+    // asserting raw box state (cache-API reads are tombstone-accurate
+    // immediately and stay un-pumped elsewhere).
+    await pumpEventQueue();
     expect(box.length, BooklistHtmlCache.maxEntries);
     expect(box.containsKey('https://example.com/0'), isFalse);
     expect(box.containsKey('https://example.com/1'), isTrue);
     expect(
-      BooklistHtmlCache.get('https://example.com/new'),
+      (await BooklistHtmlCache.get('https://example.com/new')),
       '<html>new</html>',
     );
   });
@@ -113,7 +117,7 @@ void main() {
     );
     await BooklistHtmlCache.clear();
     expect(
-      BooklistHtmlCache.get('https://example.com/booklists/my'),
+      (await BooklistHtmlCache.get('https://example.com/booklists/my')),
       isNull,
     );
   });
@@ -148,30 +152,30 @@ void main() {
     expect(BooklistHtmlCache.isPrivateUrl('not a url'), isFalse);
   });
 
-  test('account partitions isolate the same URL', () {
+  test('account partitions isolate the same URL', ()  async {
     const url = 'https://example.com/booklists/my';
     BooklistHtmlCache.store(url, '<html>mine-A</html>', accountId: '111');
     BooklistHtmlCache.store(url, '<html>mine-B</html>', accountId: '222');
     expect(
-      BooklistHtmlCache.get(url, accountId: '111'),
+      (await BooklistHtmlCache.get(url, accountId: '111')),
       '<html>mine-A</html>',
     );
     expect(
-      BooklistHtmlCache.get(url, accountId: '222'),
+      (await BooklistHtmlCache.get(url, accountId: '222')),
       '<html>mine-B</html>',
     );
     // The public (unpartitioned) key never sees either account's page.
-    expect(BooklistHtmlCache.get(url), isNull);
+    expect((await BooklistHtmlCache.get(url)), isNull);
   });
 
-  test('stores and returns a JSON books page', () {
+  test('stores and returns a JSON books page', ()  async {
     const url = 'https://example.com/booklist/1/hash/slug.html';
     const books = [
       Book(id: 1, title: 'First', author: 'A', hash: 'aaa'),
       Book(id: 2, title: 'Second', author: 'B', hash: 'bbb'),
     ];
     BooklistHtmlCache.storeBooksPage(url, 2, books, accountId: '111');
-    final read = BooklistHtmlCache.getBooksPage(url, 2, accountId: '111');
+    final read = (await BooklistHtmlCache.getBooksPage(url, 2, accountId: '111'));
     expect(read, isNotNull);
     expect(read!.length, 2);
     expect(read[0].id, 1);
@@ -181,41 +185,41 @@ void main() {
     expect(read[1].id, 2);
     // A different page, a different account, and the public key
     // all miss.
-    expect(BooklistHtmlCache.getBooksPage(url, 3, accountId: '111'), isNull);
-    expect(BooklistHtmlCache.getBooksPage(url, 2, accountId: '222'), isNull);
-    expect(BooklistHtmlCache.getBooksPage(url, 2), isNull);
+    expect((await BooklistHtmlCache.getBooksPage(url, 3, accountId: '111')), isNull);
+    expect((await BooklistHtmlCache.getBooksPage(url, 2, accountId: '222')), isNull);
+    expect((await BooklistHtmlCache.getBooksPage(url, 2)), isNull);
   });
 
-  test('stale and corrupt JSON pages read as absent', () {
-    final box = Hive.box(BooklistHtmlCache.boxName);
+  test('stale and corrupt JSON pages read as absent', ()  async {
+    final box = Hive.lazyBox(BooklistHtmlCache.boxName);
     final staleAt = DateTime.now()
         .subtract(BooklistHtmlCache.ttl + const Duration(seconds: 1))
         .millisecondsSinceEpoch;
     const url = 'https://example.com/booklist/1/h/s.html';
-    box.put('$url#json-page=2#account=111', {
+    await box.put('$url#json-page=2#account=111', {
       'at': staleAt,
       'books': [
         {'id': 1, 'title': 'Old'},
       ],
     });
-    box.put('$url#json-page=3#account=111', {
+    await box.put('$url#json-page=3#account=111', {
       'at': DateTime.now().millisecondsSinceEpoch,
       'books': 'not-a-list',
     });
     expect(
-      BooklistHtmlCache.getBooksPage(url, 2, accountId: '111'),
+      (await BooklistHtmlCache.getBooksPage(url, 2, accountId: '111')),
       isNull,
     );
     expect(
-      BooklistHtmlCache.getBooksPage(url, 3, accountId: '111'),
+      (await BooklistHtmlCache.getBooksPage(url, 3, accountId: '111')),
       isNull,
     );
   });
 
-  test('JSON pages share the entry cap', () {
-    final box = Hive.box(BooklistHtmlCache.boxName);
+  test('JSON pages share the entry cap', ()  async {
+    final box = Hive.lazyBox(BooklistHtmlCache.boxName);
     for (var i = 0; i < BooklistHtmlCache.maxEntries; i++) {
-      box.put('https://example.com/$i', {
+      await box.put('https://example.com/$i', {
         'at': 1000 + i,
         'html': '<html>$i</html>',
       });
@@ -226,36 +230,37 @@ void main() {
       const [Book(id: 1, title: 'New')],
       accountId: '111',
     );
+    await pumpEventQueue();
     expect(box.length, BooklistHtmlCache.maxEntries);
     expect(box.containsKey('https://example.com/0'), isFalse);
     expect(
-      BooklistHtmlCache.getBooksPage(
+      (await BooklistHtmlCache.getBooksPage(
         'https://example.com/booklist/1/h/s.html',
         2,
         accountId: '111',
-      )!.length,
+      ))!.length,
       1,
     );
   });
 
   // Item 4 (cache consistency): a fetch that started before an
   // invalidation must not re-store its stale page afterwards.
-  test('store drops a write whose fetch started before an invalidation', () {
+  test('store drops a write whose fetch started before an invalidation', ()  async {
     const url = 'https://example.com/booklist/stale-write/h/s.html';
     final fetchedAt = DateTime.now().subtract(const Duration(seconds: 1));
     BooklistHtmlCache.invalidateBooklist(url);
     BooklistHtmlCache.store(url, '<html>stale</html>', fetchedAt: fetchedAt);
-    expect(BooklistHtmlCache.get(url), isNull);
+    expect((await BooklistHtmlCache.get(url)), isNull);
     // A fetch that started after the invalidation lands normally.
     BooklistHtmlCache.store(
       url,
       '<html>fresh</html>',
       fetchedAt: DateTime.now().add(const Duration(seconds: 1)),
     );
-    expect(BooklistHtmlCache.get(url), '<html>fresh</html>');
+    expect((await BooklistHtmlCache.get(url)), '<html>fresh</html>');
   });
 
-  test('storeBooksPage drops a stale write after an invalidation', () {
+  test('storeBooksPage drops a stale write after an invalidation', ()  async {
     const url = 'https://example.com/booklist/stale-page/h/s.html';
     final fetchedAt = DateTime.now().subtract(const Duration(seconds: 1));
     BooklistHtmlCache.invalidateBooklist(url, accountId: '111');
@@ -267,7 +272,7 @@ void main() {
       fetchedAt: fetchedAt,
     );
     expect(
-      BooklistHtmlCache.getBooksPage(url, 2, accountId: '111'),
+      (await BooklistHtmlCache.getBooksPage(url, 2, accountId: '111')),
       isNull,
     );
     // A fetch that started after the invalidation lands normally.
@@ -279,16 +284,16 @@ void main() {
       fetchedAt: DateTime.now().add(const Duration(seconds: 1)),
     );
     expect(
-      BooklistHtmlCache.getBooksPage(url, 2, accountId: '111')!.length,
+      (await BooklistHtmlCache.getBooksPage(url, 2, accountId: '111'))!.length,
       1,
     );
   });
 
-  test('store without fetchedAt still writes', () {
+  test('store without fetchedAt still writes', ()  async {
     const url = 'https://example.com/booklist/no-fetch-time/h/s.html';
     BooklistHtmlCache.invalidateBooklist(url);
     BooklistHtmlCache.store(url, '<html>legacy</html>');
-    expect(BooklistHtmlCache.get(url), '<html>legacy</html>');
+    expect((await BooklistHtmlCache.get(url)), '<html>legacy</html>');
   });
 
   test('wasInvalidatedAfter reports an invalidation after a fetch', () {

@@ -191,14 +191,35 @@ class BooklistDetailController
     // Page 1 is cached independently of the booklist-list preview. The
     // preview belongs to the (possibly stale) list-page response and
     // must never prevent reading a newer detail-page cache.
-    final cachedPage = _repository.cachedBooksPage(
+    //
+    // Sync peek first (write-through buffer): a page this process just
+    // stored paints on this very statement — the same synchronous
+    // window the in-memory Box gave. Only a buffer miss falls to the
+    // async disk read; a cold start gains one event-loop turn before
+    // painting, which the frame pipeline already absorbs.
+    List<Book>? cachedPage = _repository.peekBooksPage(
       list.url,
       1,
       accountId: accountId,
     );
-    final usableHtml = cachedPage == null
-        ? _repository.cachedDetailHtml(list.url, accountId: accountId)
+    String? usableHtml = cachedPage == null
+        ? _repository.peekDetailHtml(list.url, accountId: accountId)
         : null;
+    if (cachedPage == null && usableHtml == null) {
+      cachedPage = await _repository.cachedBooksPage(
+        list.url,
+        1,
+        accountId: accountId,
+      );
+      usableHtml = cachedPage == null
+          ? await _repository.cachedDetailHtml(
+              list.url,
+              accountId: accountId,
+            )
+          : null;
+      // The async read crossed a gap: a refresh may have started.
+      if (!_isCurrent(generation)) return;
+    }
     List<Book>? htmlBooks;
     if (usableHtml != null) {
       // Same guard as BooklistsController.loadFirst: the cache was written
@@ -379,7 +400,7 @@ class BooklistDetailController
     final fetchedAt = _repository.stamp();
     final list = _list;
     final accountId = _accountId;
-    final cachedPage = _repository.cachedBooksPage(
+    final cachedPage = await _repository.cachedBooksPage(
       list.url,
       page,
       accountId: accountId,

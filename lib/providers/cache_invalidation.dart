@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'booklists_provider.dart';
 import 'books_provider.dart';
+import 'feed_controller.dart';
 
 
 /// Invalidate every provider that caches account-scoped data.
@@ -20,8 +21,12 @@ void invalidateAccountScopedProviders(Ref ref) {
   ref.invalidate(bookDetailExtrasProvider);
   ref.invalidate(randomBooksProvider);
   ref.invalidate(recommendedBooksProvider);
-  ref.invalidate(mostPopularBooksProvider);
-  ref.invalidate(recentBooksProvider);
+  // 信息流控制器（2026-11-20）：随机批与个性化推荐按账号取数，换号
+  // 必须整体重建；热门/最新虽是全站内容，重走一遍首屏让启动缓存的
+  // 旗标归位，代价可忽略。
+  ref.invalidate(popularFeedProvider);
+  ref.invalidate(recentFeedProvider);
+  ref.invalidate(homeFeedProvider);
   ref.invalidate(downloadedBooksProvider);
   ref.invalidate(savedBooksProvider);
   // The booklists screen's own-lists tab is account-scoped too (the

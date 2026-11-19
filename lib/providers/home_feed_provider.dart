@@ -12,6 +12,7 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 import '../l10n/book_categories.dart';
 import '../models/display_book.dart';
 import '../services/category_repository.dart';
+import '../services/random_feed_cache.dart';
 import '../services/random_feed_history.dart';
 import '../services/storage_service.dart';
 import 'auth_provider.dart';
@@ -21,23 +22,11 @@ import 'zlibrary_provider.dart';
 
 // ── Book Lists ──────────────────────────────────────────────────────
 
-/// 热门页数据，按页码分页。回退 search 时透传 [page]，让下拉刷新翻到
-/// 下一页拿到不同批次——之前永远打第 1 页（limit 20），刷新后内容不变，
-/// 用户看到的就是"加载没用还是那几本"。
-final mostPopularBooksProvider = FutureProvider.family<List<Book>, int>((
-  ref,
-  int page,
-) async {
-  final api = ref.watch(zlibraryApiProvider);
-  final response = await api.getMostPopular(page: page);
-  if (!response.success) {
-    // Surface the failure as AsyncError so the UI shows its error/retry
-    // branch — an API failure and a genuinely empty list must not look
-    // identical (and only the former is retryable).
-    throw StateError(response.error ?? 'Failed to load popular books');
-  }
-  return response.data ?? [];
-});
+// 热门 / 最新两页已改信息流（2026-11-20）：数据与翻页规则在
+// feed_controller.dart 的 PopularFeedController / RecentFeedController，
+// 启动缓存 HomeFeedPageCache 由控制器的首屏加载直接使用。旧的
+// family 页码 provider（mostPopularBooksProvider / recentBooksProvider）
+// 随翻页替换的交互一并退役。
 
 final recommendedBooksProvider = FutureProvider<List<Book>>((ref) async {
   final api = ref.watch(zlibraryApiProvider);
@@ -52,15 +41,24 @@ final recommendedBooksProvider = FutureProvider<List<Book>>((ref) async {
 /// 在页码窗口里抽一页（见 [pickRandomPage]），补满 50 本，再跳过最近
 /// 看过的与收藏的（见 [excludedBookIdsFor] / [pickUnseen]）。不走推荐
 /// 接口（/eapi/user/book/recommended）也不走热门接口（/eapi/book/
-/// most-popular 及 popular 排序搜索）。每次打开 / 下拉刷新都重新随机
-/// （用户 2026-11-13 定：每次刷新都换）。
+/// most-popular 及 popular 排序搜索）。
 /// 分类浏览是 HTML 页（getCategoryBooks），一页约 50 本；不够时顺取下
 /// 一页补满，最多取 3 页。分类为空时换一个分类重试，最多 3 个。
+///
+/// 刷新语义（用户 2026-11-13 定：每次刷新都换）不变；2026-11-20 加
+/// 启动缓存（[RandomFeedCache]，用户定）：**重开 app 的第一次构建**
+/// 直接端出上一批的持久缓存——零请求零转圈——同时后台滚新的一批供
+/// 下拉刷新秒出；本会话后续的刷新/失效照旧走预取/现抓，不吃缓存
+/// （见 [_cacheServedThisSession]）。
 ///
 /// 提速（2026-11-13）：每批展示后在后台预取下一批，下次刷新直接
 /// 取，免掉 2~3 次顺序取页（被墙时每次都可能走 WebView solver）。
 /// 预取只存一批、失败不报错；账号切换时失效（取用时核对账号 id）。
 /// 另外记下各分类的总页数（本会话内），已知时跳过第 1 页直取随机页。
+///
+/// 随机推荐改信息流（2026-11-20）后，本 provider 只剩"单批取一批"
+/// 一个薄壳，批次生成逻辑全部在 [fetchRandomFeedBatch]（首页信息流
+/// 控制器逐批调用它）。
 final randomBooksProvider = FutureProvider<List<DisplayBook>>((ref) async {
   final api = ref.watch(zlibraryApiProvider);
   // Read, do NOT watch, the auth state: this provider is invalidated
@@ -72,8 +70,33 @@ final randomBooksProvider = FutureProvider<List<DisplayBook>>((ref) async {
   // authProvider. Every other authProvider access in the providers
   // layer uses ref.read for the same reason.
   final user = ref.read(authProvider).user;
-  final userId = user?.id;
-  final userKey = user?.remixUserkey;
+  return fetchRandomFeedBatch(
+    api: api,
+    userId: user?.id,
+    userKey: user?.remixUserkey,
+  );
+});
+
+/// 生成一批随机推荐（启动缓存 → 预取批 → 现抽，三级依次），记账 /
+/// 落盘 / 预滚下一批都在这里完成。首页信息流控制器每上滑一屏就调
+/// 它一次；[randomBooksProvider] 是它的单批薄壳。
+Future<List<DisplayBook>> fetchRandomFeedBatch({
+  required ZLibraryApi api,
+  String? userId,
+  String? userKey,
+  bool serveFromCache = true,
+}) async {
+  // 启动缓存：本会话第一次调用端出上一批（重开 app 零转圈），同时
+  // 后台滚新的一批。缓存那批跨会话已在疲劳名单里，预滚的新批不会
+  // 撞上它。
+  if (serveFromCache && !_cacheServedThisSession) {
+    _cacheServedThisSession = true;
+    final cached = RandomFeedCache.readSync(userId);
+    if (cached != null && cached.isNotEmpty) {
+      unawaited(prefetchRandomBatch(api, userId: userId, userKey: userKey));
+      return cached.map((b) => b.toDisplay()).toList();
+    }
+  }
   // Serve a prefetched batch instantly when one is ready for this
   // account, and roll a fresh prefetch for the next refresh.
   final prefetched = _prefetchedBatch;
@@ -82,9 +105,11 @@ final randomBooksProvider = FutureProvider<List<DisplayBook>>((ref) async {
       _prefetchedBatchUserId == userId) {
     _prefetchedBatch = null;
     _prefetchedBatchUserId = null;
-    _recordShown(prefetched);
-    unawaited(_prefetchNextBatch(api, userId: userId, userKey: userKey));
-    return prefetched;
+    final result = prefetched.map((b) => b.toDisplay()).toList();
+    _recordShown(result);
+    unawaited(RandomFeedCache.persist(userId, prefetched));
+    unawaited(prefetchRandomBatch(api, userId: userId, userKey: userKey));
+    return result;
   }
   _prefetchedBatch = null;
   _prefetchedBatchUserId = null;
@@ -101,16 +126,17 @@ final randomBooksProvider = FutureProvider<List<DisplayBook>>((ref) async {
     if (books.isNotEmpty) {
       final result = books.map((b) => b.toDisplay()).toList();
       _recordShown(result);
-      unawaited(_prefetchNextBatch(api, userId: userId, userKey: userKey));
+      unawaited(RandomFeedCache.persist(userId, books));
+      unawaited(prefetchRandomBatch(api, userId: userId, userKey: userKey));
       return result;
     }
   }
   return <DisplayBook>[];
-});
+}
 
 /// 记下这一批真的露过面（疲劳名单的唯一写入点）。
 ///
-/// 只在"这一批要被返回给首页"时记，不在 [_prefetchNextBatch] 里记：
+/// 只在"这一批要被返回给首页"时记，不在 [prefetchRandomBatch] 里记：
 /// 预取的那批用户不一定刷新去取，账号一换就作废，提前记账会把没露过
 /// 面的书算成看过的，白堵后面的抽样。
 ///
@@ -121,16 +147,22 @@ void _recordShown(List<DisplayBook> books) {
   RandomFeedHistory.recordShown([for (final b in books) b.id]);
 }
 
-/// 后台预取的下一批随机推荐 + 它属于的账号。只存一批。
-List<DisplayBook>? _prefetchedBatch;
+/// 后台预取的下一批随机推荐（[Book] 形态，端给首页时才转
+/// [DisplayBook]，落缓存也直接用它）+ 它属于的账号。只存一批。
+List<Book>? _prefetchedBatch;
 String? _prefetchedBatchUserId;
 bool _prefetching = false;
+
+/// 启动缓存是否已在本会话端出过：只有重开 app 后的第一次构建吃
+/// 缓存，之后的刷新/失效必须拿新批——不然"刷新内容不变"的老毛病
+/// 回归（详见 randomBooksProvider 的注释）。
+bool _cacheServedThisSession = false;
 
 /// 在后台滚下一批随机推荐，存到 [_prefetchedBatch] 供下次刷新直接
 /// 取。Best-effort：失败（网络/墙）不报错，下次刷新走正常取页。
 /// 只用传进来的 api 与账号值，不碰 ref——预取活得比某次 provider
 /// 构建久，构建结束后 ref 不能再用。
-Future<void> _prefetchNextBatch(
+Future<void> prefetchRandomBatch(
   ZLibraryApi api, {
   String? userId,
   String? userKey,
@@ -149,7 +181,7 @@ Future<void> _prefetchNextBatch(
         userKey: userKey,
       );
       if (books.isNotEmpty) {
-        _prefetchedBatch = books.map((b) => b.toDisplay()).toList();
+        _prefetchedBatch = books;
         _prefetchedBatchUserId = userId;
         return;
       }
@@ -175,6 +207,7 @@ void resetRandomFeedStateForTest() {
   _prefetchedBatch = null;
   _prefetchedBatchUserId = null;
   _prefetching = false;
+  _cacheServedThisSession = false;
   _categoryTotalPages.clear();
   _injectedRandom = null;
 }
@@ -398,18 +431,4 @@ final homeRecommendedProvider = Provider<AsyncValue<List<DisplayBook>>>((ref) {
   return ref
       .watch(recommendedBooksProvider)
       .whenData((books) => books.map((b) => b.toDisplay()).toList());
-});
-
-/// 最新上架页数据，按页码分页。回退 search 时透传 [page]，刷新翻页拿到
-/// 不同批次——之前永远打第 1 页，刷新后内容不变。
-final recentBooksProvider = FutureProvider.family<List<Book>, int>((
-  ref,
-  int page,
-) async {
-  final api = ref.watch(zlibraryApiProvider);
-  final response = await api.getRecently(page: page);
-  if (!response.success) {
-    throw StateError(response.error ?? 'Failed to load recent books');
-  }
-  return response.data ?? [];
 });

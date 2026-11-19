@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zlibx/l10n/generated/app_localizations.dart';
 import 'package:zlibx/models/display_book.dart';
+import 'package:zlibx/providers/feed_controller.dart';
 import 'package:zlibx/providers/settings_provider.dart';
 import 'package:zlibx/screens/home/widgets/home_book_grid.dart';
 import 'package:zlibx/theme/app_layout.dart';
@@ -66,10 +67,11 @@ Future<int> _pumpGrid(
         ),
         home: Scaffold(
           body: HomeBookGrid(
-            booksAsync: AsyncValue.data(_books(count)),
+            feed: FeedState(books: _books(count), hasMore: false),
             topPadding: 200,
             scrollController: ScrollController(),
             onRefresh: () async {},
+            onLoadMore: () {},
           ),
         ),
       ),

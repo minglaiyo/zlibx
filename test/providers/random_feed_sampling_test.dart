@@ -12,6 +12,7 @@ import 'package:zlibx/providers/auth_provider.dart';
 import 'package:zlibx/providers/home_feed_provider.dart';
 import 'package:zlibx/providers/zlibrary_provider.dart';
 import 'package:zlibx/services/hive_service.dart';
+import 'package:zlibx/services/random_feed_cache.dart';
 import 'package:zlibx/services/random_feed_history.dart';
 
 /// 首页随机推荐的抽样规则（2026-11-15 改）：分类两级抽、页码只在窗口
@@ -46,6 +47,9 @@ void main() {
   setUp(() async {
     resetRandomFeedStateForTest();
     await RandomFeedHistory.clear();
+    // 启动缓存按账号分键落盘，跨用例残留会让下一条用例的首次构建
+    // 直接端出上一条的批次（零请求），抽样断言全数落空。
+    await RandomFeedCache.clearAll();
   });
 
   tearDown(() => resetRandomFeedStateForTest());
@@ -243,6 +247,68 @@ void main() {
       final second = await container.read(randomBooksProvider.future);
       expect(first.map((b) => b.id).toSet(), second.map((b) => b.id).toSet());
       expect(second.length, 50);
+    });
+  });
+
+  group('启动缓存（2026-11-20，用户定）', () {
+    test('展示过的批次落盘；新会话首构建零请求端出缓存并后台预滚', () async {
+      final api = _FakeCategoryApi(totalPages: 500);
+      final container = _container(api);
+      setRandomFeedRandomForTest(Random(_seed));
+      final first = await container.read(randomBooksProvider.future);
+      // 预取与落盘都是后台任务：转两次事件循环让它们跑完。
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        RandomFeedCache.readSync('acct-1')!.map((b) => b.id.toString()),
+        first.map((b) => b.id).toList(),
+      );
+
+      // 模拟重开 app：会话态清零（旗标归位），持久缓存保留。
+      resetRandomFeedStateForTest();
+      final api2 = _FakeCategoryApi(totalPages: 500);
+      final container2 = _container(api2);
+      final cached = await container2.read(randomBooksProvider.future);
+      // 缓存那批直接上屏：内容与上一会话的批次逐 id 相等——重置后
+      // 随机源不再注入，一次现抓不可能复现同一批，内容相等就是缓存
+      // 命中的直接证据。后台预滚是 unawaited 的，与断言赛跑，零请求
+      // 断言不可靠；等它跑完再验它真的打了请求。
+      expect(cached.map((b) => b.id), first.map((b) => b.id));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      expect(api2.requests, isNotEmpty);
+      container2.invalidate(randomBooksProvider);
+      final second = await container2.read(randomBooksProvider.future);
+      expect(
+        second
+            .map((b) => b.id)
+            .toSet()
+            .intersection(cached.map((b) => b.id).toSet()),
+        isEmpty,
+        reason: '刷新端出的应是预滚的新批，不是缓存那批',
+      );
+    });
+
+    test('同会话刷新不吃缓存：第二批仍与第一批不重', () async {
+      // 缓存只在会话第一次构建端出；之后每次刷新照旧走预取/现抓，
+      // "刷新内容不变"的老毛病不许回归。
+      final api = _FakeCategoryApi(totalPages: 500);
+      final container = _container(api);
+      setRandomFeedRandomForTest(Random(_seed));
+      final first = await container.read(randomBooksProvider.future);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      container.invalidate(randomBooksProvider);
+      final second = await container.read(randomBooksProvider.future);
+      // 缓存没有被端出来：第二批是真抓出来的（预取批也算抓）。
+      expect(api.requests.length, greaterThanOrEqualTo(2));
+      expect(
+        first
+            .map((b) => b.id)
+            .toSet()
+            .intersection(second.map((b) => b.id).toSet()),
+        isEmpty,
+      );
     });
   });
 }

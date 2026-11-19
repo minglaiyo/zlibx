@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
+import '../../../providers/external_search_notifier.dart';
 import '../../../theme/app_layout.dart';
 import '../../../widgets/book_card.dart';
 import '../../../widgets/book_list_tile.dart';
@@ -269,6 +271,19 @@ class SearchResultsView extends StatelessWidget {
               return const LoadingWidget.more();
             }
             final book = books[index];
+            // LibGen 搜索行不带封面（占位图标）：包一层懒加载壳,后台
+            // 抓 ads.php 解析出封面 URL 后同参数重建卡片。
+            if (book.source == BookSource.libgen &&
+                (book.cover == null || book.cover!.isEmpty)) {
+              return MotionEntrance(
+                index: index,
+                child: _LibgenLazyCoverCard(
+                  book: book,
+                  onTap: () => onOpenBook(book),
+                  onLongPress: () => showBookQuickActionsSheet(context, book),
+                ),
+              );
+            }
             return MotionEntrance(
               index: index,
               child: BookCard(
@@ -285,6 +300,43 @@ class SearchResultsView extends StatelessWidget {
           },
         );
       },
+    );
+  }
+}
+
+/// LibGen 结果卡的封面懒加载壳：cover 为空时挂
+/// [libgenListCoverProvider]（逐书抓 ads.php 解析,服务层按 md5 会话
+/// 缓存 + 限流）,拿到 URL 后用同参数重建 [BookCard]；拿不到（无封面
+/// / 镜像全挂）保持占位图,卡片其余行为不变。
+class _LibgenLazyCoverCard extends ConsumerWidget {
+  const _LibgenLazyCoverCard({
+    required this.book,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  final DisplayBook book;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final link = book.asLibgenBookData?.link ?? '';
+    final coverAsync = link.isEmpty
+        ? const AsyncValue<String?>.data(null)
+        : ref.watch(libgenListCoverProvider(link));
+    final cover = coverAsync.valueOrNull;
+    final display = (cover != null && cover.isNotEmpty)
+        ? book.copyWithCover(cover)
+        : book;
+    return BookCard(
+      book: display,
+      searchResult: true,
+      // 搜索结果同屏同 id 重复极罕见（不同 edition id 不同），
+      // 可安全开 Hero。
+      heroEnabled: true,
+      onTap: onTap,
+      onLongPress: onLongPress,
     );
   }
 }

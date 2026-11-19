@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/generated/app_localizations.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/books_provider.dart';
+import '../../providers/feed_controller.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/update_provider.dart';
 import '../../routes/app_routes.dart';
@@ -111,20 +111,11 @@ class HomeTabState extends ConsumerState<HomeTab> {
   /// Pull-to-refresh: re-fetch the active home feed. Random on: a new
   /// random category and page, so the grid always shows a different 50
   /// books (user 2026-11-13: 每次刷新都换). Random off: re-fetch the
-  /// personalised recommendations.
-  ///
-  /// Do NOT `await ref.refresh(...)` here: on a FutureProvider it
-  /// returns the AsyncValue, not a Future (await_only_futures,
-  /// build #246). Invalidate the active source, then await its future.
+  /// personalised recommendations. 分流给 [HomeFeedController.refresh]，
+  /// 随机/个性化两态都在里面处理。
   Future<void> _refreshRecommendations() async {
     try {
-      if (ref.read(randomRecommendProvider)) {
-        ref.invalidate(randomBooksProvider);
-        await ref.read(randomBooksProvider.future);
-      } else {
-        ref.invalidate(recommendedBooksProvider);
-        await ref.read(recommendedBooksProvider.future);
-      }
+      await ref.read(homeFeedProvider.notifier).refresh();
     } catch (_) {
       // The grid shows the error/retry branch; nothing more to do here.
     }
@@ -280,7 +271,7 @@ class HomeTabState extends ConsumerState<HomeTab> {
       ),
     );
 
-    final booksAsync = ref.watch(homeRecommendedProvider);
+    final feed = ref.watch(homeFeedProvider);
 
     return Column(
       children: [
@@ -289,10 +280,12 @@ class HomeTabState extends ConsumerState<HomeTab> {
           child: Stack(
             children: [
               HomeBookGrid(
-                booksAsync: booksAsync,
+                feed: feed,
                 topPadding: gridTopPadding,
                 scrollController: _scrollController,
                 onRefresh: _refreshRecommendations,
+                onLoadMore: () =>
+                    ref.read(homeFeedProvider.notifier).loadMore(),
               ),
               // ========== 悬浮毛玻璃头部 ==========
               Positioned(

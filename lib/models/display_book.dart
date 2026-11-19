@@ -78,6 +78,24 @@ class DisplayBook {
 
   /// 获取原始 LibGen BookData（仅当 source == libgen 时有效）
   BookData? get asLibgenBookData => isLibGen ? original as BookData? : null;
+
+  /// LibGen 搜索行不带封面：懒加载解析出封面 URL 后用这个克隆换上，
+  /// 其余字段原样保留。
+  DisplayBook copyWithCover(String cover) => DisplayBook(
+    id: id,
+    title: title,
+    author: author,
+    cover: cover,
+    tag: tag,
+    tagExtra: tagExtra,
+    score: score,
+    ratingText: ratingText,
+    meta: meta,
+    description: description,
+    publisher: publisher,
+    source: source,
+    original: original,
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════

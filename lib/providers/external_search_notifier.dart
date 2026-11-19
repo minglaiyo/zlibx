@@ -219,3 +219,13 @@ final libgenBookDetailsProvider = FutureProvider.autoDispose
       if (info == null) throw StateError('Failed to load book details');
       return info;
     });
+
+/// LibGen 搜索行的懒加载封面（2026-11-20）：搜索行本身不带缩略图（见
+/// BookDataToDisplay.toLibgenDisplayBook 的注释），这里逐书抓 ads.php
+/// 解析封面 URL。key 是搜索行带的 ads.php 链接；结果按 md5 存
+/// LibgenService 的会话缓存——重复搜索、滚回已看过的页零请求；并发
+/// 由 LibgenService 限 4 路排队，避免一页 25 行把镜像打成风暴。
+final libgenListCoverProvider = FutureProvider.autoDispose
+    .family<String?, String>(
+      (ref, adsLink) => ref.watch(libgenServiceProvider).coverFor(adsLink),
+    );

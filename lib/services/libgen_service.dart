@@ -161,6 +161,73 @@ class LibgenService {
     return src.startsWith('http') ? src : '$baseUrl$src';
   }
 
+  /// 会话级封面缓存：md5 → 封面 URL。重复搜索、滚回已看过的页都零
+  /// 请求；封面 URL 不含会话性质的 key,跨会话持久化留待有需要再加。
+  static final Map<String, String> _coverCache = {};
+
+  /// 封面懒抓并发上限：一页搜索 25 行,25 个 provider 同时 build 会把
+  /// 镜像的 ads.php 打成风暴；限 4 路排队。
+  static int _coverFetchesInFlight = 0;
+  static final List<Completer<void>> _coverWaiters = [];
+
+  Future<void> _acquireCoverSlot() async {
+    if (_coverFetchesInFlight < 4) {
+      _coverFetchesInFlight++;
+      return;
+    }
+    final waiter = Completer<void>();
+    _coverWaiters.add(waiter);
+    await waiter.future;
+    _coverFetchesInFlight++;
+  }
+
+  void _releaseCoverSlot() {
+    _coverFetchesInFlight--;
+    if (_coverWaiters.isNotEmpty) {
+      _coverWaiters.removeAt(0).complete();
+    }
+  }
+
+  /// 搜索行懒加载封面：抓 [adsUrl]（搜索行带的 ads.php?md5=… 链接）
+  /// 并只解析封面 URL。libgen.li 的封面桶按库分流（主库
+  /// `/covers/<数字分片>/<md5>.jpg`、fiction 库
+  /// `/fictioncovers/<分片>/<md5>.jpg`,2026-11-20 实测）,分片 id 搜索
+  /// 行里拿不到——逐书抓 ads.php 是唯一可靠的路。结果按 md5 记入
+  /// [_coverCache]；取不到（镜像全挂/无封面）返回 null,卡片保持占位
+  /// 图,下次进入再试。
+  Future<String?> coverFor(String adsUrl) async {
+    final md5 =
+        RegExp(r'[?&]md5=([0-9a-fA-F]{32})').firstMatch(adsUrl)?.group(1);
+    if (md5 == null) return null;
+    final cached = _coverCache[md5];
+    if (cached != null) return cached;
+
+    await _acquireCoverSlot();
+    try {
+      final mirrors = await MirrorSpeedTest().rankedUrls(MirrorService.libgen);
+      for (final candidate in _candidateUrls(adsUrl, mirrors)) {
+        try {
+          final baseUrl = Uri.parse(candidate).origin;
+          final response = await _dio.get(
+            candidate,
+            options: Options(headers: {'Referer': '$baseUrl/index.php'}),
+          );
+          if (response.statusCode != 200) continue;
+          final cover = parseAdsCover(response.data.toString(), baseUrl);
+          if (cover != null) {
+            _coverCache[md5] = cover;
+            return cover;
+          }
+        } on Object {
+          // 换下一个镜像。
+        }
+      }
+      return null;
+    } finally {
+      _releaseCoverSlot();
+    }
+  }
+
   /// Parses a libgen `ads.php` page into [BookInfoData]. Public so tests
   /// can feed captured pages without network.
   ///

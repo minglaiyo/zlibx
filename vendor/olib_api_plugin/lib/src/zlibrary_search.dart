@@ -185,38 +185,50 @@ mixin ZLibrarySearch on ZLibraryApiBase {
         statusCode: raw.status);
   }
 
-  /// Homepage "most popular". Primary path follows the eapi naming
-  /// pattern; if the server 404s it, rejects it, or returns an empty
-  /// list, fall back to a popularity-ordered search so the home list
-  /// still works. (The community mirrors answer this endpoint with
+  /// Homepage "most popular". Both spellings are tried — the real
+  /// endpoint is the hyphenated `/eapi/book/most-popular`
+  /// (device-verified 2026-11-20 on bookroom.lifestyle: success:1 with
+  /// books; the underscore spelling this plugin historically used
+  /// answers 400 there, so the home list silently lived on the
+  /// popularity-ordered search fallback); community mirrors may only
+  /// know either. If the server 404s it, rejects it, or returns an
+  /// empty list, fall back to a popularity-ordered search so the home
+  /// list still works. (The community mirrors answer this endpoint with
   /// success:0 / an empty payload instead of 404, so a 404-only
   /// fallback leaves the home screen blank — device-verified 2026-11-05
   /// on the run #6 package.)
   Future<ApiResponse<List<Book>>> getMostPopular({int? page}) async {
-    final raw = await _get(
+    for (final path in const [
+      '/eapi/book/most-popular',
       '/eapi/book/most_popular',
-      query: page != null ? {'page': page} : null,
-    );
-    // A blocked line would make the search fallback fail too — chaining
-    // it only burns 2×15s more of timeouts before surfacing the same
-    // "cf_blocked". The device-verified fallback for success:0/empty
-    // payloads below is intentional and stays.
-    if (raw.error == 'cf_blocked') {
-      return ApiResponse.fail('cf_blocked', statusCode: raw.status);
+    ]) {
+      final raw = await _get(
+        path,
+        query: page != null ? {'page': page} : null,
+      );
+      // A blocked line would make the search fallback fail too — chaining
+      // it only burns 2×15s more of timeouts before surfacing the same
+      // "cf_blocked". The device-verified fallback for success:0/empty
+      // payloads below is intentional and stays.
+      if (raw.error == 'cf_blocked') {
+        return ApiResponse.fail('cf_blocked', statusCode: raw.status);
+      }
+      // 404 / 无 body / success:0 / 空列表：四种情况都算这个拼写不行，
+      // 换下一个（社区镜像常用 success:0 或空 payload 回答本接口）。
+      final json = raw.json;
+      final books = json == null
+          ? const <Book>[]
+          : await ZLibraryApiBase.booksOfH(json, rawBody: raw.body);
+      final usable =
+          raw.status != 404 &&
+          json != null &&
+          ZLibraryApiBase._isSuccess(json) &&
+          books.isNotEmpty;
+      if (usable) {
+        return ApiResponse.ok(books, meta: ZLibraryApiBase._metaOf(json));
+      }
     }
-    // 404 / 无 body / success:0 / 空列表：四种情况都回退 popular 排序
-    // 搜索（社区镜像常用 success:0 或空 payload 回答本接口，回退是常态）。
-    final json = raw.json;
-    final books = json == null
-        ? const <Book>[]
-        : await ZLibraryApiBase.booksOfH(json, rawBody: raw.body);
-    if (raw.status == 404 ||
-        json == null ||
-        !ZLibraryApiBase._isSuccess(json) ||
-        books.isEmpty) {
-      return search(order: 'popular', limit: 20, page: page);
-    }
-    return ApiResponse.ok(books, meta: ZLibraryApiBase._metaOf(json));
+    return search(order: 'popular', limit: 20, page: page);
   }
 
   /// Personalised home recommendations.

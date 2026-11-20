@@ -150,7 +150,9 @@ jobs:
           for f in roots:
               text = f.read_text(encoding='utf-8', errors='ignore')
               empty += len(re.findall(r'catch\s*\([^)]*\)\s*\{\s*\}', text))
-              if f.as_posix() not in ('lib/main.dart', 'lib/utils/app_log.dart'):
+              # diagnostics.dart is the logging infrastructure itself
+              # (logIgnored prints via debugPrint in debug mode).
+              if f.as_posix() not in ('lib/main.dart', 'lib/utils/app_log.dart', 'lib/utils/diagnostics.dart'):
                   dbg += sum('debugPrint(' in ln for ln in text.splitlines())
           print(f'empty_catch={empty} debugPrint={dbg}')
           sys.exit(1 if (empty or dbg) else 0)

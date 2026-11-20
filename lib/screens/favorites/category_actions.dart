@@ -1,15 +1,20 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../l10n/generated/app_localizations.dart';
 import '../../models/unified_shelf_item.dart';
+import '../../providers/books_provider.dart';
 import '../../providers/local_collection_provider.dart';
 import '../../providers/shelf_categories_provider.dart';
+import '../../providers/zlibrary_provider.dart';
+import '../../services/storage_service.dart';
 import '../../utils/app_snack.dart';
 
 
@@ -262,12 +267,20 @@ class ShelfCategoryActions {
 
   // ── 书架数据备份（方案 C3）────────────────────────────────────
 
-  /// 导出：本地分类 + 分配关系 + 本地收藏打包成一个 JSON 文件，走
-  /// 系统分享面板交给用户保存。临时文件由分享目标接管，这里不清理。
+  /// 导出：z 站收藏全量清单 + 本地分类 + 分配关系 + 本地收藏打包成
+  /// 一个 JSON 文件，走系统分享面板交给用户保存。临时文件由分享目标
+  /// 接管，这里不清理。
+  ///
+  /// 收藏书单本身在服务器上、跟着账号走——早期版本没把它放进备份，
+  /// 跨账号导入自然是 0（2026-11-21 用户实测）。loadSavedBooks 本就
+  /// 循环拉完所有页，这里的列表是全量。附加的 favorites 键对旧版导
+  /// 入无感（只认 version 1 的既有键，多余键忽略）。
   Future<void> _exportData() async {
     final l = _host.l10n();
     final categories = _host.ref.read(shelfCategoriesProvider);
     final collection = _host.ref.read(localCollectionProvider.notifier);
+    final favorites =
+        _host.ref.read(savedBooksProvider).valueOrNull ?? const <Book>[];
     final json = jsonEncode({
       'version': 1,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
@@ -277,6 +290,17 @@ class ShelfCategoryActions {
       ],
       'assignments': categories.assignments,
       'collection': collection.exportEntries(),
+      'favorites': [
+        for (final book in favorites)
+          {
+            'id': book.id,
+            'hash': book.hash,
+            'title': book.title,
+            'author': book.author,
+            'cover': book.cover,
+            'extension': book.extension,
+          },
+      ],
     });
     try {
       final tempDir = await Directory.systemTemp.createTemp('zlibx_shelf');
@@ -371,7 +395,44 @@ class ShelfCategoryActions {
           .read(localCollectionProvider.notifier)
           .importEntries(collectionEntries);
 
-      if (_host.mounted) _host.showMessage(l.shelfImportDone(mapped.length + importedCount));
+      // z 站收藏导入（2026-11-21）：逐本调收藏接口，服务器把收藏挂
+      // 在当前账号上。串行 + 小间隔；已收藏的服务器幂等；单本失败不
+      // 阻断。本地镜像同步写（详情页心形快查用），最后一次性全量对
+      // 账（逐本乐观插入太吵）。
+      var favorited = 0;
+      final importedFavorites =
+          (data['favorites'] as List<dynamic>? ?? [])
+              .whereType<Map<String, dynamic>>()
+              .toList();
+      if (importedFavorites.isNotEmpty) {
+        final api = _host.ref.read(zlibraryApiProvider);
+        final storage = _host.ref.read(storageServiceProvider);
+        for (final raw in importedFavorites) {
+          final bookId = raw['id']?.toString();
+          if (bookId == null || bookId.isEmpty) continue;
+          try {
+            final response = await api.saveBook(bookId);
+            if (response.success) {
+              favorited++;
+              await storage.addFavorite(bookId);
+            }
+            await Future<void>.delayed(const Duration(milliseconds: 200));
+          } on Object catch (_) {
+            // 单本失败不阻断：结尾报成功数。
+          }
+        }
+        unawaited(
+          _host.ref
+              .read(savedBooksProvider.notifier)
+              .loadSavedBooks(silent: true),
+        );
+      }
+
+      if (_host.mounted) {
+        _host.showMessage(
+          l.shelfImportDone(mapped.length + importedCount + favorited),
+        );
+      }
     } on Object catch (_) {
       if (_host.mounted) _host.showMessage(l.shelfImportFailed);
     }

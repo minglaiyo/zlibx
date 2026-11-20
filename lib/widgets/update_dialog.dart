@@ -93,22 +93,29 @@ class _UpdateDialog extends ConsumerWidget {
     final isZh = Localizations.localeOf(context).languageCode == 'zh';
     final forced = update.forceUpdate;
     final notes = update.getChangelog(isZh ? 'zh' : 'en');
+    // Release 正文是 markdown（GitHub 渲染）：弹窗按纯文本展示——
+    // 标题降为【】小节、列表符号改 ·，不让 # 和 - 记号露出来。
+    final prettyNotes = notes
+        .split('\n')
+        .map((line) {
+          final t = line.trim();
+          if (t.startsWith('## ')) return '【${t.substring(3).trim()}】';
+          if (t.startsWith('- ')) return '· ${t.substring(2)}';
+          return line;
+        })
+        .join('\n');
 
     final channels = [
       for (final l in update.links)
         // Show the real host next to the label so a spoofed name cannot
         // hide where the button goes.
         _Channel(
-          '${l.name} (${Uri.tryParse(l.url)?.host ?? ''})',
+          '${l.name} (${Uri.tryParse(l.url)?.host ?? ''}',
           l.url,
           Icons.cloud_download_outlined,
         ),
-      if (update.downloadUrl != null)
-        _Channel(
-          AppLocalizations.of(context)!.websiteDownload,
-          update.downloadUrl!,
-          Icons.language,
-        ),
+      // 唯一更新路径：GitHub Release（审查 2026-11-21 用户定）。此前的
+      // "官网下载"按钮与它指向同一处，纯冗余，删。
       if (update.releaseUrl != null)
         _Channel('GitHub', update.releaseUrl!, Icons.code),
     ];
@@ -147,7 +154,7 @@ class _UpdateDialog extends ConsumerWidget {
                   style: theme.textTheme.bodyMedium,
                 ),
               ],
-              if (notes.isNotEmpty) ...[
+              if (prettyNotes.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Container(
                   constraints: const BoxConstraints(maxHeight: 180),
@@ -158,7 +165,7 @@ class _UpdateDialog extends ConsumerWidget {
                   ),
                   child: SingleChildScrollView(
                     child: Text(
-                      notes,
+                      prettyNotes,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: cs.onSurfaceVariant,
                         height: 1.6,

@@ -97,15 +97,20 @@ class BooklistDetailController
   /// is exactly the id set of [_books], and [_firstPageIds] is the
   /// subset of [_bookIds] on the server-rendered first page.
   /// 连续"整页无新增"计数（2026-11-21 修复）：上游无视 page 参数永远
-  /// 回同一页时，去重后不增长——连续 3 页无新增就收口，别让加载行无
+  /// 回同一页时，去重后不增长——连续 2 页无新增就收口，别让加载行无
   /// 限转。loadFirst 清零。
   int _noGrowthStreak = 0;
+
+  /// papi 分页端点已确认缺席（本会话内）：后续页直接走 HTML 路由，
+  /// 省一次注定 404 的请求。loadFirst 清零（换书单/换线路重探）。
+  bool _papiBroken = false;
 
   void _clearBooks() {
     _books.clear();
     _bookIds.clear();
     _firstPageIds.clear();
     _noGrowthStreak = 0;
+    _papiBroken = false;
   }
 
   /// Adds [book] unless its id is already present. Returns true when
@@ -388,9 +393,13 @@ class BooklistDetailController
     _applyFirstPage(books);
   }
 
-  /// Load-more for JSON pages (2 and up). A cached page paints first
-  /// (merged by id), then the network revalidates it; a failed refresh
-  /// just ends the list with the cached rows still on screen.
+  /// Load-more for pages 2 and up. 加载思路（2026-11-21 用户提出重设，
+  /// 替换页仲裁式）：**数量驱动**——书单元数据自带总数（书单行上的
+  /// "N 本"），加载到总数才收口；页仲裁（totalPages/空页/无增长）只
+  /// 作为总数未知或站点给不出来的退路。数据源两级：papi JSON（部分
+  /// 线路整个缺席，实测 404）→ HTML 分页路由（?page=N 服务端渲染，
+  /// solver 链路）。空页且目标未达成时重取一次（防瞬态挑战页冒充空
+  /// 页），仍空才收口并记账——数量大的书单不再漏书。
   Future<void> loadMore() async {
     final s = state;
     if (!_alive ||
@@ -407,6 +416,9 @@ class BooklistDetailController
     final fetchedAt = _repository.stamp();
     final list = _list;
     final accountId = _accountId;
+    final user = ref.read(authProvider).user;
+    // 数量目标：书单行的"N 本"。未知（0/null）时退回页仲裁式收口。
+    final target = list.count ?? 0;
     final cachedPage = await _repository.cachedBooksPage(
       list.url,
       page,
@@ -415,38 +427,18 @@ class BooklistDetailController
     if (cachedPage != null) _merge(cachedPage);
     state = state.copyWith(isLoadingMore: true, books: List.of(_books));
     try {
-      final response = await _repository.fetchBooksPage(list.id, page: page);
-      List<Book>? pageBooks = response.data?.books;
-      int? totalPages = response.data?.totalPages;
-      // papi 第 2+ 页在这条线路上可能整个缺席（2026-11-21 用户实测：
-      // get-books/2 直接 404 "Requested page not found"，而书单明确有
-      // 27 本）——退回 HTML 分页路由（?page=N 服务端渲染，与第 1 页
-      // 同一解析），走同一个 WebView solver 链路（挑战墙照常自动过）。
-      // HTML 页没有分页仲裁，由空页/连续无增长收口。
-      if (!(response.success && pageBooks != null)) {
-        logIgnored(
-          'booklist_page',
-          StateError(response.error ?? 'papi page failed, falling back'),
-        );
-        final user = ref.read(authProvider).user;
-        final html = await _repository.fetchViaSolver(
-          '${list.url}?page=$page',
-          accountId: accountId,
-          userId: user?.id,
-          userKey: user?.remixUserkey,
-        );
-        if (html != null) {
-          try {
-            pageBooks = await _repository.parseDetailBooks(
-              html,
-              baseUrl: Uri.parse(list.url).origin,
-            );
-            totalPages = null;
-          } on Object catch (error) {
-            logIgnored('booklist_page', error);
-          }
-        }
+      var fetched = await _fetchPageBooks(list, page, accountId, user);
+      // 目标未达成却拿到空页：瞬态挑战页会伪装成空结果——重取一次，
+      // 仍空才认。
+      if (fetched != null &&
+          fetched.$1.isEmpty &&
+          target > 0 &&
+          _books.length < target) {
+        final retried = await _fetchPageBooks(list, page, accountId, user);
+        if (retried != null) fetched = retried;
       }
+      final pageBooks = fetched?.$1;
+      final totalPages = fetched?.$2;
       if (!_isCurrent(generation)) return;
       // Same invalidation check as _loadDetailPage: a load-more that
       // started before a remove must not merge the removed book back.
@@ -476,11 +468,13 @@ class BooklistDetailController
         // same books — adding both would duplicate the rows.
         final before = _books.length;
         _merge(pageBooks);
-        // 连续 3 页无新增 = 上游无视 page 永远回同一页（2026-11-21 用
-        // 户实测"所有书单 20 本后加载一行转完就停"）：收口 + 记账，别
-        // 让加载行无限转。
+        // 连续 2 页无新增 = 上游无视 page 永远回同一页：收口 + 记账。
         _noGrowthStreak = _books.length > before ? 0 : _noGrowthStreak + 1;
-        final noGrowthClosed = _noGrowthStreak >= 3;
+        final noGrowthClosed = _noGrowthStreak >= 2;
+        // 收口条件：站点仲裁（totalPages）说没下一页 / 连续无新增。
+        // 数量目标（list.count）只用于"目标未达成时空页重取一次"，不
+        // 作为收口依据——元数据的 count 会滞后（测试实证：count=4 而
+        // 第 2 页有第 5 本），拿它硬收口会把书截没了。
         state = state.copyWith(
           books: List.of(_books),
           hasMore: !noGrowthClosed && (totalPages == null || page < totalPages),
@@ -490,22 +484,71 @@ class BooklistDetailController
         if (noGrowthClosed) {
           logIgnored(
             'booklist_page',
-            StateError('3 consecutive pages added no books'),
+            StateError('2 consecutive pages added no books'),
           );
         }
-      } else if (pageBooks != null) {
-        // HTML 路由拿到的空页：这是末页信号，正常收口。
-        state = state.copyWith(isLoadingMore: false, hasMore: false);
       } else {
-        // papi 失败且 HTML 兜底也没拿到（solver 失败等）：保持 hasMore
-        // 可重试，不无声断尾。
-        state = state.copyWith(isLoadingMore: false);
+        // 空页/拿不到：目标已达成或无从判断——收口。目标未达成也收
+        // 口并记账（站点侧确实给不出了，重试已在上面做过一次）。
+        if (target > _books.length) {
+          logIgnored(
+            'booklist_page',
+            StateError(
+              'empty page at ${_books.length}/$target; closing list',
+            ),
+          );
+        }
+        state = state.copyWith(isLoadingMore: false, hasMore: false);
       }
     } catch (e) {
       if (!_isCurrent(generation)) return;
       // Same as above: keep the list resumable instead of truncating it.
       logIgnored('booklist_page', e);
       state = state.copyWith(isLoadingMore: false);
+    }
+  }
+
+  /// 一页书的两级取法：papi JSON →（失败/缺席）HTML 分页路由。papi
+  /// 一旦失败过（_papiBroken），本会话后续页直接走 HTML，省一次注定
+  /// 失败的请求。返回 `(books, totalPages)`——HTML 路由的 totalPages
+  /// 为 null（无仲裁，由空页/无增长收口）；整体 null = 两级都没拿到
+  /// （solver 失败等，可重试）。
+  Future<(List<Book>, int?)?> _fetchPageBooks(
+    Booklist list,
+    int page,
+    String? accountId,
+    User? user,
+  ) async {
+    if (!_papiBroken) {
+      final response = await _repository.fetchBooksPage(list.id, page: page);
+      if (response.success && response.data != null) {
+        return (response.data!.books, response.data!.totalPages);
+      }
+      _papiBroken = true;
+      logIgnored(
+        'booklist_page',
+        StateError(
+          'papi unavailable (${response.error ?? 'failed'}); '
+          'falling back to HTML pages',
+        ),
+      );
+    }
+    final html = await _repository.fetchViaSolver(
+      '${list.url}?page=$page',
+      accountId: accountId,
+      userId: user?.id,
+      userKey: user?.remixUserkey,
+    );
+    if (html == null) return null;
+    try {
+      final books = await _repository.parseDetailBooks(
+        html,
+        baseUrl: Uri.parse(list.url).origin,
+      );
+      return (books, null);
+    } on Object catch (error) {
+      logIgnored('booklist_page', error);
+      return null;
     }
   }
 

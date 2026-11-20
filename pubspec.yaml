@@ -39,7 +39,7 @@ dependencies:
   intl: ^0.20.2
 
   # UI & Icons
-  cached_network_image: ^3.3.1
+  cached_network_image: ^4.0.7
   # Material You dynamic color (Android 12+): ColorScheme from the wallpaper,
   # falls back to the built-in palette where dynamic color is unavailable.
   # <1.9.0: v1.9.0's android/build.gradle.kts uses the `kotlin { compilerOptions {} }`

@@ -8,6 +8,7 @@ import 'package:zlibx/utils/diagnostics.dart';
 import '../services/auth_storage.dart';
 import '../services/challenge_html_cache.dart';
 import '../services/hive_service.dart';
+import '../services/random_feed_cache.dart';
 import '../services/wall_cookie_bridge.dart';
 import 'cache_invalidation.dart';
 import 'domain_provider.dart';
@@ -360,6 +361,9 @@ class AuthNotifier extends Notifier<AuthState> {
     // Same account-scoped caches as an account switch: a later login
     // as a different account must not see the old account's data.
     invalidateAccountScopedProviders(ref);
+    // 登出清掉按账号分键的随机批缓存（审查 v2 P3 隐私面）：旧账号看
+    // 过/被推荐过什么不该留在盘上。
+    unawaited(RandomFeedCache.clearAll());
   }
 
   /// Mark the current line unavailable without sending any credentials:

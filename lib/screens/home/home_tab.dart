@@ -14,6 +14,7 @@ import '../../routes/app_routes.dart';
 import '../../theme/app_metrics.dart';
 import '../../theme/motion.dart';
 import '../../utils/app_snack.dart';
+import '../../utils/diagnostics.dart';
 import '../../widgets/update_dialog.dart';
 import 'widgets/home_book_grid.dart';
 import 'widgets/home_line_unavailable_banner.dart';
@@ -116,8 +117,10 @@ class HomeTabState extends ConsumerState<HomeTab> {
   Future<void> _refreshRecommendations() async {
     try {
       await ref.read(homeFeedProvider.notifier).refresh();
-    } catch (_) {
-      // The grid shows the error/retry branch; nothing more to do here.
+    } catch (error) {
+      // The grid shows the error/retry branch; nothing more to do here
+      // — but the swallowed error still gets a trail (审查 v2 P2-2).
+      logIgnored('home_refresh', error);
     }
   }
 

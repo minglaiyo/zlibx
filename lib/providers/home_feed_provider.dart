@@ -15,6 +15,7 @@ import '../services/category_repository.dart';
 import '../services/random_feed_cache.dart';
 import '../services/random_feed_history.dart';
 import '../services/storage_service.dart';
+import '../utils/diagnostics.dart';
 import 'auth_provider.dart';
 import 'settings_provider.dart';
 import 'zlibrary_provider.dart';
@@ -186,9 +187,11 @@ Future<void> prefetchRandomBatch(
         return;
       }
     }
-  } catch (_) {
+  } catch (error) {
     // Best-effort only: a failed prefetch just means the next refresh
-    // fetches live. Never surface prefetch errors.
+    // fetches live. Never surface prefetch errors — but log them
+    // (审查 v2 P2-2)：release 的诊断轨迹里看得到预取失败率。
+    logIgnored('feed_prefetch', error);
   } finally {
     _prefetching = false;
   }

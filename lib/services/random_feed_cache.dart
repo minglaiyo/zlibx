@@ -21,15 +21,35 @@ class RandomFeedCache {
   @visibleForTesting
   static const String keyPrefix = 'random_feed_batch_';
 
-  /// 上次展示的那批书；没有/损坏/盒没开都返回 null，绝不抛。
+  /// 条目 TTL（审查 v2 P3）：与热门/最新缓存同一周——超过一周的批次
+  /// 过期。旧形态（裸 List）视为有效。
+  static const Duration ttl = Duration(days: 7);
+
+  /// 上次展示的那批书；没有/损坏/过期/盒没开都返回 null，绝不抛。
   static List<Book>? readSync(String? userId) {
     try {
       final raw = HiveService.settingsBox.get(_key(userId));
-      if (raw is! List || raw.isEmpty) return null;
-      return [
-        for (final item in raw)
-          Book.fromJson(Map<String, dynamic>.from(item as Map)),
-      ];
+      if (raw is Map) {
+        final fetchedAt = raw['fetchedAt'];
+        if (fetchedAt is int &&
+            DateTime.now().millisecondsSinceEpoch - fetchedAt >=
+                ttl.inMilliseconds) {
+          return null;
+        }
+        final books = raw['books'];
+        if (books is! List || books.isEmpty) return null;
+        return [
+          for (final item in books)
+            Book.fromJson(Map<String, dynamic>.from(item as Map)),
+        ];
+      }
+      if (raw is List && raw.isNotEmpty) {
+        return [
+          for (final item in raw)
+            Book.fromJson(Map<String, dynamic>.from(item as Map)),
+        ];
+      }
+      return null;
     } on Object {
       AppLog.report(
         '[random-feed] cannot read cached batch',
@@ -39,15 +59,15 @@ class RandomFeedCache {
     }
   }
 
-  /// 记下这批要展示的书（整批覆盖写）。空批不写——把上一批抹掉只会
-  /// 让下次启动多转一圈圈。
+  /// 记下这批要展示的书（整批覆盖写，带时间戳）。空批不写——把上一
+  /// 批抹掉只会让下次启动多转一圈圈。
   static Future<void> persist(String? userId, List<Book> books) async {
     if (books.isEmpty) return;
     try {
-      await HiveService.settingsBox.put(
-        _key(userId),
-        [for (final b in books) b.toJson()],
-      );
+      await HiveService.settingsBox.put(_key(userId), {
+        'fetchedAt': DateTime.now().millisecondsSinceEpoch,
+        'books': [for (final b in books) b.toJson()],
+      });
     } on Object {
       AppLog.report(
         '[random-feed] cannot persist cached batch',

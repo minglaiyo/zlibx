@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import '../utils/app_log.dart';
+import '../utils/diagnostics.dart';
 import 'auth_storage.dart';
 import 'hive_service.dart';
 
@@ -704,5 +705,93 @@ class StorageService {
       await library.delete(_keyDownloadHistory);
     }
     await settings.put(libraryMigratedFlag, true);
+  }
+
+  // ===== 详情页 eapi 缓存（2026-11-21，实测驱动：短 hash 书每次打开
+  // 都白付"注定失败的 fetch1 + 按标题解析"两个往返，重开同一本 0 缓存
+  // 全重来——诊断包屏上计时实证 2.3s→5.0s）=====
+
+  /// 详情正文缓存前缀（library 盒）。值 = Book.toJson() + fetchedAt。
+  static const String _bookDetailCachePrefix = 'bookdetail:';
+
+  /// 详情正文 7 天 TTL：eapi 的简介/出版社/评分几天内不变，staleness
+  /// 换"重开同一本零请求秒开"（惯例同 book_detail_extras 的 7 天）。
+  static const Duration _bookDetailCacheTtl = Duration(days: 7);
+
+  /// 取缓存的详情正文（新鲜返回 JSON，过期/缺失/坏形态返回 null）。
+  /// best-effort：盒未开（首帧窗口/测试环境无 Hive）直接按未命中——
+  /// Hive 未初始化时 openBox 的失败会以未处理异步错误漏出（try/catch
+  /// 拦不住，实测），所以门禁必须打在调 openBox 之前。
+  Future<Map<String, dynamic>?> getBookDetailCache(String bookId) async {
+    if (!HiveService.isLibraryOpen) return null;
+    try {
+      final box = await HiveService.libraryBoxAsync();
+      final raw = box.get('$_bookDetailCachePrefix$bookId');
+      if (raw is! Map) return null;
+      final fetchedAt = raw['fetchedAt'];
+      if (fetchedAt is! int) return null;
+      if (DateTime.now().millisecondsSinceEpoch - fetchedAt >=
+          _bookDetailCacheTtl.inMilliseconds) {
+        return null;
+      }
+      return Map<String, dynamic>.from(raw);
+    } on Object catch (error) {
+      logIgnored('book_detail_cache', error);
+      return null;
+    }
+  }
+
+  /// 写详情正文缓存。best-effort：盒未开直接跳过（理由同上）。
+  Future<void> putBookDetailCache(
+    String bookId,
+    Map<String, dynamic> json,
+  ) async {
+    if (!HiveService.isLibraryOpen) return;
+    try {
+      final box = await HiveService.libraryBoxAsync();
+      await box.put('$_bookDetailCachePrefix$bookId', {
+        ...json,
+        'fetchedAt': DateTime.now().millisecondsSinceEpoch,
+      });
+    } on Object catch (error) {
+      logIgnored('book_detail_cache', error);
+    }
+  }
+
+  /// 短 hash → eapi 真 hash 的解析缓存前缀。eapi 的 hash 是书目的规
+  /// 范标识，bookId 不变就不变——不设 TTL，写坏也有自愈（取缓存的
+  /// hash 若被服务端拒，vendor 照旧走解析重试，app 拿到新解析覆盖回
+  /// 去）。
+  static const String _eapiHashResolvePrefix = 'eapihash:';
+
+  /// 取解析缓存；无映射返回 null（走原始流程）。best-effort：盒未开
+  /// 直接按未命中（理由同 getBookDetailCache）。
+  Future<String?> getResolvedEapiHash(String bookId, String hash) async {
+    if (!HiveService.isLibraryOpen) return null;
+    try {
+      final box = await HiveService.libraryBoxAsync();
+      final value = box.get('$_eapiHashResolvePrefix$bookId:$hash');
+      return value is String && value.isNotEmpty ? value : null;
+    } on Object catch (error) {
+      logIgnored('book_detail_cache', error);
+      return null;
+    }
+  }
+
+  /// 存解析结果。resolved 与原 hash 相同（'same' 情形）不存。best-effort：
+  /// 盒未开直接跳过（理由同 getBookDetailCache）。
+  Future<void> putResolvedEapiHash(
+    String bookId,
+    String hash,
+    String resolved,
+  ) async {
+    if (resolved.isEmpty || resolved == hash) return;
+    if (!HiveService.isLibraryOpen) return;
+    try {
+      final box = await HiveService.libraryBoxAsync();
+      await box.put('$_eapiHashResolvePrefix$bookId:$hash', resolved);
+    } on Object catch (error) {
+      logIgnored('book_detail_cache', error);
+    }
   }
 }

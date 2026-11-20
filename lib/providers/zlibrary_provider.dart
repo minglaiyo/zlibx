@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../services/hive_service.dart';
+import '../services/storage_service.dart';
+import '../utils/book_detail_perf.dart';
 import 'auth_provider.dart';
 
 
@@ -51,6 +55,17 @@ String resolveInitialDomain() {
 /// time any provider can be created.
 final zlibraryApiProvider = Provider<ZLibraryApi>((ref) {
   final api = ZLibraryApi(domain: resolveInitialDomain());
+  // 诊断构建：详情页 eapi 计时上屏（2026-11-21，定位完撤）。测试用
+  // 假 API 走 override，不会经过这里。
+  ZLibraryApiBase.perfHook = bookDetailPerfStage;
+  // 短 hash → 真 hash 解析映射进 library 盒（2026-11-21 诊断修复）：
+  // 解析一次，之后每次打开直接用真 hash，三连发变一发。
+  final storage = ref.read(storageServiceProvider);
+  ZLibraryApiBase.resolveCacheLookup = storage.getResolvedEapiHash;
+  ZLibraryApiBase.resolveCacheWrite =
+      (bookId, hash, resolved) => unawaited(
+        storage.putResolvedEapiHash(bookId, hash, resolved),
+      );
   // Mid-session credential rejection (401 / the server's own words about
   // the session) has to reach the auth state: without it the app just shows
   // empty screens and keeps sending the refused pair until the next cold

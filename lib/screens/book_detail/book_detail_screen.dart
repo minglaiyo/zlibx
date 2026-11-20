@@ -7,6 +7,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../models/display_book.dart';
 import '../../providers/books_provider.dart';
 import '../../providers/download_provider.dart';
+import '../../utils/book_detail_perf.dart';
 import 'book_detail_args.dart';
 import 'widgets/anna_book_info_section.dart';
 import 'widgets/book_action_bar.dart';
@@ -130,6 +131,28 @@ class BookDetailScreen extends ConsumerWidget {
           BookHeroSection(book: book.toDisplay(), isFavorited: isFavorited),
 
           if (details?.isLoading ?? false) const _DetailLoadingBar(),
+
+          // 诊断构建：eapi 计时上屏（2026-11-21，定位完撤）。
+          SliverToBoxAdapter(
+            child: ValueListenableBuilder<String>(
+              valueListenable: bookDetailPerf,
+              builder: (_, perf, __) => perf.isEmpty
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Text(
+                        perf,
+                        style: Theme.of(context).textTheme.labelSmall
+                            ?.copyWith(
+                              fontFamily: 'monospace',
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ),
+            ),
+          ),
           if (details?.hasError ?? false)
             SliverToBoxAdapter(
               child: Padding(
@@ -196,6 +219,28 @@ class _ExternalBookDetail extends ConsumerWidget {
           BookHeroSection(book: displayBook, isFavorited: false),
 
           if (details.isLoading) const _DetailLoadingBar(),
+
+          // 诊断构建：eapi 计时上屏（2026-11-21，定位完撤）。
+          SliverToBoxAdapter(
+            child: ValueListenableBuilder<String>(
+              valueListenable: bookDetailPerf,
+              builder: (_, perf, __) => perf.isEmpty
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Text(
+                        perf,
+                        style: Theme.of(context).textTheme.labelSmall
+                            ?.copyWith(
+                              fontFamily: 'monospace',
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ),
+            ),
+          ),
           if (details.hasError)
             SliverToBoxAdapter(
               child: Padding(

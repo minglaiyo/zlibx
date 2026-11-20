@@ -32,14 +32,42 @@ mixin ZLibrarySearch on ZLibraryApiBase {
     String hashId, {
     String? title,
   }) async {
-    final response = await _fetchBookInfo(bookId, hashId);
+    // 解析映射命中：直接用真 hash——省掉"短 hash 必失败的 fetch1"和
+    // 按标题解析两个往返（2026-11-21 诊断：短 hash 书每次打开都白付
+    // 三连发）。
+    final mapped = await ZLibraryApiBase.resolveCacheLookup?.call(
+      bookId,
+      hashId,
+    );
+    final effective = (mapped == null || mapped.isEmpty) ? hashId : mapped;
+    final sw = Stopwatch()..start();
+    final response = await _fetchBookInfo(bookId, effective);
+    ZLibraryApiBase.perfHook?.call(
+      'fetch1=${sw.elapsedMilliseconds}ms '
+      '${response.success ? 'ok' : 'fail'}'
+      '${effective == hashId ? '' : ' mapped'}',
+    );
     if (response.success) return response;
     if (title != null &&
         title.isNotEmpty &&
         ZLibraryApiBase._isInvalidHashError(response.error)) {
+      final swResolve = Stopwatch()..start();
       final resolved = await resolveEapiHash(bookId, title);
-      if (resolved != null && resolved != hashId) {
-        return _fetchBookInfo(bookId, resolved);
+      ZLibraryApiBase.perfHook?.call(
+        'resolve=${swResolve.elapsedMilliseconds}ms '
+        '${resolved == null ? 'miss' : (resolved == effective ? 'same' : 'hit')}',
+      );
+      if (resolved != null && resolved != effective) {
+        // 写回映射（键 = 传入的原始 hash——调用方每次都传原始值，
+        // 映射坏了下次解析自然覆盖）。
+        ZLibraryApiBase.resolveCacheWrite?.call(bookId, hashId, resolved);
+        final swRetry = Stopwatch()..start();
+        final retried = await _fetchBookInfo(bookId, resolved);
+        ZLibraryApiBase.perfHook?.call(
+          'fetch2=${swRetry.elapsedMilliseconds}ms '
+          '${retried.success ? 'ok' : 'fail'}',
+        );
+        return retried;
       }
     }
     return response;

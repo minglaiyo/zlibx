@@ -103,6 +103,22 @@ abstract class ZLibraryApiBase {
   /// hops (unlike the Cookie, which the download path strips).
   String? _wallUserAgent;
 
+  /// 计时钩子（诊断用，2026-11-21，定位完撤）：详情 eapi 请求的分段
+  /// 耗时（fetch1/resolve/fetch2）。行内容只有毫秒数与静态词——无
+  /// URL/书名/会话信息，可进 release 可见通道。null = 未接线（默认，
+  /// 零开销）。
+  static void Function(String line)? perfHook;
+
+  /// 解析缓存钩子（2026-11-21）：短 hash → eapi 真 hash 的持久映射，
+  /// app 接到 StorageService（library 盒）。lookup 命中就直接用真
+  /// hash 取书；write 在解析成功后回写，键是 (bookId, 传入的原始
+  /// hash)——调用方每次传原始值，坏映射下次解析自然覆盖。内容只有
+  /// hash 字符串，无隐私面。null = 未接线（默认，不缓存）。
+  static Future<String?> Function(String bookId, String hash)?
+      resolveCacheLookup;
+  static void Function(String bookId, String hash, String resolved)?
+      resolveCacheWrite;
+
   /// [dio] is a test seam: a caller-provided client (with a fake
   /// adapter) replaces the default one. Production code never passes it.
   ZLibraryApiBase({String? domain, Dio? dio})

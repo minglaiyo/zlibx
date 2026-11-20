@@ -10,6 +10,7 @@ import 'package:zlibx/utils/diagnostics.dart';
 
 import '../services/book_detail_page_repository.dart';
 import '../services/storage_service.dart';
+import '../utils/book_detail_perf.dart';
 import 'auth_provider.dart';
 import 'zlibrary_provider.dart';
 
@@ -155,14 +156,38 @@ Book applyBookDetailExtras(Book book, Map<String, dynamic> extras) =>
 /// 到达后由 [BookDetailScreen] 并进本文。
 ///
 /// eapi 自己失败照旧抛出：正文没有兜底可退，页面显示错误 + 重试。
+///
+/// 两层持久缓存（2026-11-21，诊断包实测驱动——短 hash 书每次打开都
+/// 白付"注定失败的 fetch1 + 按标题解析"两个往返，重开同一本 0 缓存
+/// 全重来，屏上计时 2.3s→5.0s）：
+///  * 详情正文 7 天 TTL（library 盒）：重开同一本零请求秒开；
+///  * 短 hash → eapi 真 hash 解析映射（library 盒，无 TTL，坏映射
+///    自愈）：解析一次后，以后每次打开直接用真 hash，3 连发变 1 发。
 final bookDetailsProvider = FutureProvider.autoDispose
     .family<Book, BookIdentifier>((ref, identifier) async {
       final api = ref.watch(zlibraryApiProvider);
+      final storage = ref.watch(storageServiceProvider);
+      // 缓存优先：7 天内的正文直接用（路由 href 仍然后挂，入口行为
+      // 与网络路径一致）。
+      final cachedJson = await storage.getBookDetailCache(identifier.bookId);
+      if (cachedJson != null) {
+        final cached = Book.fromJson(cachedJson);
+        bookDetailPerfCacheHit();
+        final routeHref = identifier.href;
+        return (routeHref == null || routeHref.isEmpty)
+            ? cached
+            : cached.copyWith(href: routeHref);
+      }
+      // 解析映射在 vendor 内部查（resolveCacheLookup，接到 library
+      // 盒）——命中就直接用真 hash，跳过"短 hash 必失败的第一发"。
+      final sw = Stopwatch()..start();
       final response = await api.getBookInfo(
         identifier.bookId,
         identifier.hashId,
         title: identifier.title,
       );
+      // 诊断构建：本次 eapi 耗时上屏（定位详情页加载慢，2026-11-21）。
+      bookDetailPerfFinish(sw.elapsedMilliseconds, response.success);
       if (!response.success) {
         throw StateError(response.error ?? 'Failed to load book details');
       }
@@ -170,6 +195,8 @@ final bookDetailsProvider = FutureProvider.autoDispose
       if (book == null) {
         throw StateError('Book details response did not contain a book');
       }
+      // 正文无条件回写缓存（unawaited，不挡返回）。
+      unawaited(storage.putBookDetailCache(identifier.bookId, book.toJson()));
       // 路由带的 href 优先（列表页给的那个）；eapi 自己的 href 也
       // 认，路由没带时附加字段靠它定位。
       final routeHref = identifier.href;

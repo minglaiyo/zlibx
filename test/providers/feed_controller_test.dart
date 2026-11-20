@@ -59,6 +59,9 @@ class _FakeFeedApi implements ZLibraryApi {
 
   List<Book> personalized = const [];
 
+  /// 置 true 时 getUserRecommended 返回 fail（审查 P1-2 回归用）。
+  bool recommendedFail = false;
+
   int snapshotCalls = 0;
   int searchPopularCalls = 0;
   int searchDateCalls = 0;
@@ -98,6 +101,7 @@ class _FakeFeedApi implements ZLibraryApi {
   @override
   Future<ApiResponse<List<Book>>> getUserRecommended() async {
     recommendedCalls++;
+    if (recommendedFail) return ApiResponse.fail('recommended failed');
     return ApiResponse.ok(personalized);
   }
 
@@ -349,6 +353,49 @@ void main() {
       await container.read(homeFeedProvider.notifier).loadMore();
       expect(_ids(container.read(homeFeedProvider)), ['1', '2']);
       expect(api.recommendedCalls, 1);
+    });
+
+    test('个性化首载失败：错误页而不是空态（P1-2 回归）', () async {
+      final api = _FakeFeedApi()..recommendedFail = true;
+      final container = _container(api, randomRecommend: false);
+      container.read(homeFeedProvider);
+      await _settle();
+
+      final state = container.read(homeFeedProvider);
+      expect(state.books, isEmpty);
+      // error != null 才会走到 UI 的错误分支给重试按钮；否则是"无书"。
+      expect(state.error, isNotNull);
+      expect(state.isLoading, isFalse);
+    });
+
+    test('个性化刷新失败：有旧内容保旧不出错；空流顶错误页（P1-2 回归）', () async {
+      final api = _FakeFeedApi()..personalized = [_book(1), _book(2)];
+      final container = _container(api, randomRecommend: false);
+      container.read(homeFeedProvider);
+      await _settle();
+      expect(_ids(container.read(homeFeedProvider)), ['1', '2']);
+
+      // 有旧内容：一次网络抖动不能掀掉已滚到的流，也不该报错页。
+      api.recommendedFail = true;
+      await container.read(homeFeedProvider.notifier).refresh();
+      var state = container.read(homeFeedProvider);
+      expect(_ids(state), ['1', '2']);
+      expect(state.error, isNull);
+      expect(state.isLoading, isFalse);
+
+      // 空流：失败必须顶错误页（重试入口），而不是"无书"空态——
+      // 修复前 refresh 收尾的 copyWith 会把 error 抹掉，正好掉进空态。
+      api.recommendedFail = false;
+      api.personalized = const [];
+      await container.read(homeFeedProvider.notifier).refresh();
+      expect(_ids(container.read(homeFeedProvider)), isEmpty);
+
+      api.recommendedFail = true;
+      await container.read(homeFeedProvider.notifier).refresh();
+      state = container.read(homeFeedProvider);
+      expect(state.error, isNotNull);
+      expect(state.isLoading, isFalse);
+      expect(state.books, isEmpty);
     });
   });
 }

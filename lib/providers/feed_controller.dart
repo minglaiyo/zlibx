@@ -323,7 +323,16 @@ class HomeFeedController extends Notifier<FeedState> {
         hasMore: false,
       );
     } on Object catch (error) {
-      state = FeedState(error: error);
+      // 失败保旧：有旧内容时静默保留（别让一次网络抖动掀掉已滚到的
+      // 流，与 [FeedState] 文档的 error 语义一致）；books 空时（首载/
+      // 空流刷新）顶错误页，error != null 时 UI 给重试按钮。曾经这里
+      // 用 FeedState(error:) 整表替换清空 books、又被 refresh 收尾的
+      // copyWith 无条件抹掉 error，网络抖一次推荐流就变成"无书"空态
+      // （审查 P1-2）。
+      state = state.copyWith(
+        isLoading: false,
+        error: state.books.isEmpty ? error : null,
+      );
     }
   }
 
@@ -344,8 +353,11 @@ class HomeFeedController extends Notifier<FeedState> {
         );
         state = FeedState(books: batch, hasMore: batch.isNotEmpty);
       } else {
+        // 成败都在 _loadPersonalized 内部收尾（isLoading/error 各归其
+        // 位）。这里不能补 copyWith(isLoading:false)——copyWith 的
+        // error 是无条件覆盖，会把失败刚写入的错误页抹成"无书"空态
+        // （审查 P1-2）。
         await _loadPersonalized(api);
-        state = state.copyWith(isLoading: false);
       }
     } on Object catch (error) {
       // 有旧内容保旧；空流顶错误页。

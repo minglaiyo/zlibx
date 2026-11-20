@@ -44,6 +44,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   late final Animation<double> _pulseAnimation;
   late final Animation<double> _ringRotation;
   late final Animation<double> _bottomOpacity;
+  // 审查 C3(2026-11-20):Opacity→FadeTransition 的派生动画——
+  // 0.5 倍底栏透明度用 drive 表达,避免每帧为透明度创建离屏图层。
+  late final Animation<double> _bottomHalfOpacity = _bottomOpacity.drive(
+    Tween<double>(begin: 0, end: 0.5),
+  );
 
   @override
   void initState() {
@@ -337,8 +342,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                       _pulseController,
                     ]),
                     builder: (context, child) {
-                      return Opacity(
-                        opacity: _logoOpacity.value,
+                      return FadeTransition(
+                        opacity: _logoOpacity,
                         child: Transform.scale(
                           scale: _logoScale.value,
                           child: Stack(
@@ -394,8 +399,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   AnimatedBuilder(
                     animation: _contentController,
                     builder: (context, child) {
-                      return Opacity(
-                        opacity: _titleOpacity.value,
+                      return FadeTransition(
+                        opacity: _titleOpacity,
                         child: Transform.translate(
                           offset: Offset(0, _titleSlide.value),
                           child: Column(
@@ -435,8 +440,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                       _ringController,
                     ]),
                     builder: (context, child) {
-                      return Opacity(
-                        opacity: _bottomOpacity.value,
+                      return FadeTransition(
+                        opacity: _bottomOpacity,
                         child: SizedBox(
                           width: 36,
                           height: 36,
@@ -457,8 +462,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   AnimatedBuilder(
                     animation: _contentController,
                     builder: (context, child) {
-                      return Opacity(
-                        opacity: _bottomOpacity.value,
+                      return FadeTransition(
+                        opacity: _bottomOpacity,
                         child: child,
                       );
                     },
@@ -514,8 +519,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   AnimatedBuilder(
                     animation: _contentController,
                     builder: (context, child) {
-                      return Opacity(
-                        opacity: _bottomOpacity.value * 0.5,
+                      return FadeTransition(
+                        opacity: _bottomHalfOpacity,
                         child: child,
                       );
                     },

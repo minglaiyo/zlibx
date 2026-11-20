@@ -127,7 +127,13 @@ class ShelfCategoryActions {
       builder: (sheetContext) {
         sheetRoute = ModalRoute.of(sheetContext);
         return SafeArea(
-          child: ListView(
+          child: ConstrainedBox(
+            // 分类列表可能很长(审查 C3,2026-11-20):shrinkWrap 无界
+            // 增长会顶破 sheet,给视口 60% 上限,超出内部滚动。
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(sheetContext).size.height * 0.6,
+            ),
+            child: ListView(
             shrinkWrap: true,
             children: [
               ListTile(title: Text(l.shelfManageCategories)),
@@ -180,6 +186,7 @@ class ShelfCategoryActions {
                 ),
               ),
             ],
+            ),
           ),
         );
       },

@@ -74,6 +74,21 @@ The release APK is signed with `android/app/olib-release-key.jks` (alias `olib-r
 - **CI**: the release job restores the keystore from four repo Secrets — `KEYSTORE_BASE64` (base64 of the .jks), `KEYSTORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS` — then writes `android/key.properties` itself. Update them with `gh secret set NAME --repo minglaiyo/zlibx`.
 - Generate a replacement: `keytool -genkeypair -keystore olib-release-key.jks -alias olib-release -keyalg RSA -keysize 4096 -validity 10950` (10 950 days ≈ Google Play's minimum horizon).
 
+## Dependency Tracking (review B3, 2026-11-20)
+
+- flutter_rust_bridge pinned at 2.14.0-beta.2 on both ends; evaluate the
+  stable switch when it lands. The generated code carries a manual
+  `RustAutoOpaqueInner<str>` patch — the main regression risk on upgrade.
+- Hive 2.x is unmaintained but stabilized by the LazyBox / library-box
+  work (A1/A2, 2026-11-20); revisit a replacement (drift/sqflite) only
+  after the post-migration data-layer boundary proves stable for a few
+  releases.
+- dynamic_color capped <1.9.0 for the local old Flutter; lift the cap
+  once the local toolchain matches CI (3.44).
+- B1: the Dart parser fallbacks' trigger rate is measurable via the
+  logIgnored `frb_*` tags; observe one or two releases before retiring
+  any Dart parser.
+
 ## Repo Notes
 
 - Android build uses `android/build.gradle.kts`. China-based Maven mirrors (Aliyun) are added only when the `useCnMirror` Gradle property is set; CI does not use them.

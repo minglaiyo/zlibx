@@ -326,6 +326,7 @@
   "language": "언어",
   "languageSetting": "언어",
   "later": "나중에",
+  "updateVerifyHint": "다운로드 후 파일 검증 값을 대조할 수 있습니다(심층 방어: 서명이 일치하지 않으면 시스템이 덮어설치를 거부합니다):",
   "light": "밝게",
   "like": "즐겨찾기",
   "likeFailed": "좋아요에 실패했습니다",

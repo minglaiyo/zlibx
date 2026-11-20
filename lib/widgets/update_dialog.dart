@@ -167,6 +167,34 @@ class _UpdateDialog extends ConsumerWidget {
                   ),
                 ),
               ],
+              if (update.sha256 != null ||
+                  update.signerFingerprint != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  AppLocalizations.of(context)!.updateVerifyHint,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+                if (update.sha256 != null) ...[
+                  const SizedBox(height: 6),
+                  SelectableText(
+                    'SHA-256: ${update.sha256}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+                if (update.signerFingerprint != null) ...[
+                  const SizedBox(height: 4),
+                  SelectableText(
+                    'Signer SHA-256: ${update.signerFingerprint}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ],
               const SizedBox(height: 16),
               Text(
                 AppLocalizations.of(context)!.chooseDownloadSource,

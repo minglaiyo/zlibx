@@ -326,6 +326,7 @@
   "language": "語言",
   "languageSetting": "語言",
   "later": "稍後再說",
+  "updateVerifyHint": "下載後可核對檔案校驗值(縱深防禦:簽名不一致時系統會拒絕覆蓋安裝):",
   "light": "淺色",
   "like": "收藏",
   "likeFailed": "點讚失敗",

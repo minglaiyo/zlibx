@@ -326,6 +326,7 @@
   "language": "Language",
   "languageSetting": "Language",
   "later": "Later",
+  "updateVerifyHint": "After downloading, verify the file against these digests (defence in depth: Android refuses an install whose signature mismatches):",
   "light": "Light",
   "like": "Like",
   "likeFailed": "Failed to update like",

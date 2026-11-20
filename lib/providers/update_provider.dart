@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -35,6 +36,14 @@ class UpdateState {
   final Map<String, String>? changelog;
   final List<UpdateLink> links;
 
+  /// Release 资产里的校验信息（审查 B4，2026-11-20）：APK 的 SHA-256 与
+  /// 签名证书 SHA-256 指纹，best-effort 从 Release 资产
+  /// （sha256sums.txt / signing-fingerprint.txt）拉取。缺失或拉取失败
+  /// 为 null——对话框随之隐藏校验块。纵深防御：签名不一致时 Android
+  /// 本就拒绝覆盖安装，这里给用户一个可核对的凭据。
+  final String? sha256;
+  final String? signerFingerprint;
+
   /// How many manifest link lines were dropped (host off the allow-list,
   /// non-https, …). The update dialog warns about the count.
   final int droppedLinkCount;
@@ -53,6 +62,8 @@ class UpdateState {
     this.releaseUrl,
     this.changelog,
     this.links = const [],
+    this.sha256,
+    this.signerFingerprint,
     this.droppedLinkCount = 0,
     this.forceUpdate = false,
     this.hasUpdate = false,
@@ -66,6 +77,8 @@ class UpdateState {
     String? releaseUrl,
     Map<String, String>? changelog,
     List<UpdateLink>? links,
+    String? sha256,
+    String? signerFingerprint,
     int? droppedLinkCount,
     bool? forceUpdate,
     bool? hasUpdate,
@@ -78,6 +91,8 @@ class UpdateState {
       releaseUrl: releaseUrl ?? this.releaseUrl,
       changelog: changelog ?? this.changelog,
       links: links ?? this.links,
+      sha256: sha256 ?? this.sha256,
+      signerFingerprint: signerFingerprint ?? this.signerFingerprint,
       droppedLinkCount: droppedLinkCount ?? this.droppedLinkCount,
       forceUpdate: forceUpdate ?? this.forceUpdate,
       hasUpdate: hasUpdate ?? this.hasUpdate,
@@ -108,6 +123,8 @@ class UpdateNotifier extends Notifier<UpdateState> {
   static const String _cachedTagKey = 'update_cached_tag';
   static const String _cachedBodyKey = 'update_cached_body';
   static const String _cachedReleaseUrlKey = 'update_cached_release_url';
+  static const String _cachedShaKey = 'update_cached_sha256';
+  static const String _cachedFingerprintKey = 'update_cached_fingerprint';
 
   /// Check interval: once per day
   static const Duration _checkInterval = Duration(hours: 24);
@@ -187,13 +204,39 @@ class UpdateNotifier extends Notifier<UpdateState> {
       final body = (data['body'] as String? ?? '').trim();
       final htmlUrl = data['html_url'] as String?;
 
+      // 校验信息（审查 B4）：best-effort，任何失败都留 null，绝不影响
+      // 更新判定本身。
+      final assetDio = createDio();
+      String? sha256;
+      String? signerFingerprint;
+      try {
+        sha256 = parseSha256Sums(
+          await _fetchAssetText(assetDio, data, 'sha256sums.txt'),
+        );
+        signerFingerprint = parseSignerFingerprint(
+          await _fetchAssetText(assetDio, data, 'signing-fingerprint.txt'),
+        );
+      } catch (_) {
+        // 校验信息是可选装饰。
+      } finally {
+        assetDio.close();
+      }
+
       final box = HiveService.settingsBox;
       await box.put(_cachedTagKey, tagName);
       await box.put(_cachedBodyKey, body);
       await box.put(_cachedReleaseUrlKey, htmlUrl);
+      await box.put(_cachedShaKey, sha256);
+      await box.put(_cachedFingerprintKey, signerFingerprint);
       await box.put(_lastCheckKey, DateTime.now().millisecondsSinceEpoch);
 
-      return _apply(tagName, body, htmlUrl);
+      return _apply(
+        tagName,
+        body,
+        htmlUrl,
+        sha256: sha256,
+        signerFingerprint: signerFingerprint,
+      );
     } catch (e) {
       // Network-layer exception text can carry URLs or response
       // fragments: log the type only.
@@ -213,10 +256,18 @@ class UpdateNotifier extends Notifier<UpdateState> {
       tag,
       box.get(_cachedBodyKey) as String? ?? '',
       box.get(_cachedReleaseUrlKey) as String?,
+      sha256: box.get(_cachedShaKey) as String?,
+      signerFingerprint: box.get(_cachedFingerprintKey) as String?,
     );
   }
 
-  bool _apply(String tagName, String body, String? htmlUrl) {
+  bool _apply(
+    String tagName,
+    String body,
+    String? htmlUrl, {
+    String? sha256,
+    String? signerFingerprint,
+  }) {
     final current = state.currentVersion!;
     final latest = tagName.startsWith('v') ? tagName.substring(1) : tagName;
     final manifest = UpdateManifest.parse(body);
@@ -246,6 +297,8 @@ class UpdateNotifier extends Notifier<UpdateState> {
           : null,
       changelog: changelog,
       links: manifest.links,
+      sha256: sha256,
+      signerFingerprint: signerFingerprint,
       droppedLinkCount: manifest.droppedLinkCount,
       hasUpdate: hasUpdate,
       forceUpdate: forceUpdate,
@@ -274,6 +327,64 @@ class UpdateNotifier extends Notifier<UpdateState> {
   bool isVersionDismissed() {
     final dismissed = HiveService.settingsBox.get(_dismissedVersionKey);
     return dismissed == state.latestVersion;
+  }
+
+  /// 拉一个 Release 资产的文本内容（校验文件都很小）。资产缺失 /
+  /// 非 200 / 任何异常都返回 null。
+  Future<String?> _fetchAssetText(
+    Dio dio,
+    Map<String, dynamic> release,
+    String name,
+  ) async {
+    final assets = release['assets'];
+    if (assets is! List) return null;
+    String? url;
+    for (final asset in assets) {
+      if (asset is Map && asset['name'] == name) {
+        url = asset['browser_download_url'] as String?;
+        break;
+      }
+    }
+    if (url == null || url.isEmpty) return null;
+    final response = await dio
+        .get(
+          url,
+          options: Options(
+            responseType: ResponseType.plain,
+            headers: const {'Accept': 'application/octet-stream'},
+          ),
+        )
+        .timeout(const Duration(seconds: 5));
+    if (response.statusCode != 200) return null;
+    return response.data?.toString();
+  }
+
+  /// `<hash>  <filename>`（sha256sums 格式）：第一个非空行的首个
+  /// 64-hex token，小写归一。
+  @visibleForTesting
+  static String? parseSha256Sums(String? content) {
+    if (content == null) return null;
+    for (final line in content.split('\n')) {
+      final token = line.trim().split(RegExp(r'\s+')).first;
+      if (RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(token)) {
+        return token.toLowerCase();
+      }
+    }
+    return null;
+  }
+
+  /// `Signer #1 certificate SHA-256 digest: <hex>`（apksigner
+  /// --print-certs 格式），小写归一。
+  @visibleForTesting
+  static String? parseSignerFingerprint(String? content) {
+    if (content == null) return null;
+    for (final line in content.split('\n')) {
+      final match = RegExp(
+        r'SHA-256 digest:\s*([0-9a-fA-F]{64})',
+      ).firstMatch(line);
+      if (match != null) return match.group(1)!.toLowerCase();
+    }
+    return null;
   }
 
   /// Dismiss the current update notification

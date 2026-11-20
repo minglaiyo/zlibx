@@ -16,7 +16,7 @@ flutter_rust_bridge = "=2.14.0-beta.2"
 # HTML parsing: scraper wraps html5ever and provides a CSS selector engine,
 # mirroring Dart's package:html. regex handles the inline-script/text
 # extractions (total count, pagesTotal, token format) done in Dart.
-scraper = "0.20"
+scraper = "0.29"
 # Direct dep only for the NodeRef type in booklist's ancestor-link walk
 # (must match scraper's own ego-tree version — 0.6 for scraper 0.20).
 ego-tree = "0.6"

@@ -1,8 +1,15 @@
 part of 'download_provider.dart';
 
 /// Startup history load: reads persisted completed downloads and turns
-/// each entry into a task.
-mixin _DownloadHistoryMixin on _DownloadNotifierBase {
+/// each entry into a task. Owns the partial-download recovery too: an
+/// in-flight download has no history row, so after a process death the
+/// only trace on disk is the staged `.part` / `.meta` / pending
+/// sidecar — recovery turns those back into paused tasks.
+mixin _DownloadHistoryMixin on _DownloadPathsMixin {
+  /// 启动恢复只跑一次（build() 会因 invalidate 重跑，notifier 实例
+  /// 复用，实例旗标跨 invalidate 存活）。
+  bool _recoveryDone = false;
+
   /// Load completed downloads from storage on app startup
   Future<void> _loadDownloadHistory() async {
     try {
@@ -95,4 +102,95 @@ mixin _DownloadHistoryMixin on _DownloadNotifierBase {
       missingFile: !fileExists,
     );
   }
+
+  // ── 断点恢复：盘上残片 → paused 任务（2026-11-21 下载中断修复）──
+  //
+  // 下载中途进程死亡（划掉应用/系统回收），Dart 引擎随之消失，但
+  // .part / .meta / pending 侧车都在暂存目录里——断点续传管线本身
+  // 能接着跑（startDownload 内部按盘上字节自对账），缺的只是把书挂
+  // 回下载页的那个任务。这里把残片按文件名还原成 paused 任务：下载
+  // 页"进行中"出现条目 + 继续按钮，点了走既有 resumeDownload。
+
+  /// 扫描暂存目录恢复残片任务。幂等（每进程一次）；与历史加载共用
+  /// "按 id 合并、不覆盖已有"的合并纪律。
+  Future<void> _recoverPartialDownloads() async {
+    if (_recoveryDone) return;
+    _recoveryDone = true;
+    try {
+      final dir = Directory(await _resolveSaveDir());
+      final entries = await dir.list().toList();
+      // 同一本书可能在盘上留下多种痕迹（.part 本体 / .part.meta 校验
+      // 符 / .part.pending.json 侧车），按 base 去重。
+      final bases = <String>{};
+      for (final entity in entries) {
+        if (entity is! File) continue;
+        final name = entity.uri.pathSegments.last;
+        final base = _stripPartialSuffixes(name);
+        if (base != null) bases.add(base);
+      }
+      final recovered = <DownloadTask>[];
+      for (final base in bases) {
+        final parsed = _parseSafeFileName(base);
+        if (parsed == null) continue;
+        final id = '${parsed.$1}';
+        if (state.any((t) => t.id == id)) continue;
+        recovered.add(
+          DownloadTask(
+            id: id,
+            book: Book(
+              id: parsed.$1,
+              title: parsed.$2,
+              extension: parsed.$3,
+            ),
+            status: DownloadStatus.paused,
+          ),
+        );
+      }
+      if (recovered.isEmpty) return;
+      final recoveredIds = recovered.map((t) => t.id).toSet();
+      state = [
+        ...state.where((t) => !recoveredIds.contains(t.id)),
+        ...recovered,
+      ];
+      AppLog.report(
+        'recovered ${recovered.length} partial download(s)',
+        tag: 'download_provider',
+      );
+    } on Object catch (error) {
+      logIgnored('download_recovery', error);
+    }
+  }
+
+  /// `<name>.part.pending.json` / `<name>.part.meta` / `<name>.part`
+  /// → `<name>`；其他形态返回 null（用户自放文件不动）。
+  static String? _stripPartialSuffixes(String name) =>
+      stripPartialSuffixes(name);
+
+  /// 反解 `_buildSafeFileName` 的产物 `<安全标题> - <数字 id>.<扩展名>`
+  /// → (id, title, extension)。标题里也可能含 " - "，贪婪匹配天然锚
+  /// 定最后一组 ` - 数字.扩展名`。id 非正或解析不出 → null。
+  static (int, String, String)? _parseSafeFileName(String base) =>
+      parseSafeFileName(base);
+}
+
+/// 库级纯函数（测试直接 import download_provider.dart 调用）：
+/// `<name>.part.pending.json` / `<name>.part.meta` / `<name>.part`
+/// → `<name>`；其他形态返回 null（用户自放文件不动）。
+String? stripPartialSuffixes(String name) {
+  for (final suffix in const ['.part.pending.json', '.part.meta', '.part']) {
+    if (name.endsWith(suffix)) {
+      return name.substring(0, name.length - suffix.length);
+    }
+  }
+  return null;
+}
+
+/// 库级纯函数：反解 `_buildSafeFileName` 的产物。见 mixin 内同名
+/// 方法文档。
+(int, String, String)? parseSafeFileName(String base) {
+  final match = RegExp(r'^(.*) - (\d+)\.([A-Za-z0-9]+)$').firstMatch(base);
+  if (match == null) return null;
+  final id = int.tryParse(match.group(2)!);
+  if (id == null || id <= 0) return null;
+  return (id, match.group(1)!, match.group(3)!.toLowerCase());
 }

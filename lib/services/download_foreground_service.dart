@@ -41,6 +41,22 @@ class DownloadForegroundService {
     );
   }
 
+  static bool _staleCleanupDone = false;
+
+  /// 新引擎启动时的陈旧清理（2026-11-21 下载中断修复）：上一个 Dart
+  /// 引擎死后留下的前台服务与"下载中 X%"通知（划掉应用之外的死法）。
+  /// 每进程只做一次；没有孤儿时原生侧是无害 no-op。下载任务本身的
+  /// 恢复由引擎扫描盘上 .part 残片完成。
+  static Future<void> cancelStale() async {
+    if (_staleCleanupDone) return;
+    _staleCleanupDone = true;
+    try {
+      await _channel.invokeMethod<void>('cancelStale');
+    } on Object catch (_) {
+      // Non-Android / channel unavailable: nothing stale to clear.
+    }
+  }
+
   /// Request POST_NOTIFICATIONS (Android 13+) so the download progress
   /// notification is visible. Best-effort.
   static Future<void> requestNotificationPermission() async {

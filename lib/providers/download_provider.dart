@@ -207,8 +207,14 @@ class DownloadNotifier extends _DownloadNotifierBase
         }
       }
     };
-    // Load persisted download history on initialization
-    ready = _loadDownloadHistory();
+    // 新引擎启动：清掉上一个引擎死后可能留下的孤儿前台服务/通知
+    // （每进程一次，见 DownloadForegroundService.cancelStale）。
+    unawaited(DownloadForegroundService.cancelStale());
+    // Load persisted download history on initialization; then scan the
+    // staging dir for partial downloads (2026-11-21 中断修复) and hang
+    // them back as paused tasks — 顺序执行，恢复能跳过历史里已完成的
+    // 同 id 条目。
+    ready = _loadDownloadHistory().then((_) => _recoverPartialDownloads());
     return [];
   }
 }

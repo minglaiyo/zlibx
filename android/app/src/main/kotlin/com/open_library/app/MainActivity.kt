@@ -237,6 +237,11 @@ class MainActivity : FlutterFragmentActivity() {
                         DownloadForegroundService.endDownload(this)
                         result.success(null)
                     }
+                    "cancelStale" -> {
+                        // 新引擎启动：清掉上一个引擎留下的孤儿服务/通知。
+                        DownloadForegroundService.cancelStale(this)
+                        result.success(null)
+                    }
                     "updateProgress" -> {
                         DownloadForegroundService.updateProgress(
                             call.argument<String>("text"),

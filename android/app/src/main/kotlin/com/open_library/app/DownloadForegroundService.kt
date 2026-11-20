@@ -88,11 +88,35 @@ class DownloadForegroundService : Service() {
             }
         }
 
-        /** Push a progress text from Dart (via the MainActivity channel). */
-        fun updateProgress(text: String?) {
-            progressText = text
-            if (activeCount > 0) service?.notifyProgress()
+    /** Push a progress text from Dart (via the MainActivity channel). */
+    fun updateProgress(text: String?) {
+        progressText = text
+        if (activeCount > 0) service?.notifyProgress()
+    }
+
+    /** 新引擎启动时的陈旧清理（2026-11-21 下载中断修复）：上一个
+        Dart 引擎死掉后（划掉应用之外的死法——系统低内存回收 Activity
+        等），前台服务与"下载中 X%"的通知可能成为孤儿。新引擎手里没
+        有任何任务，服务必然无事可做：停服务 + 撤进度通知。没有孤儿
+        时是无害 no-op。下载本身的恢复走 Dart 侧对盘上 .part 残片的
+        扫描（DownloadNotifier 启动恢复）。 */
+    fun cancelStale(context: Context) {
+        activeCount = 0
+        progressText = null
+        try {
+            context.stopService(
+                Intent(context, DownloadForegroundService::class.java),
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("ZlibxDownload", "stale stop failed", e)
         }
+        try {
+            val nm = context.getSystemService(NotificationManager::class.java)
+            nm.cancel(NOTIFICATION_ID)
+        } catch (e: Exception) {
+            android.util.Log.w("ZlibxDownload", "stale cancel failed", e)
+        }
+    }
 
         /** E3: post a completion notification tapping straight into the
             book (content:// URI + ACTION_VIEW with a read grant). Plain
@@ -150,6 +174,32 @@ class DownloadForegroundService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /**
+     * 划掉应用（2026-11-21 下载中断修复）：Activity 随任务销毁，
+     * Flutter 引擎与 Dart 下载引擎一起死，而持有前台服务的进程继续
+     * 活着——服务成为孤儿，"下载中 X%"的通知永远钉在通知栏上，暂停/
+     * 取消按钮指向已死的引擎。这里停服务并撤通知，让通知栏回到诚实
+     * 的状态：此刻确实没有任何下载在跑。.part / .meta / pending 条
+     * 目都在盘上，下次启动由 Dart 侧的启动恢复把任务挂回下载页。
+     * onAction 尽力而为：引擎若还有一息，暂停能把缓冲刷进盘上；已
+     * 死则调用落进 dead messenger，失败只记日志。
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        try {
+            onAction?.invoke(ACTION_PAUSE)
+        } catch (e: Exception) {
+            android.util.Log.w("ZlibxDownload", "task-removed pause failed", e)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // START_NOT_STICKY (审查 A2): a restart after a process kill used

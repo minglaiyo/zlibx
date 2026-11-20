@@ -22,11 +22,17 @@ mixin ZLibrarySearch on ZLibraryApiBase {
 
   /// Full detail for one book. [hashId] is the eapi hash from a search
   /// response; a webpage short hash (from booklist/profile HTML, or a
-  /// shared-book link) is rejected with "Invalid hash". When [title]
-  /// is given and the first call fails exactly that way, the real hash
-  /// is resolved with [resolveEapiHash] and the call is retried once.
-  /// Any other failure is returned unchanged, and the fast path — a
-  /// search-sourced book with the right hash — costs no extra call.
+  /// shared-book link) is rejected with "Invalid hash".
+  ///
+  /// Hash shapes are device-verified (2026-11-21): eapi issues 6-char
+  /// hashes, webpage short hashes are 10 chars (e.g. `5jJwz97pvp`).
+  /// Two shortcuts keep an open cheap:
+  ///  * a persisted resolve mapping (see `resolveCacheLookup` on the
+  ///    base class) turns every repeat open into one call;
+  ///  * a non-6-char hash with a [title] skips the doomed first call
+  ///    and resolves up front — falling back to a direct fetch when
+  ///    the resolve misses, which is never worse than the old
+  ///    fail-then-resolve-then-retry chain.
   Future<ApiResponse<Book>> getBookInfo(
     String bookId,
     String hashId, {
@@ -51,20 +57,10 @@ mixin ZLibrarySearch on ZLibraryApiBase {
         title != null &&
         title.isNotEmpty;
     if (suspectShort) {
-      final swResolve = Stopwatch()..start();
       final resolved = await resolveEapiHash(bookId, title);
-      ZLibraryApiBase.perfHook?.call(
-        'resolve=${swResolve.elapsedMilliseconds}ms '
-        '${resolved == null ? 'miss' : 'hit'} skipfetch1',
-      );
       final target =
           (resolved == null || resolved.isEmpty) ? hashId : resolved;
-      final swFetch = Stopwatch()..start();
       final response = await _fetchBookInfo(bookId, target);
-      ZLibraryApiBase.perfHook?.call(
-        'fetch=${swFetch.elapsedMilliseconds}ms '
-        '${response.success ? 'ok' : 'fail'} len=${target.length}',
-      );
       if (response.success &&
           resolved != null &&
           resolved.isNotEmpty &&
@@ -73,36 +69,17 @@ mixin ZLibrarySearch on ZLibraryApiBase {
       }
       return response;
     }
-    final sw = Stopwatch()..start();
     final response = await _fetchBookInfo(bookId, effective);
-    ZLibraryApiBase.perfHook?.call(
-      'fetch1=${sw.elapsedMilliseconds}ms '
-      '${response.success ? 'ok' : 'fail'}'
-      '${effective == hashId ? '' : ' mapped'}'
-      ' len=${effective.length}',
-    );
     if (response.success) return response;
     if (title != null &&
         title.isNotEmpty &&
         ZLibraryApiBase._isInvalidHashError(response.error)) {
-      final swResolve = Stopwatch()..start();
       final resolved = await resolveEapiHash(bookId, title);
-      ZLibraryApiBase.perfHook?.call(
-        'resolve=${swResolve.elapsedMilliseconds}ms '
-        '${resolved == null ? 'miss' : (resolved == effective ? 'same' : 'hit')}',
-      );
       if (resolved != null && resolved != effective) {
         // 写回映射（键 = 传入的原始 hash——调用方每次都传原始值，
         // 映射坏了下次解析自然覆盖）。
         ZLibraryApiBase.resolveCacheWrite?.call(bookId, hashId, resolved);
-        final swRetry = Stopwatch()..start();
-        final retried = await _fetchBookInfo(bookId, resolved);
-        ZLibraryApiBase.perfHook?.call(
-          'fetch2=${swRetry.elapsedMilliseconds}ms '
-          '${retried.success ? 'ok' : 'fail'}'
-          ' len=${resolved.length}',
-        );
-        return retried;
+        return _fetchBookInfo(bookId, resolved);
       }
     }
     return response;

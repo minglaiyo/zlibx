@@ -10,7 +10,6 @@ import 'package:zlibx/utils/diagnostics.dart';
 
 import '../services/book_detail_page_repository.dart';
 import '../services/storage_service.dart';
-import '../utils/book_detail_perf.dart';
 import 'auth_provider.dart';
 import 'zlibrary_provider.dart';
 
@@ -172,7 +171,6 @@ final bookDetailsProvider = FutureProvider.autoDispose
       final cachedJson = await storage.getBookDetailCache(identifier.bookId);
       if (cachedJson != null) {
         final cached = Book.fromJson(cachedJson);
-        bookDetailPerfCacheHit();
         final routeHref = identifier.href;
         return (routeHref == null || routeHref.isEmpty)
             ? cached
@@ -180,14 +178,11 @@ final bookDetailsProvider = FutureProvider.autoDispose
       }
       // 解析映射在 vendor 内部查（resolveCacheLookup，接到 library
       // 盒）——命中就直接用真 hash，跳过"短 hash 必失败的第一发"。
-      final sw = Stopwatch()..start();
       final response = await api.getBookInfo(
         identifier.bookId,
         identifier.hashId,
         title: identifier.title,
       );
-      // 诊断构建：本次 eapi 耗时上屏（定位详情页加载慢，2026-11-21）。
-      bookDetailPerfFinish(sw.elapsedMilliseconds, response.success);
       if (!response.success) {
         throw StateError(response.error ?? 'Failed to load book details');
       }

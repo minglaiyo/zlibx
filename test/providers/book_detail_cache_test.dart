@@ -7,7 +7,6 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/providers/books_provider.dart';
 import 'package:zlibx/providers/zlibrary_provider.dart';
 import 'package:zlibx/services/hive_service.dart';
-import 'package:zlibx/utils/book_detail_perf.dart';
 
 /// 详情正文磁盘缓存（2026-11-21 诊断修复）：重开同一本书 0 请求秒开
 /// ——诊断包屏上计时实证重开要 2.3~5.0s 全是重复网络。7 天 TTL 惯例
@@ -69,7 +68,6 @@ void main() {
     expect(first.title, '缓存回归');
     expect(first.href, '/book/shorthash/slug.html');
     expect(api.detailCalls, 1);
-    expect(bookDetailPerf.value, contains('eapi'));
 
     // 新容器 = 模拟重开 app：autoDispose 的内存缓存已丢，走磁盘。
     final container2 = ProviderContainer(
@@ -81,6 +79,5 @@ void main() {
     expect(second.title, '缓存回归');
     expect(second.href, '/book/shorthash/slug.html');
     expect(api.detailCalls, 1, reason: '第二次必须命中磁盘缓存，不再发请求');
-    expect(bookDetailPerf.value, 'eapi cache 0 请求');
   });
 }

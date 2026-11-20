@@ -5,7 +5,6 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../services/hive_service.dart';
 import '../services/storage_service.dart';
-import '../utils/book_detail_perf.dart';
 import 'auth_provider.dart';
 
 
@@ -55,11 +54,9 @@ String resolveInitialDomain() {
 /// time any provider can be created.
 final zlibraryApiProvider = Provider<ZLibraryApi>((ref) {
   final api = ZLibraryApi(domain: resolveInitialDomain());
-  // 诊断构建：详情页 eapi 计时上屏（2026-11-21，定位完撤）。测试用
-  // 假 API 走 override，不会经过这里。
-  ZLibraryApiBase.perfHook = bookDetailPerfStage;
-  // 短 hash → 真 hash 解析映射进 library 盒（2026-11-21 诊断修复）：
-  // 解析一次，之后每次打开直接用真 hash，三连发变一发。
+  // 短 hash → 真 hash 解析映射进 library 盒（2026-11-21 详情提速）：
+  // 解析一次，之后每次打开直接用真 hash，三连发变一发。测试用假 API
+  // 走 override，不会经过这里。
   final storage = ref.read(storageServiceProvider);
   ZLibraryApiBase.resolveCacheLookup = storage.getResolvedEapiHash;
   ZLibraryApiBase.resolveCacheWrite =

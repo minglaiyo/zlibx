@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
@@ -60,7 +61,15 @@ class _BooklistDetailScreenState extends ConsumerState<BooklistDetailScreen> {
   bool _newestFirst = true;
 
   /// 视差位移:滚动像素缓存,头图背景层按 0.35 反向跟随。
-  double _pixels = 0;
+  /// ValueNotifier（审查 v2 P1-3）：滚动每 tick 只重建头图视差层，
+  /// 不再整屏 setState。
+  final ValueNotifier<double> _pixels = ValueNotifier(0);
+
+  // _visibleBooks 的记忆化缓存：滚动无关的重建不再重跑全量过滤+排序。
+  List<Book>? _visibleCache;
+  List<Book>? _visibleCacheBooks;
+  String? _visibleCacheQuery;
+  bool? _visibleCacheSort;
 
   @override
   void initState() {
@@ -72,11 +81,12 @@ class _BooklistDetailScreenState extends ConsumerState<BooklistDetailScreen> {
   void dispose() {
     _scrollController.dispose();
     _searchController.dispose();
+    _pixels.dispose();
     super.dispose();
   }
 
   void _onScroll() {
-    setState(() => _pixels = _scrollController.position.pixels);
+    _pixels.value = _scrollController.position.pixels;
     if (_scrollController.position.extentAfter < 300) {
       ref.read(_provider.notifier).loadMore();
     }
@@ -224,6 +234,14 @@ class _BooklistDetailScreenState extends ConsumerState<BooklistDetailScreen> {
   }
 
   List<Book> _visibleBooks(List<Book> books) {
+    // 记忆化（审查 v2 P1-3）：列表实例、过滤词、排序都没变就复用上
+    // 一次的结果——滚动 tick 不再每帧 O(n log n) 全量拷贝+排序。
+    if (identical(books, _visibleCacheBooks) &&
+        _query == _visibleCacheQuery &&
+        _newestFirst == _visibleCacheSort &&
+        _visibleCache != null) {
+      return _visibleCache!;
+    }
     final q = _query.toLowerCase();
     final out = q.isEmpty
         ? [...books]
@@ -238,6 +256,10 @@ class _BooklistDetailScreenState extends ConsumerState<BooklistDetailScreen> {
       final ay = a.year ?? 0, by = b.year ?? 0;
       return _newestFirst ? by - ay : ay - by;
     });
+    _visibleCacheBooks = books;
+    _visibleCacheQuery = _query;
+    _visibleCacheSort = _newestFirst;
+    _visibleCache = out;
     return out;
   }
 
@@ -505,7 +527,10 @@ enum _OwnBookAction { note, remove }
 class _Hero extends StatelessWidget {
   final Booklist booklist;
   final bool favorite;
-  final double pixels;
+
+  /// 视差位移源（审查 v2 P1-3）：ValueListenable——滚动每 tick 只重
+  /// 建头图里的视差层，不再整屏 setState。
+  final ValueListenable<double> pixels;
   final TextEditingController searchController;
   final bool newestFirst;
   final VoidCallback onToggleFavorite;
@@ -535,59 +560,68 @@ class _Hero extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final previews = booklist.previewBooks.take(3).toList();
-    // 视差位移随滚动上移背景,裁剪在头图区域内。
-    final dy = -(pixels.clamp(0.0, _heroHeight) * _parallaxFactor);
     return Column(
       children: [
         ClipRect(
           child: SizedBox(
             height: _heroHeight,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Transform.translate(
-                  offset: Offset(0, dy),
-                  child: _HeroBackdrop(url: booklist.coverUrl),
-                ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.12),
-                        Colors.black.withValues(alpha: 0.05),
-                        Colors.black.withValues(alpha: 0.46),
-                      ],
-                      stops: const [0.0, 0.5, 1.0],
+            // 视差位移随滚动上移背景,裁剪在头图区域内。ValueListenable
+            // Builder 只重建这一层视差 Stack（审查 v2 P1-3）。
+            child: ValueListenableBuilder<double>(
+              valueListenable: pixels,
+              builder: (context, pixels, _) {
+                final dy =
+                    -(pixels.clamp(0.0, _heroHeight) * _parallaxFactor);
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Transform.translate(
+                      offset: Offset(0, dy),
+                      child: _HeroBackdrop(url: booklist.coverUrl),
                     ),
-                  ),
-                ),
-                Positioned(
-                  top: 74 + dy * 0.4,
-                  left: 0,
-                  right: 0,
-                  child: _CoverStack(previews: previews),
-                ),
-                Positioned(
-                  left: 20,
-                  right: 20,
-                  bottom: 18,
-                  child: Text(
-                    booklist.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 21,
-                      fontWeight: FontWeight.w800,
-                      height: 1.25,
-                      shadows: [Shadow(color: Colors.black45, blurRadius: 10)],
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.black.withValues(alpha: 0.12),
+                            Colors.black.withValues(alpha: 0.05),
+                            Colors.black.withValues(alpha: 0.46),
+                          ],
+                          stops: const [0.0, 0.5, 1.0],
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                    Positioned(
+                      top: 74 + dy * 0.4,
+                      left: 0,
+                      right: 0,
+                      child: _CoverStack(previews: previews),
+                    ),
+                    Positioned(
+                      left: 20,
+                      right: 20,
+                      bottom: 18,
+                      child: Text(
+                        booklist.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 21,
+                          fontWeight: FontWeight.w800,
+                          height: 1.25,
+                          shadows: [
+                            Shadow(color: Colors.black45, blurRadius: 10)
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -663,6 +697,14 @@ class _HeroBackdrop extends StatelessWidget {
 
   const _HeroBackdrop({required this.url});
 
+  /// 模糊滤镜提为常量（审查 v2 P1-3）：此前每次 build 新建一个
+  /// ImageFilter 实例，render object 每帧收到"新"滤镜（无 == 语义）
+  /// 触发重设——滚动每帧都白做一次。
+  static final ui.ImageFilter _backdropBlur = ui.ImageFilter.blur(
+    sigmaX: 24,
+    sigmaY: 24,
+  );
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -680,7 +722,7 @@ class _HeroBackdrop extends StatelessWidget {
     );
     if (url.isEmpty) return fallback;
     return ImageFiltered(
-      imageFilter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+      imageFilter: _backdropBlur,
       child: CachedNetworkImage(
         imageUrl: url,
         fit: BoxFit.cover,

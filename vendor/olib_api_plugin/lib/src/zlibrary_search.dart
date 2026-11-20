@@ -40,6 +40,39 @@ mixin ZLibrarySearch on ZLibraryApiBase {
       hashId,
     );
     final effective = (mapped == null || mapped.isEmpty) ? hashId : mapped;
+    // 短 hash 检测（2026-11-21 实测定案）：eapi 只认自家 6 位 hash，
+    // 网页短 hash 是 10 位（实机样本 5jJwz97pvp；书单/主页/分享链接
+    // 只带这种）。疑似短 hash 就跳过"注定失败的 fetch1"直接解析——
+    // 解析 miss 再退回原 hash 直取，最不济也是三连发的老路。误判代
+    // 价有界：真有效的非 6 位 hash 会先解析再取，照样能取到书。
+    final suspectShort =
+        effective == hashId &&
+        hashId.length != 6 &&
+        title != null &&
+        title.isNotEmpty;
+    if (suspectShort) {
+      final swResolve = Stopwatch()..start();
+      final resolved = await resolveEapiHash(bookId, title);
+      ZLibraryApiBase.perfHook?.call(
+        'resolve=${swResolve.elapsedMilliseconds}ms '
+        '${resolved == null ? 'miss' : 'hit'} skipfetch1',
+      );
+      final target =
+          (resolved == null || resolved.isEmpty) ? hashId : resolved;
+      final swFetch = Stopwatch()..start();
+      final response = await _fetchBookInfo(bookId, target);
+      ZLibraryApiBase.perfHook?.call(
+        'fetch=${swFetch.elapsedMilliseconds}ms '
+        '${response.success ? 'ok' : 'fail'} len=${target.length}',
+      );
+      if (response.success &&
+          resolved != null &&
+          resolved.isNotEmpty &&
+          resolved != hashId) {
+        ZLibraryApiBase.resolveCacheWrite?.call(bookId, hashId, resolved);
+      }
+      return response;
+    }
     final sw = Stopwatch()..start();
     final response = await _fetchBookInfo(bookId, effective);
     ZLibraryApiBase.perfHook?.call(

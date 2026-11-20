@@ -502,8 +502,16 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
     String hash, {
     String? title,
   }) async {
+    // 详情页加载已把短 hash→真 hash 的映射落库（见 getBookInfo 的
+    // resolveCacheWrite）：下载直接用真 hash，省掉"短 hash 必失败的
+    // 第一次取链接 + 按标题解析"。
+    final mapped = await ZLibraryApiBase.resolveCacheLookup?.call(
+      bookId,
+      hash,
+    );
+    final effective = (mapped == null || mapped.isEmpty) ? hash : mapped;
     try {
-      return await _fetchDownloadLink(bookId, hash);
+      return await _fetchDownloadLink(bookId, effective);
     } on StateError catch (e) {
       // Same short-hash trap as getBookInfo: the file endpoint
       // rejects a webpage short hash with "Invalid hash". Resolve the
@@ -512,7 +520,8 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
           title.isNotEmpty &&
           ZLibraryApiBase._isInvalidHashError(e.message.toString())) {
         final resolved = await resolveEapiHash(bookId, title);
-        if (resolved != null && resolved != hash) {
+        if (resolved != null && resolved != effective) {
+          ZLibraryApiBase.resolveCacheWrite?.call(bookId, hash, resolved);
           return _fetchDownloadLink(bookId, resolved);
         }
       }

@@ -21,7 +21,9 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 const _title = '你学的数学可能是假的：超简单有趣的数学思维启蒙书';
 const _bookId = '5740686';
 const _shortHash = '5jJwz97pvp';
-const _resolvedHash = 'resolved-eapi-hash';
+// eapi hash 的真实形状是 6 位（2026-11-21 实测：书单短 hash len=10
+// 必败、eapi hash len=6 命中）——占位值按真实长度取。
+const _resolvedHash = 'r3s0lv';
 
 Map<String, dynamic> _searchPayload({bool includeTarget = true}) {
   final books = <Map<String, dynamic>>[
@@ -161,7 +163,8 @@ void main() {
       contains('message=${Uri.encodeQueryComponent(_title)}'),
     );
     expect(adapter.requestedPaths, [
-      '/eapi/book/$_bookId/$_shortHash',
+      // 短 hash 检测（len!=6）跳过了"注定失败的 fetch1"：序列变为
+      // 搜索解析 → 真 hash 直取，两发而不是三发。
       '/eapi/book/search',
       '/eapi/book/$_bookId/$_resolvedHash',
     ]);
@@ -191,15 +194,27 @@ void main() {
     expect(adapter.searchCalls, 1);
   });
 
-  test('other failures are not retried', () async {
+  test('other failures are not retried（6 位 hash 直取，非 invalid-hash 不解析）', () async {
+    final adapter = _FakeAdapter(searchPayload: _searchPayload());
+    final api = _apiWith(adapter);
+
+    // 6 位（eapi 形状）→ 直取，命中"其他失败"照旧原样返回、不解析。
+    final res = await api.getBookInfo(_bookId, 'nope01', title: _title);
+
+    expect(res.success, isFalse);
+    expect(res.error, 'not found');
+    expect(adapter.searchCalls, 0);
+  });
+
+  test('非 6 位未知 hash：解析命中照样取到书（旧行为是 book not found）', () async {
     final adapter = _FakeAdapter(searchPayload: _searchPayload());
     final api = _apiWith(adapter);
 
     final res = await api.getBookInfo(_bookId, 'unknown-hash', title: _title);
 
-    expect(res.success, isFalse);
-    expect(res.error, 'book not found');
-    expect(adapter.searchCalls, 0);
+    expect(res.success, isTrue);
+    expect(res.data!.hash, _resolvedHash);
+    expect(adapter.searchCalls, 1);
   });
 
   test('download resolves the hash the same way', () async {

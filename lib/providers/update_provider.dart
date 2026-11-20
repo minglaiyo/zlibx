@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/hive_service.dart';
+import '../utils/diagnostics.dart';
 import '../services/http_client.dart';
 import '../services/update/update_manifest.dart';
 import '../utils/app_log.dart';
@@ -216,8 +217,9 @@ class UpdateNotifier extends Notifier<UpdateState> {
         signerFingerprint = parseSignerFingerprint(
           await _fetchAssetText(assetDio, data, 'signing-fingerprint.txt'),
         );
-      } catch (_) {
-        // 校验信息是可选装饰。
+      } on Object catch (error) {
+        // 校验信息是可选装饰——但不无声（审查 v2 P2-2）。
+        logIgnored('update_verify_assets', error);
       } finally {
         assetDio.close();
       }

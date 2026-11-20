@@ -118,6 +118,17 @@ const _browserHeaders = {'User-Agent': kDefaultUserAgent};
 /// explicit empty check). No WebView needed: LibGen search pages are
 /// plain HTML, and the detail page's `get.php` anchor is a direct
 /// download URL (see libgen_service.dart).
+
+/// 与 vendor ZLibraryApiBase._looksLikeChallengePage 同一张标记表：
+/// 挑战页壳（DDoS-Guard/Cloudflare）不得被当成权威的 LibGen 空结果页。
+bool _looksLikeChallengePage(String body) {
+  final lower = body.toLowerCase();
+  return lower.contains('checking your browser') ||
+      lower.contains('ddos-guard') ||
+      lower.contains('cf-challenge') ||
+      lower.contains('just a moment') ||
+      lower.contains('attention required');
+}
 class LibgenProvider implements SearchProvider {
   LibgenProvider({Dio? dio, List<String>? mirrors})
     : _dio =
@@ -366,7 +377,8 @@ class LibgenProvider implements SearchProvider {
         // (same failure the Anna's Archive side fixed via
         // _isAnnasArchivePage).
         final looksLikeLibgenPage =
-            html.contains('Library Genesis') || html.contains('libgen');
+            (html.contains('Library Genesis') || html.contains('libgen')) &&
+            !_looksLikeChallengePage(html);
         if (looksLikeLibgenPage) {
           return books;
         }

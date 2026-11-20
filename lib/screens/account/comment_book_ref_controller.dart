@@ -75,8 +75,9 @@ class CommentBookRefController extends ChangeNotifier {
           refs[item.bookId] = info;
           _emit();
         }
-      } catch (_) {
-        // 单本失败保持占位图，点按时重试。
+      } on Object catch (error) {
+        // 单本失败保持占位图，点按时重试——不无声（审查 v2 P2-2）。
+        logIgnored('comment_book_ref', error);
       }
     }
   }

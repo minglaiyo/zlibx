@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
+import 'package:zlibx/utils/diagnostics.dart';
+
 
 /// O1: bridge to the Android foreground service that keeps downloads
 /// alive in the background (see `DownloadForegroundService.kt`). The
@@ -35,9 +37,13 @@ class DownloadForegroundService {
       return null;
     });
     unawaited(
-      _channel.invokeMethod<void>('setActionChannel', {
-        'name': _actionChannel.name,
-      }),
+      _channel
+          .invokeMethod<void>('setActionChannel', {
+            'name': _actionChannel.name,
+          })
+          .catchError((Object error) {
+            logIgnored('download_service_channel', error);
+          }),
     );
   }
 
@@ -52,8 +58,9 @@ class DownloadForegroundService {
     _staleCleanupDone = true;
     try {
       await _channel.invokeMethod<void>('cancelStale');
-    } on Object catch (_) {
+    } on Object catch (error) {
       // Non-Android / channel unavailable: nothing stale to clear.
+      logIgnored('download_service_channel', error);
     }
   }
 
@@ -62,9 +69,10 @@ class DownloadForegroundService {
   static Future<void> requestNotificationPermission() async {
     try {
       await _channel.invokeMethod<void>('requestNotificationPermission');
-    } on Object catch (_) {
+    } on Object catch (error) {
       // The service runs without the grant; the notification is only
       // suppressed.
+      logIgnored('download_service_channel', error);
     }
   }
 
@@ -72,8 +80,9 @@ class DownloadForegroundService {
   static Future<void> start() async {
     try {
       await _channel.invokeMethod<void>('start');
-    } on Object catch (_) {
+    } on Object catch (error) {
       // Non-Android / channel unavailable: no background keep-alive.
+      logIgnored('download_service_channel', error);
     }
   }
 
@@ -81,8 +90,9 @@ class DownloadForegroundService {
   static Future<void> stop() async {
     try {
       await _channel.invokeMethod<void>('stop');
-    } on Object catch (_) {
-      // Best-effort.
+    } on Object catch (error) {
+      // Best-effort — but not silent (审查 v2 P2-2).
+      logIgnored('download_service_channel', error);
     }
   }
 
@@ -90,8 +100,9 @@ class DownloadForegroundService {
   static Future<void> updateProgress(String text) async {
     try {
       await _channel.invokeMethod<void>('updateProgress', {'text': text});
-    } on Object catch (_) {
-      // Best-effort.
+    } on Object catch (error) {
+      // Best-effort — but not silent (审查 v2 P2-2).
+      logIgnored('download_service_channel', error);
     }
   }
 
@@ -105,7 +116,8 @@ class DownloadForegroundService {
       return await _channel.invokeMethod<String>('md5OfContent', {
         'uri': uriOrPath,
       });
-    } on Object catch (_) {
+    } on Object catch (error) {
+      logIgnored('download_md5_channel', error);
       return null;
     }
   }
@@ -126,8 +138,9 @@ class DownloadForegroundService {
         'mimeType': mimeType,
         'detail': detail,
       });
-    } on Object catch (_) {
-      // Best-effort.
+    } on Object catch (error) {
+      // Best-effort — but not silent (审查 v2 P2-2).
+      logIgnored('download_service_channel', error);
     }
   }
 }

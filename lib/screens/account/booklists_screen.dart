@@ -17,6 +17,7 @@ import '../../routes/app_routes.dart';
 import '../../theme/app_metrics.dart';
 import '../../theme/motion.dart';
 import '../../utils/app_snack.dart';
+import '../../utils/diagnostics.dart';
 import '../../widgets/booklist_card.dart';
 import '../../widgets/booklist_quick_actions_sheet.dart';
 import '../../widgets/booklist_tile.dart';
@@ -246,7 +247,8 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
       await SharePlus.instance.share(
         ShareParams(text: '${list.name}\n${list.url}'),
       );
-    } catch (_) {
+    } catch (error) {
+      logIgnored('booklist_share', error);
       if (!mounted) return;
       showAppSnack(context, l10n.shareFailed);
     }
@@ -442,7 +444,7 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
                 state,
                 controller,
                 recommended,
-                topPadding: _feedTopPadding(state),
+                topPadding: _feedTopPaddingFor(_tabOrder[index]),
               ),
             ),
           ),
@@ -541,7 +543,11 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
 
   /// 信息流内容的顶部预留 = 状态栏 + 玻璃头部高度。头部各行内容固定,
   /// 按行高累加;排序行只在发现/收藏出现,PageView 页各自取值。
-  double _feedTopPadding(BooklistsState state) {
+  /// PageView 的每个页面用自己的 tab 取值（审查 v2 P2-9）：此前取
+  /// 当前 live tab 的值，相邻页滑动期间少让位 54px，内容短暂钻进头
+  /// 部。各行高度是固定值（返回键/搜索框都是定高），这里保持常量累
+  /// 加，不做布局期实测。
+  double _feedTopPaddingFor(BooklistTab tab) {
     final inset = MediaQuery.paddingOf(context).top;
     final base =
         inset +
@@ -553,7 +559,7 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
         36 + // tab 行
         10 +
         8;
-    return state.tab == BooklistTab.mine ? base : base + 54; // 排序行
+    return tab == BooklistTab.mine ? base : base + 54; // 排序行
   }
 
   /// The current sort order's label for the sort button.

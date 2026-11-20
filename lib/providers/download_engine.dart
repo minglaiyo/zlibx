@@ -102,8 +102,10 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     if (previous != null) {
       try {
         await previous;
-      } catch (_) {
-        // Previous round already recorded its own error status.
+      } on Object catch (error) {
+        // Previous round already recorded its own error status — this
+        // only swallows the rethrow (审查 v2 P2-2：留一行轨迹).
+        logIgnored('download_previous_round', error);
       }
     }
     // Re-check: another round may have started while we waited.

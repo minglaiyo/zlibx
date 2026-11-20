@@ -14,6 +14,7 @@ import 'package:meta/meta.dart';
 // Project imports:
 import 'package:zlibx/services/annas_archieve.dart';
 import 'package:zlibx/services/external_logger.dart';
+import 'package:zlibx/utils/diagnostics.dart';
 import 'package:zlibx/services/http_client.dart';
 import 'package:zlibx/services/instance_manager.dart'; // For MirrorService (re-exported from the catalogue).
 import 'package:zlibx/services/mirror_speed_test.dart';
@@ -163,7 +164,15 @@ class LibgenService {
 
   /// 会话级封面缓存：md5 → 封面 URL。重复搜索、滚回已看过的页都零
   /// 请求；封面 URL 不含会话性质的 key,跨会话持久化留待有需要再加。
+  /// 上限 500（审查 v2 P3）：条目极小,超限整表清空——会话缓存的语义
+  /// 就是"丢了也不心疼"。
   static final Map<String, String> _coverCache = {};
+
+  /// 失败负缓存（审查 v2 P2-1）：镜像全挂/无封面时记录时间,5 分钟内
+  /// 不再打 ads.php——否则滚出视口的卡片一回来就把整个镜像循环重放
+  /// 一遍（autoDispose provider 销毁即忘）。
+  static final Map<String, DateTime> _failedAt = {};
+  static const Duration _failureBackoff = Duration(minutes: 5);
 
   /// 封面懒抓并发上限：一页搜索 25 行,25 个 provider 同时 build 会把
   /// 镜像的 ads.php 打成风暴；限 4 路排队。
@@ -177,15 +186,20 @@ class LibgenService {
     }
     final waiter = Completer<void>();
     _coverWaiters.add(waiter);
+    // 被唤醒即继承名额（审查 v2 P2-1）：release 不做"先减后加"，唤醒
+    // 者直接把名额接走——旧实现减完到 waiter 加回之间的微任务窗口里，
+    // 快路径可以插队，把并发顶到 5-6。
     await waiter.future;
-    _coverFetchesInFlight++;
   }
 
   void _releaseCoverSlot() {
-    _coverFetchesInFlight--;
+    // 名额优先交接给队首 waiter（计数不落回 4 以下，快路径无机可乘）；
+    // 无人排队才真正释放。计数恒等于"持坑者数量"，不漂移。
     if (_coverWaiters.isNotEmpty) {
       _coverWaiters.removeAt(0).complete();
+      return;
     }
+    _coverFetchesInFlight--;
   }
 
   /// 搜索行懒加载封面：抓 [adsUrl]（搜索行带的 ads.php?md5=… 链接）
@@ -201,6 +215,11 @@ class LibgenService {
     if (md5 == null) return null;
     final cached = _coverCache[md5];
     if (cached != null) return cached;
+    final failedAt = _failedAt[md5];
+    if (failedAt != null &&
+        DateTime.now().difference(failedAt) < _failureBackoff) {
+      return null; // 负缓存窗口内：不再打镜像
+    }
 
     await _acquireCoverSlot();
     try {
@@ -216,12 +235,17 @@ class LibgenService {
           final cover = parseAdsCover(response.data.toString(), baseUrl);
           if (cover != null) {
             _coverCache[md5] = cover;
+            if (_coverCache.length > 500) _coverCache.clear();
+            _failedAt.remove(md5);
             return cover;
           }
-        } on Object {
-          // 换下一个镜像。
+        } on Object catch (error) {
+          // 换下一个镜像。逐镜像失败也记账（审查 v2 P2-2）。
+          logIgnored('libgen_cover', error);
         }
       }
+      // 全镜像失败：进负缓存窗口。
+      _failedAt[md5] = DateTime.now();
       return null;
     } finally {
       _releaseCoverSlot();

@@ -13,6 +13,7 @@ import '../../models/unified_shelf_item.dart';
 import '../../providers/books_provider.dart';
 import '../../providers/local_collection_provider.dart';
 import '../../providers/shelf_categories_provider.dart';
+import '../../utils/diagnostics.dart';
 import '../../providers/zlibrary_provider.dart';
 import '../../services/storage_service.dart';
 import '../../utils/app_snack.dart';
@@ -370,8 +371,10 @@ class ShelfCategoryActions {
                 .last;
             idMap[importId] = created.id;
             existingNames[name.toLowerCase()] = created.id;
-          } catch (_) {
-            // 重名并发等极端情况：跳过这条分类，分配键随之丢弃。
+          } on Object catch (error) {
+            // 重名并发等极端情况：跳过这条分类，分配键随之丢弃——不
+            // 无声（审查 v2 P2-2）。
+            logIgnored('shelf_import_category', error);
           }
         }
       }
@@ -420,8 +423,9 @@ class ShelfCategoryActions {
                 favorited++;
                 await storage.addFavorite(bookId);
               }
-            } on Object catch (_) {
-              // 单本失败不阻断：结尾报成功数。
+            } on Object catch (error) {
+              // 单本失败不阻断：结尾报成功数——不无声（审查 v2 P2-2）。
+              logIgnored('shelf_import_favorite', error);
             }
           }
         }

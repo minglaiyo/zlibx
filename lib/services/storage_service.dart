@@ -49,6 +49,25 @@ class StorageService {
   static String favoritesKeyFor(String accountId) =>
       '${_keyFavorites}_$accountId';
 
+  /// 容量淘汰：按 fetchedAt 取最旧的一条（审查 v2 P3）。原先依赖
+  /// LinkedHashMap 首键（首次插入序），每轮刷新的条目位置不动，到上
+  /// 限时被逐出的恰恰是最热的条目。fetchedAt 缺失的条目视为最旧。
+  /// 两个调用点的 map 值类型不同（一个是 `Map<String,dynamic>` 的解码
+  /// 产物），这里按 dynamic 读。
+  static void _evictOldestEntry(Map<String, dynamic> merged) {
+    String? oldestKey;
+    var oldestAt = -1;
+    merged.forEach((key, value) {
+      final at = value is Map ? value['fetchedAt'] : null;
+      final n = at is int ? at : 0;
+      if (oldestKey == null || n < oldestAt) {
+        oldestAt = n;
+        oldestKey = key;
+      }
+    });
+    if (oldestKey != null) merged.remove(oldestKey);
+  }
+
   /// The signed-in account's id, or null when signed out or when the
   /// stored credentials cannot be read (secure storage unavailable).
   /// A null here means "no account to scope to": reads see nothing and
@@ -512,7 +531,7 @@ class StorageService {
             '${entry.key}': _overlayJsonOf(entry.value),
         };
         while (merged.length > _downloadedBookMetadataCap) {
-          merged.remove(merged.keys.first);
+          _evictOldestEntry(merged);
         }
         await (await HiveService.libraryBoxAsync())
             .put(_keyDownloadedBookMetadata, jsonEncode(merged));
@@ -606,15 +625,17 @@ class StorageService {
               });
             }
           }
-        } catch (_) {
-          // fall through to the repair write below.
+        } on Object catch (error) {
+          // fall through to the repair write below — but leave a trail
+          // (审查 v2 P2-2).
+          logIgnored('book_detail_extras_read', error);
         }
         merged[pagePath] = {
           ...fields,
           'fetchedAt': DateTime.now().millisecondsSinceEpoch,
         };
         while (merged.length > _bookDetailExtrasCap) {
-          merged.remove(merged.keys.first);
+          _evictOldestEntry(merged);
         }
         await box.put(_keyBookDetailExtras, jsonEncode(merged));
       } catch (error) {

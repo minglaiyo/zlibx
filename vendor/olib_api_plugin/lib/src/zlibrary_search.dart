@@ -181,6 +181,17 @@ mixin ZLibrarySearch on ZLibraryApiBase {
     // 关联书单同理：`z-booklist` 卡片是服务端渲染进同一文档的
     // （site-verified 2026-11-12），一次抓取顺带解析，无需额外请求。
     final relatedBooklists = parseRelatedBooklists(html, baseUrl: _base);
+    // 非书页守卫（审查 v2 P2-11）：solver 腿先验 bookDetailsBox 才算
+    // 书页，这条腿对 200 页不验——soft-404/重定向落到的非书 200 页会
+    // 解析成全空 extras，被当成功回写、`booklists` 键在场即视为新鲜，
+    // 空结果钉 7 天（关联书单页显示"没有书单"而非"失败重试"）。三样
+    // 全空 = 不是书页。
+    if (metadata.isEmpty && keywords.isEmpty && relatedBooklists.isEmpty) {
+      return ApiResponse.fail(
+        'book detail page failed: not a book page (HTTP $status)',
+        statusCode: status,
+      );
+    }
     return ApiResponse.ok(
       BookDetailExtras(
         metadata: metadata,

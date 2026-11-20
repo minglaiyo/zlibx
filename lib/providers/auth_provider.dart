@@ -384,7 +384,8 @@ class AuthNotifier extends Notifier<AuthState> {
         state = AuthState(user: response.data);
       }
     } catch (e) {
-      // Keep existing state on error
+      // Keep existing state on error — but leave a trail (审查 v2 P2-2).
+      logIgnored('auth_profile_refresh', e);
     }
   }
 

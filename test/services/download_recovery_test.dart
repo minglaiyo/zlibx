@@ -74,6 +74,29 @@ void main() {
     expect(ids.contains('random.dat'), isFalse);
   });
 
+  test('来源 sidecar 优先：恢复出完整书身份与外部直链', () async {
+    // 外部书残片：文件名反解只能拿到数字 id，sidecar 里才有直链与
+    // 作者/封面——上一版就是在这里把外部书误当 z 书恢复，续传撞 400。
+    File(
+      '${tempDir.path}/后现代主义 - 77712345.pdf.part.download.json',
+    ).writeAsStringSync(
+      '{"id":77712345,"title":"后现代主义","author":"某人",'
+      '"cover":"https://c/1.jpg","extension":"pdf","hash":null,'
+      '"presetUrl":"https://libgen.li/get.php?md5=abc"}',
+    );
+
+    final container = makeContainer();
+    await container.read(downloadProvider.notifier).ready;
+
+    final tasks = container.read(downloadProvider);
+    final task = tasks.firstWhere((t) => t.id == '77712345');
+    expect(task.status, DownloadStatus.paused);
+    expect(task.book.title, '后现代主义');
+    expect(task.book.author, '某人');
+    expect(task.book.extension, 'pdf');
+    expect(task.presetUrl, 'https://libgen.li/get.php?md5=abc');
+  });
+
   test('恢复每进程一次：invalidate 重跑 build 不再重复恢复', () async {
     File('${tempDir.path}/白鹿原 - 123.epub.part').writeAsStringSync('x');
 
@@ -95,6 +118,10 @@ void main() {
   });
 
   test('纯函数：残片后缀剥离与文件名反解', () {
+    expect(
+      stripPartialSuffixes('白鹿原 - 123.epub.part.download.json'),
+      '白鹿原 - 123.epub',
+    );
     expect(
       stripPartialSuffixes('白鹿原 - 123.epub.part.pending.json'),
       '白鹿原 - 123.epub',

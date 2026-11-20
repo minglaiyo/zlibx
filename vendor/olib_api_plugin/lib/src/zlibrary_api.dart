@@ -665,7 +665,13 @@ abstract class ZLibraryApiBase {
   _Raw _rawFromError(DioException e) {
     final res = e.response;
     final status = res?.statusCode;
-    final body = res?.data?.toString() ?? '';
+    // A stream-type response's data is a ResponseBody instance whose
+    // toString() is "Instance of 'ResponseBody'" — pure noise in error
+    // strings (2026-11-21: a download resuming with an empty hash hit
+    // the file endpoint's 400 and surfaced exactly that). Treat it as
+    // no body; the status code carries the message.
+    final rawData = res?.data;
+    final body = rawData is ResponseBody ? '' : rawData?.toString() ?? '';
     if (_isCloudflareBlock(
       body: body,
       status: status,

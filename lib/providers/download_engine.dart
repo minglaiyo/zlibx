@@ -169,6 +169,13 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
 
       temporaryPath = '$finalPath.part';
 
+      // 来源 sidecar（2026-11-21 恢复链路）：把书的完整身份（含外部
+      // 直链）落在盘上，进程死亡后的启动恢复才能还原出"能续传的任务"
+      // ——光靠文件名反解分不清 z 书和外部书（两者的 id 都是数字），
+      // 也拿不到作者/封面/hash/直链。每轮重写；成功与用户取消时删除，
+      // 暂停/杀进程时保留，恢复逻辑据此重建。
+      await _writeSidecarQuietly(temporaryPath, book, presetUrl);
+
       // Update to downloading. Keep the existing progress: a fresh
       // download starts at 0 (the task was created with progress 0), and
       // a resume continues from where it paused — resetting to 0 would
@@ -201,6 +208,29 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       // O1: start (or keep) the foreground service so the download
       // survives backgrounding; the notification shows progress.
       await DownloadForegroundService.start();
+
+      // 恢复出来的任务可能没有 hash（文件名反解无 hash 可言）：eapi
+      // 对空 hash 的 file 端点直接 400（不给"Invalid hash"，vendor 的
+      // 标题解析兜底接不住）——先按标题解析一次真 hash。解析失败照
+      // 旧往下走，错误态由下面的 catch 带 needsFreshLink 引导回详情页。
+      var effectiveBook = book;
+      if (presetUrl == null &&
+          !alreadyExists &&
+          (book.hash == null || book.hash!.isEmpty) &&
+          book.title.isNotEmpty) {
+        try {
+          final resolved = await _api.resolveEapiHash(
+            book.id.toString(),
+            book.title,
+          );
+          if (resolved != null && resolved.isNotEmpty) {
+            effectiveBook = book.copyWith(hash: resolved);
+          }
+        } on Object catch (error) {
+          logIgnored('download_recovery', error);
+        }
+      }
+
       if (!alreadyExists && presetUrl != null) {
         // presetUrl 路径（外部源解析链接）：直接 stream 到本地，
         // 用独立 Dio，不带 z站 cookie / auth，也不带任何自定义头 —
@@ -237,8 +267,8 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         // 默认路径：用户自己 z站 账号查 URL + 下载
         try {
           await _api.downloadBook(
-            book.id.toString(),
-            book.hash ?? '',
+            effectiveBook.id.toString(),
+            effectiveBook.hash ?? '',
             temporaryPath,
             onProgress: (received, total) {
               // Same NaN guard as the preset branch above.
@@ -333,6 +363,8 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         cover: book.cover,
         extension: book.extension,
       );
+      // 书已落地：来源 sidecar 使命结束。
+      await _deleteSidecarQuietly(temporaryPath);
       // E3+F4: 完成通知（独立于进度通知的普通重要性渠道），点击直达
       // 文件，副文本带当日剩余额度（best-effort，取不到就省略）。
       unawaited(_notifyCompletedWithQuota(book, recordedPath));
@@ -369,11 +401,22 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
           await pendingWriter.discard();
           pendingWriter = null;
         }
+        if (temporaryPath != null) {
+          await _deleteSidecarQuietly(temporaryPath);
+        }
       }
       if (!cancelToken.isCancelled) {
         _updateTask(
           id,
-          (t) => t.copyWith(status: DownloadStatus.error, error: e.toString()),
+          (t) => t.copyWith(
+            status: DownloadStatus.error,
+            error: e.toString(),
+            // hash 缺失的书（启动恢复的反解任务）连不上 eapi 时，
+            // 引导回详情页重新下载——恢复场景的失败不该只有一句
+            // "下载失败"。
+            needsFreshLink:
+                presetUrl == null && (book.hash?.isEmpty ?? true),
+          ),
         );
         _clearProgressThrottle(id);
       }
@@ -506,13 +549,52 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
   }
 
   Future<void> _deletePartial(String partPath) async {
-    for (final path in [partPath, ResumableDownloader.metaPathFor(partPath)]) {
+    for (final path in [
+      partPath,
+      ResumableDownloader.metaPathFor(partPath),
+      '$partPath.download.json',
+    ]) {
       try {
         final f = File(path);
         if (await f.exists()) await f.delete();
       } catch (error) {
         logIgnored('download_partial', error);
       }
+    }
+  }
+
+  /// 来源 sidecar（`<part>.download.json`）：每轮下载开始时重写。写
+  /// 失败只记日志——sidecar 缺席时启动恢复退回文件名反解（z 书仍可
+  /// 恢复，外部书不行）。
+  Future<void> _writeSidecarQuietly(
+    String temporaryPath,
+    Book book,
+    String? presetUrl,
+  ) async {
+    try {
+      await File('$temporaryPath.download.json').writeAsString(
+        jsonEncode({
+          'id': book.id,
+          'title': book.title,
+          'author': book.author,
+          'cover': book.cover,
+          'extension': book.extension,
+          'hash': book.hash,
+          if (presetUrl != null) 'presetUrl': presetUrl,
+        }),
+      );
+    } on Object catch (error) {
+      logIgnored('download_sidecar_write', error);
+    }
+  }
+
+  /// 删来源 sidecar。静默：文件不在/删除失败都无所谓。
+  Future<void> _deleteSidecarQuietly(String temporaryPath) async {
+    try {
+      final f = File('$temporaryPath.download.json');
+      if (await f.exists()) await f.delete();
+    } on Object catch (error) {
+      logIgnored('download_sidecar_delete', error);
     }
   }
 

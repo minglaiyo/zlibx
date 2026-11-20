@@ -130,21 +130,10 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
       }
       final recovered = <DownloadTask>[];
       for (final base in bases) {
-        final parsed = _parseSafeFileName(base);
-        if (parsed == null) continue;
-        final id = '${parsed.$1}';
-        if (state.any((t) => t.id == id)) continue;
-        recovered.add(
-          DownloadTask(
-            id: id,
-            book: Book(
-              id: parsed.$1,
-              title: parsed.$2,
-              extension: parsed.$3,
-            ),
-            status: DownloadStatus.paused,
-          ),
-        );
+        final task = await _recoveredTaskFor(dir, base);
+        if (task == null) continue;
+        if (state.any((t) => t.id == task.id)) continue;
+        recovered.add(task);
       }
       if (recovered.isEmpty) return;
       final recoveredIds = recovered.map((t) => t.id).toSet();
@@ -161,6 +150,47 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
     }
   }
 
+  /// 一个残片 base → paused 任务。优先读来源 sidecar
+  /// （`<base>.part.download.json`，引擎每轮下载重写，含完整书身份
+  /// 与外部直链）；缺席/解析失败退回文件名反解（z 书可恢复，外部书
+  /// 不行——meta 里没有直链）。两侧都不认识 → null（不动它）。
+  Future<DownloadTask?> _recoveredTaskFor(Directory dir, String base) async {
+    final sidecar = File('${dir.path}/$base.part.download.json');
+    if (await sidecar.exists()) {
+      try {
+        final decoded = jsonDecode(await sidecar.readAsString());
+        if (decoded is Map<String, dynamic>) {
+          final rawId = decoded['id'];
+          final id = rawId is int ? rawId : int.tryParse('$rawId');
+          if (id != null && id > 0) {
+            return DownloadTask(
+              id: '$id',
+              book: Book(
+                id: id,
+                title: decoded['title'] as String? ?? 'Unknown',
+                author: decoded['author'] as String?,
+                cover: decoded['cover'] as String?,
+                extension: decoded['extension'] as String?,
+                hash: decoded['hash'] as String?,
+              ),
+              status: DownloadStatus.paused,
+              presetUrl: decoded['presetUrl'] as String?,
+            );
+          }
+        }
+      } on Object catch (error) {
+        logIgnored('download_recovery', error);
+      }
+    }
+    final parsed = _parseSafeFileName(base);
+    if (parsed == null) return null;
+    return DownloadTask(
+      id: '${parsed.$1}',
+      book: Book(id: parsed.$1, title: parsed.$2, extension: parsed.$3),
+      status: DownloadStatus.paused,
+    );
+  }
+
   /// `<name>.part.pending.json` / `<name>.part.meta` / `<name>.part`
   /// → `<name>`；其他形态返回 null（用户自放文件不动）。
   static String? _stripPartialSuffixes(String name) =>
@@ -174,10 +204,16 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
 }
 
 /// 库级纯函数（测试直接 import download_provider.dart 调用）：
+/// `<name>.part.download.json`（来源 sidecar，优先级最高）/
 /// `<name>.part.pending.json` / `<name>.part.meta` / `<name>.part`
 /// → `<name>`；其他形态返回 null（用户自放文件不动）。
 String? stripPartialSuffixes(String name) {
-  for (final suffix in const ['.part.pending.json', '.part.meta', '.part']) {
+  for (final suffix in const [
+    '.part.download.json',
+    '.part.pending.json',
+    '.part.meta',
+    '.part',
+  ]) {
     if (name.endsWith(suffix)) {
       return name.substring(0, name.length - suffix.length);
     }

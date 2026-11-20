@@ -19,7 +19,7 @@ flutter_rust_bridge = "=2.14.0-beta.2"
 scraper = "0.20"
 # Direct dep only for the NodeRef type in booklist's ancestor-link walk
 # (must match scraper's own ego-tree version — 0.6 for scraper 0.20).
-ego-tree = "0.6"
+ego-tree = "0.11"
 url = "2"
 regex = "1"
 

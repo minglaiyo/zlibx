@@ -279,6 +279,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12a0bb14ac04a9fcf170d0bbbef949b44cc492f4452bd20c095636956f653642"
 
 [[package]]
+name = "ego-tree"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7bd50d24b1b75aa817bb0339cb9f2e0e664bdfab1e160a69a0fda9145b77fab2"
+
+[[package]]
 name = "env_filter"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1046,7 +1052,7 @@ checksum = "b90460b31bfe1fc07be8262e42c665ad97118d4585869de9345a84d501a9eaf0"
 dependencies = [
  "ahash",
  "cssparser",
- "ego-tree",
+ "ego-tree 0.6.3",
  "getopts",
  "html5ever",
  "once_cell",
@@ -1513,7 +1519,7 @@ dependencies = [
 name = "zlibx_parsers"
 version = "0.1.0"
 dependencies = [
- "ego-tree",
+ "ego-tree 0.11.1",
  "flutter_rust_bridge",
  "hex",
  "md-5",

@@ -228,7 +228,7 @@ class _SearchFilterDialogState extends State<SearchFilterDialog> {
         content: options.length > 12
             ? SizedBox(
                 width: double.maxFinite,
-                height: MediaQuery.of(context).size.height * 0.55,
+                height: MediaQuery.sizeOf(context).height * 0.55,
                 child: list,
               )
             : SizedBox(width: double.maxFinite, child: list),

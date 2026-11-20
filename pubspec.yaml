@@ -1,5 +1,5 @@
 name: zlibx
-description: "zlibx: An open-source ebook reader built with AI assistance. Third-party client."
+description: "zlibx: an open-source third-party ebook client for Z-Library, Anna's Archive and LibGen (Flutter + Rust parsers)."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -66,10 +66,11 @@ dependencies:
   # HTML parsing for the external book sources (Anna's Archive / LibGen).
   html: ^0.15.6
   
-  # Rust HTML parser bridge (phase 1 scaffold). The Rust crate lives at
+  # Rust HTML parser bridge (primary parse path). The Rust crate lives at
   # rust/zlibx_parsers/; flutter_rust_bridge generates the Dart↔Rust bindings
-  # (frb_generated.dart) at build time. Phase 2 will route the Z-Library
-  # parsers (vendor/olib_api_plugin) through this bridge, replacing Isolate.run.
+  # (frb_generated.dart) at build time. The Z-Library parsers
+  # (vendor/olib_api_plugin) route through this bridge, with the Dart
+  # implementations as fallback.
   flutter_rust_bridge: 2.14.0-beta.2
 
   # Storage

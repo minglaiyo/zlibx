@@ -123,7 +123,7 @@ class _CategoryPickerDialogState extends State<CategoryPickerDialog> {
       title: Text(l10n.categories, style: const TextStyle(fontSize: 18)),
       content: SizedBox(
         width: double.maxFinite,
-        height: MediaQuery.of(context).size.height * 0.6,
+        height: MediaQuery.sizeOf(context).height * 0.6,
         child: Column(
           children: [
             Padding(

@@ -112,6 +112,14 @@ jobs:
         working-directory: rust/zlibx_parsers
         run: cargo test --release --locked
 
+      # Rust lint gate (review 2026-11-21 5.2): advisory-only for now —
+      # the FRB macro emits `unexpected_cfg` warnings we cannot fix, so
+      # denying all warnings would pin CI red. Flip to `-D warnings` once
+      # the lints inventory is clean or scoped with allow lists.
+      - name: Rust clippy (advisory)
+        working-directory: rust/zlibx_parsers
+        run: cargo clippy --release --locked 2>&1 | tail -40
+
       # Strict-lint ratchet (M8 + O12): runs the stricter profile
       # (analysis_options_strict.yaml) and FAILS the check when the
       # finding count rises above the baseline in

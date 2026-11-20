@@ -150,7 +150,7 @@ class DomainSelectionDialog extends ConsumerWidget {
       ),
       content: SizedBox(
         width: double.maxFinite,
-        height: MediaQuery.of(context).size.height * 0.55,
+        height: MediaQuery.sizeOf(context).height * 0.55,
         child: ListView.builder(
           itemCount: speedState.results.length + 1, // +1 for custom
           itemBuilder: (context, index) {

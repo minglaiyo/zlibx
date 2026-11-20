@@ -44,7 +44,7 @@ class CommentComposer extends StatelessWidget {
         12,
         8,
         12,
-        8 + MediaQuery.of(context).padding.bottom,
+        8 + MediaQuery.paddingOf(context).bottom,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

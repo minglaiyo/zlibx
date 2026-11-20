@@ -83,7 +83,7 @@ class _ExternalBookActionBarState extends ConsumerState<ExternalBookActionBar> {
         20,
         12,
         20,
-        MediaQuery.of(context).padding.bottom + 12,
+        MediaQuery.paddingOf(context).bottom + 12,
       ),
       decoration: BoxDecoration(
         color: theme.scaffoldBackgroundColor,

@@ -526,7 +526,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                     },
                     child: Padding(
                       padding: EdgeInsets.only(
-                        bottom: MediaQuery.of(context).padding.bottom + 24,
+                        bottom: MediaQuery.paddingOf(context).bottom + 24,
                       ),
                       child: FutureBuilder<PackageInfo>(
                         future: PackageInfo.fromPlatform(),
@@ -592,7 +592,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               ),
             ),
             Positioned(
-              top: MediaQuery.of(context).size.height * 0.35,
+              top: MediaQuery.sizeOf(context).height * 0.35,
               left: -30,
               child: Transform.scale(
                 scale: pulse,

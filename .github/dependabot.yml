@@ -1,0 +1,27 @@
+# Dependency freshness (review 2026-11-21 5.2): weekly PRs for the three
+# ecosystems the repo actually carries. Deliberately pinned dependencies are
+# ignored here and tracked by hand in CLAUDE.md's 依赖跟踪 list — a weekly PR
+# for a pinned beta is noise.
+version: 2
+updates:
+  - package-ecosystem: pub
+    directory: "/"
+    schedule:
+      interval: weekly
+    ignore:
+      # FRB is pinned to the beta on purpose (stable not out yet; the manual
+      # upgrade flow is documented in CLAUDE.md).
+      - dependency-name: "flutter_rust_bridge*"
+      # Hive 2.x is unmaintained but stabilized behind the A1/A2 data-layer
+      # boundary; a major bump is a migration project, not a dependabot PR.
+      - dependency-name: "hive*"
+      # dynamic_color is capped <1.9.0 on purpose (local Flutter compat).
+      - dependency-name: "dynamic_color"
+  - package-ecosystem: cargo
+    directory: "/rust/zlibx_parsers"
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

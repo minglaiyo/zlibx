@@ -1,7 +1,9 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../l10n/generated/app_localizations.dart';
+import '../utils/cover_cache.dart';
 
 /// One booklist row: cover thumb, name, author + book count + views,
 /// optional description, chevron. Shared by the booklists screen and
@@ -45,10 +47,12 @@ class BooklistRow extends StatelessWidget {
                     color: cs.onPrimaryContainer,
                   ),
                 )
-              : Image.network(
-                  list.coverUrl,
+              : CachedNetworkImage(
+                  imageUrl: list.coverUrl,
                   fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
+                  memCacheWidth: coverCacheWidth(40, context),
+                  memCacheHeight: coverCacheHeight(56, context),
+                  errorWidget: (context, url, error) => Container(
                     color: cs.primaryContainer,
                     child: Icon(
                       Icons.collections_bookmark_outlined,

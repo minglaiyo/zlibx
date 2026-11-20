@@ -467,7 +467,7 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
   ) {
     final blurEnabled = ref.watch(blurEnabledProvider);
     final cs = Theme.of(context).colorScheme;
-    final topInset = MediaQuery.of(context).padding.top;
+    final topInset = MediaQuery.paddingOf(context).top;
     final header = Container(
       decoration: BoxDecoration(
         color: blurEnabled ? cs.surface.withValues(alpha: 0.65) : cs.surface,
@@ -542,7 +542,7 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
   /// 信息流内容的顶部预留 = 状态栏 + 玻璃头部高度。头部各行内容固定,
   /// 按行高累加;排序行只在发现/收藏出现,PageView 页各自取值。
   double _feedTopPadding(BooklistsState state) {
-    final inset = MediaQuery.of(context).padding.top;
+    final inset = MediaQuery.paddingOf(context).top;
     final base =
         inset +
         8 +

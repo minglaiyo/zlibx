@@ -184,7 +184,7 @@ class HomeTabState extends ConsumerState<HomeTab> {
     // itself, so the header adds none.
     final topInset = authState.lineUnavailable
         ? 0.0
-        : MediaQuery.of(context).padding.top;
+        : MediaQuery.paddingOf(context).top;
     const searchBarHeight = 54.0;
     const headerPadding = 12.0;
     const greetingHeight = 58.0;

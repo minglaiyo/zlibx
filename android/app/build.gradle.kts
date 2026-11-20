@@ -108,7 +108,7 @@ kotlin {
 }
 
 // ============================================================================
-// Rust / flutter_rust_bridge integration (phase 1 scaffold)
+// Rust / flutter_rust_bridge integration (primary parse path)
 // ============================================================================
 // Builds the zlibx_parsers Rust crate for Android arm64-v8a and packages the
 // resulting libzlibx_parsers.so into the APK's jniLibs. The .so is built once

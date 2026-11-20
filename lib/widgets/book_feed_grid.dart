@@ -45,7 +45,7 @@ class BookFeedGrid extends ConsumerWidget {
       body = ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+          SizedBox(height: MediaQuery.sizeOf(context).height * 0.2),
           EmptyState(
             icon: Icons.error_outline,
             title: AppLocalizations.of(context)!.error,
@@ -67,14 +67,14 @@ class BookFeedGrid extends ConsumerWidget {
       body = ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+          SizedBox(height: MediaQuery.sizeOf(context).height * 0.2),
         ],
       );
     } else if (books.isEmpty) {
       body = ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+          SizedBox(height: MediaQuery.sizeOf(context).height * 0.2),
           emptyState,
         ],
       );

@@ -416,6 +416,37 @@ class BooklistDetailController
     state = state.copyWith(isLoadingMore: true, books: List.of(_books));
     try {
       final response = await _repository.fetchBooksPage(list.id, page: page);
+      List<Book>? pageBooks = response.data?.books;
+      int? totalPages = response.data?.totalPages;
+      // papi 第 2+ 页在这条线路上可能整个缺席（2026-11-21 用户实测：
+      // get-books/2 直接 404 "Requested page not found"，而书单明确有
+      // 27 本）——退回 HTML 分页路由（?page=N 服务端渲染，与第 1 页
+      // 同一解析），走同一个 WebView solver 链路（挑战墙照常自动过）。
+      // HTML 页没有分页仲裁，由空页/连续无增长收口。
+      if (!(response.success && pageBooks != null)) {
+        logIgnored(
+          'booklist_page',
+          StateError(response.error ?? 'papi page failed, falling back'),
+        );
+        final user = ref.read(authProvider).user;
+        final html = await _repository.fetchViaSolver(
+          '${list.url}?page=$page',
+          accountId: accountId,
+          userId: user?.id,
+          userKey: user?.remixUserkey,
+        );
+        if (html != null) {
+          try {
+            pageBooks = await _repository.parseDetailBooks(
+              html,
+              baseUrl: Uri.parse(list.url).origin,
+            );
+            totalPages = null;
+          } on Object catch (error) {
+            logIgnored('booklist_page', error);
+          }
+        }
+      }
       if (!_isCurrent(generation)) return;
       // Same invalidation check as _loadDetailPage: a load-more that
       // started before a remove must not merge the removed book back.
@@ -433,19 +464,18 @@ class BooklistDetailController
         state = state.copyWith(isLoadingMore: false);
         return;
       }
-      final data = response.data;
-      if (response.success && data != null) {
+      if (pageBooks != null && pageBooks.isNotEmpty) {
         _repository.storeBooksPage(
           list.url,
           page,
-          data.books,
+          pageBooks,
           accountId: accountId,
           fetchedAt: fetchedAt,
         );
         // Merge by id: the cached page and the fresh page carry the
         // same books — adding both would duplicate the rows.
         final before = _books.length;
-        _merge(data.books);
+        _merge(pageBooks);
         // 连续 3 页无新增 = 上游无视 page 永远回同一页（2026-11-21 用
         // 户实测"所有书单 20 本后加载一行转完就停"）：收口 + 记账，别
         // 让加载行无限转。
@@ -453,7 +483,7 @@ class BooklistDetailController
         final noGrowthClosed = _noGrowthStreak >= 3;
         state = state.copyWith(
           books: List.of(_books),
-          hasMore: !noGrowthClosed && page < data.totalPages,
+          hasMore: !noGrowthClosed && (totalPages == null || page < totalPages),
           nextPage: page + 1,
           isLoadingMore: false,
         );
@@ -463,17 +493,12 @@ class BooklistDetailController
             StateError('3 consecutive pages added no books'),
           );
         }
+      } else if (pageBooks != null) {
+        // HTML 路由拿到的空页：这是末页信号，正常收口。
+        state = state.copyWith(isLoadingMore: false, hasMore: false);
       } else {
-        // A failed later page must not silently end the list: a network
-        // blip would look like "no more books" with no way back (and
-        // setting `error` here would trip the loadMore guard above,
-        // which blocks retries while an error is set). Keep hasMore so
-        // the next scroll event re-enters loadMore and retries — but
-        // log it (审查 v2 P2-2).
-        logIgnored(
-          'booklist_page',
-          StateError(response.error ?? 'page fetch failed'),
-        );
+        // papi 失败且 HTML 兜底也没拿到（solver 失败等）：保持 hasMore
+        // 可重试，不无声断尾。
         state = state.copyWith(isLoadingMore: false);
       }
     } catch (e) {

@@ -396,9 +396,10 @@ class ShelfCategoryActions {
           .importEntries(collectionEntries);
 
       // z 站收藏导入（2026-11-21）：逐本调收藏接口，服务器把收藏挂
-      // 在当前账号上。串行 + 小间隔；已收藏的服务器幂等；单本失败不
-      // 阻断。本地镜像同步写（详情页心形快查用），最后一次性全量对
-      // 账（逐本乐观插入太吵）。
+      // 在当前账号上。4 路并发工作池（26 本串行 + 间隔要二十来秒，
+      // 用户实测太慢；4 路对轻量 eapi GET 温和）；已收藏的服务器幂
+      // 等；单本失败不阻断。本地镜像同步写（详情页心形快查用），最
+      // 后一次性全量对账（逐本乐观插入太吵）。
       var favorited = 0;
       final importedFavorites =
           (data['favorites'] as List<dynamic>? ?? [])
@@ -407,20 +408,27 @@ class ShelfCategoryActions {
       if (importedFavorites.isNotEmpty) {
         final api = _host.ref.read(zlibraryApiProvider);
         final storage = _host.ref.read(storageServiceProvider);
-        for (final raw in importedFavorites) {
-          final bookId = raw['id']?.toString();
-          if (bookId == null || bookId.isEmpty) continue;
-          try {
-            final response = await api.saveBook(bookId);
-            if (response.success) {
-              favorited++;
-              await storage.addFavorite(bookId);
+        var cursor = 0;
+        Future<void> worker() async {
+          while (cursor < importedFavorites.length) {
+            final raw = importedFavorites[cursor++];
+            final bookId = raw['id']?.toString();
+            if (bookId == null || bookId.isEmpty) continue;
+            try {
+              final response = await api.saveBook(bookId);
+              if (response.success) {
+                favorited++;
+                await storage.addFavorite(bookId);
+              }
+            } on Object catch (_) {
+              // 单本失败不阻断：结尾报成功数。
             }
-            await Future<void>.delayed(const Duration(milliseconds: 200));
-          } on Object catch (_) {
-            // 单本失败不阻断：结尾报成功数。
           }
         }
+
+        await Future.wait([
+          for (var i = 0; i < 4; i++) worker(),
+        ]);
         unawaited(
           _host.ref
               .read(savedBooksProvider.notifier)

@@ -36,7 +36,7 @@ dependencies:
   # Already resolved transitively at 0.20.2 via flutter_localizations;
   # the generated code for this message set may not import intl at all
   # (no plurals/dates), in which case this line can be dropped later.
-  intl: ^0.20.2
+  intl: ^0.20.3
 
   # UI & Icons
   cached_network_image: ^3.3.1

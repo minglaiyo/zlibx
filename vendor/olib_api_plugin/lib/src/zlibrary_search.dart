@@ -45,7 +45,8 @@ mixin ZLibrarySearch on ZLibraryApiBase {
     ZLibraryApiBase.perfHook?.call(
       'fetch1=${sw.elapsedMilliseconds}ms '
       '${response.success ? 'ok' : 'fail'}'
-      '${effective == hashId ? '' : ' mapped'}',
+      '${effective == hashId ? '' : ' mapped'}'
+      ' len=${effective.length}',
     );
     if (response.success) return response;
     if (title != null &&
@@ -65,7 +66,8 @@ mixin ZLibrarySearch on ZLibraryApiBase {
         final retried = await _fetchBookInfo(bookId, resolved);
         ZLibraryApiBase.perfHook?.call(
           'fetch2=${swRetry.elapsedMilliseconds}ms '
-          '${retried.success ? 'ok' : 'fail'}',
+          '${retried.success ? 'ok' : 'fail'}'
+          ' len=${resolved.length}',
         );
         return retried;
       }

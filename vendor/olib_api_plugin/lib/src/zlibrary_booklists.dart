@@ -358,12 +358,19 @@ mixin ZLibraryBooklists on ZLibraryApiBase {
         .map(Book.fromJson)
         .toList();
     final pagination = json['pagination'];
-    var totalPages = 1;
+    // 分页仲裁（2026-11-21 用户实测：所有书单第 1 页 20 本后直接收口
+    // ——部分线路的 papi 响应不带 pagination 字段，旧代码按"共 1 页"
+    // 处理）。字段缺席时不再按 1 页收口：改按页大小启发——本页满
+    // 20 本就假定还有下一页（totalPages 设为 page+1，page < totalPages
+    // 即 hasMore），短页/空页才是末页。字段在场时照旧精确仲裁。
+    int totalPages;
     if (pagination is Map<String, dynamic>) {
       final rawTotal = pagination['total_pages'];
       totalPages = rawTotal is int
           ? rawTotal
           : int.tryParse(rawTotal.toString()) ?? 1;
+    } else {
+      totalPages = books.length >= 20 ? page + 1 : page;
     }
     return ApiResponse.ok(
       BooklistBooksPage(books: books, totalPages: totalPages),

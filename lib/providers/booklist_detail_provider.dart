@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../services/booklist_repository.dart';
+import '../utils/diagnostics.dart';
 import 'auth_provider.dart';
 import 'zlibrary_provider.dart';
 
@@ -95,10 +96,16 @@ class BooklistDetailController
   /// helpers below, so they cannot drift apart silently: [_bookIds]
   /// is exactly the id set of [_books], and [_firstPageIds] is the
   /// subset of [_bookIds] on the server-rendered first page.
+  /// 连续"整页无新增"计数（2026-11-21 修复）：上游无视 page 参数永远
+  /// 回同一页时，去重后不增长——连续 3 页无新增就收口，别让加载行无
+  /// 限转。loadFirst 清零。
+  int _noGrowthStreak = 0;
+
   void _clearBooks() {
     _books.clear();
     _bookIds.clear();
     _firstPageIds.clear();
+    _noGrowthStreak = 0;
   }
 
   /// Adds [book] unless its id is already present. Returns true when
@@ -437,24 +444,42 @@ class BooklistDetailController
         );
         // Merge by id: the cached page and the fresh page carry the
         // same books — adding both would duplicate the rows.
+        final before = _books.length;
         _merge(data.books);
+        // 连续 3 页无新增 = 上游无视 page 永远回同一页（2026-11-21 用
+        // 户实测"所有书单 20 本后加载一行转完就停"）：收口 + 记账，别
+        // 让加载行无限转。
+        _noGrowthStreak = _books.length > before ? 0 : _noGrowthStreak + 1;
+        final noGrowthClosed = _noGrowthStreak >= 3;
         state = state.copyWith(
           books: List.of(_books),
-          hasMore: page < data.totalPages,
+          hasMore: !noGrowthClosed && page < data.totalPages,
           nextPage: page + 1,
           isLoadingMore: false,
         );
+        if (noGrowthClosed) {
+          logIgnored(
+            'booklist_page',
+            StateError('3 consecutive pages added no books'),
+          );
+        }
       } else {
         // A failed later page must not silently end the list: a network
         // blip would look like "no more books" with no way back (and
         // setting `error` here would trip the loadMore guard above,
         // which blocks retries while an error is set). Keep hasMore so
-        // the next scroll event re-enters loadMore and retries.
+        // the next scroll event re-enters loadMore and retries — but
+        // log it (审查 v2 P2-2).
+        logIgnored(
+          'booklist_page',
+          StateError(response.error ?? 'page fetch failed'),
+        );
         state = state.copyWith(isLoadingMore: false);
       }
     } catch (e) {
       if (!_isCurrent(generation)) return;
       // Same as above: keep the list resumable instead of truncating it.
+      logIgnored('booklist_page', e);
       state = state.copyWith(isLoadingMore: false);
     }
   }

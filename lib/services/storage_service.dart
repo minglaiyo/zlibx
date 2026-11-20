@@ -1,5 +1,7 @@
 import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive/hive.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import '../utils/app_log.dart';
 import 'auth_storage.dart';
@@ -66,8 +68,16 @@ class StorageService {
   /// Read one favorites list from Hive, tolerating a corrupt entry
   /// (wrong type, non-string ids) as empty instead of crashing the
   /// caller. A corrupt legacy entry must not block the migration.
+  /// 迁移键的统一读入口（审查 A1）：library 盒优先；盒还没开（首帧
+  /// 前窗口，迁移未跑）回退 settings——旧值还在那儿，同步读不空手。
+  Object? _readMoved(String key) {
+    final lib = HiveService.libraryBoxOrNull;
+    if (lib != null) return lib.get(key);
+    return HiveService.settingsBox.get(key);
+  }
+
   List<String> _readFavoritesForKey(String key) {
-    final data = HiveService.settingsBox.get(key);
+    final data = _readMoved(key);
     if (data is! List) return [];
     try {
       return List<String>.from(data);
@@ -106,7 +116,7 @@ class StorageService {
   Future<void> migrateLegacyFavoritesFor(String accountId) async {
     if (accountId.isEmpty) return;
     try {
-      final box = HiveService.settingsBox;
+      final box = await HiveService.libraryBoxAsync();
       if (!box.containsKey(_keyFavorites)) return;
       final legacy = _readFavoritesForKey(_keyFavorites);
       if (legacy.isNotEmpty) {
@@ -135,7 +145,8 @@ class StorageService {
       throw StateError('cannot save favorites: no signed-in account');
     }
     await migrateLegacyFavoritesFor(accountId);
-    await HiveService.settingsBox.put(favoritesKeyFor(accountId), bookIds);
+    await (await HiveService.libraryBoxAsync())
+        .put(favoritesKeyFor(accountId), bookIds);
   }
 
   /// Get favorite book IDs for the signed-in account ([] when signed
@@ -164,7 +175,7 @@ class StorageService {
     final favorites = _readFavoritesForKey(key);
     if (!favorites.contains(bookId)) {
       favorites.add(bookId);
-      await HiveService.settingsBox.put(key, favorites);
+      await (await HiveService.libraryBoxAsync()).put(key, favorites);
     }
   }
 
@@ -179,7 +190,7 @@ class StorageService {
     final key = favoritesKeyFor(accountId);
     final favorites = _readFavoritesForKey(key);
     favorites.remove(bookId);
-    await HiveService.settingsBox.put(key, favorites);
+    await (await HiveService.libraryBoxAsync()).put(key, favorites);
   }
 
   /// Check whether a book is in the signed-in account's favorites
@@ -255,51 +266,56 @@ class StorageService {
   /// corruption is logged without the raw value. Entries whose value
   /// is not a Map are dropped, so a malformed entry cannot break a
   /// later field read.
-  Future<Map<String, dynamic>> _readDownloadHistorySafely() async {
-    final raw = HiveService.settingsBox.get(
-      _keyDownloadHistory,
-      defaultValue: '{}',
-    );
-    if (raw is! String) {
-      await _quarantineDownloadHistory(raw);
-      return {};
-    }
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) {
-        await _quarantineDownloadHistory(raw);
-        return {};
+  /// 下载历史逐条键（审查 A2，2026-11-20）：每本书一个 `dl:<bookId>`
+  /// 键，值就是条目 Map（hive 原生存储，不再整表 JSON 编解码）；
+  /// `dl_order` 保插入序（重加已存在的 id 保持原位——与旧整表 Map 的
+  /// 语义一致）。增删 O(1)，一条坏数据只丢自己。
+  static const String _dlPrefix = 'dl:';
+  static const String _dlOrderKey = 'dl_order';
+
+  /// 插入序 id 列表；顺序表外的条目（手写/迁移残留）按键序补尾，不丢。
+  List<String> _readDlOrder(Box<dynamic> box) {
+    final ids = <String>[];
+    final raw = box.get(_dlOrderKey);
+    if (raw is List) {
+      for (final item in raw) {
+        ids.add('$item');
       }
-      final history = <String, dynamic>{};
-      for (final entry in decoded.entries) {
-        if (entry.value is Map) {
-          history['${entry.key}'] = Map<String, dynamic>.from(
-            entry.value as Map,
-          );
-        }
-      }
-      return history;
-    } catch (_) {
-      await _quarantineDownloadHistory(raw);
-      return {};
     }
+    for (final key in box.keys) {
+      if (key is String && key.startsWith(_dlPrefix)) {
+        final id = key.substring(_dlPrefix.length);
+        if (!ids.contains(id)) ids.add(id);
+      }
+    }
+    return ids;
   }
 
-  /// Move a corrupt download-history value to an isolation backup
-  /// key and log the corruption (without the raw value) so the bad
-  /// entry is preserved for inspection instead of being silently
-  /// overwritten. Best-effort: a failed backup must not break the
-  /// read that found the corruption.
-  Future<void> _quarantineDownloadHistory(Object? raw) async {
-    AppLog.report(
-      '[storage] ignoring corrupt download history entry',
-      tag: 'storage_service',
-    );
-    try {
-      await HiveService.settingsBox.put('${_keyDownloadHistory}_corrupt', raw);
-    } catch (_) {
-      // Best-effort backup; the read already returns {}.
+  /// Get all download history (insertion order — callers rely on the
+  /// map iteration order, same contract as the old whole-table read).
+  Future<Map<String, dynamic>> getDownloadHistory() async {
+    final box = await HiveService.libraryBoxAsync();
+    final history = <String, dynamic>{};
+    for (final id in _readDlOrder(box)) {
+      final value = box.get('$_dlPrefix$id');
+      if (value is Map) {
+        history[id] = Map<String, dynamic>.from(value);
+      } else if (value != null) {
+        AppLog.report(
+          '[storage] ignoring corrupt download history entry',
+          tag: 'storage_service',
+        );
+      }
     }
+    return history;
+  }
+
+  /// Get downloaded file path for a book
+  Future<String?> getDownloadedFilePath(String bookId) async {
+    final box = await HiveService.libraryBoxAsync();
+    final value = box.get('$_dlPrefix$bookId');
+    if (value is Map) return value['filePath'] as String?;
+    return null;
   }
 
   /// Add book to download history
@@ -313,49 +329,32 @@ class StorageService {
     String? extension,
   }) async {
     await _runSerialized(_keyDownloadHistory, () async {
-      final history = await _readDownloadHistorySafely();
-
-      history[bookId] = {
+      final box = await HiveService.libraryBoxAsync();
+      await box.put('$_dlPrefix$bookId', {
         'title': title,
         'author': author,
         'filePath': filePath,
         'cover': cover,
         'extension': extension,
         'downloadTime': DateTime.now().toIso8601String(),
-      };
-
-      await HiveService.settingsBox.put(
-        _keyDownloadHistory,
-        jsonEncode(history),
-      );
+      });
+      final order = _readDlOrder(box);
+      if (!order.contains(bookId)) {
+        order.add(bookId);
+        await box.put(_dlOrderKey, order);
+      }
     });
-  }
-
-  /// Get all download history
-  Future<Map<String, dynamic>> getDownloadHistory() async {
-    return _readDownloadHistorySafely();
-  }
-
-  /// Get downloaded file path for a book
-  Future<String?> getDownloadedFilePath(String bookId) async {
-    final history = await getDownloadHistory();
-    if (history.containsKey(bookId)) {
-      return history[bookId]['filePath'] as String?;
-    }
-    return null;
   }
 
   /// Remove book from download history
   Future<void> removeFromDownloadHistory(String bookId) async {
     await _runSerialized(_keyDownloadHistory, () async {
-      final history = await _readDownloadHistorySafely();
-
-      history.remove(bookId);
-
-      await HiveService.settingsBox.put(
-        _keyDownloadHistory,
-        jsonEncode(history),
-      );
+      final box = await HiveService.libraryBoxAsync();
+      await box.delete('$_dlPrefix$bookId');
+      final order = _readDlOrder(box);
+      if (order.remove(bookId)) {
+        await box.put(_dlOrderKey, order);
+      }
     });
   }
 
@@ -387,10 +386,8 @@ class StorageService {
     if (accountId.isEmpty || books.isEmpty) return;
     try {
       final booksJson = jsonEncode([for (final book in books) book.toJson()]);
-      await HiveService.settingsBox.put(
-        serverDownloadHistoryKeyFor(accountId),
-        booksJson,
-      );
+      await (await HiveService.libraryBoxAsync())
+          .put(serverDownloadHistoryKeyFor(accountId), booksJson);
     } catch (error) {
       AppLog.report(
         '[storage] server history cache save failed',
@@ -416,9 +413,7 @@ class StorageService {
   /// so a hand-edited or older entry still paints in order.
   List<Book> getServerDownloadHistorySyncForAccount(String accountId) {
     if (accountId.isEmpty) return const <Book>[];
-    final raw = HiveService.settingsBox.get(
-      serverDownloadHistoryKeyFor(accountId),
-    );
+    final raw = _readMoved(serverDownloadHistoryKeyFor(accountId));
     if (raw is! String || raw.isEmpty) return const <Book>[];
     try {
       final decoded = jsonDecode(raw);
@@ -478,7 +473,7 @@ class StorageService {
   /// that is not even open (tests) — reads as empty, never throws.
   Map<int, Book> getDownloadedBookMetadataSync() {
     try {
-      final raw = HiveService.settingsBox.get(_keyDownloadedBookMetadata);
+      final raw = _readMoved(_keyDownloadedBookMetadata);
       if (raw is! String || raw.isEmpty) return const <int, Book>{};
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return const <int, Book>{};
@@ -518,10 +513,8 @@ class StorageService {
         while (merged.length > _downloadedBookMetadataCap) {
           merged.remove(merged.keys.first);
         }
-        await HiveService.settingsBox.put(
-          _keyDownloadedBookMetadata,
-          jsonEncode(merged),
-        );
+        await (await HiveService.libraryBoxAsync())
+            .put(_keyDownloadedBookMetadata, jsonEncode(merged));
       } catch (error) {
         AppLog.report(
           '[storage] downloaded-metadata cache save failed',
@@ -570,7 +563,7 @@ class StorageService {
   Map<String, dynamic>? getBookDetailExtrasSync(String pagePath) {
     if (pagePath.isEmpty) return null;
     try {
-      final raw = HiveService.settingsBox.get(_keyBookDetailExtras);
+      final raw = _readMoved(_keyBookDetailExtras);
       if (raw is! String || raw.isEmpty) return null;
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return null;
@@ -596,11 +589,12 @@ class StorageService {
     if (pagePath.isEmpty || fields.isEmpty) return;
     await _runSerialized(_keyBookDetailExtras, () async {
       try {
+        final box = await HiveService.libraryBoxAsync();
         final merged = <String, dynamic>{};
         // 已有 blob 的解码单独容错：损坏时丢掉旧内容、用本条重建（修
         // 复性写入），而不是让整次保存失败。
         try {
-          final raw = HiveService.settingsBox.get(_keyBookDetailExtras);
+          final raw = box.get(_keyBookDetailExtras);
           if (raw is String && raw.isNotEmpty) {
             final decoded = jsonDecode(raw);
             if (decoded is Map) {
@@ -621,10 +615,7 @@ class StorageService {
         while (merged.length > _bookDetailExtrasCap) {
           merged.remove(merged.keys.first);
         }
-        await HiveService.settingsBox.put(
-          _keyBookDetailExtras,
-          jsonEncode(merged),
-        );
+        await box.put(_keyBookDetailExtras, jsonEncode(merged));
       } catch (error) {
         AppLog.report(
           '[storage] book-detail extras cache save failed',
@@ -643,5 +634,75 @@ class StorageService {
     if (aTime == null) return 1;
     if (bTime == null) return -1;
     return bTime.compareTo(aTime);
+  }
+  // ===== settings → library one-time migration (review A1/A2) =====
+
+  /// 迁移完成标志键（留在 settings：它本身就是偏好级的小键）。
+  static const String libraryMigratedFlag = 'library_migrated_v1';
+
+  /// 一次性幂等迁移：业务键整体搬进 library，旧整表下载历史转逐条键
+  /// （A2）。规则：
+  /// - 标志在 → 直接返回；
+  /// - library 已有同键不覆盖（首帧前经 [HiveService.libraryBoxAsync]
+  ///   提前写入的新值优先于 settings 里的旧值）；
+  /// - 旧历史 JSON 解不开 → 原值进 _corrupt 隔离键，不挡其他键；
+  /// - 全部搬完才写标志；中途被杀下次启动重跑——搬移动作都是"缺才
+  ///   补 + 删源"，重跑等价。
+  static Future<void> migrateSettingsToLibrary() async {
+    final settings = HiveService.settingsBox;
+    if (settings.get(libraryMigratedFlag) == true) return;
+    final library = await HiveService.libraryBoxAsync();
+    bool isMovedKey(String key) =>
+        key == _keyDownloadHistory ||
+        key == '${_keyDownloadHistory}_corrupt' ||
+        key == _keyDownloadedBookMetadata ||
+        key == _keyBookDetailExtras ||
+        key.startsWith(_keyFavorites) ||
+        key.startsWith(_keyServerDownloadHistory);
+    for (final key in List<dynamic>.of(settings.keys)) {
+      if (key is! String || !isMovedKey(key)) continue;
+      if (!library.containsKey(key)) {
+        await library.put(key, settings.get(key));
+      }
+      await settings.delete(key);
+    }
+    final legacyRaw = library.get(_keyDownloadHistory);
+    if (legacyRaw != null) {
+      var converted = false;
+      if (legacyRaw is String) {
+        try {
+          final decoded = jsonDecode(legacyRaw);
+          if (decoded is Map) {
+            final order = <String>[];
+            for (final entry in decoded.entries) {
+              if (entry.value is Map) {
+                await library.put(
+                  '$_dlPrefix${entry.key}',
+                  Map<String, dynamic>.from(entry.value as Map),
+                );
+                order.add('${entry.key}');
+              }
+            }
+            if (!library.containsKey(_dlOrderKey)) {
+              await library.put(_dlOrderKey, order);
+            }
+            converted = true;
+          }
+        } catch (_) {
+          converted = false;
+        }
+      }
+      if (!converted) {
+        AppLog.report(
+          '[storage] ignoring corrupt download history entry',
+          tag: 'storage_service',
+        );
+        if (!library.containsKey('${_keyDownloadHistory}_corrupt')) {
+          await library.put('${_keyDownloadHistory}_corrupt', legacyRaw);
+        }
+      }
+      await library.delete(_keyDownloadHistory);
+    }
+    await settings.put(libraryMigratedFlag, true);
   }
 }

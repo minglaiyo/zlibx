@@ -20,12 +20,14 @@ void main() {
         await Directory.systemTemp.createTemp('book_detail_extras_cache');
     Hive.init(tempDir.path);
     await Hive.openBox(HiveService.settingsBoxName);
+    await Hive.openBox(HiveService.libraryBoxName);
   });
 
   setUp(() async {
     await Hive.box(HiveService.settingsBoxName).clear();
+    await Hive.box(HiveService.libraryBoxName).clear();
     storage = StorageService();
-    box = Hive.box(HiveService.settingsBoxName);
+    box = Hive.box(HiveService.libraryBoxName);
   });
 
   tearDownAll(() async {

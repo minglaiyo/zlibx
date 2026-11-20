@@ -15,18 +15,18 @@ import 'package:zlibx/services/storage_service.dart';
 void main() {
   late Directory tempDir;
   late StorageService storage;
-  late Box<dynamic> box;
 
   setUpAll(() async {
     tempDir = await Directory.systemTemp.createTemp('storage_service');
     Hive.init(tempDir.path);
     await Hive.openBox(HiveService.settingsBoxName);
+    await Hive.openBox(HiveService.libraryBoxName);
   });
 
   setUp(() async {
     await Hive.box(HiveService.settingsBoxName).clear();
+    await Hive.box(HiveService.libraryBoxName).clear();
     storage = StorageService();
-    box = Hive.box(HiveService.settingsBoxName);
   });
 
   tearDownAll(() async {
@@ -79,40 +79,51 @@ void main() {
     expect(cached[8]!.author, '作者8');
   });
 
-  test('getDownloadHistory with illegal JSON returns {} and does not throw',
+  // A2（2026-11-20）后历史是逐条键：损坏隔离从"整表"缩到"单条"。
+  // 旧整表 JSON 的损坏路径由迁移接管（library_migration_test 钉）。
+  test('per-entry corrupt: a junk value is skipped, the rest survives',
       () async {
-    await box.put('download_history', '{not valid json');
+    final library = Hive.box(HiveService.libraryBoxName);
+    await library.put('dl:1', {
+      'title': 'Book One',
+      'filePath': '/one.epub',
+      'downloadTime': '2026-11-20T00:00:00.000',
+    });
+    await library.put('dl:2', 'junk');
+    await library.put('dl_order', ['1', '2']);
 
     final history = await storage.getDownloadHistory();
-    expect(history, isEmpty);
-    // The corrupt value is quarantined, not silently lost.
-    expect(box.get('download_history_corrupt'), '{not valid json');
+    expect(history.keys, ['1']);
+    expect(await storage.getDownloadedFilePath('2'), isNull);
+    expect(await storage.getDownloadedFilePath('1'), '/one.epub');
   });
 
-  test('getDownloadHistory with a non-String value returns {} and does not throw',
+  test('per-entry corrupt: a non-String non-Map value is skipped too',
       () async {
-    await box.put('download_history', 42);
-
-    final history = await storage.getDownloadHistory();
-    expect(history, isEmpty);
-    expect(box.get('download_history_corrupt'), 42);
+    final library = Hive.box(HiveService.libraryBoxName);
+    await library.put('dl:3', 42);
+    await library.put('dl_order', ['3']);
+    expect(await storage.getDownloadHistory(), isEmpty);
   });
 
-  test('getDownloadHistory with a top-level list returns {} and does not throw',
+  test('missing order list: entries are picked up by key, none lost',
       () async {
-    await box.put('download_history', '["a", "b"]');
+    final library = Hive.box(HiveService.libraryBoxName);
+    await library.put('dl:5', {'title': '五', 'filePath': '/5.epub'});
+    await library.put('dl:6', {'title': '六', 'filePath': '/6.epub'});
 
     final history = await storage.getDownloadHistory();
-    expect(history, isEmpty);
-    expect(box.get('download_history_corrupt'), '["a", "b"]');
+    expect(history.keys.toSet(), {'5', '6'});
   });
 
   test('a non-Map entry inside the history map is skipped', () async {
-    await box.put(
-      'download_history',
-      '{"1": {"title": "Book One", "filePath": "/one.epub"}, '
-      '"2": "not a map"}',
-    );
+    final library = Hive.box(HiveService.libraryBoxName);
+    await library.put('dl:1', {
+      'title': 'Book One',
+      'filePath': '/one.epub',
+    });
+    await library.put('dl:2', 'not a map');
+    await library.put('dl_order', ['1', '2']);
 
     final history = await storage.getDownloadHistory();
     expect(history.keys, ['1']);

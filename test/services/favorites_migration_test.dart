@@ -20,6 +20,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('favorites_migration');
     Hive.init(tempDir.path);
     await Hive.openBox(HiveService.settingsBoxName);
+    await Hive.openBox(HiveService.libraryBoxName);
     // AuthStorage.getCredentials() touches the auth box while
     // resolving the account id; open it so that path fails closed
     // (no stored credentials) instead of on a missing box.
@@ -28,9 +29,10 @@ void main() {
 
   setUp(() async {
     await Hive.box(HiveService.settingsBoxName).clear();
+    await Hive.box(HiveService.libraryBoxName).clear();
     await Hive.box(HiveService.authBoxName).clear();
     storage = StorageService();
-    box = Hive.box(HiveService.settingsBoxName);
+    box = Hive.box(HiveService.libraryBoxName);
   });
 
   tearDownAll(() async {

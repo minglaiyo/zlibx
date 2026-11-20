@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive/hive.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/providers/auth_provider.dart';
 import 'package:zlibx/providers/books_provider.dart';
 import 'package:zlibx/providers/zlibrary_provider.dart';
+import 'package:zlibx/services/hive_service.dart';
 import 'package:zlibx/services/storage_service.dart';
 import 'package:zlibx/services/webview_challenge_solver.dart';
 
@@ -180,6 +183,20 @@ Future<void> _settle() =>
     Future<void>.delayed(const Duration(milliseconds: 100));
 
 void main() {
+  // The notifier touches the REAL StorageService (metadata overlay
+  // cache), so Hive must exist here: since the A1 move those writes
+  // open the library box, which needs an initialized backend.
+  setUpAll(() async {
+    final dir = await Directory.systemTemp.createTemp('dl_books_history');
+    Hive.init(dir.path);
+    await Hive.openBox(HiveService.settingsBoxName);
+    await Hive.openBox(HiveService.libraryBoxName);
+    addTearDown(() async {
+      await Hive.close();
+      await dir.delete(recursive: true);
+    });
+  });
+
   test('dstats 为权威列表：逐次记录全部展示，eapi 元数据按 id 叠加', () async {
     final api = _FakeZLibraryApi(
       dstatsPages: {

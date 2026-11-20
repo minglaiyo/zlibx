@@ -170,7 +170,11 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     // preload does not delay the splash. Fire-and-forget — callers
     // treat an unopened box as a cache miss until this settles.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(HiveService.initSecondary());
+      unawaited(
+        HiveService.initSecondary().then(
+          (_) => StorageService.migrateSettingsToLibrary(),
+        ),
+      );
     });
     // The plugin reports the raw HTML of every booklist page it
     // loads over Dio; persist it so the next open paints from cache

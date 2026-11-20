@@ -155,6 +155,18 @@ void main() {
       isTrue,
     );
     expect(
+      BooklistHtmlCache.isPrivateUrl(
+        'https://example.com/booklists/favorite',
+      ),
+      isTrue,
+    );
+    expect(
+      BooklistHtmlCache.isPrivateUrl(
+        'https://example.com/booklists/favorite?searchQuery=x&page=1',
+      ),
+      isTrue,
+    );
+    expect(
       BooklistHtmlCache.isPrivateUrl('https://example.com/booklists'),
       isFalse,
     );

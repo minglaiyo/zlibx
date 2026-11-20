@@ -185,6 +185,10 @@ mixin ZLibraryBooklists on ZLibraryApiBase {
     onBooklistHtmlLoaded?.call(
       booklistsPageUrl(
         mine: path == '/booklists/my',
+        // 收藏页的缓存键必须带上 favorite（审查 P1-1）：漏传会写进发现
+        // 页的键——收藏 tab 的 SWR 永不命中，且默认参数下两个 tab 互写
+        // 同一个键，私密收藏会画进公共的发现页。
+        favorite: path == '/booklists/favorite',
         query: query,
         order: order,
         page: page,

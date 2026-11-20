@@ -203,12 +203,15 @@ class BooklistHtmlCache {
   }
 
   /// Whether a booklist page URL is account-scoped: the own-lists
-  /// page (`/booklists/my`) and booklist detail pages
-  /// (`/booklist/{id}/...`). Discover (`/booklists`) and profile
-  /// pages (`/profile/{id}/{hash}`) are not.
+  /// page (`/booklists/my`), the favorites page (`/booklists/favorite`
+  /// — account data, same partition as my; review P1-1) and booklist
+  /// detail pages (`/booklist/{id}/...`). Discover (`/booklists`) and
+  /// profile pages (`/profile/{id}/{hash}`) are not.
   static bool isPrivateUrl(String url) {
     final path = Uri.tryParse(url)?.path ?? '';
-    return path == '/booklists/my' || path.startsWith('/booklist/');
+    return path == '/booklists/my' ||
+        path == '/booklists/favorite' ||
+        path.startsWith('/booklist/');
   }
 
   /// Key for one entry: the plain URL for public pages, the URL with

@@ -63,8 +63,11 @@ abstract class PagedFeedController extends Notifier<FeedState> {
   /// 本来就活在搜索回退上，直接走源）。
   Future<List<Book>> fetchInitialPage();
 
-  /// 第 [page] 页（loadMore 用）。失败抛异常/返回 null 都行——由
-  /// loadMore 统一兜。
+  /// 第 [page] 页（loadMore 用）。**失败必须抛异常**——loadMore 的
+  /// catch 会保住 hasMore 与游标、下次滚动原地重试；返回空列表才是
+  /// "确认空页"（耗尽收口）。曾经把 success:false 折叠成 null 返回，
+  /// 一次瞬时失败（cf_blocked/限流）被当成源耗尽，翻页被永久关掉
+  /// （审查 P2-3）。
   Future<List<Book>?> fetchPage(int page);
 
   /// loadMore 的翻页上限：热门排序越往后越冷门，深页换来的多样性和
@@ -205,7 +208,10 @@ class PopularFeedController extends PagedFeedController {
       limit: 50,
       page: page,
     );
-    if (!response.success) return null;
+    if (!response.success) {
+      // 抛给 loadMore 的 catch：保 hasMore 原地重试（审查 P2-3）。
+      throw StateError(response.error ?? 'Failed to load popular page $page');
+    }
     return response.data ?? [];
   }
 
@@ -245,7 +251,10 @@ class RecentFeedController extends PagedFeedController {
       limit: 50,
       page: page,
     );
-    if (!response.success) return null;
+    if (!response.success) {
+      // 抛给 loadMore 的 catch：保 hasMore 原地重试（审查 P2-3）。
+      throw StateError(response.error ?? 'Failed to load recent page $page');
+    }
     return response.data ?? [];
   }
 

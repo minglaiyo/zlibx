@@ -62,6 +62,10 @@ class _FakeFeedApi implements ZLibraryApi {
   /// 置 true 时 getUserRecommended 返回 fail（审查 P1-2 回归用）。
   bool recommendedFail = false;
 
+  /// 这些 date 搜索页返回 fail（审查 P2-3 回归用：续页失败不得折叠
+  /// 成"源耗尽"）。
+  final Set<int> failingDatePages = {};
+
   int snapshotCalls = 0;
   int searchPopularCalls = 0;
   int searchDateCalls = 0;
@@ -94,6 +98,9 @@ class _FakeFeedApi implements ZLibraryApi {
     final key = order ?? '';
     if (key == 'popular') searchPopularCalls++;
     if (key == 'date') searchDateCalls++;
+    if (key == 'date' && failingDatePages.contains(page ?? 1)) {
+      return ApiResponse.fail('date page failed');
+    }
     final books = searchPages[key]?[page ?? 1] ?? const <Book>[];
     return ApiResponse.ok(books);
   }
@@ -284,6 +291,35 @@ void main() {
       await container.read(recentFeedProvider.notifier).loadMore();
       expect(_ids(container.read(recentFeedProvider)), ['1', '2', '3', '4']);
       expect(api.searchDateCalls, 2);
+    });
+
+    test('续页接口失败保 hasMore 原地重试，不折叠成耗尽（P2-3 回归）', () async {
+      final api = _FakeFeedApi()
+        ..searchPages['date'] = {
+          1: [_book(1)],
+        }
+        ..failingDatePages.add(2);
+      final container = _container(api);
+      container.read(recentFeedProvider);
+      await _settle();
+      expect(_ids(container.read(recentFeedProvider)), ['1']);
+
+      // page 2 失败：保持 hasMore 与游标，不收口——修复前
+      // success:false 折叠成 null 被当成"源耗尽"，hasMore 永久 false，
+      // 之后滚到底也没反应。
+      await container.read(recentFeedProvider.notifier).loadMore();
+      var state = container.read(recentFeedProvider);
+      expect(_ids(state), ['1']);
+      expect(state.hasMore, isTrue);
+      expect(state.isLoadingMore, isFalse);
+
+      // 恢复后原地重试同一页：追加成功，流继续。
+      api.failingDatePages.clear();
+      api.searchPages['date']![2] = [_book(3)];
+      await container.read(recentFeedProvider.notifier).loadMore();
+      state = container.read(recentFeedProvider);
+      expect(_ids(state), ['1', '3']);
+      expect(state.hasMore, isTrue);
     });
 
     test('有缓存：首建同步直出缓存，后台换新', () async {

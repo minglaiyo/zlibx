@@ -62,7 +62,7 @@ dependencies:
   # Privacy lock (隐私锁): system BiometricPrompt — fingerprint / face,
   # falling back to the device credential. Requires MainActivity to be
   # a FlutterFragmentActivity (see MainActivity.kt).
-  local_auth: ^2.3.0
+  local_auth: ^3.0.2
   # HTML parsing for the external book sources (Anna's Archive / LibGen).
   html: ^0.15.6
   

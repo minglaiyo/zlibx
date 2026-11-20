@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart' as zl;
 import '../lib.dart' as frb_api;
 import '../models.dart' as frb;
+import '../utils/app_log.dart';
+import '../utils/diagnostics.dart';
 import 'rust_init.dart';
 
 /// Phase 3: wires the Rust-backed article search parser into the
@@ -23,7 +25,7 @@ Future<zl.ArticleSearchPage> _rustParseArticle(
     await ensureRustBridge();
   } on Object catch (e) {
     if (kDebugMode) {
-      debugPrint('[FRB] article bridge init failed, falling back to Dart: $e');
+      logIgnored('frb_article_init', e);
     }
     zl.articleParseOverride = null;
     return zl.parseArticleSearchPage(html, baseUrl: baseUrl);
@@ -33,9 +35,10 @@ Future<zl.ArticleSearchPage> _rustParseArticle(
     baseUrl: baseUrl ?? '',
   );
   if (kDebugMode) {
-    debugPrint(
-      '[FRB] article parsed via Rust: ${page.articles.length} hits, '
+    AppLog.debug(
+      'article parsed via Rust: ${page.articles.length} hits, '
       'total ${page.total}, pages ${page.totalPages}',
+      tag: 'FRB',
     );
   }
   return _mapArticlePage(page);

@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart' as zl;
 import '../lib.dart' as frb_api;
 import '../models.dart' as frb;
+import '../utils/app_log.dart';
+import '../utils/diagnostics.dart';
 import 'rust_init.dart';
 
 /// JSON sink: wires the Rust-backed eapi book-list parser into the vendor
@@ -27,7 +29,7 @@ Future<List<zl.Book>> _rustParseBooks(String json) async {
     await ensureRustBridge();
   } on Object catch (e) {
     if (kDebugMode) {
-      debugPrint('[FRB] books bridge init failed, falling back to Dart: $e');
+      logIgnored('frb_books_init', e);
     }
     resetRustBridge();
     zl.booksParseOverride = null;
@@ -39,14 +41,10 @@ Future<List<zl.Book>> _rustParseBooks(String json) async {
   // never kills the whole feed — un-register and fall back to Dart.
   try {
     final books = await frb_api.parseBooksJson(json: json);
-    if (kDebugMode) {
-      debugPrint('[FRB] books parsed via Rust: ${books.length} rows');
-    }
+    AppLog.debug('books parsed via Rust: ${books.length} rows', tag: 'FRB');
     return books.map(_mapBook).toList();
   } on Object catch (e) {
-    if (kDebugMode) {
-      debugPrint('[FRB] parseBooksJson runtime failure, falling back to Dart: $e');
-    }
+    logIgnored('frb_books_runtime', e);
     zl.booksParseOverride = null;
     return zl.ZLibraryApiBase.fallbackBooksOf(json);
   }

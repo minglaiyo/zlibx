@@ -70,6 +70,14 @@ android {
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
+            // Explicit keep rules (review A3, 2026-11-20): document
+            // the release-shrinking contract. AGP already keeps the
+            // manifest components and every Flutter plugin ships
+            // consumer rules, so the file is intentionally short.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

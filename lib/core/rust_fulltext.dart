@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart' as zl;
 import '../lib.dart' as frb_api;
 import '../models.dart' as frb;
+import '../utils/app_log.dart';
+import '../utils/diagnostics.dart';
 import 'rust_init.dart';
 
 /// Phase 2 pilot: wires the Rust-backed full-text parser into the
@@ -31,7 +33,7 @@ Future<zl.FullTextSearchPage> _rustParseFulltext(
     // Bridge unavailable (lib loading failed, wrong platform, ...):
     // un-register and let the vendor's Dart parser take over.
     if (kDebugMode) {
-      debugPrint('[FRB] bridge init failed, falling back to Dart: $e');
+      logIgnored('frb_fulltext_init', e);
     }
     resetRustBridge();
     zl.fulltextParseOverride = null;
@@ -43,9 +45,10 @@ Future<zl.FullTextSearchPage> _rustParseFulltext(
     baseUrl: baseUrl ?? '',
   );
   if (kDebugMode) {
-    debugPrint(
-      '[FRB] fulltext parsed via Rust: ${page.hits.length} hits, '
+    AppLog.debug(
+      'fulltext parsed via Rust: ${page.hits.length} hits, '
       'total ${page.total}, pages ${page.totalPages}',
+      tag: 'FRB',
     );
   }
   return _mapFullTextPage(page);

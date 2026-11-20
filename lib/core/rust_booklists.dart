@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart' as zl;
 import '../lib.dart' as frb_api;
 import '../models.dart' as frb;
+import '../utils/app_log.dart';
+import '../utils/diagnostics.dart';
 import 'rust_init.dart';
 
 /// Phase 3: wires the Rust-backed booklist / category / download-stats
@@ -30,7 +32,7 @@ Future<void> _ensureInit() async {
 /// evidence the bridge is unavailable on this host).
 void _unregisterAll() {
   if (kDebugMode) {
-    debugPrint('[FRB] list-family bridge init failed, falling back to Dart');
+    logIgnored('frb_booklists_init', 'list-family bridge init failed');
   }
   resetRustBridge();
   zl.booklistsPageParseOverride = null;
@@ -53,9 +55,10 @@ Future<zl.BooklistsPage> _rustBooklistsPage(String html, String baseUrl) async {
   }
   final page = await frb_api.parseBooklistsPage(html: html, baseUrl: baseUrl);
   if (kDebugMode) {
-    debugPrint(
-      '[FRB] booklists parsed via Rust: ${page.lists.length} lists, '
+    AppLog.debug(
+      'booklists parsed via Rust: ${page.lists.length} lists, '
       'pages ${page.totalPages}',
+      tag: 'FRB',
     );
   }
   return _mapBooklistsPage(page);
@@ -76,7 +79,7 @@ Future<List<zl.Booklist>> _rustUserProfileBooklists(
     baseUrl: baseUrl,
   );
   if (kDebugMode) {
-    debugPrint('[FRB] profile booklists parsed via Rust: ${lists.length}');
+    AppLog.debug('profile booklists parsed via Rust: ${lists.length}', tag: 'FRB');
   }
   return lists.map(_mapBooklist).toList();
 }
@@ -95,9 +98,7 @@ Future<List<zl.Book>> _rustBooklistDetailBooks(
     html: html,
     baseUrl: baseUrl ?? '',
   );
-  if (kDebugMode) {
-    debugPrint('[FRB] booklist detail parsed via Rust: ${books.length} books');
-  }
+  AppLog.debug('booklist detail parsed via Rust: ${books.length} books', tag: 'FRB');
   return books.map((b) => _mapBook(b)).toList();
 }
 
@@ -112,12 +113,11 @@ Future<zl.CategoryPage> _rustCategoryPage(String html, String? baseUrl) async {
     html: html,
     baseUrl: baseUrl ?? '',
   );
-  if (kDebugMode) {
-    debugPrint(
-      '[FRB] category parsed via Rust: ${page.books.length} books, '
-      'slug ${page.searchSlug != null}',
-    );
-  }
+  AppLog.debug(
+    'category parsed via Rust: ${page.books.length} books, '
+    'slug ${page.searchSlug != null}',
+    tag: 'FRB',
+  );
   return _mapCategoryPage(page);
 }
 
@@ -129,9 +129,7 @@ Future<List<zl.Book>> _rustDownloadStats(String html) async {
     return zl.parseDownloadStatsPage(html);
   }
   final books = await frb_api.parseDownloadStatsPage(html: html);
-  if (kDebugMode) {
-    debugPrint('[FRB] dstats parsed via Rust: ${books.length} rows');
-  }
+  AppLog.debug('dstats parsed via Rust: ${books.length} rows', tag: 'FRB');
   return books.map(_mapDstatsBook).toList();
 }
 

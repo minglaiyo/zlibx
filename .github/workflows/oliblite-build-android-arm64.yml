@@ -136,6 +136,26 @@ jobs:
             exit 1
           fi
 
+      - name: Convention ratchet (empty catch / debugPrint)
+        # Review C2 (2026-11-20): swallowed exceptions must flow through
+        # logIgnored, release noise through AppLog. Baseline today: zero
+        # empty catch blocks; debugPrint only the three bootstrap crash
+        # handlers in lib/main.dart (AppLog's own implementation
+        # excluded). Any NEW violation fails CI.
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, sys
+          empty = dbg = 0
+          roots = list(pathlib.Path('lib').rglob('*.dart')) + list(pathlib.Path('vendor').rglob('*.dart'))
+          for f in roots:
+              text = f.read_text(encoding='utf-8', errors='ignore')
+              empty += len(re.findall(r'catch\s*\([^)]*\)\s*\{\s*\}', text))
+              if f.as_posix() not in ('lib/main.dart', 'lib/utils/app_log.dart'):
+                  dbg += sum('debugPrint(' in ln for ln in text.splitlines())
+          print(f'empty_catch={empty} debugPrint={dbg}')
+          sys.exit(1 if (empty or dbg) else 0)
+          PY
+
   build:
     name: Build release APK
     # Only tag pushes (release) and manual dispatch (artifact) build.
@@ -331,7 +351,26 @@ jobs:
             echo "::error::apksigner not found, cannot verify signature"
             exit 1
           fi
-          "$apksigner_bin" verify --print-certs "$apk"
+          "$apksigner_bin" verify --print-certs "$apk" | tee /tmp/apksigner-certs.txt
+          # Review B4 (2026-11-20): ship the cert fingerprint next to
+          # sha256sums.txt so a sideloaded APK can be verified end to end.
+          grep -E "SHA-256" /tmp/apksigner-certs.txt > signing-fingerprint.txt
+          echo "--- signing-fingerprint.txt ---"
+          cat signing-fingerprint.txt
+
+      - name: Smoke-check release dex for native-layer classes
+        # Review A3 (2026-11-20): R8 shrinking must never drop the Kotlin
+        # classes the manifest / MethodChannel wiring needs. apkanalyzer
+        # ships with the runner's cmdline-tools.
+        run: |
+          cd build/app/outputs/flutter-apk
+          v="${{ steps.pubspec.outputs.version }}"
+          apkanalyzer_bin=$(ls -1 "$ANDROID_HOME"/cmdline-tools/*/bin/apkanalyzer 2>/dev/null | sort -V | tail -n1)
+          if [ -z "$apkanalyzer_bin" ]; then
+            echo "::error::apkanalyzer not found"
+            exit 1
+          fi
+          "$apkanalyzer_bin" dex packages --defined-only "zlibx-v$v.apk" | grep -E "com\.open_library\.app\.(MainActivity|DownloadForegroundService)"
 
       - name: Cleanup signing material (defence in depth)
         if: always()
@@ -371,4 +410,5 @@ jobs:
           files: |
             build/app/outputs/flutter-apk/zlibx-*.apk
             build/app/outputs/flutter-apk/sha256sums.txt
+            build/app/outputs/flutter-apk/signing-fingerprint.txt
             build/app/outputs/symbols/*

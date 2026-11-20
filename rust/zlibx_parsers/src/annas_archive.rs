@@ -31,23 +31,20 @@ use crate::models::{ArchiveBook, ArchiveBookDetails};
 /// Removes emoji/icon noise and collapses whitespace.
 /// Mirrors `cleanText`.
 pub(crate) fn clean_text(text: &str) -> String {
-    static EMOJI_BLOCK: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    static MISC: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    static DINGBATS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    static EMOTICONS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    static TRANSPORT: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    // Review C1 (2026-11-20): the five per-range passes collapse
+    // into one char class — same removed set, one scan. The
+    // magnifier glyph (U+1F50D) sits inside the 1F300-1F9FF
+    // block, so the old explicit replace was already dead code.
+    static EMOJI: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     static WS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let emoji = EMOJI_BLOCK.get_or_init(|| regex::Regex::new(r"[\u{1F300}-\u{1F9FF}]").unwrap());
-    let misc = MISC.get_or_init(|| regex::Regex::new(r"[\u{2600}-\u{26FF}]").unwrap());
-    let ding = DINGBATS.get_or_init(|| regex::Regex::new(r"[\u{2700}-\u{27BF}]").unwrap());
-    let emo = EMOTICONS.get_or_init(|| regex::Regex::new(r"[\u{1F600}-\u{1F64F}]").unwrap());
-    let tra = TRANSPORT.get_or_init(|| regex::Regex::new(r"[\u{1F680}-\u{1F6FF}]").unwrap());
+    let emoji = EMOJI.get_or_init(|| {
+        regex::Regex::new(
+            r"[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]",
+        )
+        .unwrap()
+    });
     let ws = WS.get_or_init(|| regex::Regex::new(r"\s+").unwrap());
-    let mut out = emoji.replace_all(text, "").into_owned();
-    for re in [misc, ding, emo, tra] {
-        out = re.replace_all(&out, "").into_owned();
-    }
-    let out = out.replace("🔍", "");
+    let out = emoji.replace_all(text, "");
     ws.replace_all(&out, " ").trim().to_string()
 }
 

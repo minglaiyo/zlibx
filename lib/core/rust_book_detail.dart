@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart' as zl;
 import '../lib.dart' as frb_api;
 import '../models.dart' as frb;
+import '../utils/app_log.dart';
+import '../utils/diagnostics.dart';
 import 'rust_init.dart';
 
 /// Phase 3: wires the Rust-backed book detail metadata parser into the
@@ -21,19 +23,18 @@ Future<zl.BookDetailMetadata> _rustParseBookDetail(String html) async {
     await ensureRustBridge();
   } on Object catch (e) {
     if (kDebugMode) {
-      debugPrint(
-        '[FRB] book detail bridge init failed, falling back to Dart: $e',
-      );
+      logIgnored('frb_book_detail_init', e);
     }
     zl.bookDetailParseOverride = null;
     return zl.parseBookDetailProperties(html);
   }
   final meta = await frb_api.parseBookDetailProperties(html: html);
   if (kDebugMode) {
-    debugPrint(
-      '[FRB] book detail parsed via Rust: '
+    AppLog.debug(
+      'book detail parsed via Rust: '
       'volume=${meta.volume != null} isbn=${meta.isbn13 != null} '
       'ipfs=${meta.ipfsCid != null} ratings=${meta.ratingInterest != null}',
+      tag: 'FRB',
     );
   }
   return _mapBookDetailMetadata(meta);

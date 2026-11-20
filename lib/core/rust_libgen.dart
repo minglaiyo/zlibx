@@ -5,6 +5,8 @@ import '../services/annas_models.dart' as am;
 import '../services/external_search.dart' as ext;
 import '../services/libgen_service.dart' as lg;
 import '../services/open_library.dart' as ol;
+import '../utils/app_log.dart';
+import '../utils/diagnostics.dart';
 import 'rust_init.dart';
 
 /// Phase 4: wires the Rust-backed Library Genesis / Open Library
@@ -31,7 +33,7 @@ Future<void> _ensureInit() async {
 
 void _unregister(String tag, Object error) {
   if (kDebugMode) {
-    debugPrint('[FRB] $tag bridge failed, falling back to Dart: $error');
+    logIgnored('frb_libgen_$tag', error);
   }
   resetRustBridge();
   ext.libgenResultsParseOverride = null;
@@ -51,7 +53,7 @@ Future<List<am.BookData>> _rustLibgenResults(
   }
   final books = await frb_api.parseLibgenResults(html: html, baseUrl: baseUrl);
   if (kDebugMode) {
-    debugPrint('[FRB] libgen results parsed via Rust: ${books.length} books');
+    AppLog.debug('libgen results parsed via Rust: ${books.length} books', tag: 'FRB');
   }
   return books.map(_mapLibgenBook).toList();
 }
@@ -74,7 +76,7 @@ Future<am.BookInfoData?> _rustLibgenAds(
   );
   if (info == null) return null;
   if (kDebugMode) {
-    debugPrint('[FRB] libgen ads parsed via Rust: ${info.title}');
+    AppLog.debug('libgen ads parsed via Rust: ${info.title}', tag: 'FRB');
   }
   return am.BookInfoData(
     title: info.title,
@@ -99,7 +101,7 @@ Future<List<ol.TrendingBookData>> _rustOpenLibraryTrending(String html) async {
   }
   final books = await frb_api.parseOpenLibraryTrending(html: html);
   if (kDebugMode) {
-    debugPrint('[FRB] openlibrary trending parsed via Rust: ${books.length}');
+    AppLog.debug('openlibrary trending parsed via Rust: ${books.length}', tag: 'FRB');
   }
   return books
       .map((t) => ol.TrendingBookData(title: t.title, thumbnail: t.thumbnail))

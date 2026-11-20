@@ -103,9 +103,18 @@ pub(crate) fn parse_book_detail_properties(html: &str) -> BookDetailMetadata {
 
     // Rating spans: visible text only — a `none`-classed (hidden,
     // unrated) span parses to None.
-    let rating_score = |selector: &str| -> Option<String> {
-        let sel = Selector::parse(selector).unwrap();
-        let span = doc.select(&sel).next()?;
+    // Review C1 (2026-11-20): the two rating selectors are
+    // constants; parse each once per process, not once per page.
+    static RATING_INTEREST_SEL: std::sync::OnceLock<Selector> =
+        std::sync::OnceLock::new();
+    static RATING_QUALITY_SEL: std::sync::OnceLock<Selector> =
+        std::sync::OnceLock::new();
+    let rating_score =
+        |sel: &'static std::sync::OnceLock<Selector>,
+         selector: &'static str|
+         -> Option<String> {
+            let parsed = sel.get_or_init(|| Selector::parse(selector).unwrap());
+            let span = doc.select(parsed).next()?;
         if span
             .attr("class")
             .unwrap_or("")
@@ -131,8 +140,14 @@ pub(crate) fn parse_book_detail_properties(html: &str) -> BookDetailMetadata {
         isbn13: by_class("isbn_13").or_else(|| by_label("isbn 13")),
         ipfs_cid: copies.first().cloned(),
         ipfs_cid_blake2b: copies.get(1).cloned(),
-        rating_interest: rating_score(".book-rating-interest-score"),
-        rating_quality: rating_score(".book-rating-quality-score"),
+        rating_interest: rating_score(
+            &RATING_INTEREST_SEL,
+            ".book-rating-interest-score",
+        ),
+        rating_quality: rating_score(
+            &RATING_QUALITY_SEL,
+            ".book-rating-quality-score",
+        ),
     }
 }
 

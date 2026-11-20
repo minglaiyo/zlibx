@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import '../lib.dart' as frb_api;
 import '../models.dart' as frb;
 import 'annas_archive.dart' as zl;
+import '../utils/app_log.dart';
+import '../utils/diagnostics.dart';
 import 'rust_init.dart';
 
 /// Phase 4: wires the Rust-backed Anna's Archive parsers into the
@@ -26,7 +28,7 @@ Future<void> _ensureInit() async {
 
 void _unregister() {
   if (kDebugMode) {
-    debugPrint('[FRB] annas bridge init failed, falling back to Dart');
+    logIgnored('frb_annas_init', 'annas bridge init failed');
   }
   zl.ArchiveParsing.searchResultsParseOverride = null;
   zl.ArchiveParsing.bookDetailsParseOverride = null;
@@ -53,7 +55,7 @@ Future<List<zl.ArchiveBook>> _rustAnnasSearch(
     fileType: fileType,
   );
   if (kDebugMode) {
-    debugPrint('[FRB] annas search parsed via Rust: ${books.length} books');
+    AppLog.debug('annas search parsed via Rust: ${books.length} books', tag: 'FRB');
   }
   return books.map(_mapArchiveBook).toList();
 }
@@ -76,7 +78,7 @@ Future<zl.ArchiveBookDetails?> _rustAnnasDetails(
   );
   if (details == null) return null;
   if (kDebugMode) {
-    debugPrint('[FRB] annas detail parsed via Rust: ${details.title}');
+    AppLog.debug('annas detail parsed via Rust: ${details.title}', tag: 'FRB');
   }
   return _mapArchiveDetails(details);
 }

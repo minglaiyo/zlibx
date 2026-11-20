@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../lib.dart' as frb_api;
+import '../utils/diagnostics.dart';
 import 'rust_init.dart';
 
 /// P0-1: Rust-backed regex utilities, replacing scattered Dart `RegExp` calls.
@@ -55,7 +56,7 @@ class RustRegex {
       return true;
     } on Object catch (e) {
       if (kDebugMode) {
-        debugPrint('[FRB] regex bridge init failed, falling back to Dart: $e');
+        logIgnored('frb_regex_init', e);
       }
       resetRustBridge();
       _available = false;
@@ -265,7 +266,7 @@ class RustRegex {
 
   static void _logFallback(String fn, Object error) {
     if (kDebugMode) {
-      debugPrint('[FRB] regex $fn failed, falling back to Dart: $error');
+      logIgnored('frb_regex_$fn', error);
     }
   }
 }

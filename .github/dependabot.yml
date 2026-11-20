@@ -17,6 +17,10 @@ updates:
       - dependency-name: "hive*"
       # dynamic_color is capped <1.9.0 on purpose (local Flutter compat).
       - dependency-name: "dynamic_color"
+      # intl and meta are version-locked to the Flutter SDK itself —
+      # standalone bumps always conflict. They move with SDK upgrades.
+      - dependency-name: "intl"
+      - dependency-name: "meta"
   - package-ecosystem: cargo
     directory: "/rust/zlibx_parsers"
     schedule:

@@ -211,23 +211,22 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
 
       // 恢复出来的任务可能没有 hash（文件名反解无 hash 可言）：eapi
       // 对空 hash 的 file 端点直接 400（不给"Invalid hash"，vendor 的
-      // 标题解析兜底接不住）——先按标题解析一次真 hash。解析失败照
-      // 旧往下走，错误态由下面的 catch 带 needsFreshLink 引导回详情页。
+      // 标题解析兜底接不住）。按标题搜索一次，一石二鸟：解析出真
+      // hash 续传 + 把搜索命中里的完整书（作者/封面）回填进任务行——
+      // 残片恢复的书没有这些字段，下载页此前只能显示"未知作者"和占
+      // 位封面。搜索失败/无命中照旧往下走，错误态由下面的 catch 带
+      // needsFreshLink 引导回详情页。
       var effectiveBook = book;
       if (presetUrl == null &&
           !alreadyExists &&
           (book.hash == null || book.hash!.isEmpty) &&
           book.title.isNotEmpty) {
-        try {
-          final resolved = await _api.resolveEapiHash(
-            book.id.toString(),
-            book.title,
-          );
-          if (resolved != null && resolved.isNotEmpty) {
-            effectiveBook = book.copyWith(hash: resolved);
-          }
-        } on Object catch (error) {
-          logIgnored('download_recovery', error);
+        final match = await _searchMatchBook(book);
+        if (match != null &&
+            match.hash != null &&
+            match.hash!.isNotEmpty) {
+          effectiveBook = match;
+          _updateTask(id, (t) => t.copyWith(book: effectiveBook));
         }
       }
 

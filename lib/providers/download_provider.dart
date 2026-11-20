@@ -178,6 +178,23 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
     unawaited(DownloadForegroundService.updateProgress('下载中 $percent%'));
   }
 
+  /// 按标题搜索并按 id 认领（续传回填与历史封面回填共用）：命中返回
+  /// 搜索结果里的完整 Book（hash/作者/封面），不中返回 null。
+  Future<Book?> _searchMatchBook(Book target) async {
+    try {
+      final res = await _api.search(message: target.title, limit: 20);
+      if (!res.success || res.data == null) return null;
+      for (final candidate in res.data!) {
+        if (candidate.id.toString() == target.id.toString()) {
+          return candidate;
+        }
+      }
+    } on Object catch (error) {
+      logIgnored('download_search_match', error);
+    }
+    return null;
+  }
+
   void _updateTask(String id, DownloadTask Function(DownloadTask) updater) {
     state = state.map((t) {
       if (t.id == id) {
@@ -213,8 +230,10 @@ class DownloadNotifier extends _DownloadNotifierBase
     // Load persisted download history on initialization; then scan the
     // staging dir for partial downloads (2026-11-21 中断修复) and hang
     // them back as paused tasks — 顺序执行，恢复能跳过历史里已完成的
-    // 同 id 条目。
-    ready = _loadDownloadHistory().then((_) => _recoverPartialDownloads());
+    // 同 id 条目；最后给无封面的已完成条目按标题补一次作者/封面。
+    ready = _loadDownloadHistory()
+        .then((_) => _recoverPartialDownloads())
+        .then((_) => _backfillMissingCovers());
     return [];
   }
 }

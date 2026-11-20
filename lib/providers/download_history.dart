@@ -10,6 +10,9 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
   /// 复用，实例旗标跨 invalidate 存活）。
   bool _recoveryDone = false;
 
+  /// 封面回填同样每进程一次。
+  bool _coverBackfillDone = false;
+
   /// Load completed downloads from storage on app startup
   Future<void> _loadDownloadHistory() async {
     try {
@@ -147,6 +150,48 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
       );
     } on Object catch (error) {
       logIgnored('download_recovery', error);
+    }
+  }
+
+  /// 封面/作者回填（2026-11-21）：从残片恢复再续传完成的书，历史里
+  /// 没有封面与作者（恢复任务本身没有）——下载页永远显示占位封面和
+  /// "未知作者"。这里对"已完成 + 无封面 + z 站数字 id"的条目按标题
+  /// 搜索一次，把作者/封面补进任务与历史记录。每进程一次、串行。
+  Future<void> _backfillMissingCovers() async {
+    if (_coverBackfillDone) return;
+    _coverBackfillDone = true;
+    final targets =
+        state
+            .where(
+              (t) =>
+                  t.status == DownloadStatus.completed &&
+                  (t.book.cover == null || t.book.cover!.isEmpty) &&
+                  t.book.id > 0 &&
+                  t.book.title.isNotEmpty,
+            )
+            .toList();
+    for (final task in targets) {
+      final match = await _searchMatchBook(task.book);
+      if (match == null ||
+          match.cover == null ||
+          match.cover!.isEmpty) {
+        continue;
+      }
+      final enriched = task.book.copyWith(author: match.author, cover: match.cover);
+      _updateTask(task.id, (t) => t.copyWith(book: enriched));
+      final filePath = task.filePath;
+      if (filePath != null && await MediaStoreFiles.exists(filePath)) {
+        // 历史条目重写：标题保留原值（盘上文件名由它铸造），只补作
+        // 者与封面。
+        await _storage.addToDownloadHistory(
+          task.book.id.toString(),
+          task.book.title,
+          enriched.author,
+          filePath,
+          cover: enriched.cover,
+          extension: task.book.extension,
+        );
+      }
     }
   }
 

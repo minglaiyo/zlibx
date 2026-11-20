@@ -86,8 +86,13 @@ The release APK is signed with `android/app/olib-release-key.jks` (alias `olib-r
 - dynamic_color capped <1.9.0 for the local old Flutter; lift the cap
   once the local toolchain matches CI (3.44).
 - B1: the Dart parser fallbacks' trigger rate is measurable via the
-  logIgnored `frb_*` tags; observe one or two releases before retiring
-  any Dart parser.
+  persistent counters in `Diagnostics` (`fallback:<tag>`, Hive key
+  `diagnostics_counts_v1`; logIgnored counts + flushes). Retirement
+  rule: in the observation window (one or two releases), `fallback:frb_*`
+  nonzero = the fallback is earning its keep (keep); a module whose
+  fallback counter stays zero and whose pages are known-used may have
+  its Dart parser retired — keep the differential tests until removal
+  day. `Diagnostics.dump()` includes the counters.
 
 ## Repo Notes
 

@@ -242,6 +242,16 @@ class MainActivity : FlutterFragmentActivity() {
                         DownloadForegroundService.cancelStale(this)
                         result.success(null)
                     }
+                    "md5OfContent" -> {
+                        // 外部源下载完成后的内容校验（审查 5.1）：流式
+                        // MD5 在 ioExecutor 上跑——几百 MB 的文件不能占
+                        // 主线程；算完回主线程答 result。
+                        val target = call.argument<String>("uri") ?: ""
+                        ioExecutor.execute {
+                            val hash = md5OfContent(target)
+                            runOnUiThread { result.success(hash) }
+                        }
+                    }
                     "updateProgress" -> {
                         DownloadForegroundService.updateProgress(
                             call.argument<String>("text"),
@@ -293,6 +303,35 @@ class MainActivity : FlutterFragmentActivity() {
             )
         } catch (e: Exception) {
             Log.w(TAG, "notification permission request failed", e)
+        }
+    }
+
+    /// Streaming MD5 of a download product (review 2026-11-21 5.1):
+    /// content URIs read through the ContentResolver, plain paths through
+    /// a FileInputStream — 64 KB chunks, nothing buffered in memory (a
+    /// few hundred MB PDF must not be materialized to hash it). Returns
+    /// lowercase hex, or null on any failure: the Dart side fails open
+    /// (a broken checksum channel must not throw away a downloaded book).
+    private fun md5OfContent(uriOrPath: String): String? {
+        return try {
+            val input = if (uriOrPath.startsWith("content://")) {
+                contentResolver.openInputStream(android.net.Uri.parse(uriOrPath))
+            } else {
+                java.io.FileInputStream(java.io.File(uriOrPath))
+            }
+            input?.use { stream ->
+                val md = java.security.MessageDigest.getInstance("MD5")
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val read = stream.read(buffer)
+                    if (read <= 0) break
+                    md.update(buffer, 0, read)
+                }
+                md.digest().joinToString("") { "%02x".format(it) }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "md5 of content failed", e)
+            null
         }
     }
 

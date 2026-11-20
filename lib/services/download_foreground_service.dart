@@ -95,6 +95,21 @@ class DownloadForegroundService {
     }
   }
 
+  /// 外部源下载完成后的内容校验（2026-11-21 5.1）：原生侧对流式计算
+  /// MD5（content URI 走 ContentResolver，文件路径走 FileInputStream），
+  /// 放在原生 ioExecutor 上跑，不占主线程。返回小写 hex；任何失败
+  /// （平台/通道/读流）返回 null——调用方对 null 放行，不能因校验通
+  /// 道故障扔掉已下好的书。
+  static Future<String?> md5OfContent(String uriOrPath) async {
+    try {
+      return await _channel.invokeMethod<String>('md5OfContent', {
+        'uri': uriOrPath,
+      });
+    } on Object catch (_) {
+      return null;
+    }
+  }
+
   /// E3+F4: 完成通知（独立于进度通知的普通重要性渠道），点击直达文件
   /// （content:// URI 由原生侧配 ACTION_VIEW + 读授权；文件路径兜底
   /// 时不带点击目标）。[detail] 是副文本（带当日剩余额度）。

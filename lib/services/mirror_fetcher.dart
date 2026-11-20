@@ -16,6 +16,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 // Project imports:
 import 'package:zlibx/services/external_logger.dart';
 import 'package:zlibx/services/webview_challenge_solver.dart';
+import 'package:zlibx/services/webview_security.dart';
 
 /// Service to fetch mirror links in the background without showing UI
 class MirrorFetcherService {
@@ -64,6 +65,9 @@ class MirrorFetcherService {
       // Create a headless webview to load the page
       final webView = HeadlessInAppWebView(
         initialUrlRequest: URLRequest(url: WebUri(url)),
+        // 安全基线与阅读器对齐（审查 2026-11-21 5.4）——此前这里完全
+        // 没设 initialSettings，最不受信任的页面反而约束最少。
+        initialSettings: kThirdPartyWebViewSettings,
         onLoadStop: (controller, url) async {
           if (url == null) {
             _logger.warning('URL is null in onLoadStop', tag: 'MirrorFetcher');

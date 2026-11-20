@@ -40,6 +40,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 // Project imports:
 import 'package:zlibx/services/challenge_html_cache.dart';
+import 'package:zlibx/services/webview_security.dart';
 import 'package:zlibx/services/external_logger.dart';
 
 class WebviewChallengeSolver {
@@ -288,10 +289,9 @@ class WebviewChallengeSolver {
 
       headless = HeadlessInAppWebView(
         initialUrlRequest: URLRequest(url: WebUri(url)),
-        initialSettings: InAppWebViewSettings(
-          javaScriptEnabled: true,
-          supportZoom: false,
-        ),
+        // 安全基线与阅读器对齐（审查 2026-11-21 5.4）——见
+        // webview_security.dart 的文档。
+        initialSettings: kThirdPartyWebViewSettings,
         onLoadStop: (controller, loadedUrl) async {
           try {
             final title = (await controller.getTitle()) ?? '';

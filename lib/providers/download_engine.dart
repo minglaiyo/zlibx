@@ -353,6 +353,35 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         }
       }
 
+      // 外部源内容完整性校验（审查 2026-11-21 5.1）：Anna/LibGen 以
+      // 文件 MD5 标识文件（synthesizeExternalBook 把它放进 book.hash），
+      // 下载完成后流式比对——现有检查只覆盖"HTML 冒充文件"与"流截
+      // 断"，长度一致的内容损坏/镜像返回错文件漏网。z 站 hash 不是文
+      // 件 MD5，跳过。校验失败：删掉发布出去的文件与 sidecar，任务错
+      // 误态引导换镜像重试；哈希算不出（通道失败）放行——不能因校验
+      // 通道故障把下好的书扔掉。
+      if (presetUrl != null && (book.hash?.isNotEmpty ?? false)) {
+        final actual = await DownloadForegroundService.md5OfContent(
+          recordedPath,
+        );
+        if (actual == null) {
+          logIgnored('download_md5', StateError('hash unavailable'));
+        } else if (actual.toLowerCase() != book.hash!.toLowerCase()) {
+          await MediaStoreFiles.delete(recordedPath);
+          await _deleteSidecarQuietly(temporaryPath);
+          _updateTask(
+            id,
+            (t) => t.copyWith(
+              status: DownloadStatus.error,
+              error: '文件校验失败：镜像返回的内容与来源不符，请换镜像重试',
+              needsFreshLink: true,
+            ),
+          );
+          _clearProgressThrottle(id);
+          return;
+        }
+      }
+
       // Save to download history (with cover and extension for persistence)
       await _storage.addToDownloadHistory(
         book.id.toString(),

@@ -25,8 +25,13 @@ class SearchSuggestion {
   final bool fromHistory;
 }
 
+/// autoDispose（审查 v2 P2）：family 键是未 trim 的原始输入——每敲一
+/// 个字符就多一个 family 元素，非 autoDispose 会把它们留满整个进程
+/// 生命周期（各持一份 Hive 读 + 历史扫描的列表）。建议本来就是逐字
+/// 重算的，旧键随头部重建失去 watch 即释放。
 final searchSuggestionsProvider =
-    Provider.family<List<SearchSuggestion>, String>((ref, rawQuery) {
+    Provider.autoDispose
+        .family<List<SearchSuggestion>, String>((ref, rawQuery) {
       final query = rawQuery.trim().toLowerCase();
       if (query.isEmpty) return const [];
 

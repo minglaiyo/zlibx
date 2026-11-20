@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderObject, RenderProxyBox;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
@@ -13,7 +11,6 @@ import '../../providers/article_search_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/books_provider.dart';
 import '../../providers/fulltext_search_provider.dart';
-import '../../providers/search_suggestions_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/update_provider.dart';
 import '../../routes/app_routes.dart';
@@ -21,19 +18,13 @@ import '../../services/hive_service.dart';
 import '../../theme/app_metrics.dart';
 import '../../utils/app_log.dart';
 import '../../utils/app_snack.dart';
-import '../../widgets/empty_state.dart';
-import '../../widgets/motion/motion.dart';
 import '../../widgets/update_dialog.dart';
 import '../reader/reader_screen.dart';
-import 'widgets/active_filter_chips.dart';
-import 'widgets/empty_query_view.dart';
-import 'widgets/search_bar_field.dart';
+import 'search_filters.dart';
+import 'widgets/search_body_view.dart';
 import 'widgets/search_filter_dialog.dart';
+import 'widgets/search_glass_header.dart';
 import 'widgets/search_mode_selector.dart';
-import 'widgets/search_results_view.dart';
-import 'widgets/search_skeleton_grid.dart';
-import 'widgets/search_suggestions_panel.dart';
-import 'widgets/source_selector.dart';
 
 
 const _recentSearchesKey = 'recent_search_keywords';
@@ -76,8 +67,8 @@ class SearchScreen extends ConsumerStatefulWidget {
   final int? initialCategoryId;
   final String? initialCategoryName;
 
-  /// Query to pre-fill and run on open: set when the screen is
-  /// opened from a book-detail author/publisher tap. Null means no
+  /// Query to pre-fill and run on open: set when the screen
+  /// is opened from a book-detail author/publisher tap. Null means no
   /// preset query.
   final String? initialQuery;
 
@@ -99,11 +90,18 @@ class SearchScreen extends ConsumerStatefulWidget {
 }
 
 /// Orchestrator only: owns the query state (controller), the applied
-/// filters and the recent-searches store, and wires the zero-state
-/// presentation widgets from `widgets/` together. 搜索只在用户按下搜
-/// 索键时发起（[SearchBarField.onSubmitted]）；输入过程不发任何网络
-/// 请求（曾经的实时 Google 搜索建议已于 2026-11-13 移除——按键即联
-/// 网的行为与"按搜索键才搜"的预期冲突，慢链路上尤其打扰）。
+/// filters ([SearchFilters]) and the recent-searches store, and wires
+/// the presentation widgets (`widgets/search_glass_header.dart` 的
+/// 头部、`widgets/search_body_view.dart` 的分支梯) together. 搜索只在
+/// 用户按下搜索键时发起（[SearchBarField.onSubmitted]）；输入过程不发
+/// 任何网络请求（曾经的实时 Google 搜索建议已于 2026-11-13 移除——
+/// 按键即联网的行为与"按搜索键才搜"的预期冲突，慢链路上尤其打扰）。
+///
+/// 三个 ValueNotifier 把高频重建从整屏收窄到局部（审查 B2）：
+///  * [_glassHeaderHeight]——头部布局期高度 → 结果区让位 padding；
+///  * [_headerVisible]——chips 列滚动折叠，折叠动画帧不再重挂整屏；
+///  * [_isListView]——网格↔列表切换，只重建结果区。
+/// 建议面板的逐字刷新由头部自己监听输入框（只重建头部一层）。
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _searchController = TextEditingController();
 
@@ -129,45 +127,24 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   // ── 毛玻璃遮罩头部(2026-11-20,与首页同款)──
   // 搜索框 + 建议面板 + chips 头部悬浮,结果从底下穿过;头部高度由
-  // _MeasureSize 在布局期实时上报(折叠/建议面板/键盘都会变),结果区
-  // 的让位 padding 用 ValueListenableBuilder 跟随。
+  // 头部的 _MeasureSize 在布局期实时上报(折叠/建议面板/键盘都会变),
+  // 结果区的让位 padding 用 ValueListenableBuilder 跟随。
   final ValueNotifier<double> _glassHeaderHeight = ValueNotifier(68);
 
   // ── Filters (edited on the filter page, applied on 使用) ──
-  String _selectedLanguage = 'all';
-  String _selectedOrder = 'default';
-  String _selectedExtension = 'all';
-  int? _selectedYearFrom;
-  int? _selectedYearTo;
-
-  /// General-search exact match (`e=1`); full-text has its own
-  /// [_fullTextExact] below.
-  bool _generalExact = false;
-
-  /// Category scope (general mode only): the picked category's id and
-  /// localized display name. Set from the filter dialog, the category
-  /// picker, or the constructor (detail-page chips). Null means the
-  /// search is unscoped. Cleared on mode switch — a category belongs
-  /// to the general search the way its sort default does.
-  int? _selectedCategoryId;
-  String? _selectedCategoryName;
-
-  /// Content-type filter inside a category (`book` / `article`);
-  /// null means any content type. Only meaningful while a category
-  /// is picked — clearing the category clears this too.
-  String? _selectedContentType;
+  final SearchFilters _filters = SearchFilters();
 
   // ── z站 search mode: 通用 / 文章 / 全文检索. The full-text-only
-  // extras (words/phrase match + exact flag) live below; their
-  // default is `words` / off (the site's working default,
+  // extras (words/phrase match + exact flag) live in [SearchFilters];
+  // their default is `words` / off (the site's working default,
   // device-proven 2026-11-11). The order default differs per mode
   // ('popular' for full-text, 'default' for general and article
   // search) — see _switchMode.
   SearchMode _mode = SearchMode.general;
-  String _fullTextMatchType = 'words';
-  bool _fullTextExact = false;
 
-  bool _isListView = false;
+  /// 网格↔列表切换：ValueNotifier，切换只重建结果区（审查 B2）。
+  final ValueNotifier<bool> _isListView = ValueNotifier(false);
+
   bool _isQueryEmpty = true;
   List<String> _recentSearches = [];
 
@@ -178,8 +155,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   /// Whether the source / mode / filter-chip header is shown. It
   /// folds away (animated) while the user scrolls down through the
   /// results and folds back in when scrolling back up; a fresh
-  /// search always brings it back (see [_runSearch]).
-  bool _headerVisible = true;
+  /// search always brings it back (see [_runSearch]). ValueNotifier：
+  /// 折叠/展开只重建头部 chips 列（审查 B2）。
+  final ValueNotifier<bool> _headerVisible = ValueNotifier(true);
 
   /// Accumulated scroll delta in the current direction, for the
   /// fold threshold above. A single pixel's delta is noise
@@ -197,45 +175,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   late BookSource _source;
 
-  int get _activeFilterCount {
-    switch (_mode) {
-      case SearchMode.fulltext:
-        // The full-text request DOES carry language / extension
-        // (`/fulltext/?…&languages[]=…&extensions[]=…`, verified
-        // end-to-end: search_screen → FullTextSearchParams →
-        // ZLibraryFullText.searchFullText), and the page shows both
-        // sections in this mode — so the badge counts them, same as
-        // the general branch. Only article mode hides those filters.
-        return (_selectedLanguage != 'all' ? 1 : 0) +
-            (_selectedOrder != 'popular' ? 1 : 0) +
-            (_selectedExtension != 'all' ? 1 : 0) +
-            (_fullTextMatchType != 'words' ? 1 : 0) +
-            (_fullTextExact ? 1 : 0) +
-            (_selectedYearFrom != null ? 1 : 0) +
-            (_selectedYearTo != null ? 1 : 0);
-      case SearchMode.article:
-        // Article search sends only the query and sort (v1) — the
-        // page hides the language / extension sections so the UI
-        // never promises a filter the request does not carry.
-        return _selectedOrder != 'default' ? 1 : 0;
-      case SearchMode.general:
-        return (_selectedLanguage != 'all' ? 1 : 0) +
-            (_selectedOrder != 'default' ? 1 : 0) +
-            (_selectedExtension != 'all' ? 1 : 0) +
-            (_selectedYearFrom != null ? 1 : 0) +
-            (_selectedYearTo != null ? 1 : 0) +
-            (_generalExact ? 1 : 0) +
-            (_selectedCategoryId != null ? 1 : 0) +
-            (_selectedContentType != null ? 1 : 0);
-    }
-  }
-
   @override
   void initState() {
     super.initState();
     _source = widget.initialSource ?? BookSource.zlibrary;
-    _selectedCategoryId = widget.initialCategoryId;
-    _selectedCategoryName = widget.initialCategoryName;
+    _filters.categoryId = widget.initialCategoryId;
+    _filters.categoryName = widget.initialCategoryName;
     final savedSearches = HiveService.settingsBox.get(_recentSearchesKey);
     if (savedSearches is List) {
       final seen = <String>{};
@@ -264,7 +209,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     // Opened with a category (detail-page chip): browse it
     // immediately — an empty query plus a category is a browse, not
     // an empty page.
-    if (_selectedCategoryId != null) {
+    if (_filters.categoryId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _runSearch();
       });
@@ -283,6 +228,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     _searchController.removeListener(_onQueryChanged);
     _searchController.dispose();
     _searchFocus.dispose();
+    _glassHeaderHeight.dispose();
+    _headerVisible.dispose();
+    _isListView.dispose();
     super.dispose();
   }
 
@@ -290,19 +238,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   void _onQueryChanged() {
     // 只跟踪空/非空（决定空态视图与建议/历史区）；搜索本身只在按
-    // 下搜索键时发起——输入过程不发任何网络请求。
+    // 下搜索键时发起——输入过程不发任何网络请求。建议面板的逐字刷
+    // 新在 SearchGlassHeader 内自管（它自己监听输入框，只重建头部
+    // 一层），这里不再整屏 setState（审查 v2 P2）。
     final isEmpty = _searchController.text.trim().isEmpty;
     if (isEmpty != _isQueryEmpty) {
       setState(() => _isQueryEmpty = isEmpty);
-    }
-    // 搜索建议面板（D1）只在"聚焦 + 非空 + 正在编写新查询"的窗口内
-    // 逐字刷新建议内容；窗口外不整页重建（结果列表随输入逐字重建
-    // 的代价不值得）。
-    final trimmed = _searchController.text.trim();
-    if (_searchFocus.hasFocus &&
-        trimmed.isNotEmpty &&
-        trimmed != _lastSubmittedQuery) {
-      setState(() {});
     }
   }
 
@@ -372,7 +313,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     // plus a category is a browse, so go back to browsing it (the
     // old category screen's clear-search did the same) — but only
     // in the z站 general search, where a category means anything.
-    if (_selectedCategoryId != null &&
+    if (_filters.categoryId != null &&
         _source == BookSource.zlibrary &&
         _mode == SearchMode.general) {
       _runSearch();
@@ -389,41 +330,41 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     setState(() {});
     final query = _searchController.text.trim();
     final canRun = query.isEmpty
-        ? _selectedCategoryId != null
+        ? _filters.categoryId != null
         : query == _lastSubmittedQuery;
     if (canRun) _performSearch();
   }
 
   void _resetLanguageFilter() {
-    _selectedLanguage = 'all';
+    _filters.language = 'all';
     _applyFilterChange();
   }
 
   void _resetOrderFilter() {
-    _selectedOrder = _mode == SearchMode.fulltext ? 'popular' : 'default';
+    _filters.order = _mode == SearchMode.fulltext ? 'popular' : 'default';
     _applyFilterChange();
   }
 
   void _resetExtensionFilter() {
-    _selectedExtension = 'all';
+    _filters.extension = 'all';
     _applyFilterChange();
   }
 
   void _resetYearFromFilter() {
-    _selectedYearFrom = null;
+    _filters.yearFrom = null;
     _applyFilterChange();
   }
 
   void _resetYearToFilter() {
-    _selectedYearTo = null;
+    _filters.yearTo = null;
     _applyFilterChange();
   }
 
   void _resetExactFilter() {
     if (_mode == SearchMode.fulltext) {
-      _fullTextExact = false;
+      _filters.fullTextExact = false;
     } else {
-      _generalExact = false;
+      _filters.generalExact = false;
     }
     _applyFilterChange();
   }
@@ -433,9 +374,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   /// category results are dropped too, so the empty-query view shows
   /// again; with a submitted query the search re-runs unscoped.
   void _resetCategoryFilter() {
-    _selectedCategoryId = null;
-    _selectedCategoryName = null;
-    _selectedContentType = null;
+    _filters.categoryId = null;
+    _filters.categoryName = null;
+    _filters.contentType = null;
     if (_searchController.text.trim().isEmpty) {
       ref.read(searchProvider.notifier).reset();
     }
@@ -443,7 +384,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   void _resetContentTypeFilter() {
-    _selectedContentType = null;
+    _filters.contentType = null;
     _applyFilterChange();
   }
 
@@ -478,16 +419,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       context: context,
       builder: (context) => SearchFilterDialog(
         mode: _mode,
-        language: _selectedLanguage,
-        order: _selectedOrder,
-        extension: _selectedExtension,
-        yearFrom: _selectedYearFrom,
-        yearTo: _selectedYearTo,
-        exact: _mode == SearchMode.fulltext ? _fullTextExact : _generalExact,
-        matchType: _fullTextMatchType,
-        contentType: _selectedContentType,
-        categoryId: _selectedCategoryId,
-        categoryName: _selectedCategoryName,
+        language: _filters.language,
+        order: _filters.order,
+        extension: _filters.extension,
+        yearFrom: _filters.yearFrom,
+        yearTo: _filters.yearTo,
+        exact: _filters.exactFor(_mode),
+        matchType: _filters.fullTextMatchType,
+        contentType: _filters.contentType,
+        categoryId: _filters.categoryId,
+        categoryName: _filters.categoryName,
         languageNames: languageNames,
         orderNames: orderNames,
         extensionNames: extensionNames,
@@ -501,20 +442,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       ),
     );
     if (result == null || !mounted) return;
-    _selectedLanguage = result.language;
-    _selectedOrder = result.order;
-    _selectedExtension = result.extension;
-    _selectedYearFrom = result.yearFrom;
-    _selectedYearTo = result.yearTo;
-    if (_mode == SearchMode.fulltext) {
-      _fullTextExact = result.exact;
-      _fullTextMatchType = result.matchType;
-    } else {
-      _generalExact = result.exact;
-    }
-    _selectedCategoryId = result.categoryId;
-    _selectedCategoryName = result.categoryName;
-    _selectedContentType = result.contentType;
+    _filters.applyFrom(result, mode: _mode);
     _applyFilterChange();
   }
 
@@ -527,7 +455,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     // only browses in the z站 general search (a category means
     // nothing on another source or mode).
     final canBrowseCategory =
-        _selectedCategoryId != null &&
+        _filters.categoryId != null &&
         _source == BookSource.zlibrary &&
         _mode == SearchMode.general;
     if (query.isEmpty && !canBrowseCategory) return;
@@ -545,11 +473,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
     // A fresh search reloads the results from the top, so a
     // scroll-folded header comes back with them (and the
-    // accumulated scroll direction starts over).
+    // accumulated scroll direction starts over). ValueNotifier 写入
+    // 即可——值相同不通知，头部自己收。
     _scrollAccum = 0;
-    if (!_headerVisible) {
-      setState(() => _headerVisible = true);
-    }
+    _headerVisible.value = true;
 
     final query = _searchController.text.trim();
     if (_source != BookSource.zlibrary) {
@@ -565,17 +492,17 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           .search(
             FullTextSearchParams(
               query: query,
-              type: _fullTextMatchType,
-              exact: _fullTextExact,
-              yearFrom: _selectedYearFrom,
-              yearTo: _selectedYearTo,
-              languages: searchLanguages[_selectedLanguage] != null
-                  ? [searchLanguages[_selectedLanguage]!]
+              type: _filters.fullTextMatchType,
+              exact: _filters.fullTextExact,
+              yearFrom: _filters.yearFrom,
+              yearTo: _filters.yearTo,
+              languages: searchLanguages[_filters.language] != null
+                  ? [searchLanguages[_filters.language]!]
                   : null,
-              extensions: searchExtensions[_selectedExtension] != null
-                  ? [searchExtensions[_selectedExtension]!]
+              extensions: searchExtensions[_filters.extension] != null
+                  ? [searchExtensions[_filters.extension]!]
                   : null,
-              order: _selectedOrder,
+              order: _filters.order,
             ),
           );
       return true;
@@ -587,15 +514,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           .search(
             ArticleSearchParams(
               query: query,
-              order: searchOrders[_selectedOrder],
-              exact: _generalExact,
-              yearFrom: _selectedYearFrom,
-              yearTo: _selectedYearTo,
-              languages: searchLanguages[_selectedLanguage] != null
-                  ? [searchLanguages[_selectedLanguage]!]
+              order: searchOrders[_filters.order],
+              exact: _filters.generalExact,
+              yearFrom: _filters.yearFrom,
+              yearTo: _filters.yearTo,
+              languages: searchLanguages[_filters.language] != null
+                  ? [searchLanguages[_filters.language]!]
                   : null,
-              extensions: searchExtensions[_selectedExtension] != null
-                  ? [searchExtensions[_selectedExtension]!]
+              extensions: searchExtensions[_filters.extension] != null
+                  ? [searchExtensions[_filters.extension]!]
                   : null,
             ),
           );
@@ -606,26 +533,26 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     // HTML routes (browse when the query is empty, in-category
     // search otherwise) with the same filters the old category
     // screen passed; without one it is the plain eapi search.
-    if (_selectedCategoryId != null) {
+    if (_filters.categoryId != null) {
       ref
           .read(searchProvider.notifier)
           .search(
             SearchParams(
               query: query,
-              yearFrom: _selectedYearFrom,
-              yearTo: _selectedYearTo,
-              languages: searchLanguages[_selectedLanguage] != null
-                  ? [searchLanguages[_selectedLanguage]!]
+              yearFrom: _filters.yearFrom,
+              yearTo: _filters.yearTo,
+              languages: searchLanguages[_filters.language] != null
+                  ? [searchLanguages[_filters.language]!]
                   : null,
-              extensions: searchExtensions[_selectedExtension] != null
-                  ? [searchExtensions[_selectedExtension]!]
+              extensions: searchExtensions[_filters.extension] != null
+                  ? [searchExtensions[_filters.extension]!]
                   : null,
-              order: searchOrders[_selectedOrder],
-              exact: _generalExact,
-              categoryId: _selectedCategoryId,
-              contentTypes: _selectedContentType == null
+              order: searchOrders[_filters.order],
+              exact: _filters.generalExact,
+              categoryId: _filters.categoryId,
+              contentTypes: _filters.contentType == null
                   ? null
-                  : [_selectedContentType!],
+                  : [_filters.contentType!],
             ),
           );
       return true;
@@ -636,16 +563,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         .search(
           SearchParams(
             query: query,
-            yearFrom: _selectedYearFrom,
-            yearTo: _selectedYearTo,
-            languages: searchLanguages[_selectedLanguage] != null
-                ? [searchLanguages[_selectedLanguage]!]
+            yearFrom: _filters.yearFrom,
+            yearTo: _filters.yearTo,
+            languages: searchLanguages[_filters.language] != null
+                ? [searchLanguages[_filters.language]!]
                 : null,
-            extensions: searchExtensions[_selectedExtension] != null
-                ? [searchExtensions[_selectedExtension]!]
+            extensions: searchExtensions[_filters.extension] != null
+                ? [searchExtensions[_filters.extension]!]
                 : null,
-            order: searchOrders[_selectedOrder],
-            exact: _generalExact,
+            order: searchOrders[_filters.order],
+            exact: _filters.generalExact,
             // Field scope from a detail-page author/publisher tap:
             // the eapi search has no server-side field parameter, so
             // the provider filters the returned books client-side.
@@ -668,7 +595,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     ref.read(externalSearchProvider.notifier).reset();
     if (_searchController.text.trim().isNotEmpty) {
       _performSearch();
-    } else if (_selectedCategoryId != null && source == BookSource.zlibrary) {
+    } else if (_filters.categoryId != null && source == BookSource.zlibrary) {
       // Back to z站 with a category picked: browse it again (the
       // reset above dropped the results).
       _runSearch();
@@ -685,10 +612,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     if (mode == _mode) return;
     setState(() {
       _mode = mode;
-      _selectedOrder = mode == SearchMode.fulltext ? 'popular' : 'default';
-      _selectedCategoryId = null;
-      _selectedCategoryName = null;
-      _selectedContentType = null;
+      _filters.order = mode == SearchMode.fulltext ? 'popular' : 'default';
+      _filters.categoryId = null;
+      _filters.categoryName = null;
+      _filters.contentType = null;
       _lastSubmittedQuery = '';
       _field = null;
     });
@@ -712,7 +639,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     }
   }
 
-  /// 滚动加载走气泡通知（结果区在 [SearchResultsView] 外由调用处包
+  /// 滚动加载走气泡通知（结果区在 [SearchBodyView] 里由结果分支包
   /// NotificationListener）：不再需要 ScrollController，网格↔列表
   /// 切换的 AnimatedSwitcher 过渡期间新旧两个列表才能同时在树上。
   /// 阈值与原 controller 监听一致；重复触发由各 provider 的
@@ -721,8 +648,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   /// 同时管搜索栏下方那组标题（来源 / 模式 / 筛选 chips）的收起：
   /// 往下翻结果时收起来、往回翻时展开、回到顶部时一定展开。
   /// 只认 ScrollUpdateNotification 的 delta（正 = 往下翻 = 收起，
-  /// 负 = 往回翻 = 展开），按方向累计到阈值才动，避免抖动；
-  /// 只有可见性真的变了才 setState，不在每个像素上重建。
+  /// 负 = 往回翻 = 展开），按方向累计到阈值才动，避免抖动。折叠/
+  /// 展开走 [_headerVisible] ValueNotifier——只在头部 chips 列上
+  /// 重建，整屏不跟（审查 B2 前的实际行为是每个折叠帧整屏 setState）。
   bool _onScrollNotification(ScrollNotification n) {
     if (n.metrics.pixels >= n.metrics.maxScrollExtent - 200) {
       _loadMore();
@@ -730,9 +658,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     if (n.metrics.pixels <= 0) {
       // Back at the top: the header always comes back.
       _scrollAccum = 0;
-      if (!_headerVisible) {
-        setState(() => _headerVisible = true);
-      }
+      _headerVisible.value = true;
       return false;
     }
     final delta = n is ScrollUpdateNotification ? n.scrollDelta : null;
@@ -742,12 +668,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       } else {
         _scrollAccum = delta;
       }
-      if (_scrollAccum > _scrollHideThreshold && _headerVisible) {
+      if (_scrollAccum > _scrollHideThreshold && _headerVisible.value) {
         _scrollAccum = 0;
-        setState(() => _headerVisible = false);
-      } else if (_scrollAccum < -_scrollHideThreshold && !_headerVisible) {
+        _headerVisible.value = false;
+      } else if (_scrollAccum < -_scrollHideThreshold &&
+          !_headerVisible.value) {
         _scrollAccum = 0;
-        setState(() => _headerVisible = true);
+        _headerVisible.value = true;
       }
     }
     return false;
@@ -813,81 +740,28 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     // 骨架共用同一个值。
     final adaptiveGrid = ref.watch(adaptiveGridProvider);
 
-    final searchState = ref.watch(searchProvider);
-    final externalState = ref.watch(externalSearchProvider);
-    final fulltextState = ref.watch(fulltextSearchProvider);
-    final articleState = ref.watch(articleSearchProvider);
+    final view = SearchViewState.resolve(
+      ref,
+      mode: _mode,
+      isExternal: isExternal,
+      l10n: l10n,
+      resolveDisplayBooks: _resolveDisplayBooks,
+    );
     final isFullTextMode = _mode == SearchMode.fulltext && !isExternal;
     final isArticleMode = _mode == SearchMode.article && !isExternal;
-    final books = isExternal
-        ? externalState.books
-        : _resolveDisplayBooks(searchState.books);
-    final resultCount = isFullTextMode
-        ? fulltextState.hits.length
-        : isArticleMode
-        ? articleState.articles.length
-        : books.length;
-    final hasSearched = isExternal
-        ? externalState.hasSearched
-        : isFullTextMode
-        ? fulltextState.hasSearched
-        : isArticleMode
-        ? articleState.hasSearched
-        : searchState.hasSearched;
-    final isLoading = isExternal
-        ? externalState.isLoading
-        : isFullTextMode
-        ? fulltextState.isLoading
-        : isArticleMode
-        ? articleState.isLoading
-        : searchState.isLoading;
-    final isLoadingMore = isExternal
-        ? externalState.isLoadingMore
-        : isFullTextMode
-        ? fulltextState.isLoadingMore
-        : isArticleMode
-        ? articleState.isLoadingMore
-        : searchState.isLoadingMore;
-    final loginRequired = isFullTextMode && fulltextState.loginRequired;
-    final error = isExternal
-        ? externalState.error
-        : isFullTextMode
-        ? (fulltextState.error == fulltextTokenUnavailable
-              ? l10n.fullTextUnavailable
-              : fulltextState.error)
-        : isArticleMode
-        ? articleState.error
-        : searchState.error;
-    final currentPage = isExternal
-        ? externalState.currentPage
-        : isFullTextMode
-        ? fulltextState.currentPage
-        : isArticleMode
-        ? articleState.currentPage
-        : searchState.currentPage;
-    final totalPagesText = isExternal
-        ? (externalState.hasMore ? '…' : '${externalState.currentPage}')
-        : isFullTextMode
-        ? '${fulltextState.totalPages}'
-        : isArticleMode
-        ? '${articleState.totalPages}'
-        : searchState.totalPagesUnknown
-        ? '…'
-        : '${searchState.totalPages}';
 
-    // Whether the results list is the branch on screen (the same
-    // condition as the Expanded child's final branch below): the
-    // header only folds away while results are shown. On the empty /
+    // Whether the results list is the branch on screen: the header
+    // only folds away while results are shown. On the empty /
     // skeleton / error branches there is nothing to scroll, so the
     // header is forced visible there instead of getting stuck folded
-    // away.
+    // away. SearchBodyView 用同一判定走分支，这里传下去。
     final showResults =
-        !(_isQueryEmpty && _selectedCategoryId == null) &&
-        hasSearched &&
-        !isLoading &&
-        !loginRequired &&
-        !(error != null && resultCount == 0) &&
-        resultCount != 0;
+        !(_isQueryEmpty && _filters.categoryId == null) &&
+        view.hasSearched &&
+        !view.isLoading &&
+        !view.loginRequired &&
+        !(view.error != null && view.resultCount == 0) &&
+        view.resultCount != 0;
 
     return Scaffold(
       body: SafeArea(
@@ -906,253 +780,98 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   padding: EdgeInsets.only(top: headerHeight),
                   child: child!,
                 ),
-                child:
-                _isQueryEmpty && _selectedCategoryId == null
-                  ? SearchEmptyQueryView(
-                      l10n: l10n,
-                      recentSearches: _recentSearches,
-                      onSearch: _searchAgain,
-                      onRemoveSearch: _removeRecentSearch,
-                      onClearHistory: _clearRecentSearches,
-                    )
-                  : !hasSearched
-                  ? EmptyState(
-                      icon: Icons.search_rounded,
-                      title: l10n.startSearching,
-                      message: l10n.enterSearchHint,
-                    )
-                  : isLoading
-                  ? SearchSkeletonGrid(adaptiveGridColumns: adaptiveGrid)
-                  : loginRequired
-                  ? EmptyState(
-                      icon: Icons.login_rounded,
-                      title: l10n.fullTextLoginRequired,
-                      action: FilledButton(
-                        onPressed: () => AppRoutes.openLogin(context),
-                        child: Text(l10n.login),
-                      ),
-                    )
-                  : error != null && resultCount == 0
-                  ? EmptyState(
-                      icon: Icons.error_outline_rounded,
-                      title: l10n.searchFailed,
-                      message: error,
-                      action: FilledButton(
-                        onPressed: _performSearch,
-                        child: Text(l10n.searchRetry),
-                      ),
-                    )
-                  : resultCount == 0
-                  ? EmptyState(
-                      icon: Icons.search_off_rounded,
-                      title: l10n.noResults,
-                      message: l10n.searchNoResultsSwitch,
-                    )
-                  // 滚动加载用气泡通知监听（见 _onScrollNotification）：
-                  // 只包住结果分支，空态/建议页的滚动不会误触发加载。
-                  : NotificationListener<ScrollNotification>(
-                      onNotification: _onScrollNotification,
-                      child: SearchResultsView(
-                        adaptiveGridColumns: adaptiveGrid,
-                        l10n: l10n,
-                        resultCount: resultCount,
-                        currentPage: currentPage,
-                        totalPagesText: totalPagesText,
-                        isListView: _isListView,
-                        onToggleView: () =>
-                            setState(() => _isListView = !_isListView),
-                        error: error,
-                        isLoadingMore: isLoadingMore,
-                        isFullTextMode: isFullTextMode,
-                        isArticleMode: isArticleMode,
-                        books: books,
-                        hits: fulltextState.hits,
-                        articles: articleState.articles,
-                        onOpenBook: _openBook,
-                        onOpenFullTextHit: _openFullTextHit,
-                        onOpenArticle: _openArticle,
-                        onRetryLoadMore: _loadMore,
-                      ),
-                    ),
+                child: SearchBodyView(
+                  l10n: l10n,
+                  adaptiveGridColumns: adaptiveGrid,
+                  isQueryEmpty: _isQueryEmpty,
+                  categoryPicked: _filters.categoryId != null,
+                  hasSearched: view.hasSearched,
+                  isLoading: view.isLoading,
+                  isLoadingMore: view.isLoadingMore,
+                  loginRequired: view.loginRequired,
+                  error: view.error,
+                  resultCount: view.resultCount,
+                  showResults: showResults,
+                  isListViewListenable: _isListView,
+                  onToggleView: () => _isListView.value = !_isListView.value,
+                  onScrollNotification: _onScrollNotification,
+                  currentPage: view.currentPage,
+                  totalPagesText: view.totalPagesText,
+                  isFullTextMode: isFullTextMode,
+                  isArticleMode: isArticleMode,
+                  books: view.books,
+                  hits: view.hits,
+                  articles: view.articles,
+                  recentSearches: _recentSearches,
+                  onSearchAgain: _searchAgain,
+                  onRemoveRecentSearch: _removeRecentSearch,
+                  onClearRecentSearches: _clearRecentSearches,
+                  onOpenBook: _openBook,
+                  onOpenFullTextHit: _openFullTextHit,
+                  onOpenArticle: _openArticle,
+                  onRetryLoadMore: _loadMore,
+                  onRetrySearch: _performSearch,
+                  onOpenLogin: () => AppRoutes.openLogin(context),
+                ),
               ),
             ),
             // 毛玻璃遮罩头部(与首页同款,blurEnabled 门控):搜索框 +
             // 建议面板 + chips;结果从它底下穿过,滚动时头部后面是实时
-            // 模糊的结果流。
+            // 模糊的结果流。头部高度/建议窗口/chips 折叠都在头部组件
+            // 内部消化(见 SearchGlassHeader 文档)。
             Positioned(
               top: 0,
               left: 0,
               right: 0,
-              child: _glassSurface(
-                context,
-                _MeasureSize(
-                  onChange: (size) => _glassHeaderHeight.value = size.height,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                    SearchBarField(
-                      l10n: l10n,
-                      controller: _searchController,
-                      focusNode: _searchFocus,
-                      isExternal: isExternal,
-                      activeFilterCount: _activeFilterCount,
-                      isQueryEmpty: _isQueryEmpty,
-                      hintText: _mode == SearchMode.fulltext
-                          ? l10n.fullTextSearchHint
-                          : null,
-                      onSubmitted: _performSearch,
-                      onFilterTap: _openFilterDialogForCurrentLocale,
-                      onClear: _clearSearch,
-                    ),
-                    // 搜索建议（D1）：正在输入新查询时列出本地匹配（最近搜索
-                    // + 浏览历史），选中即回填并搜索。提交后查询与
-                    // _lastSubmittedQuery 相同，面板随之收起。
-                    if (_searchFocus.hasFocus &&
-                        !_isQueryEmpty &&
-                        _searchController.text.trim() != _lastSubmittedQuery)
-                      SearchSuggestionsPanel(
-                        suggestions: ref.watch(
-                          searchSuggestionsProvider(_searchController.text),
-                        ),
-                        onSelect: (text) {
-                          _searchController.text = text;
-                          _searchController.selection = TextSelection.collapsed(
-                            offset: text.length,
-                          );
-                          _performSearch();
-                        },
-                      ),
-                    // The source / mode / filter-chip header folds away
-                    // (animated) while the user scrolls down through the
-                    // results, and folds back in when scrolling back up.
-                    MotionSwitch(
-                      style: MotionSwitchStyle.size,
-                      duration: AppMotion.standard,
-                      child: _headerVisible || !showResults
-                          ? Column(
-                              key: const ValueKey('search-header'),
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SearchSourceSelector(
-                                  l10n: l10n,
-                                  selected: _source,
-                                  onSwitch: _switchSource,
-                                ),
-                                if (!isExternal)
-                                  SearchModeSelector(
-                                    l10n: l10n,
-                                    mode: _mode,
-                                    onSwitch: _switchMode,
-                                  ),
-                                if (!isExternal && _activeFilterCount > 0)
-                                  SearchActiveFilterChips(
-                                    l10n: l10n,
-                                    mode: _mode,
-                                    languageNames: languageNames,
-                                    orderNames: orderNames,
-                                    extensionNames: extensionNames,
-                                    contentTypeNames: {
-                                      'book': l10n.contentTypeBook,
-                                      'article': l10n.contentTypeArticle,
-                                    },
-                                    selectedLanguage: _selectedLanguage,
-                                    selectedOrder: _selectedOrder,
-                                    selectedExtension: _selectedExtension,
-                                    selectedYearFrom: _selectedYearFrom,
-                                    selectedYearTo: _selectedYearTo,
-                                    exact: _mode == SearchMode.fulltext
-                                        ? _fullTextExact
-                                        : _generalExact,
-                                    selectedCategoryName: _selectedCategoryName,
-                                    selectedContentType: _selectedContentType,
-                                    onResetLanguage: _resetLanguageFilter,
-                                    onResetOrder: _resetOrderFilter,
-                                    onResetExtension: _resetExtensionFilter,
-                                    onResetYearFrom: _resetYearFromFilter,
-                                    onResetYearTo: _resetYearToFilter,
-                                    onResetExact: _resetExactFilter,
-                                    onResetCategory: _resetCategoryFilter,
-                                    onResetContentType: _resetContentTypeFilter,
-                                  ),
-                              ],
-                            )
-                          : const SizedBox.shrink(
-                              key: ValueKey('search-header-hidden'),
-                            ),
-                    ),
-                  ],
-                ),
+              child: SearchGlassHeader(
+                l10n: l10n,
+                controller: _searchController,
+                focusNode: _searchFocus,
+                isExternal: isExternal,
+                mode: _mode,
+                source: _source,
+                activeFilterCount: _filters.activeFilterCount(_mode),
+                isQueryEmpty: _isQueryEmpty,
+                lastSubmittedQuery: _lastSubmittedQuery,
+                headerVisibleListenable: _headerVisible,
+                showResults: showResults,
+                languageNames: languageNames,
+                orderNames: orderNames,
+                extensionNames: extensionNames,
+                selectedLanguage: _filters.language,
+                selectedOrder: _filters.order,
+                selectedExtension: _filters.extension,
+                selectedYearFrom: _filters.yearFrom,
+                selectedYearTo: _filters.yearTo,
+                exact: _filters.exactFor(_mode),
+                selectedCategoryName: _filters.categoryName,
+                selectedContentType: _filters.contentType,
+                onSubmitted: _performSearch,
+                onFilterTap: _openFilterDialogForCurrentLocale,
+                onClear: _clearSearch,
+                onSelectSuggestion: (text) {
+                  _searchController.text = text;
+                  _searchController.selection = TextSelection.collapsed(
+                    offset: text.length,
+                  );
+                  _performSearch();
+                },
+                onHeightChanged: (height) => _glassHeaderHeight.value = height,
+                onSwitchSource: _switchSource,
+                onSwitchMode: _switchMode,
+                onResetLanguage: _resetLanguageFilter,
+                onResetOrder: _resetOrderFilter,
+                onResetExtension: _resetExtensionFilter,
+                onResetYearFrom: _resetYearFromFilter,
+                onResetYearTo: _resetYearToFilter,
+                onResetExact: _resetExactFilter,
+                onResetCategory: _resetCategoryFilter,
+                onResetContentType: _resetContentTypeFilter,
               ),
             ),
-              ),
           ],
         ),
       ),
     );
-  }
-
-  /// 毛玻璃遮罩容器(与首页同款):blurEnabled(外观设置)开 = 半透明
-  /// surface + BackdropFilter 14;关 = 纯色实底。
-  Widget _glassSurface(BuildContext context, Widget child) {
-    final blurEnabled = ref.watch(blurEnabledProvider);
-    final cs = Theme.of(context).colorScheme;
-    final surface = Container(
-      decoration: BoxDecoration(
-        color: blurEnabled ? cs.surface.withValues(alpha: 0.65) : cs.surface,
-        border: Border(
-          bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.4)),
-        ),
-      ),
-      child: child,
-    );
-    if (!blurEnabled) return surface;
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-        child: surface,
-      ),
-    );
-  }
-}
-
-/// 布局期尺寸上报：子组件尺寸任何变化即时回调。头部高度用它驱动
-/// 结果区的让位 padding（ValueNotifier + ValueListenableBuilder），
-/// 不依赖后帧 setState——折叠动画/建议面板/键盘的每一次高度变化
-/// 都会在同一帧内生效。
-class _MeasureSize extends SingleChildRenderObjectWidget {
-  const _MeasureSize({required this.onChange, required super.child});
-
-  final ValueChanged<Size> onChange;
-
-  @override
-  RenderObject createRenderObject(BuildContext context) =>
-      _RenderMeasureSize(onChange);
-
-  @override
-  void updateRenderObject(
-    BuildContext context,
-    covariant _RenderMeasureSize renderObject,
-  ) {
-    renderObject.onChange = onChange;
-  }
-}
-
-class _RenderMeasureSize extends RenderProxyBox {
-  _RenderMeasureSize(this.onChange);
-
-  ValueChanged<Size> onChange;
-  Size? _oldSize;
-
-  @override
-  void performLayout() {
-    super.performLayout();
-    final newSize = child?.size;
-    if (newSize == null) return;
-    if (_oldSize == null ||
-        _oldSize!.width != newSize.width ||
-        _oldSize!.height != newSize.height) {
-      _oldSize = newSize;
-      onChange(newSize);
-    }
   }
 }

@@ -321,7 +321,16 @@ class HomeFeedController extends Notifier<FeedState> {
     }
   }
 
-  Future<void> _loadPersonalized(ZLibraryApi api) async {
+  /// [keepOldOnFailure]：下拉刷新路径置 true——失败时旧内容静默保旧
+  /// （别让一次网络抖动掀掉已滚到的流），空流顶错误页给重试（审查
+  /// P1-2）。build 直呼路径保持 false：首载失败本就是错误页；而且
+  /// build 在途时 element 可能尚未挂载完，catch 里读 `state` 会撞
+  /// riverpod 的 requireState（换号失效测试实测），这条路径只能写
+  /// 不能读。
+  Future<void> _loadPersonalized(
+    ZLibraryApi api, {
+    bool keepOldOnFailure = false,
+  }) async {
     try {
       final response = await api.getUserRecommended();
       if (!response.success) {
@@ -332,16 +341,13 @@ class HomeFeedController extends Notifier<FeedState> {
         hasMore: false,
       );
     } on Object catch (error) {
-      // 失败保旧：有旧内容时静默保留（别让一次网络抖动掀掉已滚到的
-      // 流，与 [FeedState] 文档的 error 语义一致）；books 空时（首载/
-      // 空流刷新）顶错误页，error != null 时 UI 给重试按钮。曾经这里
-      // 用 FeedState(error:) 整表替换清空 books、又被 refresh 收尾的
-      // copyWith 无条件抹掉 error，网络抖一次推荐流就变成"无书"空态
-      // （审查 P1-2）。
-      state = state.copyWith(
-        isLoading: false,
-        error: state.books.isEmpty ? error : null,
-      );
+      if (!keepOldOnFailure) {
+        state = FeedState(error: error);
+        return;
+      }
+      state = state.books.isEmpty
+          ? FeedState(error: error)
+          : state.copyWith(isLoading: false);
     }
   }
 
@@ -366,7 +372,7 @@ class HomeFeedController extends Notifier<FeedState> {
         // 位）。这里不能补 copyWith(isLoading:false)——copyWith 的
         // error 是无条件覆盖，会把失败刚写入的错误页抹成"无书"空态
         // （审查 P1-2）。
-        await _loadPersonalized(api);
+        await _loadPersonalized(api, keepOldOnFailure: true);
       }
     } on Object catch (error) {
       // 有旧内容保旧；空流顶错误页。

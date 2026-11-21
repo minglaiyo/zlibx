@@ -25,6 +25,55 @@ const _profileHtml = '''
 </body></html>
 ''';
 
+/// A profile page whose booklists tab carries the paginator, modelled
+/// on the live HTML captured 2026-11-21 (issue #11: the tab
+/// server-renders at most 10 lists; users with more get
+/// `DIV.paginator.paginator_booklists` linking the paginated route).
+/// The comments tab's own paginator (`.paginator_comments`) must not
+/// be counted — the booklists query is scoped to the booklists tab.
+const _profileHtmlPaginated = '''
+<html><body>
+<div z-tab="comments">
+<z-comments total="5"></z-comments>
+<div class="paginator paginator_comments">
+<a href="/profile/1790607/f094e9/comments?page=2">2</a>
+<a href="/profile/1790607/f094e9/comments?page=9">Last</a>
+</div>
+</div>
+<div z-tab="booklists">
+<div class="booklists-list">
+<z-booklist id="2690671" href="/booklist/2690671/2ac488/math-list.html" topic="数学书单" author="someone" authorProfile="/booklists/user/21490583" authorAvatar="" quantity="15" views="29" comments="0" description="" color="0"></z-booklist>
+</div>
+<div class="paginator paginator_booklists">
+<a href="/profile/1790607/f094e9/booklists?page=1">← Prior</a>
+<a href="/profile/1790607/f094e9/booklists?page=2">2</a>
+<a href="/profile/1790607/f094e9/booklists?page=3">3</a>
+<a href="/profile/1790607/f094e9/booklists?page=10">Next →</a>
+<a href="/profile/1790607/f094e9/booklists?page=1">First</a>
+<a href="/profile/1790607/f094e9/booklists?page=71">Last</a>
+</div>
+</div>
+</body></html>
+''';
+
+/// One paginated document (`/profile/{id}/{hash}/booklists?page=N`,
+/// page 2): same full profile shape, next ≤ 10 lists in the tab, its
+/// own paginator (live-verified 2026-11-21).
+const _profilePage2Html = '''
+<html><body>
+<div z-tab="booklists">
+<div class="booklists-list">
+<z-booklist id="2690680" href="/booklist/2690680/abc/page-two-list.html" topic="第二页书单" author="someone" authorProfile="/booklists/user/21490583" authorAvatar="" quantity="7" views="2" comments="0" description="" color="0"></z-booklist>
+</div>
+<div class="paginator paginator_booklists">
+<a href="/profile/1790607/f094e9/booklists?page=1">← Prior</a>
+<a href="/profile/1790607/f094e9/booklists?page=3">Next →</a>
+<a href="/profile/1790607/f094e9/booklists?page=71">Last</a>
+</div>
+</div>
+</body></html>
+''';
+
 void main() {
   group('parseUserProfileBooklists', () {
     test('parses the lists in the booklists tab with preview books', () {
@@ -76,6 +125,25 @@ void main() {
       expect(second.previewBooks, isEmpty);
     });
 
+    test('a paginated tab parses its own lists only (paginator ignored)', () {
+      final lists = parseUserProfileBooklists(
+        _profileHtmlPaginated,
+        baseUrl: _baseUrl,
+      );
+      expect(lists.length, 1);
+      expect(lists.single.id, '2690671');
+    });
+
+    test('parses the paginated route document (page 2)', () {
+      final lists = parseUserProfileBooklists(
+        _profilePage2Html,
+        baseUrl: _baseUrl,
+      );
+      expect(lists.length, 1);
+      expect(lists.single.id, '2690680');
+      expect(lists.single.name, '第二页书单');
+    });
+
     test('an empty booklists tab parses to an empty list', () {
       const html = '''
 <html><body>
@@ -99,6 +167,33 @@ void main() {
         parseUserProfileBooklists(html, baseUrl: _baseUrl),
         isEmpty,
       );
+    });
+  });
+
+  group('parseUserProfileBooklistsPagesTotal', () {
+    test('paginator without one: ≤ 10 lists is one page', () {
+      expect(parseUserProfileBooklistsPagesTotal(_profileHtml), 1);
+    });
+
+    test('paginator page count is the largest page link, other tabs ignored',
+        () {
+      // The comments tab carries its own paginator (page=9); the
+      // booklists count comes from the booklists tab only — and the
+      // "Last" link (page=71) wins over the numbered/Next links.
+      expect(parseUserProfileBooklistsPagesTotal(_profileHtmlPaginated), 71);
+    });
+
+    test('the paginated route document carries the same total', () {
+      expect(parseUserProfileBooklistsPagesTotal(_profilePage2Html), 71);
+    });
+
+    test('booklists tab without the paginator element is one page', () {
+      const html = '''
+<html><body>
+<div z-tab="booklists"><div class="booklists-list"></div></div>
+</body></html>
+''';
+      expect(parseUserProfileBooklistsPagesTotal(html), 1);
     });
   });
 }

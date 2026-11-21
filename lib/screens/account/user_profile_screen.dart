@@ -27,14 +27,17 @@ import 'widgets/profile_widgets.dart';
 
 /// Another user's profile page, reached by tapping an avatar in a
 /// comment row. Header (avatar + name from the tapped comment),
-/// then that user's booklists (from the profile document's
-/// server-rendered booklists tab) and their posted comments (via
+/// then that user's booklists and their posted comments (via
 /// `getUserComments`, same endpoint order as "My Comments").
-/// Their saved books are NOT shown: other users' profiles have no
-/// library tab on the site, and `getUserSaved` reads the session
-/// user only. The reading queue (`z-tab="plans"`) is NOT shown
-/// either: its content was cut off in the capture and the app has
-/// no reading-queue concept. Tapping a comment opens that book's
+/// The booklists come from the profile document's server-rendered
+/// booklists tab, which carries at most 10 lists — users with more
+/// get the rest fetched page by page from the paginated route
+/// (`/profile/{id}/{hash}/booklists?page=N`, issue #11) and appended
+/// as they land. Their saved books are NOT shown: other users'
+/// profiles have no library tab on the site, and `getUserSaved` reads
+/// the session user only. The reading queue (`z-tab="plans"`) is NOT
+/// shown either: its content was cut off in the capture and the app
+/// has no reading-queue concept. Tapping a comment opens that book's
 /// comments page; tapping its book-title row (cover thumbnail + title)
 /// opens the book's detail page (the user-comments endpoint carries no
 /// book hash, so it is resolved by a title search first — see
@@ -55,7 +58,21 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
   bool _isLoading = true;
   bool _loggedIn = true;
   bool _booklistsLoading = false;
+
+  /// 第 2 页及以后的分页加载进行中（第 1 页已上屏，区块尾部的
+  /// 加载行靠它显示）。
+  bool _booklistsPaging = false;
   String? _booklistsError;
+
+  /// 书单分页加载的代数：每次 [_loadBooklists] 启动时递增，分页
+  /// 循环的每次续接前校验——下拉刷新/重试叠上来时，旧加载在下一页
+  /// 边界安静退场，不会把陈旧的行并进新列表。
+  int _booklistsEpoch = 0;
+
+  /// 分页循环的页数上限（防御值）：分页器给出真实页数，正常远小于
+  /// 此值；一个 200 页（2000 个书单）的极端档案也只拉 200 个轻量
+  /// HTML 文档。
+  static const int _maxBooklistPages = 200;
 
   /// 评论书名行的封面预取 + 跳详情（与我的评论页共用，见
   /// [CommentBookRefController]）。
@@ -169,12 +186,15 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     await _loadBooklists();
   }
 
-  /// The profile document's booklists tab, via the plugin. Skipped
-  /// when the tapped comment carried no profile hash — the page then
-  /// shows comments only. The profile page is an HTML route, so the
-  /// mirror can wall Dio: on a browser-check error the WebView
-  /// solver fetches the same page (the booklists screen's pattern).
-  /// In background-refresh mode (cached rows on screen) the section
+  /// The profile document's booklists tab, via the plugin, then the
+  /// remaining pages (the tab renders at most 10 lists; issue #11).
+  /// Page 1 paints as soon as it lands; pages 2+ append as they
+  /// arrive (see [_loadBooklistPages2Plus]). Skipped when the tapped
+  /// comment carried no profile hash — the page then shows comments
+  /// only. The profile page is an HTML route, so the mirror can wall
+  /// Dio: on a browser-check error the WebView solver fetches the
+  /// same page (the booklists screen's pattern). In
+  /// background-refresh mode (cached rows on screen) the section
   /// keeps showing them: no loading row, and a failed refresh just
   /// leaves the cached rows in place.
   Future<void> _loadBooklists({bool backgroundRefresh = false}) async {
@@ -184,28 +204,41 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     if (!backgroundRefresh) {
       setState(() {
         _booklistsLoading = true;
+        // 新一次加载把上一轮的分页加载行清掉：旧分页循环退出时不重置
+        // 的话，这轮若只有 1 页就没人再碰这个旗标，卡尾的加载行会
+        // 卡在屏上（epoch 守卫只保护数据，不保护 UI 旗标）。
+        _booklistsPaging = false;
         _booklistsError = null;
       });
     }
     final api = ref.read(zlibraryApiProvider);
+    final epoch = ++_booklistsEpoch;
     try {
       final response = await api.getUserProfileBooklists(
         userId: _args.userId.toString(),
         userHash: hash,
       );
-      if (!mounted) return;
+      if (!mounted || epoch != _booklistsEpoch) return;
       if (response.success && response.data != null) {
         setState(() {
-          _booklists = response.data!;
+          _booklists = response.data!.lists;
           _booklistsLoading = false;
           _booklistsError = null;
         });
+        await _loadBooklistPages2Plus(
+          api,
+          hash,
+          response.data!.pagesTotal,
+          epoch: epoch,
+          backgroundRefresh: backgroundRefresh,
+        );
         return;
       }
       if (_isChallengeError(response.error)) {
         await _loadBooklistsViaSolver(
           hash,
           response.error ?? 'Failed to load booklists',
+          epoch,
           backgroundRefresh: backgroundRefresh,
         );
         return;
@@ -216,7 +249,7 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
         _booklistsError = response.error ?? 'Failed to load booklists';
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || epoch != _booklistsEpoch) return;
       if (backgroundRefresh) return;
       setState(() {
         _booklistsLoading = false;
@@ -225,15 +258,76 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     }
   }
 
+  /// Pages 2 and up of the profile booklists (`/profile/{id}/{hash}/
+  /// booklists?page=N`), fetched sequentially and appended as they
+  /// land so the section grows while loading (the tail shows a
+  /// loading row). Sequential rather than parallel: the mirror
+  /// rate-limits bursts, and the epoch guard plus dedupe stay simple.
+  /// [epoch] is the caller's generation — a pull-refresh or retry
+  /// that started later wins, and this loop exits silently at the
+  /// next page boundary.
+  ///
+  /// A failed or empty page stops the loop with whatever loaded so
+  /// far (empty = past the end, e.g. the list shrank between
+  /// fetches); rows already on screen stay. The pages are NOT cached:
+  /// the SWR cache only holds the profile document (page 1).
+  Future<void> _loadBooklistPages2Plus(
+    ZLibraryApi api,
+    String hash,
+    int pagesTotal, {
+    required int epoch,
+    required bool backgroundRefresh,
+  }) async {
+    final total = pagesTotal.clamp(1, _maxBooklistPages);
+    if (total <= 1) return;
+    // 后台刷新模式不显示加载行（与第 1 页的后台语义一致：第 1 页的
+    // 行已从缓存上屏，失败也不报错）。
+    if (!backgroundRefresh) {
+      setState(() => _booklistsPaging = true);
+    }
+    try {
+      for (var page = 2; page <= total; page++) {
+        final response = await api.getUserProfileBooklistsPage(
+          userId: _args.userId.toString(),
+          userHash: hash,
+          page: page,
+        );
+        if (!mounted || epoch != _booklistsEpoch) return;
+        if (!response.success || response.data == null) break;
+        final fresh = response.data!;
+        if (fresh.isEmpty) break;
+        setState(() {
+          // 按 id 去重：两页之间书单被增删时，分页可能整体位移，
+          // 重复行宁缺勿双。
+          final seen = _booklists.map((l) => l.id).toSet();
+          _booklists = [
+            ..._booklists,
+            ...fresh.where((l) => !seen.contains(l.id)),
+          ];
+        });
+      }
+    } on Object {
+      // 分页失败保留已加载的行：区块不进入错误态（第 1 页已在），
+      // 下拉刷新可重来。
+    } finally {
+      if (mounted && epoch == _booklistsEpoch) {
+        setState(() => _booklistsPaging = false);
+      }
+    }
+  }
+
   /// Fetch the profile page through the WebView challenge solver and
   /// parse it with the plugin's [parseUserProfileBooklists]. The
   /// session cookies go into the WebView's CookieManager first (the
   /// booklist detail screen's pattern). A failure here reports the
   /// fast path's original error, so the retry button re-runs the
-  /// whole fast-then-solver sequence.
+  /// whole fast-then-solver sequence. On success the remaining pages
+  /// load over Dio (the solve just cleared the wall cookies — see
+  /// [bridgeWallCookies] — so they take the fast path).
   Future<void> _loadBooklistsViaSolver(
     String hash,
-    String originalError, {
+    String originalError,
+    int epoch, {
     bool backgroundRefresh = false,
   }) async {
     final api = ref.read(zlibraryApiProvider);
@@ -257,7 +351,7 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
         html = null;
       }
       html ??= await WebviewChallengeSolver.fetchHtmlAfterChallenge(url);
-      if (!mounted) return;
+      if (!mounted || epoch != _booklistsEpoch) return;
       if (html == null || html.isEmpty || _isChallengeHtml(html)) {
         if (backgroundRefresh) return;
         setState(() {
@@ -280,12 +374,19 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
         pageHtml,
         baseUrl: Uri.parse(url).origin,
       );
-      if (!mounted) return;
+      if (!mounted || epoch != _booklistsEpoch) return;
       setState(() {
         _booklists = lists;
         _booklistsLoading = false;
         _booklistsError = null;
       });
+      await _loadBooklistPages2Plus(
+        api,
+        hash,
+        parseUserProfileBooklistsPagesTotal(pageHtml),
+        epoch: epoch,
+        backgroundRefresh: backgroundRefresh,
+      );
     } finally {
       // O8: the session only lives for this solve (see BooklistSolver).
       if (hasSession) await deleteSessionCookies(pageUrl: url);
@@ -385,12 +486,15 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     );
   }
 
-  /// 头部统计的书单数：无书单区（评论没带 hash）或加载中/出错时
-  /// 返回 null，头部就不显示书单药丸。
+  /// 头部统计的书单数：无书单区（评论没带 hash）、加载中/分页中或
+  /// 出错时返回 null，头部就不显示书单药丸（分页中显示部分数会先
+  /// 报小再跳大，不如等齐了一次到位）。
   int? get _booklistCount {
     final hash = _args.userHash;
     if (hash == null || hash.isEmpty) return null;
-    if (_booklistsLoading || _booklistsError != null) return null;
+    if (_booklistsLoading || _booklistsPaging || _booklistsError != null) {
+      return null;
+    }
     return _booklists.length;
   }
 
@@ -418,7 +522,9 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     final children = <Widget>[
       _sectionHeader(
         l10n.booklists,
-        _booklistsLoading || _booklistsError != null ? null : _booklists.length,
+        _booklistsLoading || _booklistsPaging || _booklistsError != null
+            ? null
+            : _booklists.length,
       ),
     ];
     if (_booklistsLoading) {
@@ -463,6 +569,13 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
           ),
         ),
       );
+      // 第 2 页起还在加载：卡尾一条细加载行，行数随到货增长。
+      if (_booklistsPaging) {
+        children.add(const Padding(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: LoadingWidget.more(),
+        ));
+      }
     }
     return children;
   }

@@ -266,7 +266,7 @@
   "wifiOnlyDownloadsDesc": "켜면 Wi-Fi 연결에서만 다운로드를 시작합니다(모바일 데이터는 거부, 연결 후 재시도)",
   "downloadWifiOnlyRequired": "Wi-Fi 대기 중: Wi-Fi 전용 다운로드가 켜져 있습니다. 연결 후 다시 시도하세요",
   "downloadPinToTop": "맨 위로 고정",
-  "downloadQuotaDesc": "이 Z-Library 계정의 오늘 다운로드 횟수를 모두 사용했습니다. 내일 초기화됩니다. 설정에서 다른 계정으로 전환할 수도 있습니다.",
+  "downloadQuotaDesc": "이 Z-Library 계정의 오늘 다운로드 횟수를 모두 사용했습니다. 내일 초기화됩니다. 다른 계정으로 전환해 다운로드를 계속할 수도 있습니다.",
   "downloadQuotaExceeded": "오늘 다운로드 횟수를 모두 사용했습니다. 내일 다시 시도하거나 계정을 전환해 주세요.",
   "downloadQuotaTitle": "오늘 다운로드 횟수를 모두 사용했습니다",
   "downloadRemoveRecord": "기록 삭제",

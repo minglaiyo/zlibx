@@ -161,7 +161,7 @@ void main() {
     expect(loc.downloadFreshLinkRequired, 'This link expired. Return to the book page for a new link.');
     expect(loc.downloadHistory, 'Download History (Cloud)');
     expect(loc.downloadPreparing, 'Preparing download');
-    expect(loc.downloadQuotaDesc, 'This Z-Library account has used all of today\'s downloads. They reset tomorrow, or you can switch to another account in Settings.');
+    expect(loc.downloadQuotaDesc, 'This Z-Library account has used all of today\'s downloads. They reset tomorrow, or you can switch to another account to keep downloading.');
     expect(loc.downloadQuotaExceeded, 'Daily downloads used up. Try tomorrow or switch accounts.');
     expect(loc.downloadQuotaTitle, 'Daily downloads used up');
     expect(loc.downloadRemoveRecord, 'Remove record');
@@ -594,7 +594,7 @@ void main() {
     expect(loc.downloadFreshLinkRequired, 'このリンクは期限切れです。本のページに戻って新しいリンクを取得してください。');
     expect(loc.downloadHistory, 'ダウンロード履歴（クラウド）');
     expect(loc.downloadPreparing, 'ダウンロードを準備中');
-    expect(loc.downloadQuotaDesc, 'この Z-Library アカウントは本日のダウンロード回数を使い切りました。明日リセットされます。設定で別のアカウントに切り替えることもできます。');
+    expect(loc.downloadQuotaDesc, 'この Z-Library アカウントは本日のダウンロード回数を使い切りました。明日リセットされます。別のアカウントに切り替えてダウンロードを続けることもできます。');
     expect(loc.downloadQuotaExceeded, '本日のダウンロード回数を使い切りました。明日お試しいただくか、アカウントを切り替えてください。');
     expect(loc.downloadQuotaTitle, '本日のダウンロード回数を使い切りました');
     expect(loc.downloadRemoveRecord, '記録を削除');
@@ -1027,7 +1027,7 @@ void main() {
     expect(loc.downloadFreshLinkRequired, '이 링크가 만료되었습니다. 책 페이지로 돌아가 새 링크를 받으세요.');
     expect(loc.downloadHistory, '다운로드 기록 (클라우드)');
     expect(loc.downloadPreparing, '다운로드 준비 중');
-    expect(loc.downloadQuotaDesc, '이 Z-Library 계정의 오늘 다운로드 횟수를 모두 사용했습니다. 내일 초기화됩니다. 설정에서 다른 계정으로 전환할 수도 있습니다.');
+    expect(loc.downloadQuotaDesc, '이 Z-Library 계정의 오늘 다운로드 횟수를 모두 사용했습니다. 내일 초기화됩니다. 다른 계정으로 전환해 다운로드를 계속할 수도 있습니다.');
     expect(loc.downloadQuotaExceeded, '오늘 다운로드 횟수를 모두 사용했습니다. 내일 다시 시도하거나 계정을 전환해 주세요.');
     expect(loc.downloadQuotaTitle, '오늘 다운로드 횟수를 모두 사용했습니다');
     expect(loc.downloadRemoveRecord, '기록 삭제');
@@ -1460,7 +1460,7 @@ void main() {
     expect(loc.downloadFreshLinkRequired, '下载链接已失效，请返回原书页重新获取。');
     expect(loc.downloadHistory, '下载历史（云端）');
     expect(loc.downloadPreparing, '准备下载');
-    expect(loc.downloadQuotaDesc, '当前 Z-Library 账号今天的下载次数已用完，明天会自动恢复。也可以在设置中切换其他账号继续下载。');
+    expect(loc.downloadQuotaDesc, '当前 Z-Library 账号今天的下载次数已用完，明天会自动恢复。也可以切换其他账号继续下载。');
     expect(loc.downloadQuotaExceeded, '今日下载次数已用完，明天再试或切换账号。');
     expect(loc.downloadQuotaTitle, '今日下载次数已用完');
     expect(loc.downloadRemoveRecord, '移除记录');
@@ -1893,7 +1893,7 @@ void main() {
     expect(loc.downloadFreshLinkRequired, '下載連結已失效，請返回原書頁重新取得。');
     expect(loc.downloadHistory, '下載紀錄（雲端）');
     expect(loc.downloadPreparing, '準備下載');
-    expect(loc.downloadQuotaDesc, '目前 Z-Library 帳號今日的下載次數已用完，明天會自動恢復。也可以在設定中切換其他帳號繼續下載。');
+    expect(loc.downloadQuotaDesc, '目前 Z-Library 帳號今日的下載次數已用完，明天會自動恢復。也可以切換其他帳號繼續下載。');
     expect(loc.downloadQuotaExceeded, '今日下載次數已用完，請明天再試或切換帳號。');
     expect(loc.downloadQuotaTitle, '今日下載次數已用完');
     expect(loc.downloadRemoveRecord, '移除紀錄');

@@ -266,7 +266,7 @@
   "wifiOnlyDownloadsDesc": "開啟後僅在 Wi-Fi 下發起下載，行動數據網絡會被拒絕；連上 Wi-Fi 後重試即可",
   "downloadWifiOnlyRequired": "等待 Wi-Fi：已開啟僅 Wi-Fi 下載，連上 Wi-Fi 後重試即可",
   "downloadPinToTop": "置頂",
-  "downloadQuotaDesc": "目前 Z-Library 帳號今日的下載次數已用完，明天會自動恢復。也可以在設定中切換其他帳號繼續下載。",
+  "downloadQuotaDesc": "目前 Z-Library 帳號今日的下載次數已用完，明天會自動恢復。也可以切換其他帳號繼續下載。",
   "downloadQuotaExceeded": "今日下載次數已用完，請明天再試或切換帳號。",
   "downloadQuotaTitle": "今日下載次數已用完",
   "downloadRemoveRecord": "移除紀錄",

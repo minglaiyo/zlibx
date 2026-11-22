@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../providers/books_provider.dart';
 import '../../../providers/download_provider.dart';
 import '../../../services/quota_fallback.dart';
@@ -14,8 +15,10 @@ import 'quota_fallback_confirm_dialog.dart';
 
 /// Quota-exhausted fallback: try LibGen / Anna's Archive for the same
 /// book and continue the download there; when neither has it, show the
-/// quota dialog as before. Providers are read before the await so a
-/// disposed ref is never touched after the search finishes.
+/// quota dialog, which also offers switching to another account — on a
+/// switch the Z-Library download is retried under the new account's
+/// quota. Providers are read before the await so a disposed ref is
+/// never touched after the search finishes.
 ///
 /// Shared by the detail page's download-task listener (a started
 /// download that dies on quota) and the action bar's pre-check (the
@@ -28,6 +31,7 @@ Future<void> tryQuotaFallbackAndDownload(
   Book book,
 ) async {
   final l10n = AppLocalizations.of(context)!;
+  final currentUserId = ref.read(authProvider).user?.id;
   final annasApi = ref.read(annasArchieveProvider);
   final libgenService = ref.read(libgenServiceProvider);
   final downloadNotifier = ref.read(downloadProvider.notifier);
@@ -39,7 +43,16 @@ Future<void> tryQuotaFallbackAndDownload(
   );
   if (!context.mounted) return;
   if (result == null) {
-    showDownloadQuotaDialog(context);
+    final switched = await showDownloadQuotaDialog(
+      context,
+      currentUserId: currentUserId,
+    );
+    if (switched && context.mounted) {
+      // The new account has its own daily quota: retry the
+      // Z-Library download under it. (If it is exhausted too, the
+      // engine fails on quota again and this prompt comes back.)
+      unawaited(downloadNotifier.startDownload(book));
+    }
     return;
   }
   // The fallback file is another source's copy of the same book — it

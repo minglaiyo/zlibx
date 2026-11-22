@@ -266,7 +266,7 @@
   "wifiOnlyDownloadsDesc": "オンにすると Wi-Fi 接続時のみダウンロードを開始します（モバイルデータでは拒否、接続後に再試行）",
   "downloadWifiOnlyRequired": "Wi-Fi 待ち：Wi-Fi のみダウンロードが有効です。接続後に再試行してください",
   "downloadPinToTop": "一番上に固定",
-  "downloadQuotaDesc": "この Z-Library アカウントは本日のダウンロード回数を使い切りました。明日リセットされます。設定で別のアカウントに切り替えることもできます。",
+  "downloadQuotaDesc": "この Z-Library アカウントは本日のダウンロード回数を使い切りました。明日リセットされます。別のアカウントに切り替えてダウンロードを続けることもできます。",
   "downloadQuotaExceeded": "本日のダウンロード回数を使い切りました。明日お試しいただくか、アカウントを切り替えてください。",
   "downloadQuotaTitle": "本日のダウンロード回数を使い切りました",
   "downloadRemoveRecord": "記録を削除",

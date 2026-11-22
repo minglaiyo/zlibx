@@ -19,8 +19,8 @@ import '../../../utils/host_utils.dart';
 import '../../../widgets/motion/motion.dart';
 import '../../../widgets/update_dialog.dart';
 import '../../reader/reader_screen.dart';
-import 'download_quota_dialog.dart';
 import 'file_exists_dialog.dart';
+import 'quota_fallback_action.dart';
 
 class BookActionBar extends ConsumerWidget {
   final Book book;
@@ -303,7 +303,11 @@ class BookActionBar extends ConsumerWidget {
     final notifier = ref.read(downloadProvider.notifier);
 
     if (await _ownQuotaExhausted(ref)) {
-      if (context.mounted) showDownloadQuotaDialog(context);
+      // Quota already spent: don't show the dialog yet — try LibGen /
+      // Anna's Archive for the same book first (the dialog only shows
+      // when neither has it).
+      if (!context.mounted) return;
+      await tryQuotaFallbackAndDownload(context, ref, book);
       return;
     }
     if (!context.mounted) return;

@@ -7,6 +7,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../providers/books_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../utils/cover_cache.dart';
+import '../../utils/date_text.dart';
 import '../../utils/error_text.dart';
 import '../../widgets/cover_placeholder.dart';
 import '../../widgets/empty_state.dart';
@@ -103,7 +104,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     _bookCard(context, sorted[index]),
               );
             }
-            final sections = _groupByDate(sorted, l10n);
+            final sections = groupByDateLabel<Book>(
+              sorted,
+              l10n,
+              (book) => book.downloadedAt,
+            );
             final items = <({String? header, Book? book})>[];
             for (final section in sections) {
               items.add((header: section.$1, book: null));
@@ -179,43 +184,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         },
       ),
     );
-  }
-
-  /// Date bucket for one history row, from its download stamp. The
-  /// stamp is replayed as-is (no timezone conversion), so the group
-  /// label is computed from the stamp's own calendar date — it matches
-  /// the date the row itself shows. 本周 = this calendar week, Monday
-  /// first. Rows without a stamp (eapi metadata records) go last.
-  String _dateGroupLabel(AppLocalizations l10n, DateTime? stamp) {
-    if (stamp == null) return l10n.historyGroupUnknownTime;
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final day = DateTime(stamp.year, stamp.month, stamp.day);
-    final diff = today.difference(day).inDays;
-    if (diff == 0) return l10n.historyGroupToday;
-    if (diff == 1) return l10n.historyGroupYesterday;
-    final monday = today.subtract(Duration(days: today.weekday - 1));
-    if (!day.isBefore(monday)) return l10n.historyGroupThisWeek;
-    return l10n.historyGroupEarlier;
-  }
-
-  /// Group a date-sorted list into consecutive (label, books) sections.
-  /// The list is already sorted by date, so same-label rows are
-  /// consecutive and one pass suffices.
-  List<(String, List<Book>)> _groupByDate(
-    List<Book> sorted,
-    AppLocalizations l10n,
-  ) {
-    final sections = <(String, List<Book>)>[];
-    for (final book in sorted) {
-      final label = _dateGroupLabel(l10n, book.downloadedAt);
-      if (sections.isEmpty || sections.last.$1 != label) {
-        sections.add((label, [book]));
-      } else {
-        sections.last.$2.add(book);
-      }
-    }
-    return sections;
   }
 
   /// `yyyy-MM-dd HH:mm`，与 dstats 页面渲染的是同一时刻（解析时未做

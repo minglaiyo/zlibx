@@ -5,28 +5,57 @@ import 'download_provider.dart';
 
 
 /// Task ids per downloads tab, in display order, with value equality:
-/// two structures are equal when both id lists match element-wise.
-/// Progress ticks change neither list, so a screen watching this
-/// rebuilds only when a task is added/removed, changes status (and so
-/// moves tabs), or completes (changing the completed order).
+/// two structures are equal when both id lists match element-wise and
+/// every completed id's download stamp matches. Progress ticks change
+/// neither list nor stamp, so a screen watching this rebuilds only
+/// when a task is added/removed, changes status (and so moves tabs),
+/// or completes (changing the completed order).
 class DownloadListStructure {
   const DownloadListStructure({
     required this.ongoingIds,
     required this.completedIds,
+    required this.completedDates,
   });
 
   final List<String> ongoingIds;
   final List<String> completedIds;
 
+  /// Download stamp per completed id (null = no stamp recorded):
+  /// the screen groups the completed tab by date from this map
+  /// instead of watching each task (which would rebuild the screen
+  /// on every progress tick).
+  final Map<String, DateTime?> completedDates;
+
   @override
   bool operator ==(Object other) =>
       other is DownloadListStructure &&
       _idsEqual(ongoingIds, other.ongoingIds) &&
-      _idsEqual(completedIds, other.completedIds);
+      _idsEqual(completedIds, other.completedIds) &&
+      _datesEqual(completedDates, other.completedDates);
 
   @override
-  int get hashCode =>
-      Object.hash(Object.hashAll(ongoingIds), Object.hashAll(completedIds));
+  int get hashCode => Object.hash(
+    Object.hashAll(ongoingIds),
+    Object.hashAll(completedIds),
+    // Sort by key first: Map iteration order is insertion order, and
+    // two equal maps built in different orders must hash the same.
+    Object.hashAll(
+      (completedDates.entries.toList()
+            ..sort((a, b) => a.key.compareTo(b.key)))
+          .map((e) => Object.hash(e.key, e.value)),
+    ),
+  );
+}
+
+bool _datesEqual(Map<String, DateTime?> a, Map<String, DateTime?> b) {
+  if (identical(a, b)) return true;
+  if (a.length != b.length) return false;
+  for (final entry in a.entries) {
+    if (!b.containsKey(entry.key) || b[entry.key] != entry.value) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool _idsEqual(List<String> a, List<String> b) {
@@ -85,6 +114,9 @@ final downloadListStructureProvider = Provider<DownloadListStructure>((ref) {
       return DownloadListStructure(
         ongoingIds: ongoing.map((task) => task.id).toList(),
         completedIds: completed.map((task) => task.id).toList(),
+        completedDates: {
+          for (final task in completed) task.id: task.downloadedAt,
+        },
       );
     }),
   );

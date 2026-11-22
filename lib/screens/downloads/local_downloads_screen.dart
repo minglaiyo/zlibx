@@ -104,6 +104,7 @@ class _LocalDownloadsScreenState extends ConsumerState<LocalDownloadsScreen> {
                   ),
                   _CompletedTab(
                     taskIds: completedIds,
+                    completedDates: structure.completedDates,
                     filter: _completedFilter,
                     onFilterChanged: (value) =>
                         setState(() => _completedFilter = value),
@@ -124,11 +125,16 @@ class _LocalDownloadsScreenState extends ConsumerState<LocalDownloadsScreen> {
 class _CompletedTab extends ConsumerWidget {
   const _CompletedTab({
     required this.taskIds,
+    required this.completedDates,
     required this.filter,
     required this.onFilterChanged,
   });
 
   final List<String> taskIds;
+
+  /// Download stamp per completed id (from the list structure):
+  /// the list groups by date from this map.
+  final Map<String, DateTime?> completedDates;
   final String? filter;
   final ValueChanged<String?> onFilterChanged;
 
@@ -153,6 +159,7 @@ class _CompletedTab extends ConsumerWidget {
         Expanded(
           child: _DownloadList(
             taskIds: visible,
+            groupDates: completedDates,
             emptyIcon: filter == null
                 ? Icons.check_circle_outline_rounded
                 : Icons.search_off_rounded,
@@ -244,12 +251,18 @@ class _DownloadList extends StatelessWidget {
     required this.emptyIcon,
     required this.emptyTitle,
     required this.emptyMessage,
+    this.groupDates,
   });
 
   final List<String> taskIds;
   final IconData emptyIcon;
   final String emptyTitle;
   final String emptyMessage;
+
+  /// Download stamp per task id: when given, the list groups by date
+  /// (today / yesterday / this week / earlier). Null = flat list
+  /// (the ongoing tab).
+  final Map<String, DateTime?>? groupDates;
 
   @override
   Widget build(BuildContext context) {
@@ -260,17 +273,59 @@ class _DownloadList extends StatelessWidget {
         message: emptyMessage,
       );
     }
-    return ListView.separated(
-      // Bottom 124 = 28 gap + 96 floating-nav clearance, reserved
-      // inside the list so items scroll behind the pill (like the
-      // home grid).
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 124),
-      itemCount: taskIds.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (_, index) => MotionEntrance(
-        index: index,
-        child: _DownloadItem(id: taskIds[index]),
-      ),
+    // Bottom 124 = 28 gap + 96 floating-nav clearance, reserved
+    // inside the list so items scroll behind the pill (like the
+    // home grid).
+    const padding = EdgeInsets.fromLTRB(16, 16, 16, 124);
+    if (groupDates == null) {
+      return ListView.separated(
+        padding: padding,
+        itemCount: taskIds.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        itemBuilder: (_, index) => MotionEntrance(
+          index: index,
+          child: _DownloadItem(id: taskIds[index]),
+        ),
+      );
+    }
+    final l10n = AppLocalizations.of(context)!;
+    final sections = groupByDateLabel<String>(
+      taskIds,
+      l10n,
+      (id) => groupDates![id],
+    );
+    final items = <({String? header, String? id})>[];
+    for (final section in sections) {
+      items.add((header: section.$1, id: null));
+      for (final id in section.$2) {
+        items.add((header: null, id: id));
+      }
+    }
+    return ListView.builder(
+      padding: padding,
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        if (item.header != null) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+            child: Text(
+              item.header!,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          );
+        }
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: MotionEntrance(
+            index: index,
+            child: _DownloadItem(id: item.id!),
+          ),
+        );
+      },
     );
   }
 }

@@ -65,7 +65,14 @@ void main() {
 
   List<Override> overrides() => [
     downloadListStructureProvider.overrideWithValue(
-      const DownloadListStructure(ongoingIds: [], completedIds: ['1', '2']),
+      DownloadListStructure(
+        ongoingIds: [],
+        completedIds: ['1', '2'],
+        completedDates: {
+          '1': DateTime(2026, 11, 18, 10),
+          '2': DateTime(2026, 11, 18, 10),
+        },
+      ),
     ),
     downloadTaskProvider(
       '1',
@@ -115,7 +122,12 @@ void main() {
     await tester.pumpWidget(
       app([
         downloadListStructureProvider.overrideWithValue(
-          const DownloadListStructure(ongoingIds: ['8'], completedIds: ['9']),
+          const DownloadListStructure(
+            ongoingIds: ['8'],
+            completedIds: ['9'],
+            // Task '9' is an error task with no downloadedAt.
+            completedDates: {'9': null},
+          ),
         ),
         downloadTaskProvider('8').overrideWithValue(pending),
         downloadTaskProvider('9').overrideWithValue(blocked),

@@ -13,13 +13,11 @@ import 'package:zlibx/providers/zlibrary_provider.dart';
 // Without the scope, the same query returns books by other authors
 // and other publishers (the Issue #8 bug).
 
-Book _book(int id, {String? author, String? publisher, String? series}) =>
-    Book(
+Book _book(int id, {String? author, String? publisher}) => Book(
       id: id,
       title: 'Book $id',
       author: author,
       publisher: publisher,
-      series: series,
     );
 
 /// [ZLibraryApi] fake: one canned page of books, echoed for every
@@ -95,26 +93,6 @@ void main() {
 
       await notifier.search(
         SearchParams(query: 'Signet', field: SearchField.publisher),
-      );
-
-      expect(
-        container.read(searchProvider).books.map((b) => b.id).toList(),
-        [1, 3],
-      );
-    });
-
-    test('a series-scoped search drops books from other series', () async {
-      final api = _FakeApi(books: [
-        _book(1, author: 'Frank Herbert', series: 'Dune'),
-        _book(2, author: 'Frank Herbert', series: 'Destination: Void'),
-        _book(3, author: 'Brian Herbert', series: 'Dune'),
-        _book(4, author: 'Frank Herbert'),
-      ]);
-      final container = _container(api);
-      final notifier = container.read(searchProvider.notifier);
-
-      await notifier.search(
-        SearchParams(query: 'Dune', field: SearchField.series),
       );
 
       expect(

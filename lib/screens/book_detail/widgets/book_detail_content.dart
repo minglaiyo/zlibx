@@ -6,24 +6,16 @@ import '../../../models/display_book.dart';
 
 class BookDetailHeading extends StatelessWidget {
   final DisplayBook book;
-  final String? subtitle;
 
   /// Tap handler for the author name: when set, the author reads as
   /// a link (it already uses the primary color) and opens a search
   /// for that author. Null means display-only.
   final VoidCallback? onAuthorTap;
 
-  /// Tap handler for the subtitle (the series name): when set, the
-  /// series reads as a link and opens a search for that series.
-  /// Null means display-only.
-  final VoidCallback? onSubtitleTap;
-
   const BookDetailHeading({
     super.key,
     required this.book,
-    this.subtitle,
     this.onAuthorTap,
-    this.onSubtitleTap,
   });
 
   @override
@@ -32,22 +24,6 @@ class BookDetailHeading extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (subtitle?.isNotEmpty ?? false) ...[
-          InkWell(
-            onTap: onSubtitleTap,
-            borderRadius: BorderRadius.circular(4),
-            child: Text(
-              subtitle!,
-              style: TextStyle(
-                fontSize: 13,
-                color: onSubtitleTap != null
-                    ? cs.primary
-                    : cs.onSurfaceVariant,
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-        ],
         Text(
           book.title,
           style: TextStyle(

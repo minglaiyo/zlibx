@@ -205,7 +205,6 @@ class SearchNotifier extends Notifier<SearchState> {
       final value = switch (field) {
         SearchField.author => book.author,
         SearchField.publisher => book.publisher,
-        SearchField.series => book.series,
       };
       return value != null && value.toLowerCase().contains(needle);
     }).toList();

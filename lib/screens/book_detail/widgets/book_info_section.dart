@@ -86,6 +86,7 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
     ];
     final fields = <String, String>{
       if (book.publisher?.isNotEmpty ?? false) l10n.publisher: book.publisher!,
+      if (book.series?.isNotEmpty ?? false) l10n.series: book.series!,
       if (book.pages != null && book.pages != 0) l10n.pages: '${book.pages}',
       if (book.language?.isNotEmpty ?? false) l10n.language: book.language!,
       // 卷/ISBN/IPFS 这些书页 HTML 装饰行已随附加字段腿撤下（用户
@@ -105,24 +106,12 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
           children: [
             BookDetailHeading(
               book: book.toDisplay(),
-              subtitle: book.series,
               // Tapping the author opens the site's author aggregation
               // page (方案 F2：作者全部作品 + 分页); the aggregation
               // screen offers a field-scoped search as its fallback
               // when the site has no such author page.
               onAuthorTap: book.author?.isNotEmpty ?? false
                   ? () => AppRoutes.openAuthor(context, book.author!)
-                  : null,
-              // Tapping the series opens a field-scoped search for
-              // that series (same pattern as the publisher tap below).
-              // No series = no tap target, the subtitle stays
-              // display-only.
-              onSubtitleTap: book.series?.isNotEmpty ?? false
-                  ? () => AppRoutes.openSearchWithQuery(
-                      context,
-                      book.series!,
-                      field: SearchField.series,
-                    )
                   : null,
             ),
             if (tags.isNotEmpty) ...[

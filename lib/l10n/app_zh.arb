@@ -717,5 +717,17 @@
   "scanBarcodeHint": "将条码对准框内",
   "cameraUnavailable": "无法启动相机，请检查相机权限",
   "quotaFallbackTrying": "额度已用完，正在尝试从其他来源下载…",
-  "quotaFallbackSwitched": "已从其他来源继续下载"
+  "quotaFallbackSwitched": "已从其他来源继续下载",
+  "quotaFallbackConfirmTitle": "从其他源下载",
+  "quotaFallbackConfirmDesc": "今日下载次数已用完，将从 {source} 下载这本书（{format}）。外站提供的是另一个副本，版本、扫描质量和文件大小可能与 z站的不同。",
+  "@quotaFallbackConfirmDesc": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "format": {
+        "type": "String"
+      }
+    }
+  }
 }

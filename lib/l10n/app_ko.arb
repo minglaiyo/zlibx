@@ -717,5 +717,17 @@
   "scanBarcodeHint": "프레임 안에 바코드를 맞춰주세요",
   "cameraUnavailable": "카메라를 시작할 수 없습니다. 카메라 권한을 확인해 주세요.",
   "quotaFallbackTrying": "일일 한도에 도달했습니다. 다른 소스에서 시도 중…",
-  "quotaFallbackSwitched": "다른 소스에서 다운로드를 계속합니다"
+  "quotaFallbackSwitched": "다른 소스에서 다운로드를 계속합니다",
+  "quotaFallbackConfirmTitle": "다른 소스에서 다운로드",
+  "quotaFallbackConfirmDesc": "오늘의 다운로드 한도에 도달했습니다. 이 책은 {source}({format})에서 다운로드합니다. 다른 소스의 파일은 별도의 사본이므로 판본, 스캔 품질, 파일 크기가 Z-Library와 다를 수 있습니다.",
+  "@quotaFallbackConfirmDesc": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "format": {
+        "type": "String"
+      }
+    }
+  }
 }

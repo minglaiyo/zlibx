@@ -10,6 +10,7 @@ import '../../../providers/download_provider.dart';
 import '../../../services/quota_fallback.dart';
 import '../../../utils/app_snack.dart';
 import 'download_quota_dialog.dart';
+import 'quota_fallback_confirm_dialog.dart';
 
 /// Quota-exhausted fallback: try LibGen / Anna's Archive for the same
 /// book and continue the download there; when neither has it, show the
@@ -41,6 +42,11 @@ Future<void> tryQuotaFallbackAndDownload(
     showDownloadQuotaDialog(context);
     return;
   }
+  // The fallback file is another source's copy of the same book — it
+  // may differ in edition, scan quality and file size, so confirm
+  // with the user before starting the download.
+  final confirmed = await showQuotaFallbackConfirmDialog(context, result);
+  if (!context.mounted || !confirmed) return;
   unawaited(
     downloadNotifier.startDownload(result.book, presetUrl: result.url),
   );

@@ -717,5 +717,17 @@
   "scanBarcodeHint": "バーコードを枠内に合わせてください",
   "cameraUnavailable": "カメラを起動できませんでした。カメラの権限を確認してください。",
   "quotaFallbackTrying": "本日の上限に達しました。他のソースから試しています…",
-  "quotaFallbackSwitched": "他のソースからダウンロードを続けています"
+  "quotaFallbackSwitched": "他のソースからダウンロードを続けています",
+  "quotaFallbackConfirmTitle": "他のソースからダウンロード",
+  "quotaFallbackConfirmDesc": "本日のダウンロード上限に達しました。この本は {source}（{format}）からダウンロードします。他のソースのファイルは別のコピーです。版、スキャン品質、ファイルサイズが Z-Library のものと異なる場合があります。",
+  "@quotaFallbackConfirmDesc": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "format": {
+        "type": "String"
+      }
+    }
+  }
 }

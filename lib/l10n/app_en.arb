@@ -717,5 +717,17 @@
   "scanBarcodeHint": "Align the barcode within the frame",
   "cameraUnavailable": "Could not start the camera. Please check the camera permission.",
   "quotaFallbackTrying": "Daily limit reached. Trying other sources…",
-  "quotaFallbackSwitched": "Continuing the download from another source"
+  "quotaFallbackSwitched": "Continuing the download from another source",
+  "quotaFallbackConfirmTitle": "Download from another source",
+  "quotaFallbackConfirmDesc": "Your daily download limit is used up. This book will be downloaded from {source} ({format}). Other sources host a different copy — the edition, scan quality and file size may differ from Z-Library's.",
+  "@quotaFallbackConfirmDesc": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "format": {
+        "type": "String"
+      }
+    }
+  }
 }

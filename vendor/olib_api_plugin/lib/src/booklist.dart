@@ -292,6 +292,13 @@ BooklistsPage parseBooklistsPage(String html, {required String baseUrl}) {
 /// [Booklist.fromElement]), including the preview-cover carousel.
 /// A profile with no booklists — or a page without the tab at all —
 /// parses to an empty list.
+///
+/// The tab server-renders at most 10 lists per document: users with
+/// more get a paginator (`.paginator_booklists`) and the rest live on
+/// `/profile/{userId}/{hash}/booklists?page=N` documents of the same
+/// shape (live-verified 2026-11-21). See
+/// [parseUserProfileBooklistsPagesTotal] for the page count and
+/// `ZLibraryBooklists.getUserProfileBooklistsPage` for the fetch.
 List<Booklist> parseUserProfileBooklists(
   String html, {
   required String baseUrl,
@@ -304,6 +311,53 @@ List<Booklist> parseUserProfileBooklists(
       .map((el) => Booklist.fromElement(el, baseUrl: baseUrl))
       .whereType<Booklist>()
       .toList();
+}
+
+/// One document of a user's profile booklists: the parsed
+/// `<z-booklist>` rows plus the paginator's page count. [pagesTotal]
+/// is 1 unless the document carries the booklists paginator — the
+/// site renders at most 10 lists per document (issue #11: the profile
+/// page showed only the first 10).
+class UserProfileBooklistsPage {
+  final List<Booklist> lists;
+
+  /// Total number of paginated documents, from
+  /// [parseUserProfileBooklistsPagesTotal] on the same HTML.
+  final int pagesTotal;
+
+  const UserProfileBooklistsPage({
+    required this.lists,
+    this.pagesTotal = 1,
+  });
+}
+
+/// The page count of a profile page's booklists tab, from the tab's
+/// paginator (`DIV.paginator.paginator_booklists`, live-verified
+/// 2026-11-21): its links carry `?page=N` up to the last page (the
+/// "Last" link), so the largest `page=` value across them is the
+/// total. A document without the paginator — the profile document of
+/// a user with ≤ 10 lists — is one page. The same shape holds on the
+/// `?page=N` documents themselves, so callers can read the count from
+/// any page they happened to fetch. Returns 1 when no page number is
+/// found.
+int parseUserProfileBooklistsPagesTotal(String html) {
+  final doc = html_parser.parse(html);
+  // The paginator lives inside the booklists tab; scope the query to
+  // it so another tab's paginator (comments, plans) cannot count.
+  final tab = doc.querySelector('div[z-tab="booklists"]');
+  if (tab == null) return 1;
+  final pag = tab.querySelector('.paginator_booklists');
+  if (pag == null) return 1;
+  var max = 1;
+  for (final a in pag.querySelectorAll('a[href]')) {
+    final match = RegExp(
+      r'[?&]page=(\d+)',
+    ).firstMatch(a.attributes['href'] ?? '');
+    if (match == null) continue;
+    final value = int.tryParse(match.group(1)!);
+    if (value != null && value > max) max = value;
+  }
+  return max;
 }
 
 /// Recommended booklists from `POST /papi/booklist/get-from-category`:

@@ -220,7 +220,14 @@ mixin ZLibraryBooklists on ZLibraryApiBase {
   /// list pages it can answer with the browser-check wall — reported
   /// as `HTTP 503: browser check page` so the caller can fall back
   /// to the WebView solver.
-  Future<ApiResponse<List<Booklist>>> getUserProfileBooklists({
+  ///
+  /// The tab renders at most 10 lists per document (issue #11):
+  /// users with more carry a paginator, and [UserProfileBooklistsPage.pagesTotal]
+  /// reports the total so the caller can fetch the rest via
+  /// [getUserProfileBooklistsPage] (URL from
+  /// [userProfileBooklistsPageUrl]). Page 1 of the paginated route is
+  /// this same document.
+  Future<ApiResponse<UserProfileBooklistsPage>> getUserProfileBooklists({
     required String userId,
     required String userHash,
   }) async {
@@ -261,6 +268,86 @@ mixin ZLibraryBooklists on ZLibraryApiBase {
       html,
       fetchedAt,
     );
+    final lists = await parseUserProfileBooklistsH(html, baseUrl: _base);
+    return ApiResponse.ok(
+      UserProfileBooklistsPage(
+        lists: lists,
+        pagesTotal: parseUserProfileBooklistsPagesTotal(html),
+      ),
+    );
+  }
+
+  /// Absolute URL of one paginated document of a user's profile
+  /// booklists (`/profile/{userId}/{hash}/booklists?page=N`), for
+  /// callers that fetch the HTML themselves. Page 1 omits the query
+  /// (the bare `/booklists` path serves it too — same document as
+  /// [userProfilePageUrl], live-verified 2026-11-21). Same path
+  /// construction as [getUserProfileBooklistsPage] — the app must
+  /// not rebuild it.
+  String userProfileBooklistsPageUrl({
+    required String userId,
+    required String userHash,
+    required int page,
+  }) {
+    final path = '$_base/profile/$userId/$userHash/booklists';
+    return page <= 1 ? path : '$path?page=$page';
+  }
+
+  /// One paginated document (page ≥ 2) of a user's profile booklists:
+  /// `GET /profile/{userId}/{hash}/booklists?page=N` — the same full
+  /// profile document shape, with the booklists tab rendering the
+  /// next ≤ 10 lists and its own paginator (live-verified 2026-11-21,
+  /// issue #11: the profile document only renders the first 10).
+  /// Page 1 is served by [getUserProfileBooklists] (the profile
+  /// document itself). Like it, this route can answer with the
+  /// browser-check wall — reported as `HTTP 503: browser check page`
+  /// so the caller can fall back to the WebView solver for page 1
+  /// (whose solve clears the wall cookies Dio then reuses).
+  ///
+  /// The loaded HTML is NOT handed to [onBooklistHtmlLoaded]: the app
+  /// only re-reads the profile document (page 1) from its cache, so
+  /// caching page-N documents would just be dead data.
+  Future<ApiResponse<List<Booklist>>> getUserProfileBooklistsPage({
+    required String userId,
+    required String userHash,
+    required int page,
+  }) async {
+    if (userId.isEmpty) {
+      return ApiResponse.fail('missing user id');
+    }
+    if (userHash.isEmpty) {
+      return ApiResponse.fail('missing profile hash');
+    }
+    if (page <= 1) {
+      return ApiResponse.fail('profile booklists page must be ≥ 2');
+    }
+    // `_get` prefixes `_base` itself, so pass the host-relative path
+    // (the absolute URL lives in [userProfileBooklistsPageUrl] for
+    // callers that fetch the page themselves).
+    final raw = await _get(
+      '/profile/$userId/$userHash/booklists?page=$page',
+      extraHeaders: const {'Accept': 'text/html'},
+    );
+    final status = raw.status;
+    if (status == null || status < 200 || status >= 300) {
+      return ApiResponse.fail(
+        raw.error ?? 'profile booklists failed (HTTP $status)',
+        statusCode: status,
+      );
+    }
+    final html = raw.body;
+    if (html == null || html.isEmpty) {
+      return ApiResponse.fail(
+        raw.error ?? 'profile booklists failed',
+        statusCode: status,
+      );
+    }
+    if (ZLibraryApiBase._looksLikeChallengePage(html)) {
+      return ApiResponse.fail(
+        'HTTP $status: browser check page',
+        statusCode: status,
+      );
+    }
     return ApiResponse.ok(await parseUserProfileBooklistsH(html, baseUrl: _base));
   }
 

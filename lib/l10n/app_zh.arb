@@ -266,7 +266,7 @@
   "wifiOnlyDownloadsDesc": "开启后仅在 Wi-Fi 下发起下载，移动数据网络会被拒绝；连上 Wi-Fi 后重试即可",
   "downloadWifiOnlyRequired": "等待 Wi-Fi：已开启仅 Wi-Fi 下载，连上 Wi-Fi 后重试即可",
   "downloadPinToTop": "置顶",
-  "downloadQuotaDesc": "当前 Z-Library 账号今天的下载次数已用完，明天会自动恢复。也可以切换其他账号继续下载。",
+  "downloadQuotaDesc": "当前 Z-Library 账号今天的下载次数已用完，明天会自动恢复。可以切换其他账号继续下载，也可以从其他源下载这本书。",
   "downloadQuotaExceeded": "今日下载次数已用完，明天再试或切换账号。",
   "downloadQuotaTitle": "今日下载次数已用完",
   "downloadRemoveRecord": "移除记录",
@@ -729,5 +729,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "quotaFallbackSwitchSource": "换源下载",
+  "quotaFallbackNotFound": "其他源也没有这本书"
 }

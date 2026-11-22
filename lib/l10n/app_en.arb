@@ -266,7 +266,7 @@
   "wifiOnlyDownloadsDesc": "Reject starting downloads on metered connections (mobile data); retry once on Wi-Fi",
   "downloadWifiOnlyRequired": "Waiting for Wi-Fi: Wi-Fi-only downloads is on. Retry once connected.",
   "downloadPinToTop": "Pin to top",
-  "downloadQuotaDesc": "This Z-Library account has used all of today's downloads. They reset tomorrow, or you can switch to another account to keep downloading.",
+  "downloadQuotaDesc": "This Z-Library account has used all of today's downloads. They reset tomorrow. You can switch to another account to keep downloading, or download this book from another source.",
   "downloadQuotaExceeded": "Daily downloads used up. Try tomorrow or switch accounts.",
   "downloadQuotaTitle": "Daily downloads used up",
   "downloadRemoveRecord": "Remove record",
@@ -729,5 +729,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "quotaFallbackSwitchSource": "Switch source",
+  "quotaFallbackNotFound": "No other source has this book"
 }

@@ -169,15 +169,24 @@ class AuthStorage {
     throw CredentialStorageUnavailable(lastError!);
   }
 
-  /// Clear all stored credentials, including the saved-accounts list:
-  /// after logout nothing that can log back in may remain on disk.
-  Future<void> clearCredentials() async {
+  /// Remove one account: drop it from the saved-accounts list and,
+  /// when it is the currently signed-in account, clear the current
+  /// session keys too. Other saved accounts are untouched.
+  ///
+  /// The old `clearCredentials()` deleted the whole saved-accounts
+  /// list as well, so logging out of one account logged out all of
+  /// them — that is the bug, not a feature. A logout (or a rejected
+  /// session) only ever concerns one account.
+  Future<void> clearAccount(String? userId) async {
     await _migrateLegacyIfNeeded();
-    await SecureStorage.delete(_keyUserId);
-    await SecureStorage.delete(_keyUserKey);
-    await SecureStorage.delete(_keyUserEmail);
-    await SecureStorage.delete(_keyUserName);
-    await SecureStorage.delete(_keyAccounts);
+    if (userId != null) await removeAccount(userId);
+    final currentUserId = await SecureStorage.read(_keyUserId);
+    if (currentUserId == null || userId == null || currentUserId == userId) {
+      await SecureStorage.delete(_keyUserId);
+      await SecureStorage.delete(_keyUserKey);
+      await SecureStorage.delete(_keyUserEmail);
+      await SecureStorage.delete(_keyUserName);
+    }
   }
 
   /// Serializes the saved-accounts read-modify-write cycles (save /

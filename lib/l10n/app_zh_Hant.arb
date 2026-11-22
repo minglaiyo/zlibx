@@ -376,7 +376,7 @@
   "loginUseZsiteAccount": "請使用 z站 官網帳號登入",
   "logout": "登出",
   "logoutAction": "登出",
-  "logoutConfirmDesc": "登出後需要重新輸入帳號密碼登入。",
+  "logoutConfirmDesc": "登出後將從此裝置移除該帳號，其他已儲存的帳號不受影響。",
   "logoutConfirmTitle": "登出？",
   "manageAccounts": "切換或管理帳號",
   "matchByPhrase": "按詞搜尋",

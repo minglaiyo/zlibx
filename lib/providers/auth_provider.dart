@@ -151,11 +151,13 @@ class AuthNotifier extends Notifier<AuthState> {
           state = AuthState(user: response.data);
         } else if (response.authRejected) {
           // The line read the pair itself and said no (401, or the server's
-          // own message about the session) — drop creds, and make sure the
-          // plugin instance no longer holds the rejected pair. This is the
-          // ONLY branch allowed to delete anything at boot.
+          // own message about the session) — drop that account's creds,
+          // and make sure the plugin instance no longer holds the rejected
+          // pair. This is the ONLY branch allowed to delete anything at
+          // boot. Only the rejected account goes: the other saved
+          // accounts keep their sessions.
           _api.clearSession();
-          await _storage.clearCredentials();
+          await _storage.clearAccount(userId);
           unawaited(_dropWebViewSession());
           if (!_isCurrent(epoch)) return;
           state = AuthState();
@@ -338,7 +340,9 @@ class AuthNotifier extends Notifier<AuthState> {
     // UI but keeps sending the logged-out account's remix_* cookies on
     // every search/detail call until the process restarts.
     _api.clearSession();
-    await _storage.clearCredentials();
+    // Only the account being logged out leaves the device: the other
+    // saved accounts keep their session keys.
+    await _storage.clearAccount(state.user?.id);
     // Session cookies installed for the online reader live in the WebView
     // cookie store; clear them too so logout really logs out everywhere.
     try {
@@ -455,9 +459,10 @@ class AuthNotifier extends Notifier<AuthState> {
         // The line read the pair and said no — and this call asked it twice
         // (the refusal is what started the re-check). Clearing here is what a
         // dead session actually needs: keeping it would fail every request
-        // while the UI still claimed a signed-in user.
+        // while the UI still claimed a signed-in user. Only the dead
+        // account goes; the other saved accounts are untouched.
         _api.clearSession();
-        await _storage.clearCredentials();
+        await _storage.clearAccount(userId);
         await _dropWebViewSession();
         if (!_isCurrent(epoch)) return;
         invalidateAccountScopedProviders(ref);

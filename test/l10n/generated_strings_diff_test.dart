@@ -247,7 +247,7 @@ void main() {
     expect(loc.loginUseZsiteAccount, 'Please login with your z-site account');
     expect(loc.logout, 'Logout');
     expect(loc.logoutAction, 'Log out');
-    expect(loc.logoutConfirmDesc, 'You will need to log in again with your credentials.');
+    expect(loc.logoutConfirmDesc, 'This account will be removed from this device. Other saved accounts are not affected.');
     expect(loc.logoutConfirmTitle, 'Log out?');
     expect(loc.manageAccounts, 'Switch or manage accounts');
     expect(loc.matchByPhrase, 'By phrase');
@@ -680,7 +680,7 @@ void main() {
     expect(loc.loginUseZsiteAccount, 'Z-Libraryの公式アカウントでログインしてください');
     expect(loc.logout, 'ログアウト');
     expect(loc.logoutAction, 'ログアウト');
-    expect(loc.logoutConfirmDesc, 'ログアウトすると、再度アカウント情報でログインする必要があります。');
+    expect(loc.logoutConfirmDesc, 'このアカウントはこのデバイスから削除されます。他の保存済みアカウントには影響しません。');
     expect(loc.logoutConfirmTitle, 'ログアウトしますか？');
     expect(loc.manageAccounts, 'アカウントの切り替え・管理');
     expect(loc.matchByPhrase, 'フレーズで検索');
@@ -1113,7 +1113,7 @@ void main() {
     expect(loc.loginUseZsiteAccount, 'Z-Library 공식 계정으로 로그인하세요');
     expect(loc.logout, '로그아웃');
     expect(loc.logoutAction, '로그아웃');
-    expect(loc.logoutConfirmDesc, '로그아웃하면 계정 정보로 다시 로그인해야 합니다.');
+    expect(loc.logoutConfirmDesc, '이 계정은 이 기기에서 삭제됩니다. 저장된 다른 계정에는 영향이 없습니다.');
     expect(loc.logoutConfirmTitle, '로그아웃하시겠어요?');
     expect(loc.manageAccounts, '계정 전환 및 관리');
     expect(loc.matchByPhrase, '구로 검색');
@@ -1546,7 +1546,7 @@ void main() {
     expect(loc.loginUseZsiteAccount, '请使用 z站 官网账号登录');
     expect(loc.logout, '退出登录');
     expect(loc.logoutAction, '退出');
-    expect(loc.logoutConfirmDesc, '退出后需要重新输入账号密码登录。');
+    expect(loc.logoutConfirmDesc, '退出后将从此设备移除该账号，其他已保存的账号不受影响。');
     expect(loc.logoutConfirmTitle, '退出登录？');
     expect(loc.manageAccounts, '切换或管理账号');
     expect(loc.matchByPhrase, '按词搜索');
@@ -1979,7 +1979,7 @@ void main() {
     expect(loc.loginUseZsiteAccount, '請使用 z站 官網帳號登入');
     expect(loc.logout, '登出');
     expect(loc.logoutAction, '登出');
-    expect(loc.logoutConfirmDesc, '登出後需要重新輸入帳號密碼登入。');
+    expect(loc.logoutConfirmDesc, '登出後將從此裝置移除該帳號，其他已儲存的帳號不受影響。');
     expect(loc.logoutConfirmTitle, '登出？');
     expect(loc.manageAccounts, '切換或管理帳號');
     expect(loc.matchByPhrase, '按詞搜尋');

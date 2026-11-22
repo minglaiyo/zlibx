@@ -10,11 +10,13 @@
 //   * the line looked at our `remix_userid` / `remix_userkey` pair and said
 //     no.
 //
-// Only the second may drop credentials: `clearCredentials()` also deletes
-// the saved-accounts list (auth_storage.dart), so a wrong verdict turns a
-// network bad day into "retype your password", and it is the reported
-// 重进 App 掉登录. Those cases are the answers a mirror really gives on a bad
-// day; the pair stays on disk and the session is kept as cached.
+// Only the second may drop credentials: `clearAccount(userId)` drops only
+// that account's pair and its saved entry (the old `clearCredentials()`
+// also deleted the whole saved-accounts list, so a wrong verdict turned a
+// network bad day into "retype your password" for every account — the
+// reported 重进 App 掉登录). Those cases are the answers a mirror really
+// gives on a bad day; the pair stays on disk and the session is kept as
+// cached.
 //
 // The other half is the second reported symptom (401 不续期): a refusal seen
 // while running changed nothing until the next cold boot. Both live in one

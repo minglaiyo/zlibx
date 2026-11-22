@@ -376,7 +376,7 @@
   "loginUseZsiteAccount": "请使用 z站 官网账号登录",
   "logout": "退出登录",
   "logoutAction": "退出",
-  "logoutConfirmDesc": "退出后需要重新输入账号密码登录。",
+  "logoutConfirmDesc": "退出后将从此设备移除该账号，其他已保存的账号不受影响。",
   "logoutConfirmTitle": "退出登录？",
   "manageAccounts": "切换或管理账号",
   "matchByPhrase": "按词搜索",

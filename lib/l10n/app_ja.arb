@@ -376,7 +376,7 @@
   "loginUseZsiteAccount": "Z-Libraryの公式アカウントでログインしてください",
   "logout": "ログアウト",
   "logoutAction": "ログアウト",
-  "logoutConfirmDesc": "ログアウトすると、再度アカウント情報でログインする必要があります。",
+  "logoutConfirmDesc": "このアカウントはこのデバイスから削除されます。他の保存済みアカウントには影響しません。",
   "logoutConfirmTitle": "ログアウトしますか？",
   "manageAccounts": "アカウントの切り替え・管理",
   "matchByPhrase": "フレーズで検索",

@@ -376,7 +376,7 @@
   "loginUseZsiteAccount": "Please login with your z-site account",
   "logout": "Logout",
   "logoutAction": "Log out",
-  "logoutConfirmDesc": "You will need to log in again with your credentials.",
+  "logoutConfirmDesc": "This account will be removed from this device. Other saved accounts are not affected.",
   "logoutConfirmTitle": "Log out?",
   "manageAccounts": "Switch or manage accounts",
   "matchByPhrase": "By phrase",

@@ -90,46 +90,45 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             }
 
             final sorted = _sortedBooks(books);
+            // Date grouping only makes sense in the date sorts; the
+            // title/year/size sorts keep the flat list.
+            final grouped =
+                _sort == _HistorySort.dateDesc ||
+                _sort == _HistorySort.dateAsc;
+            if (!grouped) {
+              return ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: sorted.length,
+                itemBuilder: (context, index) =>
+                    _bookCard(context, sorted[index]),
+              );
+            }
+            final sections = _groupByDate(sorted, l10n);
+            final items = <({String? header, Book? book})>[];
+            for (final section in sections) {
+              items.add((header: section.$1, book: null));
+              for (final book in section.$2) {
+                items.add((header: null, book: book));
+              }
+            }
             return ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: sorted.length,
+              itemCount: items.length,
               itemBuilder: (context, index) {
-                final book = sorted[index];
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.all(12),
-                    leading: _HistoryCoverThumb(book: book),
-                    title: Text(
-                      book.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                final item = items[index];
+                if (item.header != null) {
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+                    child: Text(
+                      item.header!,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                     ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 每次下载的时间（dstats 记录自带；eapi 元数据
-                        // 记录没有）。纯数字格式，无需本地化字符串。
-                        if (book.downloadedAt != null)
-                          Text(
-                            _formatStamp(book.downloadedAt!),
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        if (book.author != null) Text(book.author!),
-                        if (book.filesizeString != null)
-                          Text(
-                            '${book.extension?.toUpperCase()} • ${book.filesizeString}',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                      ],
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      AppRoutes.openBookDetailForBook(context, book);
-                    },
-                  ),
-                );
+                  );
+                }
+                return _bookCard(context, item.book!);
               },
             );
           },
@@ -142,6 +141,81 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         ),
       ),
     );
+  }
+
+  /// One history row: cover, title, download time, author, format/size.
+  Widget _bookCard(BuildContext context, Book book) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(12),
+        leading: _HistoryCoverThumb(book: book),
+        title: Text(
+          book.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 每次下载的时间（dstats 记录自带；eapi 元数据
+            // 记录没有）。纯数字格式，无需本地化字符串。
+            if (book.downloadedAt != null)
+              Text(
+                _formatStamp(book.downloadedAt!),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            if (book.author != null) Text(book.author!),
+            if (book.filesizeString != null)
+              Text(
+                '${book.extension?.toUpperCase()} • ${book.filesizeString}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+          ],
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          AppRoutes.openBookDetailForBook(context, book);
+        },
+      ),
+    );
+  }
+
+  /// Date bucket for one history row, from its download stamp. The
+  /// stamp is replayed as-is (no timezone conversion), so the group
+  /// label is computed from the stamp's own calendar date — it matches
+  /// the date the row itself shows. 本周 = this calendar week, Monday
+  /// first. Rows without a stamp (eapi metadata records) go last.
+  String _dateGroupLabel(AppLocalizations l10n, DateTime? stamp) {
+    if (stamp == null) return l10n.historyGroupUnknownTime;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(stamp.year, stamp.month, stamp.day);
+    final diff = today.difference(day).inDays;
+    if (diff == 0) return l10n.historyGroupToday;
+    if (diff == 1) return l10n.historyGroupYesterday;
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    if (!day.isBefore(monday)) return l10n.historyGroupThisWeek;
+    return l10n.historyGroupEarlier;
+  }
+
+  /// Group a date-sorted list into consecutive (label, books) sections.
+  /// The list is already sorted by date, so same-label rows are
+  /// consecutive and one pass suffices.
+  List<(String, List<Book>)> _groupByDate(
+    List<Book> sorted,
+    AppLocalizations l10n,
+  ) {
+    final sections = <(String, List<Book>)>[];
+    for (final book in sorted) {
+      final label = _dateGroupLabel(l10n, book.downloadedAt);
+      if (sections.isEmpty || sections.last.$1 != label) {
+        sections.add((label, [book]));
+      } else {
+        sections.last.$2.add(book);
+      }
+    }
+    return sections;
   }
 
   /// `yyyy-MM-dd HH:mm`，与 dstats 页面渲染的是同一时刻（解析时未做

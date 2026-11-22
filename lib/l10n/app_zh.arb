@@ -731,5 +731,23 @@
     }
   },
   "quotaFallbackSwitchSource": "换源下载",
-  "quotaFallbackNotFound": "其他源也没有这本书"
+  "quotaFallbackNotFound": "其他源也没有这本书",
+  "add": "添加",
+  "blockedKeywords": "屏蔽关键词",
+  "blockedKeywordsDesc": "书名、作者或出版社里含有这些词的搜索结果会被隐藏（不区分大小写），下次搜索生效。",
+  "blockedKeywordsHint": "输入要屏蔽的词…",
+  "blockedKeywordsEmpty": "还没屏蔽任何词",
+  "historyGroupToday": "今天",
+  "historyGroupYesterday": "昨天",
+  "historyGroupThisWeek": "本周",
+  "historyGroupEarlier": "更早",
+  "historyGroupUnknownTime": "未知时间",
+  "downloadOrganize": "自动分文件夹",
+  "downloadOrganizeDesc": "仅对新下载生效，已下载的文件不会移动。",
+  "downloadOrganizeOff": "不分文件夹",
+  "downloadOrganizeOffDesc": "所有书直接放在下载目录里",
+  "downloadOrganizeAuthor": "按作者",
+  "downloadOrganizeAuthorDesc": "每个作者一个子文件夹",
+  "downloadOrganizeCategory": "按分类",
+  "downloadOrganizeCategoryDesc": "每个分类一个子文件夹"
 }

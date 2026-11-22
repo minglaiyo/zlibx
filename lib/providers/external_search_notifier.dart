@@ -12,6 +12,8 @@ import '../services/annas_archieve.dart';
 import '../services/external_search.dart';
 import '../services/libgen_service.dart';
 import '../services/network_error.dart';
+import '../utils/blocked_keywords.dart';
+import 'settings_provider.dart';
 
 
 // ── External Search (Anna's Archive + LibGen) ────────────────────────
@@ -109,6 +111,25 @@ class ExternalSearchNotifier extends Notifier<ExternalSearchState> {
     );
   }
 
+  /// Drop results the user's blocklist hides: any blocked keyword in
+  /// the title, author or publisher. Same rule as SearchNotifier's
+  /// _filterBlocked, over DisplayBook (the external result type).
+  /// Applies to new searches only.
+  List<DisplayBook> _filterBlocked(List<DisplayBook> books) {
+    final blocked = ref.read(blockedKeywordsProvider);
+    if (blocked.isEmpty) return books;
+    return books
+        .where(
+          (book) => !isBlockedByKeywords(
+            title: book.title,
+            author: book.author,
+            publisher: book.publisher,
+            keywords: blocked,
+          ),
+        )
+        .toList();
+  }
+
   Future<void> search(
     String query,
     BookSource source, {
@@ -125,7 +146,7 @@ class ExternalSearchNotifier extends Notifier<ExternalSearchState> {
       final books = await _provider.search(_searchQuery(query, field, page: 1));
       if (requestId != _requestId) return;
       state = ExternalSearchState(
-        books: books.map<DisplayBook>(_toDisplay).toList(),
+        books: _filterBlocked(books.map<DisplayBook>(_toDisplay).toList()),
         currentPage: 1,
         hasSearched: true,
         hasMore: books.isNotEmpty,
@@ -151,7 +172,10 @@ class ExternalSearchNotifier extends Notifier<ExternalSearchState> {
       );
       if (requestId != _requestId) return;
       state = state.copyWith(
-        books: [...state.books, ...books.map<DisplayBook>(_toDisplay)],
+        books: [
+          ...state.books,
+          ..._filterBlocked(books.map<DisplayBook>(_toDisplay).toList()),
+        ],
         currentPage: nextPage,
         isLoadingMore: false,
         hasMore: books.isNotEmpty,

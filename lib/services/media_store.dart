@@ -61,11 +61,13 @@ class MediaStoreFiles {
   /// MediaStore (Android 10+ only). Returns the content URI string,
   /// or null when MediaStore is unavailable or the publish fails —
   /// the caller then keeps the app-specific file and reports success
-  /// with that location.
+  /// with that location. [subfolder] is the organize-mode subfolder
+  /// under Download/zlibx (null = flat).
   static Future<String?> publishToDownloads({
     required String sourcePath,
     required String displayName,
     required String mimeType,
+    String? subfolder,
   }) async {
     if (!_onAndroid) return null;
     try {
@@ -75,6 +77,7 @@ class MediaStoreFiles {
           'sourcePath': sourcePath,
           'displayName': displayName,
           'mimeType': mimeType,
+          if (subfolder != null) 'subfolder': subfolder,
         },
       );
       return (uri != null && uri.isNotEmpty) ? uri : null;
@@ -91,16 +94,22 @@ class MediaStoreFiles {
   /// folder (Android 10+ only), to be filled by [writePendingChunk]
   /// and published by [finishPendingDownload]. Returns the content
   /// URI string, or null when unavailable — the caller then falls
-  /// back to the staged .part flow.
+  /// back to the staged .part flow. [subfolder] is the organize-mode
+  /// subfolder under Download/zlibx (null = flat).
   static Future<String?> createPendingDownload({
     required String displayName,
     required String mimeType,
+    String? subfolder,
   }) async {
     if (!_onAndroid) return null;
     try {
       final uri = await _channel.invokeMethod<String>(
         'createPendingDownload',
-        <String, Object>{'displayName': displayName, 'mimeType': mimeType},
+        <String, Object>{
+          'displayName': displayName,
+          'mimeType': mimeType,
+          if (subfolder != null) 'subfolder': subfolder,
+        },
       );
       return (uri != null && uri.isNotEmpty) ? uri : null;
     } on PlatformException catch (e) {

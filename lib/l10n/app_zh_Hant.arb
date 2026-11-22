@@ -731,5 +731,23 @@
     }
   },
   "quotaFallbackSwitchSource": "換源下載",
-  "quotaFallbackNotFound": "其他源也沒有這本書"
+  "quotaFallbackNotFound": "其他源也沒有這本書",
+  "add": "新增",
+  "blockedKeywords": "封鎖關鍵詞",
+  "blockedKeywordsDesc": "書名、作者或出版社裡含有這些詞的搜尋結果會被隱藏（不區分大小寫），下次搜尋生效。",
+  "blockedKeywordsHint": "輸入要封鎖的詞…",
+  "blockedKeywordsEmpty": "還沒封鎖任何詞",
+  "historyGroupToday": "今天",
+  "historyGroupYesterday": "昨天",
+  "historyGroupThisWeek": "本週",
+  "historyGroupEarlier": "更早",
+  "historyGroupUnknownTime": "未知時間",
+  "downloadOrganize": "自動分資料夾",
+  "downloadOrganizeDesc": "僅對新下載生效，已下載的檔案不會移動。",
+  "downloadOrganizeOff": "不分資料夾",
+  "downloadOrganizeOffDesc": "所有書直接放在下載目錄裡",
+  "downloadOrganizeAuthor": "按作者",
+  "downloadOrganizeAuthorDesc": "每個作者一個子資料夾",
+  "downloadOrganizeCategory": "按分類",
+  "downloadOrganizeCategoryDesc": "每個分類一個子資料夾"
 }

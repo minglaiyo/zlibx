@@ -25,6 +25,7 @@ import '../utils/diagnostics.dart';
 import '../utils/file_utils.dart';
 import 'download_slot_pool.dart';
 import 'download_task.dart';
+import 'settings_provider.dart';
 import 'zlibrary_provider.dart';
 
 export 'download_task.dart';

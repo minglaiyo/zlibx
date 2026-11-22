@@ -731,5 +731,23 @@
     }
   },
   "quotaFallbackSwitchSource": "他のソースから",
-  "quotaFallbackNotFound": "他のソースにもこの本はありません"
+  "quotaFallbackNotFound": "他のソースにもこの本はありません",
+  "add": "追加",
+  "blockedKeywords": "ブロックキーワード",
+  "blockedKeywordsDesc": "タイトル、著者、出版社にこれらの単語を含む検索結果は非表示になります（大文字小文字を区別しません）。次回の検索から適用されます。",
+  "blockedKeywordsHint": "ブロックする単語を入力…",
+  "blockedKeywordsEmpty": "ブロック中のキーワードはありません",
+  "historyGroupToday": "今日",
+  "historyGroupYesterday": "昨日",
+  "historyGroupThisWeek": "今週",
+  "historyGroupEarlier": "それ以前",
+  "historyGroupUnknownTime": "不明な時間",
+  "downloadOrganize": "フォルダに自動整理",
+  "downloadOrganizeDesc": "新しいダウンロードのみに適用されます。ダウンロード済みのファイルは移動しません。",
+  "downloadOrganizeOff": "フォルダ分けしない",
+  "downloadOrganizeOffDesc": "すべての本をダウンロードフォルダに直接保存",
+  "downloadOrganizeAuthor": "著者別",
+  "downloadOrganizeAuthorDesc": "著者ごとにサブフォルダを作成",
+  "downloadOrganizeCategory": "カテゴリ別",
+  "downloadOrganizeCategoryDesc": "カテゴリごとにサブフォルダを作成"
 }

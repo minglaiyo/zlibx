@@ -122,11 +122,17 @@ class MainActivity : FlutterFragmentActivity() {
                         val sourcePath = call.argument<String>("sourcePath")
                         val displayName = call.argument<String>("displayName")
                         val mimeType = call.argument<String>("mimeType")
+                        val subfolder = call.argument<String>("subfolder")
                         if (sourcePath == null || displayName == null || mimeType == null) {
                             result.success(null)
                         } else {
                             runAsync(result) {
-                                publishToDownloads(sourcePath, displayName, mimeType)
+                                publishToDownloads(
+                                    sourcePath,
+                                    displayName,
+                                    mimeType,
+                                    subfolder,
+                                )
                             }
                         }
                     }
@@ -164,11 +170,12 @@ class MainActivity : FlutterFragmentActivity() {
                     "createPendingDownload" -> {
                         val displayName = call.argument<String>("displayName")
                         val mimeType = call.argument<String>("mimeType")
+                        val subfolder = call.argument<String>("subfolder")
                         if (displayName == null || mimeType == null) {
                             result.success(null)
                         } else {
                             runAsync(result, lightExecutor) {
-                                createPendingDownload(displayName, mimeType)
+                                createPendingDownload(displayName, mimeType, subfolder)
                             }
                         }
                     }
@@ -335,6 +342,24 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    /// Organize-mode subfolder under Download/zlibx, sanitized on
+    /// this side too (defense in depth — the Dart side already strips
+    /// these, but a bad value must never escape the download
+    /// directory). Null when organizing is off or the name is unusable.
+    private fun sanitizeSubfolder(raw: String?): String? {
+        if (raw == null) return null
+        val cleaned = raw
+            .replace(Regex("[/\\\\:*?\"<>|\\x00-\\x1f]"), "")
+            .trim()
+        if (cleaned.isEmpty() || cleaned.all { it == '.' }) return null
+        return cleaned
+    }
+
+    private fun downloadRelativePath(subfolder: String?): String {
+        val clean = sanitizeSubfolder(subfolder)
+        return if (clean == null) "Download/zlibx" else "Download/zlibx/$clean"
+    }
+
     /// Insert [sourcePath] into the public Downloads/zlibx folder
     /// (MediaStore, Android 10+). Returns the content URI string, or
     /// null when unsupported (pre-Android 10) or on any failure; the
@@ -343,13 +368,14 @@ class MainActivity : FlutterFragmentActivity() {
         sourcePath: String,
         displayName: String,
         mimeType: String,
+        subfolder: String? = null,
     ): String? {
         val source = File(sourcePath)
         if (!source.exists()) return null
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, displayName)
             put(MediaStore.Downloads.MIME_TYPE, mimeType)
-            put(MediaStore.Downloads.RELATIVE_PATH, "Download/zlibx")
+            put(MediaStore.Downloads.RELATIVE_PATH, downloadRelativePath(subfolder))
             put(MediaStore.Downloads.IS_PENDING, 1)
         }
         val uri = contentResolver.insert(
@@ -390,11 +416,12 @@ class MainActivity : FlutterFragmentActivity() {
     private fun createPendingDownload(
         displayName: String,
         mimeType: String,
+        subfolder: String? = null,
     ): String? {
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, displayName)
             put(MediaStore.Downloads.MIME_TYPE, mimeType)
-            put(MediaStore.Downloads.RELATIVE_PATH, "Download/zlibx")
+            put(MediaStore.Downloads.RELATIVE_PATH, downloadRelativePath(subfolder))
             put(MediaStore.Downloads.IS_PENDING, 1)
         }
         return try {

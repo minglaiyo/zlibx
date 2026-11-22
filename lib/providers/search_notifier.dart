@@ -10,7 +10,9 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../constants/search_filters.dart';
 import '../services/category_repository.dart';
+import '../utils/blocked_keywords.dart';
 import 'auth_provider.dart';
+import 'settings_provider.dart';
 import 'zlibrary_provider.dart';
 
 
@@ -220,6 +222,25 @@ class SearchNotifier extends Notifier<SearchState> {
       if (seen.add(book.id)) merged.add(book);
     }
     return merged;
+  }
+
+  /// Drop books the user's blocklist hides: any blocked keyword in the
+  /// title, author or publisher. Applies to new searches only — the
+  /// list is read when a page lands, not re-applied to results already
+  /// on screen.
+  List<Book> _filterBlocked(List<Book> books) {
+    final blocked = ref.read(blockedKeywordsProvider);
+    if (blocked.isEmpty) return books;
+    return books
+        .where(
+          (book) => !isBlockedByKeywords(
+            title: book.title,
+            author: book.author,
+            publisher: book.publisher,
+            keywords: blocked,
+          ),
+        )
+        .toList();
   }
 
   /// The slug for [categoryId]'s search URL, from the browse page's
@@ -452,7 +473,7 @@ class SearchNotifier extends Notifier<SearchState> {
       final totalPages = response.meta?['total_pages'] ?? 1;
       final books = response.data ?? const <Book>[];
       state = SearchState(
-        books: _mergeBooks(const [], books),
+        books: _filterBlocked(_mergeBooks(const [], books)),
         currentPage: 1,
         totalPages: totalPages is int ? totalPages : 1,
         totalPagesUnknown: response.meta?['total_pages_unknown'] == true,
@@ -485,7 +506,9 @@ class SearchNotifier extends Notifier<SearchState> {
 
       final totalPages = response.meta?['total_pages'];
       state = state.copyWith(
-        books: _mergeBooks(state.books, response.data ?? const <Book>[]),
+        books: _filterBlocked(
+          _mergeBooks(state.books, response.data ?? const <Book>[]),
+        ),
         currentPage: nextPage,
         totalPages: totalPages is int ? totalPages : state.totalPages,
         totalPagesUnknown: response.meta?['total_pages_unknown'] == true,

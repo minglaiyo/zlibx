@@ -102,11 +102,59 @@ mixin _DownloadPathsMixin on _DownloadNotifierBase {
     return '$safeTitle$suffix';
   }
 
+  /// Subfolder for [book] under the download directory, from the
+  /// user's organize mode. Null when organizing is off. Only new
+  /// downloads use it — already-downloaded files stay where they are,
+  /// and open/share resolve through the stored path, never by
+  /// re-deriving it. The name is sanitized so it can never escape the
+  /// download directory ('..', separators and control characters are
+  /// stripped); a book with no usable author/category falls back to
+  /// the mode's "unknown" folder (hardcoded Chinese: the engine has
+  /// no BuildContext to localize through, and these are edge cases).
+  String? _downloadSubfolder(Book book) {
+    final mode = ref.read(downloadOrganizeModeProvider);
+    final String? raw;
+    final String fallback;
+    switch (mode) {
+      case DownloadOrganizeMode.off:
+        return null;
+      case DownloadOrganizeMode.author:
+        raw = book.author;
+        fallback = '未知作者';
+      case DownloadOrganizeMode.category:
+        // No firstOrNull in this codebase (avoids package:collection):
+        // split(',') on a non-empty string always yields >= 1 part.
+        final parts = book.categories?.split(',');
+        raw = (parts != null && parts.isNotEmpty)
+            ? parts.first.trim()
+            : null;
+        fallback = '未分类';
+    }
+    final name = _sanitizeFolderName(raw ?? '');
+    return name.isEmpty ? fallback : name;
+  }
+
+  /// Strip anything that cannot appear in a folder name (separators,
+  /// control characters, a name made only of dots), and cap the length
+  /// so the full path stays well inside filesystem limits.
+  String _sanitizeFolderName(String raw) {
+    var name = raw
+        .replaceAll(RegExp(r'[/\\:*?"<>|\x00-\x1f]'), '')
+        .trim();
+    if (RegExp(r'^\.+$').hasMatch(name)) name = '';
+    if (name.length > 100) name = name.substring(0, 100).trim();
+    return name;
+  }
+
   /// Build save path for a book (for non-MediaStore platforms)
   Future<String?> _buildSavePath(Book book) async {
     try {
       final baseDir = await _resolveSaveDir();
-      return '$baseDir/${_buildSafeFileName(book)}';
+      final subfolder = _downloadSubfolder(book);
+      if (subfolder == null) return '$baseDir/${_buildSafeFileName(book)}';
+      final dir = Directory('$baseDir/$subfolder');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      return '${dir.path}/${_buildSafeFileName(book)}';
     } catch (e) {
       return null;
     }

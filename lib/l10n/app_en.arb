@@ -731,5 +731,23 @@
     }
   },
   "quotaFallbackSwitchSource": "Switch source",
-  "quotaFallbackNotFound": "No other source has this book"
+  "quotaFallbackNotFound": "No other source has this book",
+  "add": "Add",
+  "blockedKeywords": "Blocked keywords",
+  "blockedKeywordsDesc": "Search results whose title, author or publisher contains any of these words are hidden (case-insensitive). Applies to the next search.",
+  "blockedKeywordsHint": "Enter a word to block…",
+  "blockedKeywordsEmpty": "No blocked keywords yet",
+  "historyGroupToday": "Today",
+  "historyGroupYesterday": "Yesterday",
+  "historyGroupThisWeek": "This week",
+  "historyGroupEarlier": "Earlier",
+  "historyGroupUnknownTime": "Unknown time",
+  "downloadOrganize": "Organize into folders",
+  "downloadOrganizeDesc": "Applies to new downloads only; already-downloaded files stay where they are.",
+  "downloadOrganizeOff": "No subfolders",
+  "downloadOrganizeOffDesc": "All books directly in the download directory",
+  "downloadOrganizeAuthor": "By author",
+  "downloadOrganizeAuthorDesc": "One subfolder per author",
+  "downloadOrganizeCategory": "By category",
+  "downloadOrganizeCategoryDesc": "One subfolder per category"
 }

@@ -129,15 +129,18 @@ class PendingUriWriter implements PendingDownloadWriter {
 
   /// Create a fresh pending entry. Null when MediaStore cannot create
   /// it (pre-Android 10, or any insert failure) — the caller then
-  /// falls back to the staged `.part` flow.
+  /// falls back to the staged `.part` flow. [subfolder] is the
+  /// organize-mode subfolder under Download/zlibx (null = flat).
   static Future<PendingUriWriter?> create({
     required String displayName,
     required String mimeType,
     required String savePath,
+    String? subfolder,
   }) async {
     final uri = await MediaStoreFiles.createPendingDownload(
       displayName: displayName,
       mimeType: mimeType,
+      subfolder: subfolder,
     );
     if (uri == null) return null;
     final writer = PendingUriWriter._(uri: uri, savePath: savePath);

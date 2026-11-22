@@ -414,3 +414,104 @@ class NavBarVisibleNotifier extends Notifier<bool> {
 final navBarVisibleProvider = NotifierProvider<NavBarVisibleNotifier, bool>(
   NavBarVisibleNotifier.new,
 );
+
+/// Blocked keywords: a user-editable list; search results whose title,
+/// author or publisher contains any entry (case-insensitive substring)
+/// are hidden. An empty list blocks nothing.
+class BlockedKeywordsNotifier extends Notifier<List<String>> {
+  @override
+  List<String> build() => _loadBlockedKeywords();
+
+  /// Sync Hive read; returns the persisted list as the initial state.
+  /// Stored as a plain List; entries are trimmed and empties dropped.
+  ///
+  /// Guarded like `detailQuickActionsUp` above: in widget tests the
+  /// settings box is often never opened, and an unguarded `Hive.box`
+  /// getter throws synchronously out of `build()`. An unreadable box
+  /// reads as "nothing blocked".
+  List<String> _loadBlockedKeywords() {
+    final Object? v;
+    try {
+      v = HiveService.settingsBox.get('blockedKeywords');
+    } on Object {
+      return const [];
+    }
+    if (v is List) {
+      return v
+          .whereType<String>()
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+    }
+    return const [];
+  }
+
+  Future<void> addKeyword(String keyword) async {
+    final value = keyword.trim();
+    if (value.isEmpty || state.contains(value)) return;
+    final next = [...state, value];
+    state = next;
+    await HiveService.settingsBox.put('blockedKeywords', next);
+  }
+
+  Future<void> removeKeyword(String keyword) async {
+    final next = state.where((k) => k != keyword).toList();
+    if (next.length == state.length) return;
+    state = next;
+    await HiveService.settingsBox.put('blockedKeywords', next);
+  }
+}
+
+/// Blocked keywords provider
+final blockedKeywordsProvider =
+    NotifierProvider<BlockedKeywordsNotifier, List<String>>(
+      BlockedKeywordsNotifier.new,
+    );
+
+/// How finished downloads are organized into subfolders under
+/// Download/zlibx (Android) or the download directory (other
+/// platforms). Only new downloads use it — already-downloaded files
+/// stay where they are.
+enum DownloadOrganizeMode {
+  /// Flat: every book directly under the download directory (current
+  /// behaviour).
+  off,
+
+  /// One subfolder per author.
+  author,
+
+  /// One subfolder per category (the first when a book has several).
+  category,
+}
+
+/// Download organize-mode notifier.
+class DownloadOrganizeModeNotifier extends Notifier<DownloadOrganizeMode> {
+  @override
+  DownloadOrganizeMode build() => _loadMode();
+
+  DownloadOrganizeMode _loadMode() {
+    // Same guard as _loadBlockedKeywords: tests may not have opened the
+    // settings box; a missing box reads as "no organizing".
+    final Object? v;
+    try {
+      v = HiveService.settingsBox.get('downloadOrganizeMode');
+    } on Object {
+      return DownloadOrganizeMode.off;
+    }
+    if (v is int && v >= 0 && v < DownloadOrganizeMode.values.length) {
+      return DownloadOrganizeMode.values[v];
+    }
+    return DownloadOrganizeMode.off;
+  }
+
+  Future<void> setMode(DownloadOrganizeMode mode) async {
+    state = mode;
+    await HiveService.settingsBox.put('downloadOrganizeMode', mode.index);
+  }
+}
+
+/// Download organize-mode provider
+final downloadOrganizeModeProvider =
+    NotifierProvider<DownloadOrganizeModeNotifier, DownloadOrganizeMode>(
+      DownloadOrganizeModeNotifier.new,
+    );

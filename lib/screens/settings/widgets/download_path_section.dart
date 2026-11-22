@@ -21,6 +21,7 @@ class DownloadPathSection extends ConsumerWidget {
     final l10n = AppLocalizations.of(context)!;
     final cs = Theme.of(context).colorScheme;
     final wifiOnly = ref.watch(wifiOnlyDownloadsProvider);
+    final organizeMode = ref.watch(downloadOrganizeModeProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -33,6 +34,18 @@ class DownloadPathSection extends ConsumerWidget {
             subtitle: _buildSubtitle(context, ref),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showDownloadPathDialog(context, ref),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // 自动分文件夹：新下载的书按作者或分类放进子文件夹；只对
+        // 新下载生效，已下载的文件不会移动。
+        SettingsCard(
+          child: ListTile(
+            leading: const Icon(Icons.folder_copy_outlined),
+            title: Text(l10n.downloadOrganize),
+            subtitle: Text(_organizeModeLabel(l10n, organizeMode)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showOrganizeModeDialog(context, ref),
           ),
         ),
         const SizedBox(height: 12),
@@ -72,6 +85,100 @@ class DownloadPathSection extends ConsumerWidget {
         ? path
         : (AppLocalizations.of(context)!.defaultAppDocuments);
     return Text(displayPath, maxLines: 1, overflow: TextOverflow.ellipsis);
+  }
+
+  String _organizeModeLabel(
+    AppLocalizations l10n,
+    DownloadOrganizeMode mode,
+  ) => switch (mode) {
+    DownloadOrganizeMode.off => l10n.downloadOrganizeOff,
+    DownloadOrganizeMode.author => l10n.downloadOrganizeAuthor,
+    DownloadOrganizeMode.category => l10n.downloadOrganizeCategory,
+  };
+
+  String _organizeModeDesc(
+    AppLocalizations l10n,
+    DownloadOrganizeMode mode,
+  ) => switch (mode) {
+    DownloadOrganizeMode.off => l10n.downloadOrganizeOffDesc,
+    DownloadOrganizeMode.author => l10n.downloadOrganizeAuthorDesc,
+    DownloadOrganizeMode.category => l10n.downloadOrganizeCategoryDesc,
+  };
+
+  /// Organize-mode picker, in the project's own dialog idiom (see the
+  /// domain selector): dense ListTile rows, the selected row marked
+  /// with a leading check_circle in the primary color and a bold
+  /// primary title. Tapping a row applies the mode and closes.
+  void _showOrganizeModeDialog(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
+    final current = ref.read(downloadOrganizeModeProvider);
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final cs = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          contentPadding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+          title: Text(
+            l10n.downloadOrganize,
+            style: const TextStyle(fontSize: 18),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                child: Text(
+                  l10n.downloadOrganizeDesc,
+                  style: Theme.of(dialogContext).textTheme.bodySmall
+                      ?.copyWith(color: cs.onSurfaceVariant),
+                ),
+              ),
+              ...DownloadOrganizeMode.values.map((mode) {
+                final selected = mode == current;
+                return ListTile(
+                  dense: true,
+                  visualDensity: const VisualDensity(vertical: -2),
+                  leading: selected
+                      ? Icon(Icons.check_circle, color: cs.primary, size: 20)
+                      : const Icon(
+                          Icons.circle_outlined,
+                          size: 20,
+                          color: Colors.grey,
+                        ),
+                  title: Text(
+                    _organizeModeLabel(l10n, mode),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: selected
+                          ? FontWeight.w700
+                          : FontWeight.normal,
+                      color: selected ? cs.primary : null,
+                    ),
+                  ),
+                  subtitle: Text(
+                    _organizeModeDesc(l10n, mode),
+                    style: Theme.of(dialogContext).textTheme.bodySmall,
+                  ),
+                  onTap: () {
+                    ref
+                        .read(downloadOrganizeModeProvider.notifier)
+                        .setMode(mode);
+                    Navigator.pop(dialogContext);
+                  },
+                );
+              }),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(l10n.close),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _showDownloadPathDialog(BuildContext context, WidgetRef ref) {

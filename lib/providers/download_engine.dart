@@ -163,8 +163,11 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     PendingUriWriter? pendingWriter;
     try {
       // Downloads go to the app-specific external dir: no storage
-      // permission is needed on any Android version.
+      // permission is needed on any Android version. The save path
+      // carries the organize-mode subfolder, so the .part file and the
+      // staged file live in the same subfolder as the published book.
       final finalPath =
+          await _buildSavePath(book) ??
           '${await _resolveSaveDir()}/${_buildSafeFileName(book)}';
 
       if (cancelToken.isCancelled) return;
@@ -205,6 +208,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
           displayName: _buildSafeFileName(book),
           mimeType: MediaStoreFiles.mimeTypeForExtension(book.extension),
           savePath: temporaryPath,
+          subfolder: _downloadSubfolder(book),
         );
       }
       // O1: start (or keep) the foreground service so the download
@@ -335,6 +339,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
             sourcePath: finalPath,
             displayName: _buildSafeFileName(book),
             mimeType: MediaStoreFiles.mimeTypeForExtension(book.extension),
+            subfolder: _downloadSubfolder(book),
           );
           if (uri != null) {
             recordedPath = uri;

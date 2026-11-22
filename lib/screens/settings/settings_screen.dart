@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../widgets/update_dialog.dart';
 import '../auth/login_screen.dart';
 import 'widgets/about_section.dart';
+import 'widgets/blocked_keywords_section.dart';
 import 'widgets/donation_key_section.dart';
 import 'widgets/download_path_section.dart';
 import 'widgets/language_section.dart';
@@ -83,6 +84,9 @@ class SettingsScreen extends ConsumerWidget {
 
             // ── Recommendations ──────────────────────────────────────
             const RecommendationSection(),
+
+            // ── Blocked keywords ────────────────────────────────────
+            const BlockedKeywordsSection(),
 
             const SizedBox(height: 20),
 

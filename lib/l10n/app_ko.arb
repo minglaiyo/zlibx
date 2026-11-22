@@ -731,5 +731,23 @@
     }
   },
   "quotaFallbackSwitchSource": "다른 소스에서",
-  "quotaFallbackNotFound": "다른 소스에도 이 책이 없습니다"
+  "quotaFallbackNotFound": "다른 소스에도 이 책이 없습니다",
+  "add": "추가",
+  "blockedKeywords": "차단 키워드",
+  "blockedKeywordsDesc": "제목, 저자 또는 출판사에 이러한 단어가 포함된 검색 결과는 숨겨집니다(대소문자 구분 없음). 다음 검색부터 적용됩니다.",
+  "blockedKeywordsHint": "차단할 단어 입력…",
+  "blockedKeywordsEmpty": "차단된 키워드가 없습니다",
+  "historyGroupToday": "오늘",
+  "historyGroupYesterday": "어제",
+  "historyGroupThisWeek": "이번 주",
+  "historyGroupEarlier": "이전",
+  "historyGroupUnknownTime": "알 수 없는 시간",
+  "downloadOrganize": "폴더로 자동 정리",
+  "downloadOrganizeDesc": "새 다운로드에만 적용됩니다. 이미 다운로드한 파일은 이동하지 않습니다.",
+  "downloadOrganizeOff": "하위 폴더 없음",
+  "downloadOrganizeOffDesc": "모든 책을 다운로드 폴더에 직접 저장",
+  "downloadOrganizeAuthor": "저자별",
+  "downloadOrganizeAuthorDesc": "저자별 하위 폴더",
+  "downloadOrganizeCategory": "카테고리별",
+  "downloadOrganizeCategoryDesc": "카테고리별 하위 폴더"
 }

@@ -222,6 +222,27 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
+  /// 深色模式的 CSS 兜底：给站内阅读器页套一层深色滤镜（图片/视频
+  /// 反色回来）并把浅色背景压暗。算法变暗（algorithmicDarkening）
+  /// 覆盖不到的页面靠它；注入失败不影响阅读，只记一行日志。
+  Future<void> _applyDarkOverride(InAppWebViewController controller) async {
+    const script = '''
+(function() {
+  var style = document.getElementById('zlibx-dark-override');
+  if (style) return;
+  style = document.createElement('style');
+  style.id = 'zlibx-dark-override';
+  style.textContent = 'html { filter: invert(1) hue-rotate(180deg); background: #121212 !important; } img, video, canvas, [style*="background-image"] { filter: invert(1) hue-rotate(180deg); }';
+  document.documentElement.appendChild(style);
+})();
+''';
+    try {
+      await controller.evaluateJavascript(source: script);
+    } catch (error) {
+      logIgnored('reader_screen_dark', error);
+    }
+  }
+
   static String _probeUrl(Object? value) {
     final uri = Uri.tryParse(value?.toString() ?? '');
     if (uri == null ||
@@ -331,6 +352,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 预览阅读随系统深色强制深色：站内阅读器本身是浅色页，app 深色
+    // 时用 WebView 的算法变暗 + CSS 覆盖把它压暗。Theme.of 的
+    // brightness 跟随当前主题（跟随系统时就是系统深色）。
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -393,6 +418,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 displayZoomControls: false,
                 mediaPlaybackRequiresUserGesture: false,
                 allowsInlineMediaPlayback: true,
+                // 深色时强制 WebView 对浅色页做算法变暗（Android
+                // WebView 的 forceDark 能力）；浅色时关闭，避免
+                // 把站内深色元素再压一遍。
+                algorithmicDarkeningAllowed: isDark,
                 useOnLoadResource: _probeEnabled,
                 userAgent:
                     'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
@@ -463,6 +492,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 // 只发生在 WebView 侧，发现新会话就上报 app 采纳。
                 if (url != null) {
                   unawaited(_syncSessionFromWebView(url));
+                }
+                // 深色模式：算法变暗覆盖不到的站内浅色背景再用 CSS
+                // 压暗一次（仅在深色时注入）。
+                if (isDark) {
+                  unawaited(_applyDarkOverride(controller));
                 }
               },
               onProgressChanged: (controller, progress) {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
@@ -7,6 +9,8 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../models/display_book.dart';
 import '../../providers/books_provider.dart';
 import '../../providers/download_provider.dart';
+import '../../services/quota_fallback.dart';
+import '../../utils/app_snack.dart';
 import 'book_detail_args.dart';
 import 'widgets/anna_book_info_section.dart';
 import 'widgets/book_action_bar.dart';
@@ -40,6 +44,36 @@ Book bookDetailPayload({
   return needsRatingFallback
       ? baseBook.copyWith(ratingInterest: initialBook.interestScore)
       : baseBook;
+}
+
+/// Quota-exhausted fallback: try LibGen / Anna's Archive for the same
+/// book and continue the download there; when neither has it, show the
+/// quota dialog as before. Providers are read before the await so a
+/// disposed ref is never touched after the search finishes.
+Future<void> _tryQuotaFallback(
+  BuildContext context,
+  WidgetRef ref,
+  Book book,
+) async {
+  final l10n = AppLocalizations.of(context)!;
+  final annasApi = ref.read(annasArchieveProvider);
+  final libgenService = ref.read(libgenServiceProvider);
+  final downloadNotifier = ref.read(downloadProvider.notifier);
+  showAppSnack(context, l10n.quotaFallbackTrying);
+  final result = await tryQuotaFallback(
+    zBook: book,
+    annasApi: annasApi,
+    libgenService: libgenService,
+  );
+  if (!context.mounted) return;
+  if (result == null) {
+    showDownloadQuotaDialog(context);
+    return;
+  }
+  unawaited(
+    downloadNotifier.startDownload(result.book, presetUrl: result.url),
+  );
+  showAppSnack(context, l10n.quotaFallbackSwitched);
 }
 
 class BookDetailScreen extends ConsumerWidget {
@@ -100,12 +134,15 @@ class BookDetailScreen extends ConsumerWidget {
       }),
     );
 
-    // 本书下载因账号额度用尽失败时弹一次提醒
+    // 本书下载因账号额度用尽失败时，先试其他来源（LibGen / Anna）；
+    // 找不到才弹额度提醒。
     ref.listen<List<DownloadTask>>(downloadProvider, (prev, next) {
       final id = book.id.toString();
       bool quotaHit(List<DownloadTask>? list) =>
           list?.any((t) => t.id == id && t.quotaExceeded) ?? false;
-      if (quotaHit(next) && !quotaHit(prev)) showDownloadQuotaDialog(context);
+      if (quotaHit(next) && !quotaHit(prev)) {
+        unawaited(_tryQuotaFallback(context, ref, book));
+      }
     });
 
     final isDownloading = downloadTask?.status == DownloadStatus.downloading;

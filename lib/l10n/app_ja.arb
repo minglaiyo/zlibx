@@ -710,5 +710,11 @@
   "year": "出版年",
   "yearFrom": "年（から）",
   "yearTo": "年（まで）",
-  "yourOpenLibrary": "あなたのオープンライブラリ"
+  "yourOpenLibrary": "あなたのオープンライブラリ",
+  "notBookBarcode": "書籍のバーコードではありません",
+  "scanBarcode": "バーコードをスキャン",
+  "scanBarcodeHint": "バーコードを枠内に合わせてください",
+  "cameraUnavailable": "カメラを起動できませんでした。カメラの権限を確認してください。",
+  "quotaFallbackTrying": "本日の上限に達しました。他のソースから試しています…",
+  "quotaFallbackSwitched": "他のソースからダウンロードを続けています"
 }

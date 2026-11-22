@@ -202,7 +202,11 @@ class SearchNotifier extends Notifier<SearchState> {
     if (field == null || query.trim().isEmpty) return books;
     final needle = query.trim().toLowerCase();
     return books.where((book) {
-      final value = field == SearchField.author ? book.author : book.publisher;
+      final value = switch (field) {
+        SearchField.author => book.author,
+        SearchField.publisher => book.publisher,
+        SearchField.series => book.series,
+      };
       return value != null && value.toLowerCase().contains(needle);
     }).toList();
   }

@@ -20,6 +20,7 @@ class SearchBarField extends StatelessWidget {
     required this.onSubmitted,
     required this.onFilterTap,
     required this.onClear,
+    required this.onScanTap,
   });
 
   final AppLocalizations l10n;
@@ -38,6 +39,9 @@ class SearchBarField extends StatelessWidget {
   final VoidCallback onSubmitted;
   final VoidCallback onFilterTap;
   final VoidCallback onClear;
+
+  /// Opens the ISBN barcode scanner (扫码搜书).
+  final VoidCallback onScanTap;
 
   @override
   Widget build(BuildContext context) {
@@ -58,6 +62,14 @@ class SearchBarField extends StatelessWidget {
           suffixIcon: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              IconButton(
+                tooltip: l10n.scanBarcode,
+                icon: Icon(
+                  Icons.qr_code_scanner_rounded,
+                  color: cs.onSurfaceVariant,
+                ),
+                onPressed: onScanTap,
+              ),
               if (!isExternal)
                 Badge(
                   isLabelVisible: activeFilterCount > 0,

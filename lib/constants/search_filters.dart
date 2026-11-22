@@ -2,14 +2,14 @@
 library;
 
 /// Which field a search is scoped to. The book-detail page's
-/// author/publisher taps pass one of these so the search is
+/// author/publisher/series taps pass one of these so the search is
 /// field-scoped instead of a plain full-text query: a plain query
 /// matches the name in ANY field (title, other authors, publisher,
 /// description), which is why author searches returned books by
 /// other authors and publisher searches returned other publishers.
 ///
 /// `null` means an unscoped general search (typed in the box).
-enum SearchField { author, publisher }
+enum SearchField { author, publisher, series }
 
 /// One language entry in the search filter: the API value sent to
 /// Z-Library plus its display name in each shipped locale.

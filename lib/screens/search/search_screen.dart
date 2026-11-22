@@ -20,6 +20,7 @@ import '../../utils/app_log.dart';
 import '../../utils/app_snack.dart';
 import '../../widgets/update_dialog.dart';
 import '../reader/reader_screen.dart';
+import 'barcode_scanner_screen.dart';
 import 'search_filters.dart';
 import 'widgets/search_body_view.dart';
 import 'widgets/search_filter_dialog.dart';
@@ -318,6 +319,21 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         _mode == SearchMode.general) {
       _runSearch();
     }
+  }
+
+  /// 扫码搜书：打开全屏条码扫描页，扫到的 ISBN-13 直接作为查询词搜。
+  /// An ISBN is an unscoped search: drop any author/publisher field
+  /// scope from a previous tap-to-search before running it.
+  Future<void> _openBarcodeScanner() async {
+    final isbn = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
+    );
+    if (isbn == null || isbn.isEmpty || !mounted) return;
+    setState(() {
+      _searchController.text = isbn;
+      _field = null;
+    });
+    _performSearch();
   }
 
   // ── Filter handling ──────────────────────────────────────────
@@ -849,6 +865,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 onSubmitted: _performSearch,
                 onFilterTap: _openFilterDialogForCurrentLocale,
                 onClear: _clearSearch,
+                onScanTap: _openBarcodeScanner,
                 onSelectSuggestion: (text) {
                   _searchController.text = text;
                   _searchController.selection = TextSelection.collapsed(

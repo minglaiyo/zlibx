@@ -13,11 +13,17 @@ class BookDetailHeading extends StatelessWidget {
   /// for that author. Null means display-only.
   final VoidCallback? onAuthorTap;
 
+  /// Tap handler for the subtitle (the series name): when set, the
+  /// series reads as a link and opens a search for that series.
+  /// Null means display-only.
+  final VoidCallback? onSubtitleTap;
+
   const BookDetailHeading({
     super.key,
     required this.book,
     this.subtitle,
     this.onAuthorTap,
+    this.onSubtitleTap,
   });
 
   @override
@@ -27,9 +33,18 @@ class BookDetailHeading extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (subtitle?.isNotEmpty ?? false) ...[
-          Text(
-            subtitle!,
-            style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+          InkWell(
+            onTap: onSubtitleTap,
+            borderRadius: BorderRadius.circular(4),
+            child: Text(
+              subtitle!,
+              style: TextStyle(
+                fontSize: 13,
+                color: onSubtitleTap != null
+                    ? cs.primary
+                    : cs.onSurfaceVariant,
+              ),
+            ),
           ),
           const SizedBox(height: 6),
         ],

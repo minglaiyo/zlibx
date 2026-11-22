@@ -710,5 +710,11 @@
   "year": "年份",
   "yearFrom": "年份（從）",
   "yearTo": "年份（到）",
-  "yourOpenLibrary": "你的開放圖書館"
+  "yourOpenLibrary": "你的開放圖書館",
+  "notBookBarcode": "不是圖書條碼",
+  "scanBarcode": "掃碼搜書",
+  "scanBarcodeHint": "將條碼對準框內",
+  "cameraUnavailable": "無法啟動相機，請檢查相機權限",
+  "quotaFallbackTrying": "額度已用完，正在嘗試從其他來源下載…",
+  "quotaFallbackSwitched": "已從其他來源繼續下載"
 }

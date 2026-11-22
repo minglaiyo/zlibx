@@ -96,6 +96,9 @@ dependencies:
   file_picker: ^13.3.2
   flutter_inappwebview: ^6.1.5
 
+  # ISBN barcode scanning (扫码搜书): ML Kit on-device barcode scan.
+  mobile_scanner: ^6.0.0
+
   # App's own Z-Library client + data models, rewritten in-repo at
   # vendor/olib_api_plugin/ (committed to the repo; CI verifies it).
   olib_api_plugin:

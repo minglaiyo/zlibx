@@ -710,5 +710,11 @@
   "year": "Year",
   "yearFrom": "Year (From)",
   "yearTo": "Year (To)",
-  "yourOpenLibrary": "Your Open Library"
+  "yourOpenLibrary": "Your Open Library",
+  "notBookBarcode": "Not a book barcode",
+  "scanBarcode": "Scan barcode",
+  "scanBarcodeHint": "Align the barcode within the frame",
+  "cameraUnavailable": "Could not start the camera. Please check the camera permission.",
+  "quotaFallbackTrying": "Daily limit reached. Trying other sources…",
+  "quotaFallbackSwitched": "Continuing the download from another source"
 }

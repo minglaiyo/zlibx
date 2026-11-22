@@ -710,5 +710,11 @@
   "year": "출판 연도",
   "yearFrom": "연도(부터)",
   "yearTo": "연도(까지)",
-  "yourOpenLibrary": "당신의 오픈 라이브러리"
+  "yourOpenLibrary": "당신의 오픈 라이브러리",
+  "notBookBarcode": "도서 바코드가 아닙니다",
+  "scanBarcode": "바코드 스캔",
+  "scanBarcodeHint": "프레임 안에 바코드를 맞춰주세요",
+  "cameraUnavailable": "카메라를 시작할 수 없습니다. 카메라 권한을 확인해 주세요.",
+  "quotaFallbackTrying": "일일 한도에 도달했습니다. 다른 소스에서 시도 중…",
+  "quotaFallbackSwitched": "다른 소스에서 다운로드를 계속합니다"
 }

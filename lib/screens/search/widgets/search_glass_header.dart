@@ -56,6 +56,7 @@ class SearchGlassHeader extends ConsumerStatefulWidget {
     required this.onSubmitted,
     required this.onFilterTap,
     required this.onClear,
+    required this.onScanTap,
     required this.onSelectSuggestion,
     required this.onHeightChanged,
     required this.onSwitchSource,
@@ -106,6 +107,9 @@ class SearchGlassHeader extends ConsumerStatefulWidget {
   final VoidCallback onSubmitted;
   final VoidCallback onFilterTap;
   final VoidCallback onClear;
+
+  /// Opens the ISBN barcode scanner (扫码搜书).
+  final VoidCallback onScanTap;
   final ValueChanged<String> onSelectSuggestion;
   final ValueChanged<double> onHeightChanged;
   final ValueChanged<BookSource> onSwitchSource;
@@ -186,6 +190,7 @@ class _SearchGlassHeaderState extends ConsumerState<SearchGlassHeader> {
               onSubmitted: widget.onSubmitted,
               onFilterTap: widget.onFilterTap,
               onClear: widget.onClear,
+              onScanTap: widget.onScanTap,
             ),
             if (_suggestionWindowOpen)
               SearchSuggestionsPanel(

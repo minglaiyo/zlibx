@@ -113,6 +113,17 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
               onAuthorTap: book.author?.isNotEmpty ?? false
                   ? () => AppRoutes.openAuthor(context, book.author!)
                   : null,
+              // Tapping the series opens a field-scoped search for
+              // that series (same pattern as the publisher tap below).
+              // No series = no tap target, the subtitle stays
+              // display-only.
+              onSubtitleTap: book.series?.isNotEmpty ?? false
+                  ? () => AppRoutes.openSearchWithQuery(
+                      context,
+                      book.series!,
+                      field: SearchField.series,
+                    )
+                  : null,
             ),
             if (tags.isNotEmpty) ...[
               const SizedBox(height: 16),

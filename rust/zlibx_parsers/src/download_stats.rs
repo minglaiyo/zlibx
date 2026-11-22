@@ -11,7 +11,7 @@
 //! DateTime with identical wall-clock values.
 
 use crate::sel;
-use scraper::{ElementRef, Selector};
+use scraper::ElementRef;
 
 use crate::fulltext::hash_from_href;
 use crate::models::Book;

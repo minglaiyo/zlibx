@@ -10,6 +10,12 @@ name = "zlibx_parsers"
 # staticlib/cdylib for Android .so; rlib so cargo can also build/test on host.
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[lints.rust]
+# flutter_rust_bridge's generated macros emit `#[cfg(frb_expand)]` — the
+# cfg is inherent to FRB 2.x codegen, not a typo, so declare it here
+# instead of allowing the whole unexpected_cfgs lint (typos stay caught).
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
+
 [dependencies]
 flutter_rust_bridge = "=2.14.0-beta.2"
 

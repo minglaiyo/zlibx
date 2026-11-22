@@ -3,7 +3,7 @@
 //! `parseRecommendedBooklists` is a JSON parser and stays in Dart).
 
 use crate::sel;
-use scraper::{ElementRef, Node, Selector};
+use scraper::{ElementRef, Node};
 
 use crate::fulltext::{attr, hash_from_href, resolve_card_url};
 use crate::models::{Book, Booklist, BooklistsPage};
@@ -298,7 +298,7 @@ fn booklist_from_element(el: &ElementRef, base_url: &str) -> Option<Booklist> {
 /// The href of the nearest ancestor `<a>` element (Dart walks
 /// `cover.parent` up until an `<a>` is found).
 fn nearest_ancestor_a_href(cover: &ElementRef) -> Option<String> {
-    let mut node: ego_tree::NodeRef<'_, Node> = (**cover);
+    let mut node: ego_tree::NodeRef<'_, Node> = **cover;
     loop {
         node = node.parent()?;
         if let Node::Element(el) = node.value() {

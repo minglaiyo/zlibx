@@ -14,7 +14,7 @@
 use crate::sel;
 use std::collections::HashSet;
 
-use scraper::{ElementRef, Node, Selector};
+use scraper::{ElementRef, Node};
 use url::Url;
 
 use crate::models::{ArchiveBook, ArchiveBookDetails};
@@ -260,7 +260,7 @@ pub(crate) fn parse_search_results(
             let mut seen: HashSet<ego_tree::NodeId> = HashSet::new();
             let mut found: Vec<ElementRef> = Vec::new();
             for link in md5_links {
-                let mut node = (*link);
+                let mut node = *link;
                 loop {
                     match node.parent() {
                         Some(p) => node = p,
@@ -312,13 +312,13 @@ pub(crate) fn parse_search_results(
         // ALL sibling nodes, skipping non-elements). The helper is a
         // module-level fn — closure lifetime inference cannot tie the
         // NodeRef and ElementRef lifetimes here.
-        let author_element = sibling_after((*link_element)).filter(|e| {
+        let author_element = sibling_after(*link_element).filter(|e| {
             e.attr("href")
                 .map(|h| h.starts_with("/search?q="))
                 .unwrap_or(false)
         });
         let publisher_element = author_element
-            .and_then(|a| sibling_after((*a)))
+            .and_then(|a| sibling_after(*a))
             .filter(|e| {
                 e.attr("href")
                     .map(|h| h.starts_with("/search?q="))
@@ -391,7 +391,7 @@ pub(crate) fn parse_book_details(
         .select(&sel!(r#"a[href^="/search?q="].text-base"#))
         .next();
     let publisher_element = author_element
-        .and_then(|a| sibling_after((*a)))
+        .and_then(|a| sibling_after(*a))
         .filter(|e| {
             e.attr("href")
                 .map(|h| h.starts_with("/search?q="))
@@ -414,7 +414,7 @@ pub(crate) fn parse_book_details(
         .as_deref()
         == Some("description")
     {
-        description_label.and_then(|l| sibling_after((*l)))
+        description_label.and_then(|l| sibling_after(*l))
     } else {
         None
     };

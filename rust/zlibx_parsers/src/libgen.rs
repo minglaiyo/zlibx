@@ -7,7 +7,7 @@
 //! "tablelibgen" table and the older table.c.
 
 use crate::sel;
-use scraper::{ElementRef, Selector};
+use scraper::ElementRef;
 
 use crate::models::{LibgenBookData, LibgenBookInfoData};
 

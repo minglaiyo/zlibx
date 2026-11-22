@@ -9,7 +9,7 @@
 //! accepting both the zh (`文章`) and English (`Articles`) tab labels.
 
 use crate::sel;
-use scraper::{ElementRef, Selector};
+use scraper::ElementRef;
 
 use crate::fulltext::{attr, hash_from_href, pages_re, resolve_card_url};
 use crate::models::{Article, ArticleSearchPage};

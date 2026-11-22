@@ -7,7 +7,7 @@
 //! HTML string in Dart.
 
 use crate::sel;
-use scraper::{ElementRef, Node, Selector};
+use scraper::{ElementRef, Node};
 
 use crate::models::{Book, FullTextHit, FullTextSearchPage, FullTextSnippetPart};
 

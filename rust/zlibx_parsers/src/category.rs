@@ -9,7 +9,7 @@
 //! search only serves the slugged URL).
 
 use crate::sel;
-use scraper::{ElementRef, Selector};
+use scraper::ElementRef;
 
 use crate::fulltext::{attr, hash_from_href, resolve_card_url};
 use crate::models::{Book, CategoryBook, CategoryPage};

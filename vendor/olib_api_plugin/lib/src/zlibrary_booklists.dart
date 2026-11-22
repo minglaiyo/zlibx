@@ -223,10 +223,14 @@ mixin ZLibraryBooklists on ZLibraryApiBase {
   ///
   /// The tab renders at most 10 lists per document (issue #11):
   /// users with more carry a paginator, and [UserProfileBooklistsPage.pagesTotal]
-  /// reports the total so the caller can fetch the rest via
-  /// [getUserProfileBooklistsPage] (URL from
-  /// [userProfileBooklistsPageUrl]). Page 1 of the paginated route is
-  /// this same document.
+  /// reports the largest page the page-1 paginator reveals — a LOWER
+  /// bound, not the real total: the paginator is a sliding window
+  /// (page 1 shows 1–10, no Last link), so the real total can exceed
+  /// it (issue #34: a 71-page profile reads as 10 from page 1).
+  /// Callers must fetch pages sequentially until a page is empty or
+  /// partial, not stop at [UserProfileBooklistsPage.pagesTotal] (see
+  /// `UserProfileScreen._loadBooklistPages2Plus`). Page 1 of the
+  /// paginated route is this same document.
   Future<ApiResponse<UserProfileBooklistsPage>> getUserProfileBooklists({
     required String userId,
     required String userHash,

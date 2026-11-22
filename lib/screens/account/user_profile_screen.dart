@@ -225,13 +225,17 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
           _booklistsLoading = false;
           _booklistsError = null;
         });
-        await _loadBooklistPages2Plus(
-          api,
-          hash,
-          response.data!.pagesTotal,
-          epoch: epoch,
-          backgroundRefresh: backgroundRefresh,
-        );
+        // 第 1 页满 10 个才探第 2 页：不满一页就是最后一页，不用
+        // 多拉一次空页。满 10 个也可能是正好 10 个，探第 2 页拿到
+        // 空页就停，只多一次请求。
+        if (response.data!.lists.length >= 10) {
+          await _loadBooklistPages2Plus(
+            api,
+            hash,
+            epoch: epoch,
+            backgroundRefresh: backgroundRefresh,
+          );
+        }
         return;
       }
       if (_isChallengeError(response.error)) {
@@ -267,34 +271,41 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
   /// that started later wins, and this loop exits silently at the
   /// next page boundary.
   ///
-  /// A failed or empty page stops the loop with whatever loaded so
-  /// far (empty = past the end, e.g. the list shrank between
-  /// fetches); rows already on screen stay. The pages are NOT cached:
-  /// the SWR cache only holds the profile document (page 1).
+  /// The loop does NOT stop at the page-1 total: the site's
+  /// booklists paginator is a sliding window (page 1 shows 1–10, no
+  /// Last link), so the total read off page 1 is only a lower bound
+  /// (issue #34: a 71-page profile reads as 10 from page 1). Fetch
+  /// until a page is empty, fails, or partial (< 10 lists = last
+  /// page), capped at [_maxBooklistPages]. A failed or empty page
+  /// stops the loop with whatever loaded so far (empty = past the
+  /// end, e.g. the list shrank between fetches); rows already on
+  /// screen stay. The pages are NOT cached: the SWR cache only holds
+  /// the profile document (page 1).
+  ///
+  /// Each page tries fast Dio first; a page walled by DiamWall falls
+  /// back to the WebView solver for that page (see
+  /// [_fetchBooklistPage]) — the page-1 bridge alone does not cover
+  /// the paginated route (issue #34 probe: page 2 got HTTP 503
+  /// despite the bridge). A solve bridges fresh wall cookies to Dio,
+  /// so the next page tries Dio first again.
   Future<void> _loadBooklistPages2Plus(
     ZLibraryApi api,
-    String hash,
-    int pagesTotal, {
+    String hash, {
     required int epoch,
     required bool backgroundRefresh,
   }) async {
-    final total = pagesTotal.clamp(1, _maxBooklistPages);
-    if (total <= 1) return;
     // 后台刷新模式不显示加载行（与第 1 页的后台语义一致：第 1 页的
     // 行已从缓存上屏，失败也不报错）。
     if (!backgroundRefresh) {
       setState(() => _booklistsPaging = true);
     }
     try {
-      for (var page = 2; page <= total; page++) {
-        final response = await api.getUserProfileBooklistsPage(
-          userId: _args.userId.toString(),
-          userHash: hash,
-          page: page,
-        );
+      for (var page = 2; page <= _maxBooklistPages; page++) {
+        final fresh = await _fetchBooklistPage(api, hash, page, epoch);
         if (!mounted || epoch != _booklistsEpoch) return;
-        if (!response.success || response.data == null) break;
-        final fresh = response.data!;
+        // null = 这一页拉不到（非墙失败，或解墙也失败）：保留已加载
+        // 的行，停在这里。
+        if (fresh == null) break;
         if (fresh.isEmpty) break;
         setState(() {
           // 按 id 去重：两页之间书单被增删时，分页可能整体位移，
@@ -305,6 +316,9 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
             ...fresh.where((l) => !seen.contains(l.id)),
           ];
         });
+        // 不满一页（< 10 个）就是最后一页：不用再拉下一页（空页）
+        // 来确认。
+        if (fresh.length < 10) break;
       }
     } on Object {
       // 分页失败保留已加载的行：区块不进入错误态（第 1 页已在），
@@ -313,6 +327,75 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
       if (mounted && epoch == _booklistsEpoch) {
         setState(() => _booklistsPaging = false);
       }
+    }
+  }
+
+  /// One paginated profile-booklists page (page ≥ 2): fast Dio first;
+  /// on a browser-check wall, fall back to the WebView solver for
+  /// that page (the booklist detail page's pattern). Returns the
+  /// page's lists, an empty list when past the end, or null when the
+  /// page could not be loaded (a non-wall failure, or the solve
+  /// failed). A solve bridges the fresh wall cookies to Dio, so the
+  /// next page tries Dio first again.
+  Future<List<Booklist>?> _fetchBooklistPage(
+    ZLibraryApi api,
+    String hash,
+    int page,
+    int epoch,
+  ) async {
+    final response = await api.getUserProfileBooklistsPage(
+      userId: _args.userId.toString(),
+      userHash: hash,
+      page: page,
+    );
+    if (response.success && response.data != null) {
+      return response.data!;
+    }
+    if (!_isChallengeError(response.error)) return null;
+    return _fetchBooklistPageViaSolver(api, hash, page, epoch);
+  }
+
+  /// One paginated profile-booklists page through the WebView
+  /// challenge solver. Mirrors [_loadBooklistsViaSolver] (install
+  /// session, solve, bridge, parse, O8 cleanup) but for a single
+  /// page and without caching — the app only re-reads the profile
+  /// document (page 1) from cache, so caching page-N documents
+  /// would just be dead data. Returns null when the solve failed
+  /// or the page is still a challenge page.
+  Future<List<Booklist>?> _fetchBooklistPageViaSolver(
+    ZLibraryApi api,
+    String hash,
+    int page,
+    int epoch,
+  ) async {
+    final url = api.userProfileBooklistsPageUrl(
+      userId: _args.userId.toString(),
+      userHash: hash,
+      page: page,
+    );
+    final user = ref.read(authProvider).user;
+    final userKey = user?.remixUserkey;
+    final hasSession = user != null && userKey != null && userKey.isNotEmpty;
+    if (hasSession) {
+      await _installSessionCookies(user.id, userKey, url);
+    }
+    try {
+      final html = await WebviewChallengeSolver.fetchHtmlAfterChallenge(url);
+      if (!mounted || epoch != _booklistsEpoch) return null;
+      if (html == null || html.isEmpty || _isChallengeHtml(html)) {
+        return null;
+      }
+      // The solve earned wall-clearance cookies — hand them to Dio so
+      // the next page tries the fast path first.
+      await bridgeWallCookies(api, url);
+      if (!mounted || epoch != _booklistsEpoch) return null;
+      return parseUserProfileBooklistsH(
+        html,
+        baseUrl: Uri.parse(url).origin,
+      );
+    } finally {
+      // O8: the session only lives for this solve.
+      if (hasSession) await deleteSessionCookies(pageUrl: url);
     }
   }
 
@@ -380,13 +463,15 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
         _booklistsLoading = false;
         _booklistsError = null;
       });
-      await _loadBooklistPages2Plus(
-        api,
-        hash,
-        parseUserProfileBooklistsPagesTotal(pageHtml),
-        epoch: epoch,
-        backgroundRefresh: backgroundRefresh,
-      );
+      // 第 1 页满 10 个才探第 2 页（与 _loadBooklists 相同的守卫）。
+      if (lists.length >= 10) {
+        await _loadBooklistPages2Plus(
+          api,
+          hash,
+          epoch: epoch,
+          backgroundRefresh: backgroundRefresh,
+        );
+      }
     } finally {
       // O8: the session only lives for this solve (see BooklistSolver).
       if (hasSession) await deleteSessionCookies(pageUrl: url);

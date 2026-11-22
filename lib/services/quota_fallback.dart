@@ -37,7 +37,12 @@ class QuotaFallbackResult {
     required this.source,
   });
 
-  /// Synthesized external Book (id keys on the external md5).
+  /// Synthesized external Book, re-keyed to the z站 book's id: the
+  /// detail page looks up download progress/completion by the z站
+  /// book id, so an external-md5 id would leave the task invisible
+  /// there (no progress bar, and the button never flips to 打开).
+  /// The external md5 stays in `hash` (integrity check) and the
+  /// format stays the external file's.
   final Book book;
 
   /// Resolved direct download URL for [book].
@@ -162,7 +167,13 @@ Future<QuotaFallbackResult?> _trySource({
   final target = await resolveExternalDownload(info);
   if (!target.hasUrl) return null;
   return QuotaFallbackResult(
-    book: synthesizeExternalBook(info),
+    // Re-key the task to the z站 book's id: the detail page's
+    // progress/completion lookup keys on it, so the external-md5 id
+    // would leave the download invisible there — no progress bar,
+    // and the button never flips to 打开. The external md5 stays in
+    // `hash` (integrity check) and the format stays the external
+    // file's.
+    book: synthesizeExternalBook(info).copyWith(id: zBook.id),
     url: target.url!,
     source: source,
   );

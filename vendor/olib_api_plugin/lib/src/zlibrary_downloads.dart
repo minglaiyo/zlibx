@@ -243,14 +243,11 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
         if (await meta.exists()) await meta.delete();
         return res;
       }
-      if (pendingWriter != null) {
-        // Recreate the pending entry empty; the recursive call then
-        // restarts with start == 0 and no Range header.
-        if (!await pendingWriter.reset()) {
-          throw StateError('cannot restart the pending MediaStore entry');
-        }
-      } else {
-        await file.writeAsBytes(const []);
+      // Recreate the partial empty; the recursive call then restarts
+      // with start == 0 and no Range header. The reset-vs-truncate rule
+      // lives in DownloadRange so both engines stay in step.
+      if (!await DownloadRange.discardPartialBytes(file, pendingWriter)) {
+        throw StateError('cannot restart the pending MediaStore entry');
       }
       if (await meta.exists()) await meta.delete();
       return _downloadOnce(
@@ -275,12 +272,8 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
         ifRangeAccepted: validator != null,
       )) {
         await res.data?.stream.drain<void>();
-        if (pendingWriter != null) {
-          if (!await pendingWriter.reset()) {
-            throw StateError('cannot restart the pending MediaStore entry');
-          }
-        } else {
-          await file.writeAsBytes(const []);
+        if (!await DownloadRange.discardPartialBytes(file, pendingWriter)) {
+          throw StateError('cannot restart the pending MediaStore entry');
         }
         if (await meta.exists()) await meta.delete();
         return _downloadOnce(

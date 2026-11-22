@@ -174,14 +174,10 @@ class ResumableDownloader {
         if (await meta.exists()) await meta.delete();
         return false;
       }
-      if (pendingWriter != null) {
-        if (!await pendingWriter.reset()) {
-          throw const DownloadContentException(
-            'cannot recreate the pending MediaStore entry',
-          );
-        }
-      } else {
-        await file.writeAsBytes(const []);
+      if (!await DownloadRange.discardPartialBytes(file, pendingWriter)) {
+        throw const DownloadContentException(
+          'cannot recreate the pending MediaStore entry',
+        );
       }
       if (await meta.exists()) await meta.delete();
       return true;
@@ -200,14 +196,10 @@ class ResumableDownloader {
         ifRangeAccepted: validator != null,
       )) {
         await res.data?.stream.drain<void>();
-        if (pendingWriter != null) {
-          if (!await pendingWriter.reset()) {
-            throw const DownloadContentException(
-              'cannot recreate the pending MediaStore entry',
-            );
-          }
-        } else {
-          await file.writeAsBytes(const []);
+        if (!await DownloadRange.discardPartialBytes(file, pendingWriter)) {
+          throw const DownloadContentException(
+            'cannot recreate the pending MediaStore entry',
+          );
         }
         if (await meta.exists()) await meta.delete();
         return true;
@@ -243,14 +235,10 @@ class ResumableDownloader {
       // on a fresh download, report truncation when a length was
       // advertised, and drop the validator.
       if (!resumed) {
-        if (pendingWriter != null) {
-          if (!await pendingWriter.reset()) {
-            throw const DownloadContentException(
-              'cannot recreate the pending MediaStore entry',
-            );
-          }
-        } else {
-          await file.writeAsBytes(const []);
+        if (!await DownloadRange.discardPartialBytes(file, pendingWriter)) {
+          throw const DownloadContentException(
+            'cannot recreate the pending MediaStore entry',
+          );
         }
       }
       if (total > 0 && base < total) {
@@ -311,14 +299,10 @@ class ResumableDownloader {
     }
     if (firstChunk && !resumed) {
       // Empty body: make sure a stale partial prefix does not survive.
-      if (pendingWriter != null) {
-        if (!await pendingWriter.reset()) {
-          throw const DownloadContentException(
-            'cannot recreate the pending MediaStore entry',
-          );
-        }
-      } else {
-        await file.writeAsBytes(const []);
+      if (!await DownloadRange.discardPartialBytes(file, pendingWriter)) {
+        throw const DownloadContentException(
+          'cannot recreate the pending MediaStore entry',
+        );
       }
     }
 

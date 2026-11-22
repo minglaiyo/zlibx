@@ -15,6 +15,8 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 
+import 'zlibrary_api.dart';
+
 class DownloadRange {
   DownloadRange._();
 
@@ -136,4 +138,24 @@ static Map<String, String> resumeHeaders(
 static String? validatorFromResponse(Headers headers) =>
     headers.value(HttpHeaders.etagHeader) ??
     headers.value(HttpHeaders.lastModifiedHeader);
+
+/// Discards the partial bytes of a download so the next attempt starts
+/// from zero: recreates the pending MediaStore entry when
+/// [pendingWriter] is given — a pending entry cannot be truncated,
+/// only recreated — else truncates [file]. Returns false when the
+/// pending entry cannot be recreated; the caller raises its own
+/// engine-specific error.
+///
+/// Shared by both engines: this reset-vs-truncate rule existed
+/// verbatim in six places across `ResumableDownloader._attempt` and
+/// `ZLibraryDownloads._downloadOnce` — a missed copy on one side was a
+/// drift waiting to happen.
+static Future<bool> discardPartialBytes(
+  File file,
+  PendingDownloadWriter? pendingWriter,
+) async {
+  if (pendingWriter != null) return pendingWriter.reset();
+  await file.writeAsBytes(const []);
+  return true;
+}
 }

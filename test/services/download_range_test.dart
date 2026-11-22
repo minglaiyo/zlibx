@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:olib_api_plugin/src/download_range.dart';
+import 'package:olib_api_plugin/src/zlibrary_api.dart';
 
 // The two download engines (the plugin's Z-Library path and the app's
 // external-source `ResumableDownloader`) share these rules through
@@ -151,4 +152,61 @@ void main() {
       expect(DownloadRange.validatorFromResponse(Headers()), isNull);
     });
   });
+
+  group('DownloadRange.discardPartialBytes', () {
+    test('without a writer it truncates the partial file', () async {
+      final dir = await Directory.systemTemp.createTemp('dlrange_discard');
+      addTearDown(() => dir.delete(recursive: true));
+      final file = File('${dir.path}/book.part');
+      await file.writeAsBytes(List.filled(64, 0x51));
+
+      expect(await DownloadRange.discardPartialBytes(file, null), isTrue);
+      expect(await file.length(), 0);
+    });
+
+    test('with a writer it recreates the entry and keeps the file', () async {
+      final dir = await Directory.systemTemp.createTemp('dlrange_discard');
+      addTearDown(() => dir.delete(recursive: true));
+      final file = File('${dir.path}/book.part');
+      await file.writeAsBytes(List.filled(64, 0x51));
+
+      final writer = _FakeWriter(resetResult: true);
+      expect(await DownloadRange.discardPartialBytes(file, writer), isTrue);
+      expect(writer.resetCalls, 1);
+      expect(await file.length(), 64);
+
+      final failing = _FakeWriter(resetResult: false);
+      expect(await DownloadRange.discardPartialBytes(file, failing), isFalse);
+      expect(failing.resetCalls, 1);
+    });
+  });
+}
+
+/// Minimal stand-in for the app-side pending-MediaStore writer: counts
+/// reset() calls and answers with a canned result.
+class _FakeWriter implements PendingDownloadWriter {
+  _FakeWriter({required this.resetResult});
+  final bool resetResult;
+  var resetCalls = 0;
+
+  @override
+  String get uri => 'content://fake/pending';
+
+  @override
+  int get bytesWritten => 0;
+
+  @override
+  Future<void> add(List<int> chunk) async {}
+
+  @override
+  Future<void> flush() async {}
+
+  @override
+  Future<void> discard() async {}
+
+  @override
+  Future<bool> reset() async {
+    resetCalls++;
+    return resetResult;
+  }
 }

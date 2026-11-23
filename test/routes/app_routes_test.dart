@@ -9,6 +9,7 @@ void main() {
         AppRoutes.login,
         AppRoutes.home,
         AppRoutes.search,
+        AppRoutes.barcodeScanner,
         AppRoutes.bookDetail,
         AppRoutes.favorites,
         AppRoutes.history,
@@ -31,9 +32,9 @@ void main() {
 
       final routes = buildAppRoutes();
 
-      expect(expected.length, 22);
+      expect(expected.length, 23);
       expect(routes.keys.toSet(), expected);
-      expect(routes.length, 22);
+      expect(routes.length, 23);
     });
   });
 }

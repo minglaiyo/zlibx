@@ -8,6 +8,7 @@ import '../providers/auth_provider.dart';
 import '../providers/zlibrary_provider.dart';
 import '../services/booklist_repository.dart';
 import '../utils/app_snack.dart';
+import '../utils/book_list_text.dart';
 
 /// 长按书单条目弹出的快捷操作面板——书籍侧 [showBookQuickActionsSheet]
 /// 的书单孪生:同款 bottom sheet(标题 = 书单名,一行动作一项)。
@@ -115,13 +116,23 @@ Future<bool> runBooklistFavorite(
   );
 }
 
-/// 系统分享书单链接(详情页分享按钮与面板同一实现)。
-Future<void> runBooklistShare(BuildContext context, Booklist list) async {
+/// 系统分享书单的文本清单（#101）：一本书一行（书名、作者、年份），
+/// 末尾附书单链接。详情页分享按钮用这个（书已全量加载）。书单列表的
+/// 快捷面板没有书的全量，只分享名字+链接（见 _BooklistQuickAction.share
+/// 的内联实现）。
+Future<void> runBooklistShare(
+  BuildContext context,
+  Booklist list, {
+  required List<({String title, String? author, String? year})> books,
+}) async {
   final l10n = AppLocalizations.of(context)!;
+  final text = buildBookListText(
+    title: list.name,
+    books: books,
+    link: list.url,
+  );
   try {
-    await SharePlus.instance.share(
-      ShareParams(text: '${list.name}\n${list.url}'),
-    );
+    await SharePlus.instance.share(ShareParams(text: text));
   } catch (_) {
     if (!context.mounted) return;
     showAppSnack(context, l10n.shareFailed);

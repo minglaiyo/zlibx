@@ -287,6 +287,7 @@
   "exactMatch": "精确对应",
   "exampleDomainHint": "例如 example.com",
   "extension": "扩展",
+  "exportBookList": "导出清单",
   "favoriteBooklist": "收藏",
   "favoriteFailed": "收藏更新失败，请稍后重试。",
   "favoriteRemoved": "已取消收藏",

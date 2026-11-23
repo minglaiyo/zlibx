@@ -287,6 +287,7 @@
   "exactMatch": "完全一致",
   "exampleDomainHint": "例：example.com",
   "extension": "拡張子",
+  "exportBookList": "リストをエクスポート",
   "favoriteBooklist": "お気に入りに追加",
   "favoriteFailed": "お気に入りを更新できませんでした。もう一度お試しください。",
   "favoriteRemoved": "お気に入りから削除しました",

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -100,6 +101,57 @@ class _BooklistDetailScreenState extends ConsumerState<BooklistDetailScreen> {
       wantFavorite: want,
     );
     if (ok && mounted) setState(() => _favorite = want);
+  }
+
+  /// #101：导出书单文本清单。书是分页加载的，先把没拉的页拉完
+  /// （上限 200 页，和书单分页上限一致），清单才完整；拉的时候转
+  /// 个圈（已全量时直接分享，不转圈）。空书单不分享，给个提示。
+  Future<void> _exportBookList() async {
+    final controller = ref.read(_provider.notifier);
+    var dialogShown = false;
+    try {
+      if (ref.read(_provider).hasMore) {
+        if (!mounted) return;
+        dialogShown = true;
+        unawaited(
+          showDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => const Center(child: CircularProgressIndicator()),
+          ),
+        );
+        var guard = 0;
+        while (ref.read(_provider).hasMore && guard < 200) {
+          guard++;
+          await controller.loadMore();
+          if (!mounted) return;
+        }
+      }
+    } finally {
+      // 页面还在才关转圈；页面已关时转圈随路由一起走了，不用管。
+      if (dialogShown && mounted) Navigator.pop(context);
+    }
+    if (!mounted) return;
+    final books = ref.read(_provider).books;
+    if (books.isEmpty) {
+      showAppSnack(
+        context,
+        AppLocalizations.of(context)!.noBooklistBooks,
+      );
+      return;
+    }
+    await runBooklistShare(
+      context,
+      widget.args.booklist,
+      books: [
+        for (final book in books)
+          (
+            title: book.title,
+            author: book.author,
+            year: book.year?.toString(),
+          ),
+      ],
+    );
   }
 
   /// Remove one book from this (own) list: confirm first, then the
@@ -296,7 +348,7 @@ class _BooklistDetailScreenState extends ConsumerState<BooklistDetailScreen> {
                 searchController: _searchController,
                 newestFirst: _newestFirst,
                 onToggleFavorite: _toggleFavorite,
-                onShare: () => runBooklistShare(context, booklist),
+                onShare: () => unawaited(_exportBookList()),
                 onQueryChanged: (value) => setState(() => _query = value),
                 onToggleSort: () =>
                     setState(() => _newestFirst = !_newestFirst),

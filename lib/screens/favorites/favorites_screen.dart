@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../l10n/generated/app_localizations.dart';
 import '../../models/unified_shelf_item.dart';
@@ -18,6 +19,7 @@ import '../../screens/search/search_screen.dart';
 import '../../services/media_store.dart';
 import '../../theme/app_metrics.dart';
 import '../../utils/app_snack.dart';
+import '../../utils/book_list_text.dart';
 import '../../utils/error_text.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/loading_widget.dart';
@@ -95,7 +97,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
-                  _appBar(l, selectedVisible),
+                  _appBar(l, selectedVisible, allItems),
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
@@ -173,7 +175,11 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
     return library.hasError;
   }
 
-  Widget _appBar(AppLocalizations l, Set<int> visibleIds) {
+  Widget _appBar(
+    AppLocalizations l,
+    Set<int> visibleIds,
+    List<UnifiedShelfItem> allItems,
+  ) {
     if (_isSelectMode) {
       return SliverAppBar(
         pinned: true,
@@ -203,6 +209,15 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
       floating: true,
       title: Text(l.shelfTitle),
       actions: [
+        // #101：导出图书馆文本清单（一本书一行）。导出的是整个图书
+        // 馆，不是当前筛选/搜索后的可见项。
+        IconButton(
+          tooltip: l.exportBookList,
+          icon: const Icon(Icons.share_rounded),
+          onPressed: allItems.isEmpty
+              ? null
+              : () => unawaited(_exportShelf(allItems)),
+        ),
         IconButton(
           tooltip: l.shelfManageCategories,
           icon: const Icon(Icons.label_outline_rounded),
@@ -217,6 +232,34 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
         ),
       ],
     );
+  }
+
+  /// #101：导出图书馆文本清单（一本书一行：书名、作者、年份），走
+  /// 系统分享。空图书馆不分享，给个提示。
+  Future<void> _exportShelf(List<UnifiedShelfItem> allItems) async {
+    if (allItems.isEmpty) {
+      if (!mounted) return;
+      showAppSnack(context, AppLocalizations.of(context)!.shelfEmpty);
+      return;
+    }
+    final text = buildBookListText(
+      title: AppLocalizations.of(context)!.shelfTitle,
+      books: [
+        for (final item in allItems)
+          (
+            title: item.displayBook.title,
+            author: item.displayBook.author,
+            // z 站书的年份在 tagExtra；Anna/LibGen 没有年份，是 null。
+            year: item.displayBook.tagExtra,
+          ),
+      ],
+    );
+    try {
+      await SharePlus.instance.share(ShareParams(text: text));
+    } catch (_) {
+      if (!mounted) return;
+      showAppSnack(context, AppLocalizations.of(context)!.shareFailed);
+    }
   }
 
   // 与首页搜索框一致：胶囊形 + 柔和投影，填充色/圆角沿用全局 inputDecorationTheme。

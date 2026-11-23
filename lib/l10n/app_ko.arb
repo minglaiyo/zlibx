@@ -287,6 +287,7 @@
   "exactMatch": "정확히 일치",
   "exampleDomainHint": "예: example.com",
   "extension": "확장자",
+  "exportBookList": "목록 내보내기",
   "favoriteBooklist": "즐겨찾기 추가",
   "favoriteFailed": "즐겨찾기를 업데이트할 수 없습니다. 다시 시도해 주세요.",
   "favoriteRemoved": "즐겨찾기에서 삭제했습니다",

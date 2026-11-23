@@ -1,4 +1,24 @@
-enum LoginFailureKind { credentials, line, unknown }
+/// Login failure kinds, for the login screen's error dialog.
+/// The server's messages are the only signal, so the split follows
+/// what the server actually says — see [classifyLoginFailure].
+enum LoginFailureKind {
+  /// Network / line problem (unreachable, timeout, handshake, the
+  /// mirror blocking the request). Not an account problem: the
+  /// login screen offers switching lines.
+  network,
+
+  /// The credentials were refused: wrong password, or the
+  /// email/password pair does not match any account.
+  wrongPassword,
+
+  /// The account itself does not exist / is not registered.
+  accountError,
+
+  /// Anything else (including server-side login restrictions that
+  /// are not a password problem). Shown with the full detail so the
+  /// user can report it.
+  other,
+}
 
 /// The "empty error payload" placeholder is localized by the caller
 /// ([noDetailText], `loginNoErrorDetail` in the ARBs): this file stays
@@ -42,7 +62,7 @@ String safeLoginErrorDetail(
 
 LoginFailureKind classifyLoginFailure(String? error) {
   if (error == null || error.trim().isEmpty) {
-    return LoginFailureKind.unknown;
+    return LoginFailureKind.other;
   }
 
   final value = error.toLowerCase();
@@ -56,30 +76,51 @@ LoginFailureKind classifyLoginFailure(String? error) {
       value.contains('unreachable') ||
       value.contains('failed host lookup') ||
       value.contains('request failed')) {
-    return LoginFailureKind.line;
+    return LoginFailureKind.network;
   }
 
   final normalized = value.replaceAll('_', ' ');
-  const credentialMessages = [
+  const accountMessages = [
+    'user not found',
+    'user not registered',
+    'account not found',
+    'account does not exist',
+    'user does not exist',
+  ];
+  if (accountMessages.any(normalized.contains) ||
+      value.contains('用户未注册') ||
+      value.contains('账号不存在') ||
+      value.contains('用户不存在') ||
+      value.contains('账号未注册')) {
+    return LoginFailureKind.accountError;
+  }
+
+  // "Authorization failed" is the eapi login endpoint's own refusal
+  // (HTTP 400). The eapi research notes it is a separate control on
+  // the login endpoint and does not by itself prove the password is
+  // wrong — but in this app it is what the endpoint returns when the
+  // password is rejected, so it is classified as a password error
+  // rather than the vague "unknown" dialog. If the password is
+  // confirmed correct and this still appears, it is the endpoint
+  // refusing the account (try another line, or log in via browser).
+  const passwordMessages = [
     'incorrect email or password',
     'invalid email or password',
     'email or password is incorrect',
     'incorrect password',
     'invalid password',
     'wrong password',
+    'authorization failed',
     'incorrect credentials',
     'invalid credentials',
-    'user not found',
-    'user not registered',
-    'account not found',
   ];
-  if (credentialMessages.any(normalized.contains) ||
+  if (passwordMessages.any(normalized.contains) ||
       value.contains('账号或密码错误') ||
       value.contains('账号密码错误') ||
       value.contains('邮箱或密码错误') ||
-      value.contains('用户未注册')) {
-    return LoginFailureKind.credentials;
+      value.contains('密码错误')) {
+    return LoginFailureKind.wrongPassword;
   }
 
-  return LoginFailureKind.unknown;
+  return LoginFailureKind.other;
 }

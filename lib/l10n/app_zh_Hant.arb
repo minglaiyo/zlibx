@@ -353,7 +353,7 @@
   "loadingSimilarBooks": "正在載入相似書籍...",
   "loadingTrendingBooks": "正在載入熱門書籍...",
   "login": "登入",
-  "loginBadCredentials": "使用者未註冊或帳號密碼錯誤",
+  "loginAccountError": "帳號不存在，請檢查郵箱是否正確，或先註冊帳號",
   "loginFailed": "登入失敗",
   "loginLineBlockedCf": "目前線路被 Cloudflare 攔截，請切換其他線路後重試。",
   "loginLineConnectFailed": "目前線路連線失敗（可能被攔截或線路不通），並非帳號密碼錯誤。請切換其他線路後重試。",
@@ -377,6 +377,7 @@
       }
     }
   },
+  "loginWrongPassword": "密碼錯誤，請檢查密碼後重試",
   "loginUseZsiteAccount": "請使用 z站 官網帳號登入",
   "logout": "登出",
   "logoutAction": "登出",

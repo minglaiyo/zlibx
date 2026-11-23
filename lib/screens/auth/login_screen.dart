@@ -146,30 +146,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           .first;
 
       final failureKind = classifyLoginFailure(error);
-      if (failureKind == LoginFailureKind.line) {
+      if (failureKind == LoginFailureKind.network) {
         // 线路被拦截 / 连接失败 —— 不是账号密码问题，提示切换线路。
         await _showLineFailureDialog(error == 'cf_blocked');
       } else {
         final l10n = AppLocalizations.of(context)!;
+        final String content;
+        if (failureKind == LoginFailureKind.wrongPassword) {
+          content = l10n.loginWrongPassword;
+        } else if (failureKind == LoginFailureKind.accountError) {
+          content = l10n.loginAccountError;
+        } else {
+          content = l10n.loginUnknownFailure(
+            lineName,
+            occurredAt,
+            safeLoginErrorDetail(
+              error,
+              email,
+              password,
+              noDetailText: l10n.loginNoErrorDetail,
+            ),
+          );
+        }
         unawaited(
           showDialog<void>(
             context: context,
             builder: (dialogContext) => AlertDialog(
               title: Text(l10n.loginFailed),
-              content: Text(
-                failureKind == LoginFailureKind.credentials
-                    ? l10n.loginBadCredentials
-                    : l10n.loginUnknownFailure(
-                        lineName,
-                        occurredAt,
-                        safeLoginErrorDetail(
-                          error,
-                          email,
-                          password,
-                          noDetailText: l10n.loginNoErrorDetail,
-                        ),
-                      ),
-              ),
+              content: Text(content),
               actions: [
                 FilledButton(
                   onPressed: () => Navigator.pop(dialogContext),

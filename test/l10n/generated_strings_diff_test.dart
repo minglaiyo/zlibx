@@ -234,7 +234,7 @@ void main() {
     expect(loc.loadingSimilarBooks, 'Loading similar books...');
     expect(loc.loadingTrendingBooks, 'Loading trending books...');
     expect(loc.login, 'Login');
-    expect(loc.loginBadCredentials, 'User not registered or incorrect credentials');
+    expect(loc.loginAccountError, 'Account not found. Please check the email address, or register first.');
     expect(loc.loginFailed, 'Login failed');
     expect(loc.loginLineBlockedCf, 'Current line is blocked by Cloudflare. Please switch to another line and try again.');
     expect(loc.loginLineConnectFailed, 'Current line failed to connect (blocked or down) — not a credential error. Please switch lines and retry.');
@@ -667,7 +667,7 @@ void main() {
     expect(loc.loadingSimilarBooks, '似た本を読み込み中...');
     expect(loc.loadingTrendingBooks, 'トレンドの本を読み込み中...');
     expect(loc.login, 'ログイン');
-    expect(loc.loginBadCredentials, 'ユーザーが未登録、またはアカウント情報が正しくありません');
+    expect(loc.loginAccountError, 'アカウントが見つかりません。メールアドレスを確認するか、まず登録してください。');
     expect(loc.loginFailed, 'ログインに失敗しました');
     expect(loc.loginLineBlockedCf, '現在の回線は Cloudflare にブロックされています。別の回線に切り替えて再試行してください。');
     expect(loc.loginLineConnectFailed, '現在の回線に接続できませんでした（ブロックまたは回線障害の可能性）。認証情報の誤りではありません。回線を切り替えて再試行してください。');
@@ -1100,7 +1100,7 @@ void main() {
     expect(loc.loadingSimilarBooks, '비슷한 책을 불러오는 중...');
     expect(loc.loadingTrendingBooks, '인기 도서를 불러오는 중...');
     expect(loc.login, '로그인');
-    expect(loc.loginBadCredentials, '등록되지 않은 사용자이거나 계정 정보가 올바르지 않습니다');
+    expect(loc.loginAccountError, '계정을 찾을 수 없습니다. 이메일 주소를 확인하거나 먼저 가입해 주세요.');
     expect(loc.loginFailed, '로그인에 실패했습니다');
     expect(loc.loginLineBlockedCf, '현재 회선이 Cloudflare에 의해 차단되었습니다. 다른 회선으로 전환한 후 다시 시도하세요.');
     expect(loc.loginLineConnectFailed, '현재 회선에 연결하지 못했습니다(차단되었거나 회선 문제). 계정 정보 오류가 아닙니다. 회선을 전환한 후 다시 시도하세요.');
@@ -1533,7 +1533,7 @@ void main() {
     expect(loc.loadingSimilarBooks, '正在加载相似书籍...');
     expect(loc.loadingTrendingBooks, '正在加载热门书籍...');
     expect(loc.login, '登录');
-    expect(loc.loginBadCredentials, '用户未注册或账号密码错误');
+    expect(loc.loginAccountError, '账号不存在，请检查邮箱是否正确，或先注册账号');
     expect(loc.loginFailed, '登录失败');
     expect(loc.loginLineBlockedCf, '当前线路被 Cloudflare 拦截，请切换其他线路后重试。');
     expect(loc.loginLineConnectFailed, '当前线路连接失败（可能被拦截或线路不通），并非账号密码错误。请切换其他线路后重试。');
@@ -1966,7 +1966,7 @@ void main() {
     expect(loc.loadingSimilarBooks, '正在載入相似書籍...');
     expect(loc.loadingTrendingBooks, '正在載入熱門書籍...');
     expect(loc.login, '登入');
-    expect(loc.loginBadCredentials, '使用者未註冊或帳號密碼錯誤');
+    expect(loc.loginAccountError, '帳號不存在，請檢查郵箱是否正確，或先註冊帳號');
     expect(loc.loginFailed, '登入失敗');
     expect(loc.loginLineBlockedCf, '目前線路被 Cloudflare 攔截，請切換其他線路後重試。');
     expect(loc.loginLineConnectFailed, '目前線路連線失敗（可能被攔截或線路不通），並非帳號密碼錯誤。請切換其他線路後重試。');

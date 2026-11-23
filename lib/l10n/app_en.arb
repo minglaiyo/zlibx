@@ -353,7 +353,7 @@
   "loadingSimilarBooks": "Loading similar books...",
   "loadingTrendingBooks": "Loading trending books...",
   "login": "Login",
-  "loginBadCredentials": "User not registered or incorrect credentials",
+  "loginAccountError": "Account not found. Please check the email address, or register first.",
   "loginFailed": "Login failed",
   "loginLineBlockedCf": "Current line is blocked by Cloudflare. Please switch to another line and try again.",
   "loginLineConnectFailed": "Current line failed to connect (blocked or down) — not a credential error. Please switch lines and retry.",
@@ -377,6 +377,7 @@
       }
     }
   },
+  "loginWrongPassword": "Incorrect password. Please check your password and try again.",
   "loginUseZsiteAccount": "Please login with your z-site account",
   "logout": "Logout",
   "logoutAction": "Log out",

@@ -353,7 +353,7 @@
   "loadingSimilarBooks": "비슷한 책을 불러오는 중...",
   "loadingTrendingBooks": "인기 도서를 불러오는 중...",
   "login": "로그인",
-  "loginBadCredentials": "등록되지 않은 사용자이거나 계정 정보가 올바르지 않습니다",
+  "loginAccountError": "계정을 찾을 수 없습니다. 이메일 주소를 확인하거나 먼저 가입해 주세요.",
   "loginFailed": "로그인에 실패했습니다",
   "loginLineBlockedCf": "현재 회선이 Cloudflare에 의해 차단되었습니다. 다른 회선으로 전환한 후 다시 시도하세요.",
   "loginLineConnectFailed": "현재 회선에 연결하지 못했습니다(차단되었거나 회선 문제). 계정 정보 오류가 아닙니다. 회선을 전환한 후 다시 시도하세요.",
@@ -377,6 +377,7 @@
       }
     }
   },
+  "loginWrongPassword": "비밀번호가 올바르지 않습니다. 비밀번호를 확인하고 다시 시도해 주세요.",
   "loginUseZsiteAccount": "Z-Library 공식 계정으로 로그인하세요",
   "logout": "로그아웃",
   "logoutAction": "로그아웃",

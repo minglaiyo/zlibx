@@ -353,7 +353,7 @@
   "loadingSimilarBooks": "正在加载相似书籍...",
   "loadingTrendingBooks": "正在加载热门书籍...",
   "login": "登录",
-  "loginBadCredentials": "用户未注册或账号密码错误",
+  "loginAccountError": "账号不存在，请检查邮箱是否正确，或先注册账号",
   "loginFailed": "登录失败",
   "loginLineBlockedCf": "当前线路被 Cloudflare 拦截，请切换其他线路后重试。",
   "loginLineConnectFailed": "当前线路连接失败（可能被拦截或线路不通），并非账号密码错误。请切换其他线路后重试。",
@@ -377,6 +377,7 @@
       }
     }
   },
+  "loginWrongPassword": "密码错误，请检查密码后重试",
   "loginUseZsiteAccount": "请使用 z站 官网账号登录",
   "logout": "退出登录",
   "logoutAction": "退出",

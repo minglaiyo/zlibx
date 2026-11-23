@@ -178,7 +178,6 @@
     "loading_similar_books": "Loading similar books...",
     "loading_trending_books": "Loading trending books...",
     "login": "Login",
-    "login_bad_credentials": "User not registered or incorrect credentials",
     "login_failed": "Login failed",
     "login_line_blocked_cf": "Current line is blocked by Cloudflare. Please switch to another line and try again.",
     "login_line_connect_failed": "Current line failed to connect (blocked or down) — not a credential error. Please switch lines and retry.",
@@ -428,7 +427,8 @@
     "booklist_favorite_failed": "Could not update favorite: {error}",
     "booklist_note_failed": "Could not save note: {error}",
     "all_categories": "All categories",
-    "category": "Category"
+    "category": "Category",
+    "login_account_error": "Account not found. Please check the email address, or register first."
   },
   "ja": {
     "about": "このアプリについて",
@@ -609,7 +609,6 @@
     "loading_similar_books": "似た本を読み込み中...",
     "loading_trending_books": "トレンドの本を読み込み中...",
     "login": "ログイン",
-    "login_bad_credentials": "ユーザーが未登録、またはアカウント情報が正しくありません",
     "login_failed": "ログインに失敗しました",
     "login_line_blocked_cf": "現在の回線は Cloudflare にブロックされています。別の回線に切り替えて再試行してください。",
     "login_line_connect_failed": "現在の回線に接続できませんでした（ブロックまたは回線障害の可能性）。認証情報の誤りではありません。回線を切り替えて再試行してください。",
@@ -859,7 +858,8 @@
     "booklist_favorite_failed": "お気に入りの更新に失敗しました：{error}",
     "booklist_note_failed": "メモの保存に失敗しました：{error}",
     "all_categories": "すべてのカテゴリ",
-    "category": "カテゴリ"
+    "category": "カテゴリ",
+    "login_account_error": "アカウントが見つかりません。メールアドレスを確認するか、まず登録してください。"
   },
   "ko": {
     "about": "정보",
@@ -1040,7 +1040,6 @@
     "loading_similar_books": "비슷한 책을 불러오는 중...",
     "loading_trending_books": "인기 도서를 불러오는 중...",
     "login": "로그인",
-    "login_bad_credentials": "등록되지 않은 사용자이거나 계정 정보가 올바르지 않습니다",
     "login_failed": "로그인에 실패했습니다",
     "login_line_blocked_cf": "현재 회선이 Cloudflare에 의해 차단되었습니다. 다른 회선으로 전환한 후 다시 시도하세요.",
     "login_line_connect_failed": "현재 회선에 연결하지 못했습니다(차단되었거나 회선 문제). 계정 정보 오류가 아닙니다. 회선을 전환한 후 다시 시도하세요.",
@@ -1290,7 +1289,8 @@
     "booklist_favorite_failed": "즐겨찾기를 업데이트하지 못했습니다: {error}",
     "booklist_note_failed": "메모를 저장하지 못했습니다: {error}",
     "all_categories": "모든 카테고리",
-    "category": "카테고리"
+    "category": "카테고리",
+    "login_account_error": "계정을 찾을 수 없습니다. 이메일 주소를 확인하거나 먼저 가입해 주세요."
   },
   "zh": {
     "about": "关于",
@@ -1471,7 +1471,6 @@
     "loading_similar_books": "正在加载相似书籍...",
     "loading_trending_books": "正在加载热门书籍...",
     "login": "登录",
-    "login_bad_credentials": "用户未注册或账号密码错误",
     "login_failed": "登录失败",
     "login_line_blocked_cf": "当前线路被 Cloudflare 拦截，请切换其他线路后重试。",
     "login_line_connect_failed": "当前线路连接失败（可能被拦截或线路不通），并非账号密码错误。请切换其他线路后重试。",
@@ -1721,7 +1720,8 @@
     "booklist_favorite_failed": "收藏失败：{error}",
     "booklist_note_failed": "保存备注失败：{error}",
     "all_categories": "所有分类",
-    "category": "分类"
+    "category": "分类",
+    "login_account_error": "账号不存在，请检查邮箱是否正确，或先注册账号"
   },
   "zh_hant": {
     "about": "關於",
@@ -1902,7 +1902,6 @@
     "loading_similar_books": "正在載入相似書籍...",
     "loading_trending_books": "正在載入熱門書籍...",
     "login": "登入",
-    "login_bad_credentials": "使用者未註冊或帳號密碼錯誤",
     "login_failed": "登入失敗",
     "login_line_blocked_cf": "目前線路被 Cloudflare 攔截，請切換其他線路後重試。",
     "login_line_connect_failed": "目前線路連線失敗（可能被攔截或線路不通），並非帳號密碼錯誤。請切換其他線路後重試。",
@@ -2152,6 +2151,7 @@
     "booklist_favorite_failed": "收藏失敗：{error}",
     "booklist_note_failed": "儲存備註失敗：{error}",
     "all_categories": "所有分類",
-    "category": "分類"
+    "category": "分類",
+    "login_account_error": "帳號不存在，請檢查郵箱是否正確，或先註冊帳號"
   }
 }

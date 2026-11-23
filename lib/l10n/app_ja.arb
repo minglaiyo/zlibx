@@ -353,7 +353,7 @@
   "loadingSimilarBooks": "似た本を読み込み中...",
   "loadingTrendingBooks": "トレンドの本を読み込み中...",
   "login": "ログイン",
-  "loginBadCredentials": "ユーザーが未登録、またはアカウント情報が正しくありません",
+  "loginAccountError": "アカウントが見つかりません。メールアドレスを確認するか、まず登録してください。",
   "loginFailed": "ログインに失敗しました",
   "loginLineBlockedCf": "現在の回線は Cloudflare にブロックされています。別の回線に切り替えて再試行してください。",
   "loginLineConnectFailed": "現在の回線に接続できませんでした（ブロックまたは回線障害の可能性）。認証情報の誤りではありません。回線を切り替えて再試行してください。",
@@ -377,6 +377,7 @@
       }
     }
   },
+  "loginWrongPassword": "パスワードが正しくありません。パスワードを確認して、もう一度お試しください。",
   "loginUseZsiteAccount": "Z-Libraryの公式アカウントでログインしてください",
   "logout": "ログアウト",
   "logoutAction": "ログアウト",

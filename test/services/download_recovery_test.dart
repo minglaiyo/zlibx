@@ -11,6 +11,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:zlibx/models/display_book.dart';
 import 'package:zlibx/providers/download_provider.dart';
 import 'package:zlibx/services/storage_service.dart';
 
@@ -139,5 +140,16 @@ void main() {
     // id 非数字/非正：不认。
     expect(parseSafeFileName('书 - abc.epub'), isNull);
     expect(parseSafeFileName('书 - 0.epub'), isNull);
+  });
+
+  test('纯函数：来源名解析（#143）', () {
+    // 三个来源的枚举名都能认回来。
+    expect(parseDownloadSource('zlibrary'), BookSource.zlibrary);
+    expect(parseDownloadSource('annasArchive'), BookSource.annasArchive);
+    expect(parseDownloadSource('libgen'), BookSource.libgen);
+    // 旧条目没存来源（null / 空串），手改坏的值：都不标。
+    expect(parseDownloadSource(null), isNull);
+    expect(parseDownloadSource(''), isNull);
+    expect(parseDownloadSource('unknown'), isNull);
   });
 }

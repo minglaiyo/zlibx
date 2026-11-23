@@ -102,6 +102,20 @@ mixin _DownloadPathsMixin on _DownloadNotifierBase {
     return '$safeTitle$suffix';
   }
 
+  /// 这本书实际用的子文件夹（#95）：用户指定的优先（先清洗，去掉
+  /// 不能出现在文件夹名里的字符；洗完是空串就当没指定），否则用
+  /// 分类的默认（按作者/按分类/平铺）。引擎三处（暂存路径、待发布
+  /// 条目、正式发布）都走这里，保证同一本书三处落在同一个文件夹。
+  String? effectiveSubfolder(Book book, String? customSubfolder) {
+    final custom = _sanitizeFolderName((customSubfolder ?? '').trim());
+    if (custom.isNotEmpty) return custom;
+    return _downloadSubfolder(book);
+  }
+
+  /// 详情页“指定下载位置”弹窗用的默认文件夹（#95）：就是分类模式
+  /// 会给这本书算出的那个；null = 平铺，直接放 Download/zlibx 下。
+  String? defaultDownloadSubfolder(Book book) => _downloadSubfolder(book);
+
   /// Subfolder for [book] under the download directory, from the
   /// user's organize mode. Null when organizing is off. Only new
   /// downloads use it — already-downloaded files stay where they are,
@@ -146,11 +160,16 @@ mixin _DownloadPathsMixin on _DownloadNotifierBase {
     return name;
   }
 
-  /// Build save path for a book (for non-MediaStore platforms)
-  Future<String?> _buildSavePath(Book book) async {
+  /// Build save path for a book (for non-MediaStore platforms).
+  /// [subfolderOverride] 是 #95 用户给这本书指定的文件夹，传了就
+  /// 用它（[effectiveSubfolder] 已清洗过）；不传走分类模式默认。
+  Future<String?> _buildSavePath(
+    Book book, {
+    String? subfolderOverride,
+  }) async {
     try {
       final baseDir = await _resolveSaveDir();
-      final subfolder = _downloadSubfolder(book);
+      final subfolder = effectiveSubfolder(book, subfolderOverride);
       if (subfolder == null) return '$baseDir/${_buildSafeFileName(book)}';
       final dir = Directory('$baseDir/$subfolder');
       if (!await dir.exists()) await dir.create(recursive: true);

@@ -103,6 +103,10 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
           ? await file.length()
           : null,
       missingFile: !fileExists,
+      // #143：旧条目没存来源，读回来是 null，下载页就不标。
+      source: parseDownloadSource(data['source']),
+      // #95：旧条目没存指定文件夹，读回来是 null，走分类模式默认。
+      customSubfolder: data['customSubfolder']?.toString(),
     );
   }
 
@@ -182,7 +186,7 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
       final filePath = task.filePath;
       if (filePath != null && await MediaStoreFiles.exists(filePath)) {
         // 历史条目重写：标题保留原值（盘上文件名由它铸造），只补作
-        // 者与封面。
+        // 者与封面；来源与指定文件夹原样带上，不丢（#143/#95）。
         await _storage.addToDownloadHistory(
           task.book.id.toString(),
           task.book.title,
@@ -190,6 +194,8 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
           filePath,
           cover: enriched.cover,
           extension: task.book.extension,
+          source: task.source?.name,
+          customSubfolder: task.customSubfolder,
         );
       }
     }
@@ -220,6 +226,11 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
               ),
               status: DownloadStatus.paused,
               presetUrl: decoded['presetUrl'] as String?,
+              // #143：sidecar 里有来源就带上，恢复后继续下载也不丢。
+              source: parseDownloadSource(decoded['source']),
+              // #95：sidecar 里有指定文件夹就带上，恢复后继续下载
+              // 落在同一个文件夹。
+              customSubfolder: decoded['customSubfolder'] as String?,
             );
           }
         }
@@ -246,6 +257,17 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
   /// 定最后一组 ` - 数字.扩展名`。id 非正或解析不出 → null。
   static (int, String, String)? _parseSafeFileName(String base) =>
       parseSafeFileName(base);
+}
+
+/// 库级纯函数：历史记录 / sidecar 里存的来源名（BookSource.name）
+/// → BookSource；缺失或不认识 → null（旧条目没存，不标）。
+BookSource? parseDownloadSource(Object? value) {
+  final name = value?.toString();
+  if (name == null || name.isEmpty) return null;
+  for (final source in BookSource.values) {
+    if (source.name == name) return source;
+  }
+  return null;
 }
 
 /// 库级纯函数（测试直接 import download_provider.dart 调用）：

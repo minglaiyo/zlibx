@@ -1,6 +1,8 @@
 // Download task model, split out of download_provider.dart.
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
+import '../models/display_book.dart';
+
 enum DownloadStatus {
   pending,
   downloading,
@@ -37,6 +39,18 @@ class DownloadTask {
   /// 入口重跑下载流程；z 站任务为 null。
   final String? presetUrl;
 
+  /// 这本书是从哪个源下的（#143 下载记录标注来源）：z 站 / Anna /
+  /// LibGen。创建任务时由调用方写死；旧历史记录没存这个字段，读回
+  /// 来是 null，下载页就不标（不猜——文件名反解分不清 z 书和外部
+  /// 书，两者的 id 都是数字）。
+  final BookSource? source;
+
+  /// 这本书指定的下载子文件夹（#95 按书指定下载位置）：`Download/zlibx`
+  /// 下的子文件夹名，由用户在详情页长按下载按钮指定。null = 用分
+  /// 类模式默认的（按作者/按分类/平铺）。创建任务时写死，恢复/重
+  /// 试沿用；旧历史记录没存这个字段，读回来是 null。
+  final String? customSubfolder;
+
   bool get canRetry =>
       (status == DownloadStatus.error || status == DownloadStatus.cancelled) &&
       !needsFreshLink &&
@@ -59,6 +73,8 @@ class DownloadTask {
     this.wifiOnlyBlocked = false,
     this.pinned = false,
     this.presetUrl,
+    this.source,
+    this.customSubfolder,
   });
 
   DownloadTask copyWith({
@@ -76,6 +92,8 @@ class DownloadTask {
     bool? wifiOnlyBlocked,
     bool? pinned,
     String? presetUrl,
+    BookSource? source,
+    String? customSubfolder,
   }) {
     return DownloadTask(
       id: id ?? this.id,
@@ -92,6 +110,8 @@ class DownloadTask {
       wifiOnlyBlocked: wifiOnlyBlocked ?? this.wifiOnlyBlocked,
       pinned: pinned ?? this.pinned,
       presetUrl: presetUrl ?? this.presetUrl,
+      source: source ?? this.source,
+      customSubfolder: customSubfolder ?? this.customSubfolder,
     );
   }
 }

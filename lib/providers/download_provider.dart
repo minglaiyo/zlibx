@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../models/display_book.dart';
 import '../services/download_foreground_service.dart';
 import '../services/hive_service.dart';
 import '../services/http_client.dart';

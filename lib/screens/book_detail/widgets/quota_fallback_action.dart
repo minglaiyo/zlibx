@@ -24,11 +24,15 @@ import 'quota_fallback_confirm_dialog.dart';
 /// Shared by the detail page's download-task listener (a started
 /// download that dies on quota) and the action bar's pre-check (the
 /// profile already shows 0 downloads left before any download starts).
+///
+/// [customSubfolder] 是 #95 用户给这本书指定的文件夹：切账号重试与
+/// 换源下载都沿用它，文件落在同一个地方。
 Future<void> tryQuotaFallbackAndDownload(
   BuildContext context,
   WidgetRef ref,
-  Book book,
-) async {
+  Book book, {
+  String? customSubfolder,
+}) async {
   final l10n = AppLocalizations.of(context)!;
   final currentUserId = ref.read(authProvider).user?.id;
   final annasApi = ref.read(annasArchieveProvider);
@@ -47,7 +51,13 @@ Future<void> tryQuotaFallbackAndDownload(
       // The new account has its own daily quota: retry the
       // Z-Library download under it. (If it is exhausted too, the
       // engine fails on quota again and this prompt comes back.)
-      unawaited(downloadNotifier.startDownload(book));
+      // #95：指定文件夹沿用，文件落在同一个地方。
+      unawaited(
+        downloadNotifier.startDownload(
+          book,
+          customSubfolder: customSubfolder,
+        ),
+      );
     }
     return;
   }
@@ -70,7 +80,14 @@ Future<void> tryQuotaFallbackAndDownload(
   final confirmed = await showQuotaFallbackConfirmDialog(context, result);
   if (!context.mounted || !confirmed) return;
   unawaited(
-    downloadNotifier.startDownload(result.book, presetUrl: result.url),
+    downloadNotifier.startDownload(
+      result.book,
+      presetUrl: result.url,
+      // #143：换源下的是哪个源就记哪个。
+      source: result.source,
+      // #95：指定文件夹沿用，文件落在同一个地方。
+      customSubfolder: customSubfolder,
+    ),
   );
   showAppSnack(context, l10n.quotaFallbackSwitched);
 }

@@ -17,6 +17,7 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:open_filex/open_filex.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
+import 'download_location_dialog.dart';
 import 'file_exists_dialog.dart';
 import '../../../models/display_book.dart';
 import '../../../providers/download_provider.dart';
@@ -100,6 +101,12 @@ class _ExternalBookActionBarState extends ConsumerState<ExternalBookActionBar> {
                 onPressed: busy
                     ? null
                     : () => _handleDownload(context, ref, book, downloadTask),
+                // #95：长按下载按钮，指定这本书的文件夹再下。已下完（点开文
+                // 件）与下载中/解析中不触发。
+                onLongPress: (busy || isCompleted)
+                    ? null
+                    : () =>
+                        _handleDownloadToFolder(context, ref, book, downloadTask),
                 icon: Icon(icon, size: 20),
                 label: Text(
                   label,
@@ -133,12 +140,38 @@ class _ExternalBookActionBarState extends ConsumerState<ExternalBookActionBar> {
     );
   }
 
-  Future<void> _handleDownload(
+  /// #95：长按下载按钮——先让用户给这本书指定文件夹，再走正常下
+  /// 载流程。取消就不下载。
+  Future<void> _handleDownloadToFolder(
     BuildContext context,
     WidgetRef ref,
     Book book,
     DownloadTask? downloadTask,
   ) async {
+    final defaultSubfolder = ref
+        .read(downloadProvider.notifier)
+        .defaultDownloadSubfolder(book);
+    final folder = await showDownloadLocationDialog(
+      context,
+      defaultSubfolder: defaultSubfolder,
+    );
+    if (folder == null || !context.mounted) return;
+    await _handleDownload(
+      context,
+      ref,
+      book,
+      downloadTask,
+      customSubfolder: folder.isEmpty ? null : folder,
+    );
+  }
+
+  Future<void> _handleDownload(
+    BuildContext context,
+    WidgetRef ref,
+    Book book,
+    DownloadTask? downloadTask, {
+    String? customSubfolder,
+  }) async {
     final isCompleted = downloadTask?.status == DownloadStatus.completed;
     if (isCompleted && downloadTask?.filePath != null) {
       await _openDownloadedFile(context, downloadTask!.filePath!);
@@ -157,12 +190,22 @@ class _ExternalBookActionBarState extends ConsumerState<ExternalBookActionBar> {
       );
       if (again != true) return;
       if (!context.mounted) return;
-      await _resolveAndDownload(context, ref, book);
+      await _resolveAndDownload(
+        context,
+        ref,
+        book,
+        customSubfolder: customSubfolder,
+      );
       return;
     }
 
     if (!context.mounted) return;
-    await _resolveAndDownload(context, ref, book);
+    await _resolveAndDownload(
+      context,
+      ref,
+      book,
+      customSubfolder: customSubfolder,
+    );
   }
 
   /// Resolves the download URL, then starts the existing direct-link
@@ -171,8 +214,9 @@ class _ExternalBookActionBarState extends ConsumerState<ExternalBookActionBar> {
   Future<void> _resolveAndDownload(
     BuildContext context,
     WidgetRef ref,
-    Book book,
-  ) async {
+    Book book, {
+    String? customSubfolder,
+  }) async {
     setState(() => _resolving = true);
     try {
       final target = await resolveExternalDownload(widget.info);
@@ -185,9 +229,14 @@ class _ExternalBookActionBarState extends ConsumerState<ExternalBookActionBar> {
         return;
       }
       unawaited(
-        ref
-            .read(downloadProvider.notifier)
-            .startDownload(book, presetUrl: target.url!),
+        ref.read(downloadProvider.notifier).startDownload(
+          book,
+          presetUrl: target.url!,
+          // #143：直下的是哪个源（Anna 还是 LibGen）就记哪个。
+          source: widget.displayBook.source,
+          // #95：指定文件夹沿用。
+          customSubfolder: customSubfolder,
+        ),
       );
       if (context.mounted) {
         _toast(context, AppLocalizations.of(context)!.downloading);

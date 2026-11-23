@@ -19,6 +19,7 @@ import '../../../utils/host_utils.dart';
 import '../../../widgets/motion/motion.dart';
 import '../../../widgets/update_dialog.dart';
 import '../../reader/reader_screen.dart';
+import 'download_location_dialog.dart';
 import 'file_exists_dialog.dart';
 import 'quota_fallback_action.dart';
 
@@ -168,6 +169,11 @@ class BookActionBar extends ConsumerWidget {
         constraints: const BoxConstraints(minHeight: 48),
         child: ElevatedButton.icon(
           onPressed: isDownloading ? null : () => _handleDownload(context, ref),
+          // #95：长按下载按钮，指定这本书的文件夹再下。已下完（点开文
+          // 件）与下载中不触发。
+          onLongPress: (isDownloading || isCompleted)
+              ? null
+              : () => _handleDownloadToFolder(context, ref),
           icon: iconWidget,
           label: labelWidget,
           style: ElevatedButton.styleFrom(
@@ -186,6 +192,9 @@ class BookActionBar extends ConsumerWidget {
       constraints: const BoxConstraints(minHeight: 48),
       child: OutlinedButton.icon(
         onPressed: isDownloading ? null : () => _handleDownload(context, ref),
+        onLongPress: (isDownloading || isCompleted)
+            ? null
+            : () => _handleDownloadToFolder(context, ref),
         icon: iconWidget,
         label: labelWidget,
         style: OutlinedButton.styleFrom(
@@ -266,7 +275,29 @@ class BookActionBar extends ConsumerWidget {
     );
   }
 
-  void _handleDownload(BuildContext context, WidgetRef ref) async {
+  /// #95：长按下载按钮——先让用户给这本书指定文件夹，再走正常下
+  /// 载流程（额度检查、换源都沿用这个文件夹）。取消就不下载。
+  void _handleDownloadToFolder(BuildContext context, WidgetRef ref) async {
+    final defaultSubfolder = ref
+        .read(downloadProvider.notifier)
+        .defaultDownloadSubfolder(book);
+    final folder = await showDownloadLocationDialog(
+      context,
+      defaultSubfolder: defaultSubfolder,
+    );
+    if (folder == null || !context.mounted) return;
+    await _handleDownload(
+      context,
+      ref,
+      customSubfolder: folder.isEmpty ? null : folder,
+    );
+  }
+
+  void _handleDownload(
+    BuildContext context,
+    WidgetRef ref, {
+    String? customSubfolder,
+  }) async {
     // Check for force update block
     if (ref.read(updateProvider).isBlocked && !isCompleted) {
       unawaited(showUpdateDialog(context));
@@ -288,17 +319,23 @@ class BookActionBar extends ConsumerWidget {
         );
         if (again != true) return;
         if (!context.mounted) return;
-        await _kickoffDownload(context, ref);
+        await _kickoffDownload(context, ref, customSubfolder: customSubfolder);
         return;
       }
 
       if (!context.mounted) return;
-      await _kickoffDownload(context, ref);
+      await _kickoffDownload(context, ref, customSubfolder: customSubfolder);
     }
   }
 
   /// 真正触发下载的统一入口：只走用户自己的 z站 账号。
-  Future<void> _kickoffDownload(BuildContext context, WidgetRef ref) async {
+  /// [customSubfolder] 是 #95 用户给这本书指定的文件夹；额度换源
+  /// （切账号/换源）也沿用它。
+  Future<void> _kickoffDownload(
+    BuildContext context,
+    WidgetRef ref, {
+    String? customSubfolder,
+  }) async {
     final downloadingMsg = AppLocalizations.of(context)!.downloading;
     final notifier = ref.read(downloadProvider.notifier);
 
@@ -307,13 +344,22 @@ class BookActionBar extends ConsumerWidget {
       // Anna's Archive for the same book first (the dialog only shows
       // when neither has it).
       if (!context.mounted) return;
-      await tryQuotaFallbackAndDownload(context, ref, book);
+      await tryQuotaFallbackAndDownload(
+        context,
+        ref,
+        book,
+        customSubfolder: customSubfolder,
+      );
       return;
     }
     if (!context.mounted) return;
     // 下载结束后刷新资料，保持本地剩余次数准确
     final auth = ref.read(authProvider.notifier);
-    unawaited(notifier.startDownload(book).whenComplete(auth.refreshProfile));
+    unawaited(
+      notifier
+          .startDownload(book, customSubfolder: customSubfolder)
+          .whenComplete(auth.refreshProfile),
+    );
     _toast(context, downloadingMsg);
   }
 

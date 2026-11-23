@@ -30,7 +30,14 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     if (matches.isEmpty) return;
     final task = matches.first;
     if (task.status != DownloadStatus.paused) return;
-    unawaited(startDownload(task.book, presetUrl: task.presetUrl));
+    unawaited(
+      startDownload(
+        task.book,
+        presetUrl: task.presetUrl,
+        source: task.source,
+        customSubfolder: task.customSubfolder,
+      ),
+    );
   }
 
   /// Running download round per book id (O6). A resume issued while the
@@ -49,15 +56,31 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
   /// 带到任意目标主机，这个口子不开。以前留过 LAN 传书的
   /// `presetHeaders`（`X-Olib-Token`），功能无调用方，已删除。
   ///
+  /// [source] 是这次下载的来源（#143）：外部直下与换源下载由调用方
+  /// 传入，z 站下载不传——presetUrl 为空时默认就是 z 站。任务、
+  /// 历史记录与来源 sidecar 都记这个值，下载页据此标注来源。
+  ///
+  /// [customSubfolder] 是这次下载指定的子文件夹（#95）：用户在详情
+  /// 页长按下载按钮选的，`Download/zlibx` 下的文件夹名；null = 用
+  /// 分类模式默认。任务、历史记录与来源 sidecar 都记这个值，恢复/
+  /// 重试沿用它。
+  ///
   /// Thin wrapper around [_runDownloadRound]: it records the round so
   /// a later call for the same book waits for this one to settle
   /// instead of racing it on the same .part / pending entry.
-  Future<void> startDownload(Book book, {String? presetUrl}) {
+  Future<void> startDownload(
+    Book book, {
+    String? presetUrl,
+    BookSource? source,
+    String? customSubfolder,
+  }) {
     final id = book.id.toString();
     final previous = _runningRounds[id];
     final round = _runDownloadRound(
       book,
       presetUrl: presetUrl,
+      source: source ?? _defaultSource(presetUrl),
+      customSubfolder: customSubfolder,
       previous: previous,
     );
     _runningRounds[id] = round;
@@ -86,9 +109,17 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
             t.status == DownloadStatus.pending),
   );
 
+  /// 默认来源（#143）：调用方没传 source 时，presetUrl 为空就是 z
+  /// 站直下；有 presetUrl 但没传 source 说明调用方漏了，记 null
+  /// （下载页不标），不猜。
+  static BookSource? _defaultSource(String? presetUrl) =>
+      presetUrl == null ? BookSource.zlibrary : null;
+
   Future<void> _runDownloadRound(
     Book book, {
     String? presetUrl,
+    BookSource? source,
+    String? customSubfolder,
     Future<void>? previous,
   }) async {
     final id = book.id.toString();
@@ -111,6 +142,10 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     // Re-check: another round may have started while we waited.
     if (_isDownloadActive(id)) return;
 
+    // #95：这轮实际用的子文件夹，算一次、三处共用（暂存路径、待发
+    // 布条目、正式发布），保证同一本书三处落在同一个文件夹。
+    final subfolder = effectiveSubfolder(book, customSubfolder);
+
     // E1 仅 Wi-Fi 下载：开关打开且当前没有 Wi-Fi/以太网时拒绝启动，
     // 任务记为带 wifiOnlyBlocked 旗标的错误态——下载页据此解释，到
     // Wi-Fi 后照常重试。放在加任务之前：不开任务就不占队列。
@@ -124,6 +159,8 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
           wifiOnlyBlocked: true,
           needsFreshLink: presetUrl != null,
           presetUrl: presetUrl,
+          source: source,
+          customSubfolder: customSubfolder,
         ),
       );
       return;
@@ -139,6 +176,8 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         status: DownloadStatus.pending,
         needsFreshLink: presetUrl != null,
         presetUrl: presetUrl,
+        source: source,
+        customSubfolder: customSubfolder,
       ),
     );
 
@@ -166,8 +205,9 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       // permission is needed on any Android version. The save path
       // carries the organize-mode subfolder, so the .part file and the
       // staged file live in the same subfolder as the published book.
+      // #95：用户给这本书指定了文件夹就用它，否则走分类模式默认。
       final finalPath =
-          await _buildSavePath(book) ??
+          await _buildSavePath(book, subfolderOverride: customSubfolder) ??
           '${await _resolveSaveDir()}/${_buildSafeFileName(book)}';
 
       if (cancelToken.isCancelled) return;
@@ -179,7 +219,13 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       // ——光靠文件名反解分不清 z 书和外部书（两者的 id 都是数字），
       // 也拿不到作者/封面/hash/直链。每轮重写；成功与用户取消时删除，
       // 暂停/杀进程时保留，恢复逻辑据此重建。
-      await _writeSidecarQuietly(temporaryPath, book, presetUrl);
+      await _writeSidecarQuietly(
+        temporaryPath,
+        book,
+        presetUrl,
+        source,
+        customSubfolder,
+      );
 
       // Update to downloading. Keep the existing progress: a fresh
       // download starts at 0 (the task was created with progress 0), and
@@ -208,7 +254,8 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
           displayName: _buildSafeFileName(book),
           mimeType: MediaStoreFiles.mimeTypeForExtension(book.extension),
           savePath: temporaryPath,
-          subfolder: _downloadSubfolder(book),
+          // #95：和暂存路径、正式发布用同一个生效文件夹。
+          subfolder: subfolder,
         );
       }
       // O1: start (or keep) the foreground service so the download
@@ -339,7 +386,8 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
             sourcePath: finalPath,
             displayName: _buildSafeFileName(book),
             mimeType: MediaStoreFiles.mimeTypeForExtension(book.extension),
-            subfolder: _downloadSubfolder(book),
+            // #95：和暂存路径、待发布条目用同一个生效文件夹。
+            subfolder: subfolder,
           );
           if (uri != null) {
             recordedPath = uri;
@@ -397,6 +445,9 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         recordedPath,
         cover: book.cover,
         extension: book.extension,
+        source: source?.name,
+        // #95：记用户指定的那个（原始值）；读回后重新算生效文件夹。
+        customSubfolder: customSubfolder,
       );
       // 书已落地：来源 sidecar 使命结束。
       await _deleteSidecarQuietly(temporaryPath);
@@ -605,6 +656,8 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     String temporaryPath,
     Book book,
     String? presetUrl,
+    BookSource? source,
+    String? customSubfolder,
   ) async {
     try {
       await File('$temporaryPath.download.json').writeAsString(
@@ -616,6 +669,8 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
           'extension': book.extension,
           'hash': book.hash,
           if (presetUrl != null) 'presetUrl': presetUrl,
+          if (source != null) 'source': source.name,
+          if (customSubfolder != null) 'customSubfolder': customSubfolder,
         }),
       );
     } on Object catch (error) {

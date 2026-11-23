@@ -8,6 +8,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../l10n/generated/app_localizations.dart';
+import '../../models/display_book.dart';
 import '../../providers/download_provider.dart';
 import '../../providers/shelf_categories_provider.dart';
 import '../../screens/favorites/category_actions.dart';
@@ -348,7 +349,16 @@ class _DownloadItem extends ConsumerWidget {
         task.status == DownloadStatus.downloading ||
         task.status == DownloadStatus.pending;
     final isComplete = task.status == DownloadStatus.completed;
+    final source = task.source;
     final details = [
+      // #143：来源标最前面（z站 / Anna's Archive / LibGen）。没存
+      // 来源的旧记录不标。
+      if (source != null)
+        switch (source) {
+          BookSource.zlibrary => l.sourceZlibrary,
+          BookSource.annasArchive => l.sourceAnnasArchive,
+          BookSource.libgen => l.sourceLibgen,
+        },
       if (task.book.extension?.isNotEmpty ?? false)
         task.book.extension!.toUpperCase(),
       if (task.fileSize != null) _formatSize(task.fileSize!),
@@ -479,9 +489,17 @@ class _DownloadItem extends ConsumerWidget {
                   )
                 else if (task.canRetry)
                   FilledButton.tonalIcon(
+                    // 重试沿用原来的来源与直链（#143）：外部源的任务不
+                    // 传 presetUrl 会被当成 z 站下载，id 又对不上。
+                    // #95：指定文件夹也沿用，落在同一个地方。
                     onPressed: () => ref
                         .read(downloadProvider.notifier)
-                        .startDownload(task.book),
+                        .startDownload(
+                          task.book,
+                          presetUrl: task.presetUrl,
+                          source: task.source,
+                          customSubfolder: task.customSubfolder,
+                        ),
                     icon: const Icon(Icons.refresh_rounded, size: 18),
                     label: Text(l.retry),
                   )
@@ -698,6 +716,19 @@ class _DownloadItem extends ConsumerWidget {
               ],
             ),
             actions: [
+              // #123：一点就把路径拷到剪贴板，不用长按选中再拷。
+              if (task.filePath?.isNotEmpty == true)
+                TextButton(
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      ClipboardData(text: task.filePath!),
+                    );
+                    if (!context.mounted) return;
+                    Navigator.pop(context);
+                    showAppSnack(context, l.copiedToClipboard);
+                  },
+                  child: Text(l.copyPath),
+                ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: Text(l.done),

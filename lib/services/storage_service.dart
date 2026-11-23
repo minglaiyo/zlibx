@@ -339,7 +339,11 @@ class StorageService {
   }
 
   /// Add book to download history
-  /// Stores: {bookId: {title, author, filePath, cover, extension, downloadTime}}
+  /// Stores: {bookId: {title, author, filePath, cover, extension, downloadTime, source, customSubfolder}}
+  /// [source] 是下载来源的枚举名（BookSource.name，#143）：zlibrary /
+  /// annasArchive / libgen；旧条目没有这个键，读回来是 null。
+  /// [customSubfolder] 是 #95 用户给这本书指定的子文件夹名；没指定
+  /// 不存，读回来是 null。
   Future<void> addToDownloadHistory(
     String bookId,
     String title,
@@ -347,6 +351,8 @@ class StorageService {
     String filePath, {
     String? cover,
     String? extension,
+    String? source,
+    String? customSubfolder,
   }) async {
     await _runSerialized(_keyDownloadHistory, () async {
       final box = await HiveService.libraryBoxAsync();
@@ -357,6 +363,8 @@ class StorageService {
         'cover': cover,
         'extension': extension,
         'downloadTime': DateTime.now().toIso8601String(),
+        if (source != null) 'source': source,
+        if (customSubfolder != null) 'customSubfolder': customSubfolder,
       });
       final order = _readDlOrder(box);
       if (!order.contains(bookId)) {

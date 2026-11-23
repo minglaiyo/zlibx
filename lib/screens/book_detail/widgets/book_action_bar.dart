@@ -168,7 +168,9 @@ class BookActionBar extends ConsumerWidget {
       return ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 48),
         child: ElevatedButton.icon(
-          onPressed: isDownloading ? null : () => _handleDownload(context, ref),
+          onPressed: isDownloading
+              ? null
+              : () => unawaited(_handleDownload(context, ref)),
           // #95：长按下载按钮，指定这本书的文件夹再下。已下完（点开文
           // 件）与下载中不触发。
           onLongPress: (isDownloading || isCompleted)
@@ -191,7 +193,9 @@ class BookActionBar extends ConsumerWidget {
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 48),
       child: OutlinedButton.icon(
-        onPressed: isDownloading ? null : () => _handleDownload(context, ref),
+        onPressed: isDownloading
+              ? null
+              : () => unawaited(_handleDownload(context, ref)),
         onLongPress: (isDownloading || isCompleted)
             ? null
             : () => _handleDownloadToFolder(context, ref),
@@ -293,7 +297,7 @@ class BookActionBar extends ConsumerWidget {
     );
   }
 
-  void _handleDownload(
+  Future<void> _handleDownload(
     BuildContext context,
     WidgetRef ref, {
     String? customSubfolder,

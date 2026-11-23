@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:quick_actions/quick_actions.dart';
 
 import '../routes/app_routes.dart';
+import '../screens/search/barcode_scanner_screen.dart';
 import '../screens/search/search_screen.dart';
 
 /// App icon shortcuts (long-press the launcher icon): 扫码 / 搜索 /
@@ -126,9 +127,19 @@ class AppShortcuts {
   /// Open the scanner, wait for the ISBN it pops with, then run the
   /// search with it. Backing out of the scanner (null/empty) just
   /// returns to where the user was.
+  ///
+  /// Uses [NavigatorState.push] with a typed [PageRouteBuilder] rather
+  /// than [NavigatorState.pushNamed]: the route-table entry for
+  /// [AppRoutes.barcodeScanner] is a plain [WidgetBuilder] (yields a
+  /// `MaterialPageRoute<dynamic>`), and `pushNamed<String>` fails the
+  /// `Route<String?>` cast at runtime — the scanner never opens. The
+  /// typed builder gives the route the String result type it pops with.
   static Future<void> _scanThenSearch(NavigatorState navigator) async {
-    final isbn = await navigator.pushNamed<String>(
-      AppRoutes.barcodeScanner,
+    final isbn = await navigator.push<String>(
+      PageRouteBuilder<String>(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const BarcodeScannerScreen(),
+      ),
     );
     if (isbn == null || isbn.isEmpty) return;
     // Push directly on this navigator (Navigator.of on the

@@ -41,6 +41,11 @@ class BooklistDetailState {
   final bool isLoading;
   final bool isLoadingMore;
   final String? error;
+
+  /// Last next-page (load-more) failure, if any. Kept separate from
+  /// [error] so one failed page doesn't error the whole list — the
+  /// loaded books stay and retry re-requests the same page.
+  final String? loadMoreError;
   final List<Book> books;
   final bool hasMore;
   final int nextPage;
@@ -49,6 +54,7 @@ class BooklistDetailState {
     this.isLoading = true,
     this.isLoadingMore = false,
     this.error,
+    this.loadMoreError,
     this.books = const [],
     this.hasMore = true,
     this.nextPage = 2,
@@ -59,6 +65,8 @@ class BooklistDetailState {
     bool? isLoadingMore,
     String? error,
     bool clearError = false,
+    String? loadMoreError,
+    bool clearLoadMoreError = false,
     List<Book>? books,
     bool? hasMore,
     int? nextPage,
@@ -67,6 +75,9 @@ class BooklistDetailState {
       isLoading: isLoading ?? this.isLoading,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       error: clearError ? null : (error ?? this.error),
+      loadMoreError: clearLoadMoreError
+          ? null
+          : (loadMoreError ?? this.loadMoreError),
       books: books ?? this.books,
       hasMore: hasMore ?? this.hasMore,
       nextPage: nextPage ?? this.nextPage,
@@ -425,7 +436,11 @@ class BooklistDetailController
       accountId: accountId,
     );
     if (cachedPage != null) _merge(cachedPage);
-    state = state.copyWith(isLoadingMore: true, books: List.of(_books));
+    state = state.copyWith(
+      isLoadingMore: true,
+      books: List.of(_books),
+      clearLoadMoreError: true,
+    );
     try {
       var fetched = await _fetchPageBooks(list, page, accountId, user);
       // 目标未达成却拿到空页：瞬态挑战页会伪装成空结果——重取一次，
@@ -503,8 +518,13 @@ class BooklistDetailController
     } catch (e) {
       if (!_isCurrent(generation)) return;
       // Same as above: keep the list resumable instead of truncating it.
+      // hasMore stays true, so the load-more button comes back and retry
+      // re-requests the same page (nextPage only advances on success).
       logIgnored('booklist_page', e);
-      state = state.copyWith(isLoadingMore: false);
+      state = state.copyWith(
+        isLoadingMore: false,
+        loadMoreError: e.toString(),
+      );
     }
   }
 

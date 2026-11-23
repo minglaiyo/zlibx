@@ -88,9 +88,9 @@ class _BooklistDetailScreenState extends ConsumerState<BooklistDetailScreen> {
 
   void _onScroll() {
     _pixels.value = _scrollController.position.pixels;
-    if (_scrollController.position.extentAfter < 300) {
-      ref.read(_provider.notifier).loadMore();
-    }
+    // 按需加载（书单思路）：不再滑到底自动拉下一页，超过一页的量
+    // 由底部的“加载更多”按钮拉。自动拉会在墙（DiamWall）上反复
+    // 撞，按钮让用户自己决定什么时候拉。
   }
 
   Future<void> _toggleFavorite() async {
@@ -125,6 +125,8 @@ class _BooklistDetailScreenState extends ConsumerState<BooklistDetailScreen> {
           guard++;
           await controller.loadMore();
           if (!mounted) return;
+          // 单页失败就停：导已加载的部分，别把同一页重试 200 次。
+          if (ref.read(_provider).loadMoreError != null) break;
         }
       }
     } finally {
@@ -451,9 +453,60 @@ class _BooklistDetailScreenState extends ConsumerState<BooklistDetailScreen> {
           },
         ),
       ),
+      // 按需加载尾巴：正在拉 → 转圈；上一页失败 → 重试行（书都留
+      // 着，重试拉同一页）；还有下一页 → “加载更多”按钮。一页能装
+      // 下的书单（hasMore 为 false）什么都不显示。
       if (state.isLoadingMore)
-        const SliverToBoxAdapter(child: LoadingWidget.more()),
+        const SliverToBoxAdapter(child: LoadingWidget.more())
+      else if (state.loadMoreError != null)
+        SliverToBoxAdapter(child: _pageErrorRow(state.loadMoreError!))
+      else if (state.hasMore)
+        SliverToBoxAdapter(child: _loadMoreRow()),
     ];
+  }
+
+  /// 按需加载的“加载更多”按钮：点一下拉一页。跟个人书单那边同款。
+  Widget _loadMoreRow() {
+    final l10n = AppLocalizations.of(context)!;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      child: Center(
+        child: TextButton(
+          onPressed: () => ref.read(_provider.notifier).loadMore(),
+          child: Text(l10n.loadMore),
+        ),
+      ),
+    );
+  }
+
+  /// 单页失败的重试行：已加载的书都留着，重试拉同一页（nextPage
+  /// 只在成功时才进位）。跟个人书单那边同款。
+  Widget _pageErrorRow(String message) {
+    final l10n = AppLocalizations.of(context)!;
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, size: 20, color: cs.error),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          TextButton(
+            onPressed: () => ref.read(_provider.notifier).loadMore(),
+            child: Text(l10n.retry),
+          ),
+        ],
+      ),
+    );
   }
 }
 

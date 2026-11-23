@@ -31,9 +31,12 @@ import 'widgets/profile_widgets.dart';
 /// `getUserComments`, same endpoint order as "My Comments").
 /// The booklists come from the profile document's server-rendered
 /// booklists tab, which carries at most 10 lists — users with more
-/// get the rest fetched page by page from the paginated route
-/// (`/profile/{id}/{hash}/booklists?page=N`, issue #11) and appended
-/// as they land. Their saved books are NOT shown: other users'
+/// get the next page only when they ask for it ("load more" at the
+/// tail; issue #11, issue #34): page 1 paints first, each further
+/// page is fetched on demand from the paginated route
+/// (`/profile/{id}/{hash}/booklists?page=N`) and appended. A failed
+/// page keeps the loaded rows and offers a retry for that same page.
+/// Their saved books are NOT shown: other users'
 /// profiles have no library tab on the site, and `getUserSaved` reads
 /// the session user only. The reading queue (`z-tab="plans"`) is NOT
 /// shown either: its content was cut off in the capture and the app
@@ -59,9 +62,20 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
   bool _loggedIn = true;
   bool _booklistsLoading = false;
 
-  /// 第 2 页及以后的分页加载进行中（第 1 页已上屏，区块尾部的
-  /// 加载行靠它显示）。
+  /// 下一页按需加载进行中（第 1 页已上屏，区块尾部的加载行靠它
+  /// 显示；一次只拉一页）。
   bool _booklistsPaging = false;
+
+  /// 下一次按需加载要拉的页码（null = 没有更多页：第 1 页或上一
+  /// 次拉到的页不满 10 个、拉到空页，或已到 [_maxBooklistPages]
+  /// 上限）。第 1 页满 10 个时置为 2，尾部“加载更多”提供它；拉到
+  /// 一页后按是否满页推进，失败时保持不动（重试拉同一页）。
+  int? _booklistsNextPage;
+
+  /// 上一次按需拉页的错误（null = 无错误）：与 [_booklistsError]
+  /// （第 1 页）分开，免得一页失败把整个区块打回错误态——已加载
+  /// 的行留着，尾部只对这一页出重试行。
+  String? _booklistsPageError;
   String? _booklistsError;
 
   /// 书单分页加载的代数：每次 [_loadBooklists] 启动时递增，分页
@@ -186,14 +200,16 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     await _loadBooklists();
   }
 
-  /// The profile document's booklists tab, via the plugin, then the
-  /// remaining pages (the tab renders at most 10 lists; issue #11).
-  /// Page 1 paints as soon as it lands; pages 2+ append as they
-  /// arrive (see [_loadBooklistPages2Plus]). Skipped when the tapped
-  /// comment carried no profile hash — the page then shows comments
-  /// only. The profile page is an HTML route, so the mirror can wall
-  /// Dio: on a browser-check error the WebView solver fetches the
-  /// same page (the booklists screen's pattern). In
+  /// The profile document's booklists tab, via the plugin. Page 1
+  /// paints as soon as it lands; further pages are NOT auto-fetched
+  /// (load-on-demand, issue #34: auto-fetching 71 pages at once is
+  /// part of why the wall hits so often) — a full page 1 arms the
+  /// tail "load more" row ([_booklistsNextPage] = 2), and each tap
+  /// loads exactly one more page ([_loadBooklistNextPage]). Skipped
+  /// when the tapped comment carried no profile hash — the page then
+  /// shows comments only. The profile page is an HTML route, so the
+  /// mirror can wall Dio: on a browser-check error the WebView solver
+  /// fetches the same page (the booklists screen's pattern). In
   /// background-refresh mode (cached rows on screen) the section
   /// keeps showing them: no loading row, and a failed refresh just
   /// leaves the cached rows in place.
@@ -206,8 +222,12 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
         _booklistsLoading = true;
         // 新一次加载把上一轮的分页加载行清掉：旧分页循环退出时不重置
         // 的话，这轮若只有 1 页就没人再碰这个旗标，卡尾的加载行会
-        // 卡在屏上（epoch 守卫只保护数据，不保护 UI 旗标）。
+        // 卡在屏上（epoch 守卫只保护数据，不保护 UI 旗标）。按需
+        // 加载的下一页和页错误也一起清掉，免得旧的“加载更多”/重试
+        // 行叠在新一轮第 1 页下面。
         _booklistsPaging = false;
+        _booklistsNextPage = null;
+        _booklistsPageError = null;
         _booklistsError = null;
       });
     }
@@ -224,18 +244,15 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
           _booklists = response.data!.lists;
           _booklistsLoading = false;
           _booklistsError = null;
+          // 旧的页错误随新一轮第 1 页清掉（后台刷新不走上面的
+          // setState，也要清）。
+          _booklistsPageError = null;
+          // 第 1 页满 10 个才可能有第 2 页：不满一页就是最后一页，
+          // 尾部不出“加载更多”。满 10 个也可能是正好 10 个，点
+          // “加载更多”拉到空页时再收掉。
+          _booklistsNextPage =
+              response.data!.lists.length >= 10 ? 2 : null;
         });
-        // 第 1 页满 10 个才探第 2 页：不满一页就是最后一页，不用
-        // 多拉一次空页。满 10 个也可能是正好 10 个，探第 2 页拿到
-        // 空页就停，只多一次请求。
-        if (response.data!.lists.length >= 10) {
-          await _loadBooklistPages2Plus(
-            api,
-            hash,
-            epoch: epoch,
-            backgroundRefresh: backgroundRefresh,
-          );
-        }
         return;
       }
       if (_isChallengeError(response.error)) {
@@ -262,82 +279,93 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     }
   }
 
-  /// Pages 2 and up of the profile booklists (`/profile/{id}/{hash}/
-  /// booklists?page=N`), fetched sequentially and appended as they
-  /// land so the section grows while loading (the tail shows a
-  /// loading row). Sequential rather than parallel: the mirror
-  /// rate-limits bursts, and the epoch guard plus dedupe stay simple.
-  /// [epoch] is the caller's generation — a pull-refresh or retry
-  /// that started later wins, and this loop exits silently at the
-  /// next page boundary.
+  /// Load exactly one more booklists page on demand (the tail
+  /// "load more" row calls this). Fetches [_booklistsNextPage] once
+  /// and appends it; the tail then offers the following page, or
+  /// closes when this page proves to be the last one.
   ///
   /// The loop does NOT stop at the page-1 total: the site's
   /// booklists paginator is a sliding window (page 1 shows 1–10, no
   /// Last link), so the total read off page 1 is only a lower bound
-  /// (issue #34: a 71-page profile reads as 10 from page 1). Fetch
-  /// until a page is empty, fails, or partial (< 10 lists = last
-  /// page), capped at [_maxBooklistPages]. A failed or empty page
-  /// stops the loop with whatever loaded so far (empty = past the
-  /// end, e.g. the list shrank between fetches); rows already on
-  /// screen stay. The pages are NOT cached: the SWR cache only holds
-  /// the profile document (page 1).
+  /// (issue #34: a 71-page profile reads as 10 from page 1). A page
+  /// is the last one when it is empty (past the end, e.g. the list
+  /// shrank between fetches) or partial (< 10 lists), capped at
+  /// [_maxBooklistPages]. The pages are NOT cached: the SWR cache
+  /// only holds the profile document (page 1).
   ///
-  /// Each page tries fast Dio first; a page walled by DiamWall falls
-  /// back to the WebView solver for that page (see
-  /// [_fetchBooklistPage]) — the page-1 bridge alone does not cover
-  /// the paginated route (issue #34 probe: page 2 got HTTP 503
-  /// despite the bridge). A solve bridges fresh wall cookies to Dio,
-  /// so the next page tries Dio first again.
-  Future<void> _loadBooklistPages2Plus(
-    ZLibraryApi api,
-    String hash, {
-    required int epoch,
-    required bool backgroundRefresh,
-  }) async {
-    // 后台刷新模式不显示加载行（与第 1 页的后台语义一致：第 1 页的
-    // 行已从缓存上屏，失败也不报错）。
-    if (!backgroundRefresh) {
-      setState(() => _booklistsPaging = true);
-    }
+  /// A failed page does NOT wipe the section: the loaded rows stay
+  /// and the tail shows a retry row for this same page
+  /// ([_booklistsNextPage] is untouched, so retry re-requests it —
+  /// the Mihon pattern: keep content, retry the same page). [epoch]
+  /// is the generation captured at entry — a pull-refresh or retry
+  /// that started later wins, and this load exits silently.
+  Future<void> _loadBooklistNextPage() async {
+    final hash = _args.userHash;
+    if (hash == null || hash.isEmpty) return;
+    final nextPage = _booklistsNextPage;
+    if (nextPage == null || _booklistsPaging) return;
+    final api = ref.read(zlibraryApiProvider);
+    final epoch = _booklistsEpoch;
+    setState(() {
+      _booklistsPaging = true;
+      _booklistsPageError = null;
+    });
     try {
-      for (var page = 2; page <= _maxBooklistPages; page++) {
-        final fresh = await _fetchBooklistPage(api, hash, page, epoch);
-        if (!mounted || epoch != _booklistsEpoch) return;
-        // null = 这一页拉不到（非墙失败，或解墙也失败）：保留已加载
-        // 的行，停在这里。
-        if (fresh == null) break;
-        if (fresh.isEmpty) break;
+      final result = await _fetchBooklistPage(api, hash, nextPage, epoch);
+      if (!mounted || epoch != _booklistsEpoch) return;
+      if (result.error != null) {
+        // 这一页拉不到（非墙失败，或解墙也失败）：保留已加载的行，
+        // 尾部出重试行，下一页码不动，点重试就重拉这一页。
         setState(() {
-          // 按 id 去重：两页之间书单被增删时，分页可能整体位移，
-          // 重复行宁缺勿双。
-          final seen = _booklists.map((l) => l.id).toSet();
-          _booklists = [
-            ..._booklists,
-            ...fresh.where((l) => !seen.contains(l.id)),
-          ];
+          _booklistsPaging = false;
+          _booklistsPageError = result.error;
         });
-        // 不满一页（< 10 个）就是最后一页：不用再拉下一页（空页）
-        // 来确认。
-        if (fresh.length < 10) break;
+        return;
       }
-    } on Object {
-      // 分页失败保留已加载的行：区块不进入错误态（第 1 页已在），
-      // 下拉刷新可重来。
-    } finally {
-      if (mounted && epoch == _booklistsEpoch) {
-        setState(() => _booklistsPaging = false);
+      final fresh = result.lists ?? const <Booklist>[];
+      if (fresh.isEmpty) {
+        // 空页 = 已经过了最后一页，收掉“加载更多”。
+        setState(() {
+          _booklistsPaging = false;
+          _booklistsNextPage = null;
+        });
+        return;
       }
+      setState(() {
+        _booklistsPaging = false;
+        // 按 id 去重：两页之间书单被增删时，分页可能整体位移，
+        // 重复行宁缺勿双。
+        final seen = _booklists.map((l) => l.id).toSet();
+        _booklists = [
+          ..._booklists,
+          ...fresh.where((l) => !seen.contains(l.id)),
+        ];
+        // 不满一页（< 10 个）就是最后一页；满页则可能还有下一页
+        // （上限 [_maxBooklistPages]）。
+        _booklistsNextPage =
+            fresh.length < 10 || nextPage >= _maxBooklistPages
+            ? null
+            : nextPage + 1;
+      });
+    } on Object catch (e) {
+      // 异常也只坏这一页：行留着，尾部出重试行。
+      if (!mounted || epoch != _booklistsEpoch) return;
+      setState(() {
+        _booklistsPaging = false;
+        _booklistsPageError = e.toString();
+      });
     }
   }
 
   /// One paginated profile-booklists page (page ≥ 2): fast Dio first;
   /// on a browser-check wall, fall back to the WebView solver for
   /// that page (the booklist detail page's pattern). Returns the
-  /// page's lists, an empty list when past the end, or null when the
-  /// page could not be loaded (a non-wall failure, or the solve
-  /// failed). A solve bridges the fresh wall cookies to Dio, so the
-  /// next page tries Dio first again.
-  Future<List<Booklist>?> _fetchBooklistPage(
+  /// page's lists, an empty list when past the end, or an error when
+  /// the page could not be loaded (a non-wall failure, or the solve
+  /// failed — the caller shows it in the per-page retry row). A solve
+  /// bridges the fresh wall cookies to Dio, so the next page tries
+  /// Dio first again.
+  Future<({List<Booklist>? lists, String? error})> _fetchBooklistPage(
     ZLibraryApi api,
     String hash,
     int page,
@@ -349,10 +377,22 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
       page: page,
     );
     if (response.success && response.data != null) {
-      return response.data!;
+      return (lists: response.data!, error: null);
     }
-    if (!_isChallengeError(response.error)) return null;
-    return _fetchBooklistPageViaSolver(api, hash, page, epoch);
+    if (!_isChallengeError(response.error)) {
+      return (
+        lists: null,
+        error: response.error ?? 'Failed to load booklists',
+      );
+    }
+    final solved = await _fetchBooklistPageViaSolver(api, hash, page, epoch);
+    if (solved == null) {
+      return (
+        lists: null,
+        error: response.error ?? 'Failed to load booklists',
+      );
+    }
+    return (lists: solved, error: null);
   }
 
   /// One paginated profile-booklists page through the WebView
@@ -462,16 +502,11 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
         _booklists = lists;
         _booklistsLoading = false;
         _booklistsError = null;
+        _booklistsPageError = null;
+        // 第 1 页满 10 个才可能有第 2 页（与 _loadBooklists 相同的
+        // 守卫）：按需加载，尾部“加载更多”提供它，不自动往下探。
+        _booklistsNextPage = lists.length >= 10 ? 2 : null;
       });
-      // 第 1 页满 10 个才探第 2 页（与 _loadBooklists 相同的守卫）。
-      if (lists.length >= 10) {
-        await _loadBooklistPages2Plus(
-          api,
-          hash,
-          epoch: epoch,
-          backgroundRefresh: backgroundRefresh,
-        );
-      }
     } finally {
       // O8: the session only lives for this solve (see BooklistSolver).
       if (hasSession) await deleteSessionCookies(pageUrl: url);
@@ -571,13 +606,18 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     );
   }
 
-  /// 头部统计的书单数：无书单区（评论没带 hash）、加载中/分页中或
-  /// 出错时返回 null，头部就不显示书单药丸（分页中显示部分数会先
-  /// 报小再跳大，不如等齐了一次到位）。
+  /// 头部统计的书单数：无书单区（评论没带 hash）、加载中/分页中、
+  /// 出错时，或还没拉完（[_booklistsNextPage] 非空，当前数只是已
+  /// 加载的部分数）时返回 null，头部就不显示书单药丸（分页中显示
+  /// 部分数会先报小再跳大，不如等齐了一次到位；按需加载下，不点
+  /// “加载更多”就永远不知道总数，藏着比报小更诚实）。
   int? get _booklistCount {
     final hash = _args.userHash;
     if (hash == null || hash.isEmpty) return null;
-    if (_booklistsLoading || _booklistsPaging || _booklistsError != null) {
+    if (_booklistsLoading ||
+        _booklistsPaging ||
+        _booklistsError != null ||
+        _booklistsNextPage != null) {
       return null;
     }
     return _booklists.length;
@@ -607,7 +647,10 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     final children = <Widget>[
       _sectionHeader(
         l10n.booklists,
-        _booklistsLoading || _booklistsPaging || _booklistsError != null
+        _booklistsLoading ||
+                _booklistsPaging ||
+                _booklistsError != null ||
+                _booklistsNextPage != null
             ? null
             : _booklists.length,
       ),
@@ -654,15 +697,68 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
           ),
         ),
       );
-      // 第 2 页起还在加载：卡尾一条细加载行，行数随到货增长。
+      // 尾部三态（按需加载）：下一页加载中 → 细加载行；上一页拉
+      // 失败 → 重试行（行留着，重拉同一页）；还可能有下一页 →
+      // “加载更多”按钮；拉完了 → 什么都不加。
       if (_booklistsPaging) {
         children.add(const Padding(
           padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
           child: LoadingWidget.more(),
         ));
+      } else if (_booklistsPageError != null) {
+        children.add(_booklistsPageErrorRow());
+      } else if (_booklistsNextPage != null) {
+        children.add(_booklistsLoadMoreRow());
       }
     }
     return children;
+  }
+
+  /// "Load more" tail row: offers the next booklists page on demand.
+  /// Shown only when a further page may exist (the last fetched page
+  /// was full) and no page fetch is in flight or failed.
+  Widget _booklistsLoadMoreRow() {
+    final l10n = AppLocalizations.of(context)!;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Center(
+        child: TextButton(
+          onPressed: _loadBooklistNextPage,
+          child: Text(l10n.loadMore),
+        ),
+      ),
+    );
+  }
+
+  /// Per-page failure tail row: the loaded rows stay, and retry
+  /// re-requests the same page ([_booklistsNextPage] is untouched).
+  /// Same row language as the section error row above.
+  Widget _booklistsPageErrorRow() {
+    final l10n = AppLocalizations.of(context)!;
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, size: 20, color: cs.error),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _booklistsPageError ?? l10n.error,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          TextButton(
+            onPressed: _loadBooklistNextPage,
+            child: Text(l10n.retry),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _booklistsErrorRow() {

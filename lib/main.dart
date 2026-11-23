@@ -21,6 +21,7 @@ import 'providers/zlibrary_provider.dart';
 import 'routes/app_routes.dart';
 import 'screens/challenge_solver/challenge_solver_screen.dart';
 import 'services/app_lock_service.dart';
+import 'services/app_shortcuts.dart';
 import 'services/booklist_html_cache.dart';
 import 'services/challenge_html_cache.dart';
 import 'services/download_foreground_service.dart';
@@ -165,6 +166,12 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // App icon shortcuts (long-press the launcher icon): 扫码 / 搜索 /
+    // 书单 / 我的图书馆. Registered once; taps navigate via the root
+    // navigator, cold-start taps wait for HomeScreen to drain them.
+    // setup is async (initialize pulls the cold-start launch action)
+    // and must not block initState.
+    unawaited(AppShortcuts.setup(rootNavigatorKey));
     // O2: open the heavier, non-first-frame boxes (booklist_html,
     // view_history) after the first frame paints, so their value
     // preload does not delay the splash. Fire-and-forget — callers

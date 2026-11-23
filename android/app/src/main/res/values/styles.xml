@@ -1,10 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Declared so the LaunchTheme items below can pin the app icon
+         shortcut drawables (see the comment on LaunchTheme). -->
+    <attr name="zlibxShortcutIconScan" format="reference" />
+    <attr name="zlibxShortcutIconSearch" format="reference" />
+    <attr name="zlibxShortcutIconBooklists" format="reference" />
+    <attr name="zlibxShortcutIconLibrary" format="reference" />
+
     <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is off -->
     <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <!-- Show a splash screen on the activity. Automatically removed when
              the Flutter engine draws its first frame -->
         <item name="android:windowBackground">@drawable/launch_background</item>
+        <!-- App icon shortcut icons (quick_actions): the plugin resolves each
+             icon at runtime with getIdentifier(name, "drawable"). R8's
+             resource shrinking drops these four (nothing statically
+             references them — Dart holds only the name string) and resource
+             obfuscation would rename them. LaunchTheme is manifest-referenced,
+             so it and its items survive shrinking — these items pin the
+             references so the resources keep both their place and their name. -->
+        <item name="zlibxShortcutIconScan">@drawable/ic_shortcut_scan</item>
+        <item name="zlibxShortcutIconSearch">@drawable/ic_shortcut_search</item>
+        <item name="zlibxShortcutIconBooklists">@drawable/ic_shortcut_booklists</item>
+        <item name="zlibxShortcutIconLibrary">@drawable/ic_shortcut_library</item>
     </style>
     <!-- Theme applied to the Android Window as soon as the process has started.
          This theme determines the color of the Android Window while your

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/zlibrary_provider.dart';
+import '../../services/app_shortcuts.dart';
 import '../../services/booklist_warmup.dart';
 import '../../theme/app_metrics.dart';
 import '../../theme/motion.dart';
@@ -40,6 +41,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // is single-flight per launch, headless only, and silent on
     // failure.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // App icon shortcut tapped on a cold start (long-press the
+      // launcher icon): navigate to it now that home is showing.
+      // Warm taps navigate at once in the handler, so this is a
+      // no-op for them.
+      AppShortcuts.markHomeShownAndDrain();
       unawaited(
         BooklistWarmup.warmUp(
           api: ref.read(zlibraryApiProvider),

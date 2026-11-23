@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App shortcut icon: 扫码 (barcode). Vertical bars of varying width. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M4,4h2v16h-2zM8,4h1v16h-1zM11,4h3v16h-3zM16,4h1v16h-1zM19,4h1v16h-1z" />
+</vector>

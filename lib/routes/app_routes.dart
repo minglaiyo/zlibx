@@ -26,6 +26,7 @@ import '../screens/home/home_screen.dart';
 import '../screens/popular/popular_books_screen.dart';
 import '../screens/reader/reader_screen.dart';
 import '../screens/recent/recent_books_screen.dart';
+import '../screens/search/barcode_scanner_screen.dart';
 import '../screens/search/search_screen.dart';
 import '../screens/settings/history_screen.dart';
 import '../screens/settings/settings_screen.dart';
@@ -42,6 +43,7 @@ class AppRoutes {
   static const String login = '/login';
   static const String home = '/home';
   static const String search = '/search';
+  static const String barcodeScanner = '/barcode-scanner';
   static const String bookDetail = '/book-detail';
   static const String favorites = '/favorites';
   static const String history = '/history';
@@ -191,6 +193,11 @@ class AppRoutes {
   static Future<T?> openSearch<T extends Object?>(BuildContext context) =>
       Navigator.of(context).pushNamed<T>(search);
 
+  /// The ISBN barcode scanner (扫码搜书).
+  static Future<T?> openBarcodeScanner<T extends Object?>(
+    BuildContext context,
+  ) => Navigator.of(context).pushNamed<T>(barcodeScanner);
+
   /// The search page, scoped to one category: it opens browsing that
   /// category immediately. The category pages are gone — category
   /// lives only inside search now, so this is what the book-detail
@@ -304,6 +311,10 @@ Map<String, WidgetBuilder> buildAppRoutes() {
       }
       return const SearchScreen();
     },
+    // ISBN barcode scan (扫码搜书): was pushed directly from the
+    // search screen; now a named route so the app icon shortcut
+    // (and anything else) can open it.
+    AppRoutes.barcodeScanner: (context) => const BarcodeScannerScreen(),
     AppRoutes.bookDetail: (context) {
       final raw = ModalRoute.of(context)!.settings.arguments;
       // Normalize the calling forms into BookDetailArgs:

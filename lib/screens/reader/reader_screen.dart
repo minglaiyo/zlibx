@@ -222,26 +222,27 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
-  /// 深色模式的 CSS 兜底：给站内阅读器页套一层深色滤镜（图片/视频
-  /// 反色回来）并把浅色背景压暗。算法变暗（algorithmicDarkening）
-  /// 覆盖不到的页面靠它；注入失败不影响阅读，只记一行日志。
-  Future<void> _applyDarkOverride(InAppWebViewController controller) async {
-    const script = '''
-(function() {
-  var style = document.getElementById('zlibx-dark-override');
-  if (style) return;
-  style = document.createElement('style');
-  style.id = 'zlibx-dark-override';
-  style.textContent = 'html { filter: invert(1) hue-rotate(180deg); background: #121212 !important; } img, video, canvas, [style*="background-image"] { filter: invert(1) hue-rotate(180deg); }';
-  document.documentElement.appendChild(style);
-})();
-''';
-    try {
-      await controller.evaluateJavascript(source: script);
-    } catch (error) {
-      logIgnored('reader_screen_dark', error);
-    }
-  }
+  /// 深色模式的反色矩阵：CSS 的 `invert(1) hue-rotate(180deg)` 的
+  /// 4x5 颜色矩阵版（白→黑、黑→白，色相大体保留）。阅读器不用 DOM
+  /// 注入改深色，改用 Flutter 层的 [ColorFiltered] 把整个 WebView
+  /// 画出来的像素反色：iframe、跨域、动态加载全都绕过去了，因为反
+  /// 的是最后合成的画面，不是文档。图片也会跟着反色（没法像 CSS
+  /// 那样把图单独反回来），正文是黑白文字所以没影响；图多的页会
+  /// 偏暗——这是反色方案的已知代价。
+  static const List<double> _darkInvertMatrix = <double>[
+    0.574, -1.43, -0.144, 0, 255,
+    -0.426, -0.43, -0.144, 0, 255,
+    -0.426, -1.43, 0.856, 0, 255,
+    0, 0, 0, 1, 0,
+  ];
+
+  /// 恒等矩阵：浅色时 ColorFiltered 用它，画面原样不动。
+  static const List<double> _identityMatrix = <double>[
+    1, 0, 0, 0, 0,
+    0, 1, 0, 0, 0,
+    0, 0, 1, 0, 0,
+    0, 0, 0, 1, 0,
+  ];
 
   static String _probeUrl(Object? value) {
     final uri = Uri.tryParse(value?.toString() ?? '');
@@ -353,8 +354,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   Widget build(BuildContext context) {
     // 预览阅读随系统深色强制深色：站内阅读器本身是浅色页，app 深色
-    // 时用 WebView 的算法变暗 + CSS 覆盖把它压暗。Theme.of 的
-    // brightness 跟随当前主题（跟随系统时就是系统深色）。
+    // 时用 ColorFiltered 把整个 WebView 的画面反色（见
+    // [_darkInvertMatrix]）。Theme.of 的 brightness 跟随当前主题
+    // （跟随系统时就是系统深色）。
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       appBar: AppBar(
@@ -400,7 +402,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
       ),
       body: Stack(
         children: [
-          Visibility(
+          ColorFiltered(
+            colorFilter: ColorFilter.matrix(
+              isDark ? _darkInvertMatrix : _identityMatrix,
+            ),
+            child: Visibility(
             visible: !_webViewHidden,
             maintainState: true,
             child: InAppWebView(
@@ -418,10 +424,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 displayZoomControls: false,
                 mediaPlaybackRequiresUserGesture: false,
                 allowsInlineMediaPlayback: true,
-                // 深色时强制 WebView 对浅色页做算法变暗（Android
-                // WebView 的 forceDark 能力）；浅色时关闭，避免
-                // 把站内深色元素再压一遍。
-                algorithmicDarkeningAllowed: isDark,
+                // 算法变暗关掉：深色现在只靠 ColorFiltered 一处反
+                // 色，两处同时压会叠成浅色。
+                algorithmicDarkeningAllowed: false,
                 useOnLoadResource: _probeEnabled,
                 userAgent:
                     'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
@@ -493,11 +498,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 if (url != null) {
                   unawaited(_syncSessionFromWebView(url));
                 }
-                // 深色模式：算法变暗覆盖不到的站内浅色背景再用 CSS
-                // 压暗一次（仅在深色时注入）。
-                if (isDark) {
-                  unawaited(_applyDarkOverride(controller));
-                }
               },
               onProgressChanged: (controller, progress) {
                 setState(() {
@@ -528,6 +528,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 );
               },
             ),
+          ),
           ),
 
           // Progress indicator

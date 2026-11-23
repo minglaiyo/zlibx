@@ -698,6 +698,13 @@ class _DownloadItem extends ConsumerWidget {
         return;
       case 'details':
         if (!context.mounted) return;
+        // #123 follow-up：先把 content:// URI 解析成真实路径再显示；
+        // 解析不到（文件已删等）就回退到原来存的路径。
+        final storedPath = task.filePath ?? '';
+        final displayPath = storedPath.isEmpty
+            ? ''
+            : (await MediaStoreFiles.realPath(storedPath) ?? storedPath);
+        if (!context.mounted) return;
         await showDialog<void>(
           context: context,
           builder: (_) => AlertDialog(
@@ -712,16 +719,38 @@ class _DownloadItem extends ConsumerWidget {
                 if (task.downloadedAt != null)
                   Text(formatDownloadDate(task.downloadedAt!)),
                 const SizedBox(height: 8),
-                SelectableText(task.filePath ?? ''),
+                // 点路径跳文件管理器（文件所在目录）；复制走下面的按钮。
+                InkWell(
+                  onTap: () async {
+                    final folder = downloadRelativeFolder(displayPath);
+                    final ok = folder != null
+                        ? await openFolder(folder)
+                        : await openDownloadFolder();
+                    if (!context.mounted) return;
+                    if (ok) {
+                      Navigator.pop(context);
+                    } else {
+                      showAppSnack(context, l.openFolderFailed);
+                    }
+                  },
+                  child: Text(
+                    displayPath,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
               ],
             ),
             actions: [
               // #123：一点就把路径拷到剪贴板，不用长按选中再拷。
-              if (task.filePath?.isNotEmpty == true)
+              // 拷的是真实路径（解析不到才拷原来存的）。
+              if (displayPath.isNotEmpty)
                 TextButton(
                   onPressed: () async {
                     await Clipboard.setData(
-                      ClipboardData(text: task.filePath!),
+                      ClipboardData(text: displayPath),
                     );
                     if (!context.mounted) return;
                     Navigator.pop(context);

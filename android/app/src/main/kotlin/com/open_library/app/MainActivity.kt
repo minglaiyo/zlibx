@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -165,6 +166,19 @@ class MainActivity : FlutterFragmentActivity() {
                             result.success(null)
                         } else {
                             runAsync(result) { copyContentToCache(uri) }
+                        }
+                    }
+                    "realPathForContent" -> {
+                        // #123：content:// URI 不是文件管理器能搜的路径，
+                        // 查 MediaStore 的 RELATIVE_PATH + DISPLAY_NAME
+                        // 拼出真实路径（/storage/emulated/0/Download/...）。
+                        val uri = call.argument<String>("uri")?.let(Uri::parse)
+                        if (uri == null) {
+                            result.success(null)
+                        } else {
+                            runAsync(result, lightExecutor) {
+                                realPathForContent(uri)
+                            }
                         }
                     }
                     "createPendingDownload" -> {
@@ -599,6 +613,39 @@ class MainActivity : FlutterFragmentActivity() {
         } catch (e: Exception) {
             Log.w(TAG, "MediaStore open failed", e)
             false
+        }
+    }
+
+    /// #123: resolve a Downloads/zlibx content URI to its real
+    /// filesystem path. RELATIVE_PATH (e.g. "Download/zlibx/") +
+    /// DISPLAY_NAME under the external storage dir. Returns null when
+    /// the row is gone or the URI is not ours (O9 allowlist).
+    private fun realPathForContent(uri: Uri): String? {
+        if (!isAllowedDownloadUri(uri)) return null
+        return try {
+            val projection = arrayOf(
+                MediaStore.MediaColumns.RELATIVE_PATH,
+                MediaStore.MediaColumns.DISPLAY_NAME,
+            )
+            contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return null
+                val relIndex = cursor.getColumnIndex(
+                    MediaStore.MediaColumns.RELATIVE_PATH,
+                )
+                val nameIndex = cursor.getColumnIndex(
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                )
+                if (relIndex < 0 || nameIndex < 0) return null
+                val relPath = cursor.getString(relIndex) ?: return null
+                val displayName = cursor.getString(nameIndex) ?: return null
+                val external = Environment.getExternalStorageDirectory()
+                    .absolutePath
+                // RELATIVE_PATH ends with '/', e.g. "Download/zlibx/".
+                "$external/$relPath$displayName"
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "MediaStore real path failed", e)
+            null
         }
     }
 

@@ -13,15 +13,39 @@ import 'app_log.dart';
 bool get canOpenFolder => Platform.isAndroid;
 
 /// Open the download folder in the system file manager
-Future<bool> openDownloadFolder() async {
+Future<bool> openDownloadFolder() => openFolder('Download/zlibx');
+
+/// Folder of a real path, relative to the external storage root
+/// (e.g. `/storage/emulated/0/Download/zlibx/作者/书.epub` →
+/// `Download/zlibx/作者`). MediaStore-published downloads always
+/// live under `Download/`, so the marker is reliable. Returns null
+/// when the path is not under Download (e.g. an unresolved
+/// content:// URI shown as-is).
+String? downloadRelativeFolder(String realPath) {
+  const marker = '/Download/';
+  final i = realPath.indexOf(marker);
+  if (i < 0) return null;
+  final after = realPath.substring(i + 1); // "Download/zlibx/作者/书.epub"
+  final slash = after.lastIndexOf('/');
+  if (slash < 0) return null;
+  return after.substring(0, slash); // "Download/zlibx/作者"
+}
+
+/// Open a folder under external storage in the system file manager
+/// (#123 follow-up: tap a download's real path to jump to its folder).
+/// [relativePath] is relative to the external storage root, e.g.
+/// `Download/zlibx` or `Download/zlibx/<author>`. Same three-level
+/// fallback as before: the folder itself, then the general Downloads
+/// folder, then the system file manager app.
+Future<bool> openFolder(String relativePath) async {
   try {
     if (Platform.isAndroid) {
-      // Use Intent to open the Downloads folder in the system file manager
+      // Use Intent to open the folder in the system file manager
       try {
         final intent = AndroidIntent(
           action: 'android.intent.action.VIEW',
           data:
-              'content://com.android.externalstorage.documents/document/primary%3ADownload%2Fzlibx',
+              'content://com.android.externalstorage.documents/document/${Uri.encodeComponent('primary:$relativePath')}',
           type: 'vnd.android.document/directory',
           flags: <int>[0x10000000], // FLAG_ACTIVITY_NEW_TASK
         );
@@ -60,7 +84,7 @@ Future<bool> openDownloadFolder() async {
     }
     return false;
   } catch (e) {
-    AppLog.report('Failed to open download folder: $e', tag: 'file_utils');
+    AppLog.report('Failed to open folder: $e', tag: 'file_utils');
     return false;
   }
 }

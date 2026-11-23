@@ -264,4 +264,25 @@ class MediaStoreFiles {
       return null;
     }
   }
+
+  /// Resolve a location to the real filesystem path, for display and
+  /// copy (#123 follow-up: the stored content:// URI is not a path a
+  /// file manager can search for). Plain paths pass through unchanged;
+  /// content:// URIs are resolved through MediaStore (RELATIVE_PATH +
+  /// DISPLAY_NAME under the external storage dir). Returns null when
+  /// it cannot be resolved — the caller falls back to the stored
+  /// location.
+  static Future<String?> realPath(String location) async {
+    if (!isContentUri(location)) return location;
+    if (!_onAndroid) return null;
+    try {
+      final path = await _channel.invokeMethod<String>(
+        'realPathForContent',
+        <String, Object>{'uri': location},
+      );
+      return (path != null && path.isNotEmpty) ? path : null;
+    } on PlatformException {
+      return null;
+    }
+  }
 }

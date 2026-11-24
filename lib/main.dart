@@ -29,6 +29,7 @@ import 'services/hive_service.dart';
 import 'services/instance_manager.dart';
 import 'services/mirror_trust.dart';
 import 'services/storage_service.dart';
+import 'services/wall_cookie_bridge.dart';
 import 'services/webview_challenge_solver.dart';
 import 'theme/app_theme.dart';
 import 'utils/diagnostics.dart';
@@ -119,6 +120,13 @@ void main() async {
   );
   // Existing installs keep their current line without a trust prompt.
   await MirrorTrust.grandfatherCurrent();
+
+  // L7: a SIGKILL skips every `finally`, so a solver session can
+  // survive in the WebView's cookie store and ride the next anonymous
+  // solve for the same host. Clear it once at startup (after the
+  // migration above, so the trusted set is complete). Fire-and-forget
+  // and best-effort — startup must not block on the cookie store.
+  unawaited(deleteStaleSessionCookies());
 
   // One-time favorites migration: move the legacy shared
   // 'favorite_books' list to the account signed in right now (see

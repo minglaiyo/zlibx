@@ -24,6 +24,7 @@ import 'rust_init.dart';
 void injectRustExternalParsers() {
   ext.libgenResultsParseOverride = _rustLibgenResults;
   lg.libgenAdsPageParseOverride = _rustLibgenAds;
+  lg.libgenAdsCoverParseOverride = _rustLibgenAdsCover;
   ol.openLibraryTrendingParseOverride = _rustOpenLibraryTrending;
 }
 
@@ -38,6 +39,7 @@ void _unregister(String tag, Object error) {
   resetRustBridge();
   ext.libgenResultsParseOverride = null;
   lg.libgenAdsPageParseOverride = null;
+  lg.libgenAdsCoverParseOverride = null;
   ol.openLibraryTrendingParseOverride = null;
 }
 
@@ -90,6 +92,19 @@ Future<am.BookInfoData?> _rustLibgenAds(
     mirror: info.mirror,
     description: info.description,
   );
+}
+
+/// M8: cover-only parse for Libgen search rows. Same bridge-failure
+/// contract as the other hooks: unregister and rethrow, the call site
+/// falls back to the Dart parseAdsCover.
+Future<String?> _rustLibgenAdsCover(String html, String baseUrl) async {
+  try {
+    await _ensureInit();
+  } on Object catch (e) {
+    _unregister('libgen ads cover', e);
+    rethrow;
+  }
+  return frb_api.parseLibgenAdsCover(html: html, baseUrl: baseUrl);
 }
 
 Future<List<ol.TrendingBookData>> _rustOpenLibraryTrending(String html) async {

@@ -80,7 +80,7 @@ class ExternalSearchNotifier extends Notifier<ExternalSearchState> {
   }
 
   SearchProvider _providerFor(BookSource source) => source == BookSource.libgen
-      ? LibgenProvider()
+      ? ref.read(libgenSearchProvider)
       : AnnasArchiveProvider(api: _annasApi);
 
   /// Maps a provider's BookData with the converter matching the source
@@ -229,6 +229,13 @@ final annasBookDetailsProvider = FutureProvider.autoDispose
 /// user opened a LibGen book — the same leak pattern the search side
 /// already fixed with [annasArchieveProvider].
 final libgenServiceProvider = Provider<LibgenService>((ref) => LibgenService());
+
+/// Shared LibGen search provider (M9). Creating one per search built a
+/// fresh Dio (and a fresh keep-alive HttpClient pool) every time the
+/// user searched LibGen — the same leak as the service above.
+final libgenSearchProvider = Provider<LibgenProvider>(
+  (ref) => LibgenProvider(),
+);
 
 // ── LibGen Book Details ──────────────────────────────────────────────
 //

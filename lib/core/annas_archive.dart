@@ -410,7 +410,12 @@ class ArchiveParsing {
   }) {
     if (cfMitigated?.toLowerCase() == 'challenge') return true;
 
-    final lower = body.toLowerCase();
+    // L5: challenge markers all live in the document head — lowercase
+    // only the first 64 KB instead of the whole body. A 2 MB page used
+    // to allocate a lowercase copy per response, and a request may run
+    // this check 2–3 times.
+    final head = body.length > 65536 ? body.substring(0, 65536) : body;
+    final lower = head.toLowerCase();
     if (lower.isEmpty) return false;
 
     final title =
@@ -464,17 +469,56 @@ class ArchiveParsing {
 
   /// Extracts the direct download link from a `slow_download` page.
   static String? extractSlowDownloadLink(String html, {String pageUrl = ''}) {
-    final document = parse(html);
-    // Class-combining selector (order-insensitive) first; the exact
-    // attribute match stays as a fallback in case the site renders an
-    // additional class in between.
-    final paragraph =
-        document.querySelector('p.mb-4.text-xl.font-bold') ??
-        document.querySelector('p[class="mb-4 text-xl font-bold"]');
-    final href = paragraph?.querySelector('a')?.attributes['href'];
+    // L6: the slow-download page is parsed only for one link — a full
+    // Dart DOM parse per call is wasteful. Locate the target paragraph
+    // with a regex first (and parse nothing else); the full-page DOM
+    // parse stays as the fallback for markup that does not match the
+    // expected shape, so a site change degrades instead of losing
+    // the link.
+    final href = _slowLinkHrefByRegex(html) ?? _slowLinkHrefByDom(html);
     if (href == null || href.isEmpty) return null;
     if (pageUrl.isEmpty) return href;
     return resolveRelative(href, pageUrl);
+  }
+
+  /// Regex-first locate: the <p> whose class list contains mb-4,
+  /// text-xl and font-bold (any order), then the first <a href> inside
+  /// it. Double-quoted attributes only — anything else falls through
+  /// to the DOM parse below.
+  static String? _slowLinkHrefByRegex(String html) {
+    final pOpen = RegExp(
+      r'<p\b[^>]*\bclass\s*=\s*"([^"]*)"[^>]*>',
+      caseSensitive: false,
+    );
+    for (final m in pOpen.allMatches(html)) {
+      final classes = m.group(1)!.split(RegExp(r'\s+')).toSet();
+      if (!classes.contains('mb-4') ||
+          !classes.contains('text-xl') ||
+          !classes.contains('font-bold')) {
+        continue;
+      }
+      final after = html.substring(m.end);
+      final end = after.indexOf('</p>');
+      final inner = end >= 0 ? after.substring(0, end) : after;
+      final href = RegExp(
+        r'<a\b[^>]*\bhref\s*=\s*"([^"]+)"',
+        caseSensitive: false,
+      ).firstMatch(inner)?.group(1);
+      if (href != null && href.isNotEmpty) return href;
+    }
+    return null;
+  }
+
+  /// The original full-page DOM parse, kept as the fallback.
+  /// Class-combining selector (order-insensitive) first; the exact
+  /// attribute match stays as a fallback in case the site renders an
+  /// additional class in between.
+  static String? _slowLinkHrefByDom(String html) {
+    final document = parse(html);
+    final paragraph =
+        document.querySelector('p.mb-4.text-xl.font-bold') ??
+        document.querySelector('p[class="mb-4 text-xl font-bold"]');
+    return paragraph?.querySelector('a')?.attributes['href'];
   }
 
   // ────────────────────────────────────────────────────────────────

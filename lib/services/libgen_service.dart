@@ -34,8 +34,16 @@ class LibgenService {
   final Dio _dio;
   final AppLogger _logger = AppLogger();
 
-  LibgenService({Dio? dio})
-    : _dio =
+  // M9: one speed-test instance (and its Dio) for the service's
+  // lifetime. Creating one per bookInfo/coverFor call built a fresh
+  // Dio — and a fresh keep-alive HttpClient pool — for every book.
+  // LibgenService itself is a singleton (libgenServiceProvider), so
+  // this is effectively a singleton too.
+  final MirrorSpeedTest _speedTest;
+
+  LibgenService({Dio? dio, MirrorSpeedTest? speedTest})
+    : _speedTest = speedTest ?? MirrorSpeedTest(),
+      _dio =
           dio ??
           createDioWithLogging(
             options: BaseOptions(
@@ -62,7 +70,7 @@ class LibgenService {
     // Download order: a fresh device-side speed measurement (Mirrors
     // page > 测速) ranks the mirrors fastest-first; without one this
     // falls back to SLUM order, exactly like before.
-    final mirrors = await MirrorSpeedTest().rankedUrls(MirrorService.libgen);
+    final mirrors = await _speedTest.rankedUrls(MirrorService.libgen);
     final candidates = _candidateUrls(url, mirrors);
 
     Object? lastError;
@@ -162,6 +170,20 @@ class LibgenService {
     return src.startsWith('http') ? src : '$baseUrl$src';
   }
 
+  /// M8: extract the cover URL, preferring the Rust cover-only parse
+  /// (one img src, native) over the Dart parseAdsCover above. On any
+  /// bridge failure the hook un-registers and the Dart parse takes over.
+  Future<String?> _extractCover(String html, String baseUrl) async {
+    if (libgenAdsCoverParseOverride != null) {
+      try {
+        return await libgenAdsCoverParseOverride!(html, baseUrl);
+      } on Object catch (_) {
+        libgenAdsCoverParseOverride = null;
+      }
+    }
+    return parseAdsCover(html, baseUrl);
+  }
+
   /// 会话级封面缓存：md5 → 封面 URL。重复搜索、滚回已看过的页都零
   /// 请求；封面 URL 不含会话性质的 key,跨会话持久化留待有需要再加。
   /// 上限 500（审查 v2 P3）：条目极小,超限整表清空——会话缓存的语义
@@ -223,7 +245,7 @@ class LibgenService {
 
     await _acquireCoverSlot();
     try {
-      final mirrors = await MirrorSpeedTest().rankedUrls(MirrorService.libgen);
+      final mirrors = await _speedTest.rankedUrls(MirrorService.libgen);
       for (final candidate in _candidateUrls(adsUrl, mirrors)) {
         try {
           final baseUrl = Uri.parse(candidate).origin;
@@ -232,7 +254,10 @@ class LibgenService {
             options: Options(headers: {'Referer': '$baseUrl/index.php'}),
           );
           if (response.statusCode != 200) continue;
-          final cover = parseAdsCover(response.data.toString(), baseUrl);
+          final cover = await _extractCover(
+            response.data.toString(),
+            baseUrl,
+          );
           if (cover != null) {
             _coverCache[md5] = cover;
             if (_coverCache.length > 500) _coverCache.clear();
@@ -408,3 +433,11 @@ class LibgenService {
 // ──────────────────────────────────────────────────────────────────
 Future<BookInfoData?> Function(String html, String baseUrl, String url)?
 libgenAdsPageParseOverride;
+
+// M8: injectable Rust cover-only parse hook. Same contract as the
+// ads-page hook; when null (default) the Dart parseAdsCover above is
+// used as the fallback. The Rust function extracts just the one img
+// src (native, no Dart DOM tree), so a 25-row search page no longer
+// pays 25 full-page Dart parses for its covers.
+Future<String?> Function(String html, String baseUrl)?
+libgenAdsCoverParseOverride;

@@ -115,14 +115,25 @@ Dio createDioWithLogging({BaseOptions? options}) {
     ),
   );
   if (kDebugMode) {
-    // URL, method, status lines only. Dio prints both header sets by
-    // default (bodies are already off): that is the slum participation key
-    // on the way out and a `set-cookie` with a session pair on the way back,
-    // in a logcat any app on the device — and every bug report — can read.
-    // Singular spellings: dio 5.9.2's LogInterceptor uses `requestHeader` /
-    // `responseHeader`.
+    // Host + method + status only — never the full URL or a body.
+    // Dio prints both header sets by default, and its LogInterceptor
+    // ALSO defaults request (full URI with query) and responseBody
+    // (the whole response.data) to true: that is the slum
+    // participation key on the way out and a `set-cookie` with a
+    // session pair on the way back, in a logcat any app on the device
+    // — and every bug report — can read. The ads.php body itself
+    // carries get.php?md5=…&key=… direct links. The timestamp
+    // interceptor above already logs host + method + status, so this
+    // interceptor only adds the request/response lines it is told to.
+    // Singular spellings: dio 5.9.2's LogInterceptor uses
+    // `requestHeader` / `responseHeader`.
     dio.interceptors.add(
-      LogInterceptor(requestHeader: false, responseHeader: false),
+      LogInterceptor(
+        request: false,
+        requestHeader: false,
+        responseHeader: false,
+        responseBody: false,
+      ),
     );
   }
   return dio;

@@ -21,6 +21,8 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
+import '../utils/diagnostics.dart';
+
 
 /// The server answered with something that is not the requested file
 /// (challenge / error page). Never retried automatically.
@@ -261,6 +263,18 @@ class ResumableDownloader {
     IOSink? sink;
     var received = base;
     var firstChunk = true;
+    // M2: backpressure for the .part path. IOSink.add is fire-and-
+    // forget: a fast network outruns a slow disk and the buffer grows
+    // without bound (the pending MediaStore path already awaits with
+    // an 8-batch window). Flush every 4 MB so the loop waits for the
+    // disk instead of buffering the whole book in memory.
+    var flushed = base;
+    const flushThreshold = 4 * 1024 * 1024;
+    // L4: a close failure must not mask an in-flight loop error (the
+    // finally would replace it), and a raw FileSystemException must
+    // not be the task error either. Record it, log the cause, and fail
+    // with a storage error only when the loop itself succeeded.
+    Object? closeError;
     try {
       await for (final chunk in body.stream) {
         if (firstChunk) {
@@ -310,10 +324,24 @@ class ResumableDownloader {
           await pendingWriter!.add(chunk);
         }
         received += chunk.length;
+        if (sink != null && received - flushed >= flushThreshold) {
+          await sink.flush();
+          flushed = received;
+        }
         onProgress?.call(received, total);
       }
     } finally {
-      await sink?.close();
+      try {
+        await sink?.close();
+      } on Object catch (e) {
+        closeError = e;
+        logIgnored('resumable_downloader_close', e);
+      }
+    }
+    if (closeError != null) {
+      throw StateError(
+        'could not finish writing the download file: $closeError',
+      );
     }
     if (firstChunk && !resumed) {
       // Empty body: make sure a stale partial prefix does not survive.

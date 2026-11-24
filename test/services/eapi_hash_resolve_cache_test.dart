@@ -17,7 +17,10 @@ class _StubAdapter implements HttpClientAdapter {
 
   /// 搜索返回的书列表（解析 miss 用例置空）。
   List<Map<String, dynamic>> searchBooks = [
-    {'id': 123, 'hash': 'realhash', 'title': '书'},
+    // 6 位：站点实测的 eapi hash 形状（1.8.0-beta 短 hash 样本 len=10，
+    // eapi hash len=6）。`resolveEapiHash` 只接受这个长度——存进映射的
+    // 若是网页短 hash，这本书就被永久钉在一次必败的请求上。
+    {'id': 123, 'hash': 'real6h', 'title': '书'},
   ];
 
   @override
@@ -38,7 +41,7 @@ class _StubAdapter implements HttpClientAdapter {
           ? {'success': 0, 'error': 'Invalid hash'}
           : {
               'success': 1,
-              'book': {'id': 123, 'hash': 'realhash', 'title': '书'},
+              'book': {'id': 123, 'hash': 'real6h', 'title': '书'},
             };
       return ResponseBody.fromString(
         jsonEncode(body),
@@ -84,11 +87,11 @@ void main() {
     final response = await api.getBookInfo('123', 'short', title: '书');
 
     expect(response.success, isTrue, reason: 'error=${response.error}');
-    expect(resolveMap['123:short'], 'realhash');
+    expect(resolveMap['123:short'], 'real6h');
     // 短 hash 检测（len!=6）：必败的 fetch1 被跳过，直接解析 → 真哈
     // 希一发取书。
     expect(adapter.searchCalls, 1);
-    expect(adapter.bookPaths, ['/eapi/book/123/realhash']);
+    expect(adapter.bookPaths, ['/eapi/book/123/real6h']);
   });
 
   test('6 位 eapi hash 直取：不解析不搜索', () async {
@@ -115,13 +118,13 @@ void main() {
   });
 
   test('映射命中后重开：一发直取真 hash，不再解析', () async {
-    resolveMap['123:short'] = 'realhash';
+    resolveMap['123:short'] = 'real6h';
     final adapter = _StubAdapter();
     final api = ZLibraryApi(dio: Dio()..httpClientAdapter = adapter);
 
     final response = await api.getBookInfo('123', 'short', title: '书');
 
     expect(response.success, isTrue);
-    expect(adapter.bookPaths, ['/eapi/book/123/realhash']);
+    expect(adapter.bookPaths, ['/eapi/book/123/real6h']);
   });
 }

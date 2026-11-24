@@ -16,16 +16,11 @@ class BooklistSolver {
 
   /// The plugin's short error for a browser-check wall
   /// ('HTTP 503: browser check page'), plus the older shapes a wall can
-  /// surface as, so the solver fallback triggers on any of them.
-  static bool isChallengeError(String? error) {
-    if (error == null) return false;
-    final lower = error.toLowerCase();
-    return lower.contains('browser check') ||
-        lower.contains('checking your browser') ||
-        lower.contains('ddos-guard') ||
-        lower.contains('cf_blocked') ||
-        lower.contains('cf-challenge');
-  }
+  /// surface as, so the solver fallback triggers on any of them. The word
+  /// list lives in the plugin ([ZLibraryApiBase.isWallErrorText]) since
+  /// the download arm decides on the same strings — one rule, both sides.
+  static bool isChallengeError(String? error) =>
+      ZLibraryApiBase.isWallErrorText(error);
 
   /// A cached page can be a stale challenge page — never parse one as an
   /// (empty) booklist page.

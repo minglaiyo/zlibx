@@ -10,6 +10,7 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../constants/search_filters.dart';
 import '../services/category_repository.dart';
+import '../services/search_html_repository.dart';
 import '../utils/blocked_keywords.dart';
 import 'auth_provider.dart';
 import 'settings_provider.dart';
@@ -145,10 +146,67 @@ class SearchNotifier extends Notifier<SearchState> {
   /// [SearchState.totalPagesUnknown] is true.
   static const int _unknownTotalPages = 1000000;
 
+  /// Pager math shared by the two HTML listing paths (category and
+  /// book search). A page that carries its own `pagerOptions` count
+  /// is authoritative. Without one the page size is unknown, so the
+  /// list must not stop early: [recordedPageSize] (the first page's
+  /// card count, kept per path by the caller) decides whether a short
+  /// page means "last page". Returns the effective [pageSize] for the
+  /// caller to store — the callers keep separate fields so a session
+  /// that switches channels never inherits the other's page size.
+  static ({int totalPages, bool unknown, int? pageSize}) _pagination({
+    required int? totalPagesFromPage,
+    required int page,
+    required int bookCount,
+    required int? recordedPageSize,
+  }) {
+    if (totalPagesFromPage != null) {
+      return (
+        totalPages: totalPagesFromPage,
+        unknown: false,
+        pageSize: recordedPageSize,
+      );
+    }
+    if (page == 1) {
+      if (bookCount == 0) {
+        return (
+          totalPages: 1,
+          unknown: false,
+          pageSize: recordedPageSize,
+        );
+      }
+      return (
+        totalPages: _unknownTotalPages,
+        unknown: true,
+        pageSize: bookCount,
+      );
+    }
+    if (recordedPageSize == null || bookCount < recordedPageSize) {
+      // Short page (or no recorded size): this is the last page.
+      return (
+        totalPages: page,
+        unknown: false,
+        pageSize: recordedPageSize,
+      );
+    }
+    return (
+      totalPages: _unknownTotalPages,
+      unknown: true,
+      pageSize: recordedPageSize,
+    );
+  }
+
   /// First page's card count of the current category list, the
   /// effective page size when the page carries no total (the old
   /// category controller's rule). Reset on every new search.
   int? _categoryPageSize;
+
+  /// First page's card count of the current HTML book search, used
+  /// the same way as [_categoryPageSize] when the results page
+  /// carries no `pagerOptions` count. Kept separate so a session that
+  /// falls back mid-way never inherits the category path's size.
+  /// Reset on every new search.
+  int? _htmlSearchPageSize;
 
   /// Search-form slugs per category id, for the in-category search
   /// URL (see `_resolveCategorySlug`). The slug comes from the
@@ -182,10 +240,113 @@ class SearchNotifier extends Notifier<SearchState> {
       exact: params.exact,
       cancelToken: cancelToken,
     );
-    if (!response.success || response.data == null) return response;
+    if (response.success && response.data != null) {
+      return ApiResponse.ok(
+        _filterByField(response.data!, params.field, params.query ?? ''),
+        meta: response.meta,
+      );
+    }
+    // The eapi search is the primary channel, but as of 2026-11-23 it
+    // answers `400 Access denied` on every mirror, which would leave
+    // the app with no search at all. The site's own HTML results page
+    // still answers, so an eapi failure falls through to it instead
+    // of surfacing as a dead search. A superseded request does NOT
+    // fall through: the plugin reports a cancel as an error value
+    // rather than a throw, so the guard has to be here.
+    if (response.error == 'cancelled' || cancelToken?.isCancelled == true) {
+      return response;
+    }
+    return _fetchBooksHtml(
+      params,
+      page,
+      cancelToken,
+      originalError: response.error ?? 'Search failed',
+    );
+  }
+
+  /// One page of the HTML book search (`/s/{query}`): plain Dio
+  /// first, the WebView solver on the browser-check wall — the same
+  /// two-step the article, category and full-text screens use, with
+  /// [SearchHtmlRepository] as the plumbing.
+  ///
+  /// [originalError] is the eapi failure that sent us here. It is
+  /// what the caller sees when the HTML channel also comes back
+  /// empty-handed (wall unsolved, page unparseable), so a fallback
+  /// that silently produced nothing never looks like "no results".
+  ///
+  /// Note the page size: the HTML route has no `limit` parameter and
+  /// renders the site's own ~51 cards, so `params.limit` is not
+  /// applied here. Pagination still works because `pagerOptions`
+  /// counts pages at that same size.
+  Future<ApiResponse<List<Book>>> _fetchBooksHtml(
+    SearchParams params,
+    int page,
+    CancelToken? cancelToken, {
+    required String originalError,
+  }) async {
+    final query = params.query?.trim() ?? '';
+    if (query.isEmpty) return ApiResponse.fail(originalError);
+    final repo = SearchHtmlRepository(_api);
+    ApiResponse<BookSearchPage> response;
+    try {
+      response = await repo.search(
+        query: query,
+        order: params.order,
+        page: page,
+        languages: params.languages,
+        extensions: params.extensions,
+        yearFrom: params.yearFrom,
+        yearTo: params.yearTo,
+        exact: params.exact,
+        cancelToken: cancelToken,
+      );
+    } on Object catch (e) {
+      return ApiResponse.fail(e.toString());
+    }
+    if (!response.success && repo.isChallengeError(response.error)) {
+      final url = repo.searchPageUrl(
+        query: query,
+        order: params.order,
+        page: page,
+        languages: params.languages,
+        extensions: params.extensions,
+        yearFrom: params.yearFrom,
+        yearTo: params.yearTo,
+        exact: params.exact,
+      );
+      final user = ref.read(authProvider).user;
+      final html = await repo.fetchViaSolver(
+        url,
+        userId: user?.id,
+        userKey: user?.remixUserkey,
+      );
+      if (html != null) {
+        final parsed = await repo.parsePage(
+          html,
+          baseUrl: Uri.parse(url).origin,
+          expectedQuery: query,
+        );
+        if (parsed != null) response = ApiResponse.ok(parsed);
+      }
+    }
+    final data = response.data;
+    if (!response.success || data == null) {
+      return ApiResponse.fail(response.error ?? originalError);
+    }
+    final pagination = _pagination(
+      totalPagesFromPage: data.totalPages,
+      page: page,
+      bookCount: data.books.length,
+      recordedPageSize: _htmlSearchPageSize,
+    );
+    _htmlSearchPageSize = pagination.pageSize;
     return ApiResponse.ok(
-      _filterByField(response.data!, params.field, params.query ?? ''),
-      meta: response.meta,
+      _filterByField(data.books, params.field, query),
+      meta: {
+        'total_pages': pagination.totalPages,
+        'total_pages_unknown': pagination.unknown,
+        'unavailable_reasons': data.unavailableReasons,
+      },
     );
   }
 
@@ -403,29 +564,15 @@ class SearchNotifier extends Notifier<SearchState> {
       final reason = item.unavailableReason;
       if (reason != null) unavailable[item.book.id] = reason;
     }
-    final total = data.totalPages;
-    final int totalPages;
-    final bool unknown;
-    if (total != null) {
-      totalPages = total;
-      unknown = false;
-    } else if (page == 1) {
-      if (books.isEmpty) {
-        totalPages = 1;
-        unknown = false;
-      } else {
-        _categoryPageSize = books.length;
-        totalPages = _unknownTotalPages;
-        unknown = true;
-      }
-    } else if (_categoryPageSize == null || books.length < _categoryPageSize!) {
-      // Short page (or no recorded size): this is the last page.
-      totalPages = page;
-      unknown = false;
-    } else {
-      totalPages = _unknownTotalPages;
-      unknown = true;
-    }
+    final pagination = _pagination(
+      totalPagesFromPage: data.totalPages,
+      page: page,
+      bookCount: books.length,
+      recordedPageSize: _categoryPageSize,
+    );
+    _categoryPageSize = pagination.pageSize;
+    final totalPages = pagination.totalPages;
+    final unknown = pagination.unknown;
     return ApiResponse.ok(
       books,
       meta: {
@@ -457,6 +604,7 @@ class SearchNotifier extends Notifier<SearchState> {
     final requestId = ++_requestId;
     _lastParams = params;
     _categoryPageSize = null;
+    _htmlSearchPageSize = null;
     // Kill the previous session's in-flight page (no-op when it has
     // already completed) before opening a new token for this one.
     _searchToken?.cancel();
@@ -528,6 +676,7 @@ class SearchNotifier extends Notifier<SearchState> {
     _requestId++;
     _lastParams = null;
     _categoryPageSize = null;
+    _htmlSearchPageSize = null;
     _searchToken?.cancel();
     _searchToken = null;
     state = const SearchState();

@@ -4,7 +4,9 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../../l10n/generated/app_localizations.dart';
 import '../../models/display_book.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../services/book_detail_page_repository.dart';
 import '../../providers/zlibrary_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../theme/app_layout.dart';
@@ -21,10 +23,20 @@ class SimilarBooksArgs {
   final String hashId;
   final String bookTitle;
 
+  /// The book's own detail-page path, when the caller has one. It is
+  /// what the HTML fallback reads: eapi's similar endpoint wants a
+  /// 6-character eapi hash, and a book that reached the app through
+  /// HTML only ever carries the site's 10-character short hash
+  /// (site-verified 2026-11-24 — and no page on the site exposes the
+  /// eapi one), so without an href such a book can only ever show an
+  /// error here.
+  final String? href;
+
   const SimilarBooksArgs({
     required this.bookId,
     required this.hashId,
     required this.bookTitle,
+    this.href,
   });
 }
 
@@ -71,6 +83,15 @@ class _SimilarBooksScreenState extends ConsumerState<SimilarBooksScreen> {
           _isLoading = false;
         });
       } else {
+        final fallback = await _similarFromPage();
+        if (!mounted) return;
+        if (fallback != null) {
+          setState(() {
+            _books = fallback;
+            _isLoading = false;
+          });
+          return;
+        }
         setState(() {
           _isLoading = false;
           _hasError = true;
@@ -85,6 +106,40 @@ class _SimilarBooksScreenState extends ConsumerState<SimilarBooksScreen> {
         _errorMessage = e.toString();
       });
     }
+  }
+
+  /// The detail page's own recommendation shelf, for a book the eapi
+  /// similar endpoint cannot address.
+  ///
+  /// Same narrow trigger as the detail body: only a hash eapi will not
+  /// accept (not its 6-character one) goes to HTML — a 6-character
+  /// hash that still failed means the book is gone or the session
+  /// broke, and the similar list must show that error rather than the
+  /// recommendations of some page the solver landed on.
+  ///
+  /// Returns null when there is nothing to fall back to (no href) or
+  /// the page never arrived, so the caller keeps the eapi error text.
+  /// An empty shelf is a real answer and is returned as such.
+  Future<List<Book>?> _similarFromPage() async {
+    final href = widget.args.href;
+    if (href == null || href.isEmpty) return null;
+    if (widget.args.hashId.length == 6) return null;
+    final api = ref.read(zlibraryApiProvider);
+    final user = ref.read(authProvider).user;
+    final ApiResponse<List<Book>> result;
+    try {
+      result = await BookDetailPageRepository(api).fetchSimilarBooks(
+        href: href,
+        userId: user?.id,
+        userKey: user?.remixUserkey,
+      );
+    } catch (_) {
+      // The eapi error is the one worth showing; a broken fallback is
+      // not a new failure.
+      return null;
+    }
+    if (!result.success || result.data == null) return null;
+    return result.data;
   }
 
   @override

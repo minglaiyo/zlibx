@@ -24,6 +24,24 @@ const _pageHtml = '''
 </body></html>
 ''';
 
+/// A detail page in the shape site-verified 2026-11-24, carrying both
+/// the book itself (property rows + visible /dl/ button) and its
+/// recommendation shelf.
+const _bookPageHtml = '''
+<html><body>
+<h1 class="book-title">三体</h1><i class="authors">刘慈欣</i>
+<div id="bookDescriptionBox">简介段落</div>
+<div class="bookDetailsBox">
+  <div class='bookProperty property_year'><div class='property_label'>出版年:</div><div class='property_value'>2008</div></div>
+  <div class='bookProperty property_file'><div class='property_label'>文件:</div><div class='property_value'>EPUB, 2.48 MB</div></div>
+</div>
+<a class="dlButton addDownloadedBook" href="/dl/ABVGVr08wz" data-book_id="26610712">下载</a>
+<z-masonry source="recommend"><a href="/book/0vpJZoQLRr/ten.html?dsource=recommend">
+<z-cover id="102668369" author="某人" title="十日终焉"><img src="/covers200/a.jpg"></z-cover>
+</a></z-masonry>
+</body></html>
+''';
+
 const _wall307Body = '<html><body>307 Temporary Redirect</body></html>';
 const _challenge513Html = '''
 <html><head><title>Verifying your browser | DiamWall</title></head>
@@ -34,7 +52,11 @@ class _WallAdapter implements HttpClientAdapter {
   _WallAdapter({
     this.challengeAfterCookieHop = true,
     this.challengeOnly = false,
+    this.body,
   });
+
+  /// The page the book route answers; null means the extras fixture.
+  final String? body;
 
   /// True: hop 0 answers 307 + `set-cookie: __diamwall`, hop 1 (with
   /// the cookie) answers the page. False: hop 0 answers the page.
@@ -73,7 +95,7 @@ class _WallAdapter implements HttpClientAdapter {
         },
       );
     }
-    return _html(_pageHtml, 200);
+    return _html(body ?? _pageHtml, 200);
   }
 
   ResponseBody _html(String html, int status) {
@@ -204,6 +226,77 @@ void main() {
       expect(response.success, isFalse);
       expect(response.error, 'HTTP 513: browser check page');
       expect(visibleCalls, 0);
+    });
+  });
+
+  group('BookDetailPageRepository book/shelf channels', () {
+    test('fetchBook rides the same wall hop as the extras', () async {
+      final adapter = _WallAdapter(body: _bookPageHtml);
+      final repo = _repoWith(adapter);
+      final response = await repo.fetchBook(
+        href: '/book/Ej8q7Dmrv9/Synthetic-Book.html',
+      );
+      expect(response.success, isTrue);
+      expect(adapter.hops, 2);
+      final book = response.data!;
+      expect(book.id, 26610712);
+      expect(book.title, '三体');
+      expect(book.hash, 'Ej8q7Dmrv9');
+      expect(book.downloadPath, contains('/dl/ABVGVr08wz'));
+    });
+
+    test('fetchSimilarBooks parses the shelf off one hop', () async {
+      final adapter = _WallAdapter(
+        body: _bookPageHtml,
+        challengeAfterCookieHop: false,
+      );
+      final repo = _repoWith(adapter);
+      final response = await repo.fetchSimilarBooks(
+        href: '/book/Ej8q7Dmrv9/Synthetic-Book.html',
+      );
+      expect(response.success, isTrue);
+      expect(response.data!.single.id, 102668369);
+      expect(response.data!.single.href, '/book/0vpJZoQLRr/ten.html');
+    });
+
+    test(
+      'an unbroken wall keeps the browser-check error for the caller',
+      () async {
+        final adapter = _WallAdapter(challengeOnly: true, body: _bookPageHtml);
+        final repo = _repoWith(adapter);
+        final response = await repo.fetchBook(
+          href: '/book/Ej8q7Dmrv9/Synthetic-Book.html',
+        );
+        expect(response.success, isFalse);
+        expect(response.error, 'HTTP 513: browser check page');
+        expect(repo.isChallengeError(response.error), isTrue);
+      },
+    );
+
+    test('parseBook rejects a non-book document', () {
+      final repo = _repoWith(_WallAdapter());
+      expect(
+        repo.parseBook(
+          '<html><body>x</body></html>',
+          baseUrl: 'https://z-library.sk',
+        ),
+        isNull,
+      );
+      expect(
+        repo.parseBook('not html at all', baseUrl: 'https://z-library.sk'),
+        isNull,
+      );
+    });
+
+    test('parseSimilarBooks never throws', () {
+      final repo = _repoWith(_WallAdapter());
+      expect(
+        repo.parseSimilarBooks(
+          '<html><body>x',
+          baseUrl: 'https://z-library.sk',
+        ),
+        isEmpty,
+      );
     });
   });
 }

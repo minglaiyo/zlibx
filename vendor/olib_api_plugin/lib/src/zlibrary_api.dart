@@ -15,6 +15,7 @@ import 'category.dart';
 import 'download_range.dart';
 import 'download_stats.dart';
 import 'fulltext.dart';
+import 'search_html.dart';
 import 'user.dart';
 
 part 'zlibrary_auth.dart';
@@ -26,6 +27,7 @@ part 'zlibrary_authors.dart';
 part 'zlibrary_dstats.dart';
 part 'zlibrary_fulltext.dart';
 part 'zlibrary_downloads.dart';
+part 'url_mask.dart';
 
 /// App-facing byte sink for the pending-MediaStore download flow
 /// (Android 10+): the app streams bytes straight into an IS_PENDING
@@ -56,11 +58,19 @@ abstract class PendingDownloadWriter {
 
 /// The server answered a download request with an HTML page (a
 /// challenge / error page) instead of the file. Never resumable: the
-/// destination (partial file or pending entry) is useless and must be
-/// discarded, never resumed.
+/// destination (partial file or pending entry) is useless and must not
+/// be resumed.
+///
+/// [isWall] separates the two HTML answers, because only one of them
+/// has a fix: a browser-check page is missing the clearance cookie and
+/// an app that can open a WebView can earn it and retry ([ZLibraryApiBase.wallCookieRefresh]);
+/// any other HTML page (an error page wearing a file name, a mirror
+/// that redirects to a notice) must not cost the user a WebView solve
+/// and a second transfer of the same answer.
 class DownloadHtmlException implements Exception {
   final String message;
-  const DownloadHtmlException(this.message);
+  final bool isWall;
+  const DownloadHtmlException(this.message, {this.isWall = false});
   @override
   String toString() => message;
 }
@@ -102,6 +112,54 @@ abstract class ZLibraryApiBase {
   /// travels with every request of this instance, including redirect
   /// hops (unlike the Cookie, which the download path strips).
   String? _wallUserAgent;
+
+  /// 过一次墙的钩子，由 App 注入（2026-11-24）。插件只会用 Dio，打不开
+  /// WebView，所以撞见浏览器校验页时它只能问一句「你那边能不能求解」：
+  /// 参数是那个被墙挡住的地址（原样，含 token——它就是求解的目标），
+  /// 返回 true = 求解跑过、墙 cookie 已回灌进这个实例，调用方可以再发
+  /// 一次同样的请求。null = 纯 Dio 环境（单测、CI）：下载照旧把
+  /// 墙当错误抛出去。
+  ///
+  /// 只在两处被叫到，**每个地址最多一次**（见 `ZLibraryDownloads`）：
+  /// `/dl/` 那一跳撞到墙，和下载前去书页取 token 时书页自己撞墙。错误页
+  /// 不是墙，别为它开 WebView；同一个地址也不许为重播求解循环——一次下载
+  /// 里最多两次求解（书页 + `/dl/`），那已经是两发 WebView。
+  Future<bool> Function(String url)? wallCookieRefresh;
+
+  /// 书页那条腿的第二把钥匙（2026-11-24 第四轮）：**用真浏览器把这一页
+  /// 的 HTML 读回来**，插件只从里面取 `/dl/{token}`。
+  ///
+  /// 为什么不用 [wallCookieRefresh] 那条链：它要求「解完墙 → 墙 cookie
+  /// 回灌进 Dio → 重发同一发」整段成立，而中间那步的成败取决于墙那枚
+  /// cookie 的**名字**在不在 App 的白名单里——这个名字在设备外看不见，
+  /// 真机那份 `Bad state: Invalid hash` 里也没有它。HTML 这一条不需要
+  /// cookie 进 Dio：按钮就在浏览器已经渲染出来的那一页里。
+  /// 返回 null = 读不到（WebView 不可用、解不过、拿回来还是校验页）。
+  /// null 钩子 = 纯 Dio 环境（单测、CI）：书页那条腿退回求解 + 重发。
+  Future<String?> Function(String url)? wallHtmlFetcher;
+
+  /// `/dl/{token}` → 浏览器替它过墙那一发里被交予的**文件地址**（第 9 轮）。
+  /// 键是求解的目标地址原样，一次下载一条；[takeDlFileUrl] 取走即删，
+  /// 免得上一本的直链顶给下一本。
+  ///
+  /// 这不是诊断面，是下载本身的一条取路：`/dl/` 过墙后交出来的是文件，
+  /// 凭证绑在那个 WebView 上，Dio 重发只会再拿一张校验页——能落盘的只有
+  /// 浏览器被交予的那个地址。
+  final Map<String, String> _dlFileUrls = {};
+
+  /// App 解 `/dl/` 那一跳时把浏览器拿到的地址交回来；给 null 表示这一发
+  /// 没有文件地址，调用方照旧走"回灌 cookie + 重发"。
+  ///
+  /// 非 https 一律不收：下载器会照着它落盘，不能给一个降级成明文的地址。
+  void recordDlFileCapture(String dlUrl, {String? fileUrl}) {
+    final candidate = fileUrl?.trim() ?? '';
+    final uri = candidate.isEmpty ? null : Uri.tryParse(candidate);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return;
+    _dlFileUrls[dlUrl] = candidate;
+  }
+
+  /// 取走 [dlUrl] 那次求解抓到的文件地址（没有则 null）。取一次删一次。
+  String? takeDlFileUrl(String dlUrl) => _dlFileUrls.remove(dlUrl);
 
   /// 解析缓存钩子（2026-11-21）：短 hash → eapi 真 hash 的持久映射，
   /// app 接到 StorageService（library 盒）。lookup 命中就直接用真
@@ -795,6 +853,37 @@ abstract class ZLibraryApiBase {
         lower.contains('attention required');
   }
 
+  /// The browser-check wall **as an answer**: one of the markers above,
+  /// or one of the two statuses the mirror answers a walled route with
+  /// when the body carries nothing recognizable (an empty or truncated
+  /// 503). 503/513 alone was already the rule on every HTML page route
+  /// in this plugin (`_fetchBookDetailPageHtml`, the category, booklist
+  /// and comment pages); downloads and the download probe now read the
+  /// same rule instead of each deciding on their own what a 503 means —
+  /// a probe that calls a wall `denied-503` sends the reader off looking
+  /// for a header the wall never asked about.
+  static bool isWallAnswer(int? status, String? body) =>
+      status == 503 ||
+      status == 513 ||
+      (body != null && body.isNotEmpty && _looksLikeChallengePage(body));
+
+  /// [isWallAnswer] read back out of an **error string**. Every HTML page
+  /// route in this plugin reports a walled page as
+  /// `'HTTP $status: browser check page'`, so a caller that only has the
+  /// failed `ApiResponse` (the download arm, which wants to know whether a
+  /// WebView solve could fix the page fetch) asks this instead of
+  /// re-deriving it from the message. Same word list as the app's
+  /// `BooklistSolver.isChallengeError`, which now delegates here.
+  static bool isWallErrorText(String? error) {
+    if (error == null) return false;
+    final lower = error.toLowerCase();
+    return lower.contains('browser check') ||
+        lower.contains('checking your browser') ||
+        lower.contains('ddos-guard') ||
+        lower.contains('cf_blocked') ||
+        lower.contains('cf-challenge');
+  }
+
   /// Words that mean "this session pair is not acceptable".
   ///
   /// Deliberately a narrow POSITIVE list, and the only place besides
@@ -865,8 +954,21 @@ abstract class ZLibraryApiBase {
   /// rejected — only the hash from an eapi response works. Booklist,
   /// profile and shared books carry only the short hash, so callers
   /// that hit this error resolve the real one with resolveEapiHash.
-  static bool _isInvalidHashError(String? error) =>
-      error != null && error.toLowerCase().contains('invalid hash');
+  /// Whether an eapi error means "this hash is not my hash".
+  ///
+  /// Both strings are required, and the second one is the reason the
+  /// short-hash recovery chain was silently dead on this app's main
+  /// mirror: the API localises the error text to the mirror's locale,
+  /// and `zh.z-library.sk` answers `{"success":0,"error":"无效哈希"}`
+  /// (measured 2026-11-24) while the matcher used to test only the
+  /// English wording. A short-hash book then failed `getBookInfo`,
+  /// `_resolveDownloadLink` and the detail fallbacks without ever
+  /// taking their retry branch.
+  static bool _isInvalidHashError(String? error) {
+    if (error == null) return false;
+    final text = error.toLowerCase();
+    return text.contains('invalid hash') || text.contains('无效哈希');
+  }
 
   static Map<String, dynamic>? _userJson(Map<String, dynamic> json) {
     for (final key in const ['user', 'data', 'profile']) {
@@ -952,9 +1054,14 @@ abstract class ZLibraryApiBase {
     final res = await search(message: title, limit: 20);
     if (!res.success || res.data == null) return null;
     for (final book in res.data!) {
+      // `length == 6` is the eapi-hash shape test (site-verified
+      // 2026-11-24): a resolution that stored a webpage short hash
+      // would be written into the resolve mapping and then replayed
+      // forever as the "real" hash, pinning the book to a call eapi
+      // rejects. A non-6-char match is not a resolution — keep looking.
       if (book.id.toString() == bookId &&
           book.hash != null &&
-          book.hash!.isNotEmpty) {
+          book.hash!.length == 6) {
         return book.hash;
       }
     }

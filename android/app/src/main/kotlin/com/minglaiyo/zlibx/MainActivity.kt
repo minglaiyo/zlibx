@@ -1,4 +1,4 @@
-package com.open_library.app
+package com.minglaiyo.zlibx
 
 import android.content.ContentValues
 import android.content.Intent

@@ -7,8 +7,8 @@
 # that manifest / MethodChannel wiring refers to, kept visible for
 # future manifest or package refactors. The CI release job smoke-checks
 # both classes survive in the shipped dex (apkanalyzer).
--keep class com.open_library.app.MainActivity { *; }
--keep class com.open_library.app.DownloadForegroundService { *; }
+-keep class com.minglaiyo.zlibx.MainActivity { *; }
+-keep class com.minglaiyo.zlibx.DownloadForegroundService { *; }
 
 # flutter_rust_bridge talks over dart:ffi — no JNI reflection on the
 # Rust side, so no keeps are needed for the parser crate.

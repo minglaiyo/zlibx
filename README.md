@@ -22,7 +22,7 @@
 
 > ⚠️ **Disclaimer**: zlibx is an independent, open-source third-party client. It is NOT an official client and is not affiliated with any official service. This project only provides the frontend interface - all book data comes from external sources. Use at your own discretion.
 >
-> **Coexistence**: zlibx keeps the upstream package name (`com.open_library.app`), so it **cannot be installed alongside** shiyi-0x7f/olib-mobile, and it cannot overwrite an upstream install (different signing key). Uninstall the upstream app first if you want to try zlibx.
+> **Coexistence**: zlibx uses its own package name (`com.minglaiyo.zlibx`, since v1.7.3), so it **can be installed alongside** shiyi-0x7f/olib-mobile. Note: v1.7.3 changed the package name, so it cannot update an older zlibx install in place — uninstall the old version first. Your downloaded books in `Download/zlibx` are kept, but settings, accounts and history are lost and need to be set up again.
 
 ## ✨ Features
 

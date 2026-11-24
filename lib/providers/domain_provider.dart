@@ -228,6 +228,10 @@ class DomainNotifier extends Notifier<String> {
   bool setCustomDomain(String domain) {
     final cleanDomain = normalizeCustomDomain(domain);
     if (!isValidCustomDomain(cleanDomain)) return false;
+    // M7: typing a domain is an explicit choice — record it so the
+    // trust check knows this host was user-entered, not merely absent
+    // from the built-in list.
+    unawaited(MirrorTrust.recordCustomEntered(cleanDomain));
     setDomain(cleanDomain, reverifySession: isBuiltInDomain(cleanDomain));
     return true;
   }

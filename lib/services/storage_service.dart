@@ -5,6 +5,7 @@ import 'package:hive/hive.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import '../utils/app_log.dart';
 import '../utils/diagnostics.dart';
+import '../utils/json_utils.dart';
 import 'auth_storage.dart';
 import 'hive_service.dart';
 
@@ -624,7 +625,9 @@ class StorageService {
         try {
           final raw = box.get(_keyBookDetailExtras);
           if (raw is String && raw.isNotEmpty) {
-            final decoded = jsonDecode(raw);
+            // 详情附加字段的 blob 随浏览增长，超阈值走后台 isolate
+            // （审查 P1-2）；这里已在 async 闭包里。
+            final decoded = await decodeJsonMaybeIsolate(raw);
             if (decoded is Map) {
               decoded.forEach((key, value) {
                 if (value is Map) {
@@ -701,7 +704,9 @@ class StorageService {
       var converted = false;
       if (legacyRaw is String) {
         try {
-          final decoded = jsonDecode(legacyRaw);
+          // 一次性迁移：旧版下载历史整个 blob 只有一条，量大时
+          // 走后台 isolate（审查 P1-2）。
+          final decoded = await decodeJsonMaybeIsolate(legacyRaw);
           if (decoded is Map) {
             final order = <String>[];
             for (final entry in decoded.entries) {

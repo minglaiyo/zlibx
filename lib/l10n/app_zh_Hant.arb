@@ -597,6 +597,7 @@
     }
   },
   "shelfImportFailed": "匯入失敗：檔案無效",
+  "shelfImportTooLarge": "匯入失敗：檔案過大（上限 5 MB）",
   "shelfAllCategories": "所有分類",
   "shelfCategoryInvalid": "分類名稱不可為空，也不可與現有分類重複",
   "shelfCategoryName": "分類名稱",

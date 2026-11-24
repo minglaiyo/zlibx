@@ -597,6 +597,7 @@
     }
   },
   "shelfImportFailed": "导入失败：文件无效",
+  "shelfImportTooLarge": "导入失败：文件过大（上限 5 MB）",
   "shelfAllCategories": "所有分类",
   "shelfCategoryInvalid": "分类名称不能为空，也不能与现有分类重复",
   "shelfCategoryName": "分类名称",

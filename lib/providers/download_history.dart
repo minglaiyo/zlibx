@@ -209,7 +209,10 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
     final sidecar = File('${dir.path}/$base.part.download.json');
     if (await sidecar.exists()) {
       try {
-        final decoded = jsonDecode(await sidecar.readAsString());
+        // sidecar 是引擎每轮重写的任务元数据，通常很小；标题异常长时
+        // 仍可能超阈值，走统一工具（审查 P1-2）。
+        final decoded =
+            await decodeJsonMaybeIsolate(await sidecar.readAsString());
         if (decoded is Map<String, dynamic>) {
           final rawId = decoded['id'];
           final id = rawId is int ? rawId : int.tryParse('$rawId');

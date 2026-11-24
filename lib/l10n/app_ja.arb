@@ -597,6 +597,7 @@
     }
   },
   "shelfImportFailed": "インポート失敗：ファイルが無効です",
+  "shelfImportTooLarge": "インポート失敗：ファイルが大きすぎます（上限 5 MB）",
   "shelfAllCategories": "すべてのカテゴリ",
   "shelfCategoryInvalid": "一意のカテゴリ名を入力してください",
   "shelfCategoryName": "カテゴリ名",

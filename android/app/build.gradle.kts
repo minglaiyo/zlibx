@@ -189,16 +189,26 @@ tasks.register<Exec>("cargoBuildRust") {
     environment("AR_aarch64_linux_android", "$ndkBin/llvm-ar")
     environment("RANLIB_aarch64_linux_android", "$ndkBin/llvm-ranlib")
 
-    val cargoBin = file("$cargoHome/bin/cargo.exe")
+    // cargo 可执行文件按平台取：Windows 上是 cargo.exe，其他平台
+    // 是 cargo。旧版按文件存在性判断，在 PATH 里有 cargo 但
+    // $CARGO_HOME/bin 下没有时会静默用错（P2-6）。
+    val cargoBin = if (os.isWindows) file("$cargoHome/bin/cargo.exe") else "cargo"
     commandLine(
-        if (cargoBin.exists()) cargoBin else "cargo",
+        cargoBin,
         "build", "--release", "--locked",
         "--target", "aarch64-linux-android",
     ).workingDir(rustCrateDir)
 
-    // Re-run whenever the Rust sources change.
+    // Re-run whenever the Rust sources change — and whenever anything
+    // else the build reads changes (P2-6): a dependency upgrade only
+    // touches Cargo.lock, the linker choice lives in .cargo/config.toml,
+    // and the NDK version picks the clang that compiles the crate. Any
+    // of those changing without a rebuild used to leave a stale .so.
     inputs.dir(rustCrateDir.resolve("src"))
     inputs.file(rustCrateDir.resolve("Cargo.toml"))
+    inputs.file(rustCrateDir.resolve("Cargo.lock"))
+    inputs.file(rustCrateDir.resolve(".cargo/config.toml"))
+    inputs.property("ndkVersion", android.ndkVersion)
     outputs.file(rustSoFile)
 }
 
@@ -219,6 +229,10 @@ tasks.register<Copy>("copyRustSo") {
 
 // Hook into the native-lib packaging: ensure the .so is built and in place
 // before the APK's jniLibs are merged.
+// P2-6：这两处是按任务名匹配的挂接，对 AGP 升级较敏感——AGP 改名后
+// 挂接会静默失效、.so 不再进包。升级 AGP 后要复核：CI 里 apkanalyzer
+// 那步会检查 libzlibx_parsers.so 在包内（见工作流
+// "Smoke-check release dex for native-layer classes"）。
 tasks.matching { it.name.contains("MergeNativeLibs", ignoreCase = true) }
     .configureEach { dependsOn("copyRustSo") }
 // Also cover the Flutter-native-assets / packaging path for debug/profile.

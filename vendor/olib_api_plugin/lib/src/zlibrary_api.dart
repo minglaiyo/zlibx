@@ -234,7 +234,7 @@ abstract class ZLibraryApiBase {
           listFormat: ListFormat.multiCompatible,
         ),
       );
-      return _fromResponse(res);
+      return await _fromResponse(res);
     } on DioException catch (e) {
       return _fromError(e);
     }
@@ -374,7 +374,7 @@ abstract class ZLibraryApiBase {
             code != 303 &&
             code != 307 &&
             code != 308) {
-          return _fromResponse(res);
+          return await _fromResponse(res);
         }
         final location = res.headers.value(HttpHeaders.locationHeader);
         if (location == null || location.isEmpty) {
@@ -510,7 +510,7 @@ abstract class ZLibraryApiBase {
         ),
         cancelToken: cancelToken,
       );
-      return _fromResponse(res);
+      return await _fromResponse(res);
     } on DioException catch (e) {
       return _fromError(e);
     }
@@ -589,8 +589,8 @@ abstract class ZLibraryApiBase {
   /// Single funnel for every answer: [_rawFromResponse] and
   /// [_rawFromError] are what all the request helpers return, so the
   /// rejection bookkeeping lives in one place.
-  _Raw _fromResponse(Response<String> res) {
-    final raw = _rawFromResponse(res);
+  Future<_Raw> _fromResponse(Response<String> res) async {
+    final raw = await _rawFromResponse(res);
     _noticeSessionRejection(raw);
     return raw;
   }
@@ -616,7 +616,7 @@ abstract class ZLibraryApiBase {
     onSessionRejected?.call();
   }
 
-  _Raw _rawFromResponse(Response<String> res) {
+  Future<_Raw> _rawFromResponse(Response<String> res) async {
     final body = res.data ?? '';
     final status = res.statusCode;
     final cookies = res.headers['set-cookie'] ?? const <String>[];
@@ -631,7 +631,14 @@ abstract class ZLibraryApiBase {
       );
     }
     try {
-      final decoded = jsonDecode(body);
+      // P1-1 方案 A：大响应体（>64 KB，如 50 条书的搜索结果）在后台
+      // isolate 里解码，免得 jsonDecode 堵 UI 线程；小响应仍在原地解，
+      // 免得为几百字节多一次 isolate 往返。解码结果是纯数据，可跨
+      // isolate 传递。第二次解析（booksParseOverride 走 Rust）不动，
+      // 那次本就跑在 Rust 线程池上。
+      final decoded = body.length > 64 * 1024
+          ? await Isolate.run(() => jsonDecode(body))
+          : jsonDecode(body);
       if (decoded is Map<String, dynamic>) {
         // A JSON failure that answers HTTP 200 (eapi says `success: 0`
         // with the reason in the body) is the same kind of verdict as a

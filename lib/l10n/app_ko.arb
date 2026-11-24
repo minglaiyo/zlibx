@@ -597,6 +597,7 @@
     }
   },
   "shelfImportFailed": "가져오기 실패: 파일이 잘못되었습니다",
+  "shelfImportTooLarge": "가져오기 실패: 파일이 너무 큽니다(최대 5 MB)",
   "shelfAllCategories": "모든 카테고리",
   "shelfCategoryInvalid": "고유한 카테고리 이름을 입력해 주세요",
   "shelfCategoryName": "카테고리 이름",

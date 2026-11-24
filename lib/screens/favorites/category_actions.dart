@@ -14,6 +14,7 @@ import '../../providers/books_provider.dart';
 import '../../providers/local_collection_provider.dart';
 import '../../providers/shelf_categories_provider.dart';
 import '../../utils/diagnostics.dart';
+import '../../utils/json_utils.dart';
 import '../../providers/zlibrary_provider.dart';
 import '../../services/storage_service.dart';
 import '../../utils/app_snack.dart';
@@ -22,6 +23,11 @@ import '../../utils/app_snack.dart';
 /// Sentinel category id meaning "no category": the shelf's
 /// uncategorized filter and the picker's uncategorized row.
 const kShelfUncategorizedId = '__uncategorized__';
+
+/// 导入文件大小上限（审查 P1-2）：文件是用户挑的，大小不受控，正常导
+/// 出（分类 + 分配关系 + 收藏引用）通常几十 KB，5 MB 绰绰有余。
+/// 和 `shelfImportTooLarge` 文案里的数字保持一致。
+const _maxShelfImportBytes = 5 * 1024 * 1024;
 
 /// The screen hooks the category flows need. Implemented by the
 /// favorites screen's State: the flows run across async gaps, so every
@@ -333,8 +339,15 @@ class ShelfCategoryActions {
     // 走 readAsBytes()（旧版 withData/bytes 已删）。
     final bytes = picked.isNotEmpty ? await picked.first.readAsBytes() : null;
     if (bytes == null) return;
+    // 先卡大小再解码：一个几百 MB 的文件不该进内存，更不该进 UI 线程。
+    if (bytes.length > _maxShelfImportBytes) {
+      if (_host.mounted) _host.showMessage(l.shelfImportTooLarge);
+      return;
+    }
     try {
-      final data = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+      final data =
+          await decodeJsonMaybeIsolate(utf8.decode(bytes))
+              as Map<String, dynamic>;
       if (data['version'] != 1) throw const FormatException('version');
       final importedAssignments =
           (data['assignments'] as Map?)?.map(

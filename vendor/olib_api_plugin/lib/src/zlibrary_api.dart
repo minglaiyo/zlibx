@@ -209,6 +209,13 @@ abstract class ZLibraryApiBase {
 
   Map<String, String> get _headers {
     final h = <String, String>{};
+    // Z-Library's mobile eapi requires a client source marker on every
+    // request: without `source: android`, POST /eapi/book/search answers
+    // HTTP 400 `{"success":0,"error":"Access denied"}` even with a valid
+    // session, while login / profile / popular are unaffected
+    // (qgming/zlib-app ADR-076; heartleo/zlib v0.0.16). Sent on every
+    // eapi request, value fixed lowercase `android`.
+    h['source'] = 'android';
     if (_wallUserAgent != null) {
       h['User-Agent'] = _wallUserAgent!;
     }

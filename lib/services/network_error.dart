@@ -10,9 +10,11 @@ import 'dart:async';
 import 'dart:io';
 
 // Package imports:
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 
 // Project imports:
+import 'package:zlibx/core/annas_archive.dart';
 import 'package:zlibx/services/external_logger.dart';
 
 // Enum for categorized network error types
@@ -137,25 +139,30 @@ class NetworkError implements Exception {
   ) async {
     logger.debug("Diagnosing timeout error", tag: "NetworkError");
 
-    // Check if we have internet at all
-    final hasInternet = await ConnectivityChecker.hasInternetConnection();
+    // M6: probe the target host first. The old order checked "internet"
+    // (via a google.com DNS lookup) before the host — on the mainland
+    // that lookup often fails, so every timeout was misreported as
+    // "no internet" even when the target host was reachable. If the
+    // host resolves, the timeout is a server-side problem.
+    final hostReachable = targetHost == null
+        ? null
+        : await ConnectivityChecker.canReachHost(targetHost);
+    if (hostReachable != true) {
+      // Host unreachable (or no target to probe): is the link down?
+      final hasInternet = await ConnectivityChecker.hasInternetConnection();
 
-    if (!hasInternet) {
-      logger.debug("No internet connection detected", tag: "NetworkError");
-      return NetworkError(
-        type: NetworkErrorType.noInternet,
-        userMessage: "No internet connection",
-        solution:
-            "Your device is not connected to the internet.\n\n🔧 Check that:\n• WiFi or mobile data is enabled\n• Airplane mode is off\n• You have signal/coverage",
-        technicalDetails: "Timeout + no internet connectivity detected",
-      );
-    }
+      if (!hasInternet) {
+        logger.debug("No internet connection detected", tag: "NetworkError");
+        return NetworkError(
+          type: NetworkErrorType.noInternet,
+          userMessage: "No internet connection",
+          solution:
+              "Your device is not connected to the internet.\n\n🔧 Check that:\n• WiFi or mobile data is enabled\n• Airplane mode is off\n• You have signal/coverage",
+          technicalDetails: "Timeout + no internet connectivity detected",
+        );
+      }
 
-    // Internet works, check if we can reach the target host
-    if (targetHost != null) {
-      final canReachHost = await ConnectivityChecker.canReachHost(targetHost);
-
-      if (!canReachHost) {
+      if (hostReachable == false) {
         logger.debug("Cannot resolve host: $targetHost", tag: "NetworkError");
         return NetworkError(
           type: NetworkErrorType.dnsError,
@@ -167,7 +174,8 @@ class NetworkError implements Exception {
       }
     }
 
-    // Can reach internet and host, but still timed out - server issue or throttling
+    // Host reachable, or link fine with no target host to probe — the
+    // server itself is not responding.
     logger.debug(
       "Internet OK but request timed out - likely server issue",
       tag: "NetworkError",
@@ -366,8 +374,14 @@ class NetworkError implements Exception {
     String? responseData,
     String? message,
   ) {
-    // Check for Cloudflare in response body
-    if (responseData != null && _containsCloudflareMarkers(responseData)) {
+    // M5: same strict challenge check as _isCloudflareBlock. The old
+    // loose marker scan classified any 404/500 from a Cloudflare-
+    // fronted source as a DDoS block.
+    if (responseData != null &&
+        ArchiveParsing.isChallengeResponse(
+          statusCode: statusCode ?? 0,
+          body: responseData,
+        )) {
       return NetworkError(
         type: NetworkErrorType.cloudflareBlock,
         userMessage: "Access blocked by DDoS protection",
@@ -432,15 +446,20 @@ class NetworkError implements Exception {
     }
   }
 
-  // Detect Cloudflare challenge or block
+  // Detect Cloudflare challenge or block. M5: delegates to the strict
+  // [ArchiveParsing.isChallengeResponse] instead of the old loose scan.
+  // The old version treated any response with a "server: cloudflare"
+  // header or a soft body marker ("cloudflare", "please wait",
+  // "security check") as a challenge, so a plain 404/500 from a
+  // Cloudflare-fronted source was reported as "blocked by DDoS
+  // protection" and routed into the webview solver, hiding the real
+  // error (book gone / source down). The strict check only counts soft
+  // markers on 403/503 and needs a challenge title or a hard marker
+  // otherwise. The "server: cloudflare" signal is dropped outright: a
+  // bare 403/503 is not a challenge on its own (Anna mirrors honestly
+  // refuse with a plain 403, "Link expired or invalid...").
   static bool _isCloudflareBlock(Response<dynamic>? response) {
     if (response == null) return false;
-
-    // Check cf-mitigated header (official Cloudflare detection)
-    final headers = response.headers;
-    if (headers.value("cf-mitigated") == "challenge") {
-      return true;
-    }
 
     final statusCode = response.statusCode;
 
@@ -450,96 +469,69 @@ class NetworkError implements Exception {
       return true;
     }
 
-    // Check for Cloudflare-specific server headers
-    if (headers.value("server")?.toLowerCase().contains("cloudflare") == true) {
-      return true;
-    }
-
-    // NOTE: a bare 403/503 is NOT treated as a challenge on its own.
-    // Anna's Archive download mirrors honestly refuse with a plain 403
-    // ("Link expired or invalid...") - mislabeling that as a DDoS block
-    // used to route it into the webview solver, whose capture then
-    // parsed into an empty "no results" instead of an honest error.
-    // Without corroboration it is reported as a normal refusal.
-
-    // Check response body for Cloudflare markers
-    final body = response.data?.toString() ?? "";
-    return _containsCloudflareMarkers(body);
+    return ArchiveParsing.isChallengeResponse(
+      statusCode: statusCode ?? 0,
+      body: response.data?.toString() ?? '',
+      cfMitigated: response.headers.value('cf-mitigated'),
+    );
   }
 
-  // Check response body for Cloudflare challenge page markers
-  static bool _containsCloudflareMarkers(String body) {
-    final lowerBody = body.toLowerCase();
-
-    // Common Cloudflare challenge page indicators
-    final markers = [
-      "checking your browser",
-      "cloudflare",
-      "cf-browser-verification",
-      "cf_chl_prog",
-      "just a moment",
-      "enable javascript and cookies",
-      "ray id:",
-      "please wait while we verify",
-      "ddos protection by",
-      "attention required",
-      "please complete the security check",
-      "__cf_chl_tk",
-      "turnstile",
-      // DDoS-Guard and other providers
-      "ddos-guard",
-      "ddos guard",
-      "checking if the site connection is secure",
-      "needs to review the security of your connection",
-      "verifying you are human",
-      "please wait",
-      "browser check",
-      "security check",
-      "verify you are human",
-    ];
-
-    for (final marker in markers) {
-      if (lowerBody.contains(marker)) {
-        return true;
-      }
-    }
-
-    return false;
-  }
 }
 
 // Extension to check internet connectivity
 class ConnectivityChecker {
   static final AppLogger _logger = AppLogger();
 
-  // Quick check if device can reach the internet
+  // Hosts probed to decide whether the internet works. Deliberately
+  // NOT google.com: its DNS is polluted/blocked on the mainland, so a
+  // google.com lookup fails on a working connection and every timeout
+  // was misreported as "no internet". Any one candidate resolving
+  // means usable internet.
+  static const _internetProbeHosts = ['www.baidu.com', 'www.qq.com'];
+
+  // Quick check if device can reach the internet. Link state first
+  // (connectivity_plus, no traffic): no interface means offline.
+  // Link up: probe the candidate hosts by DNS — a single google.com
+  // lookup is not a connectivity test on the mainland.
   static Future<bool> hasInternetConnection() async {
     try {
-      // lookup() itself has no built-in timeout: on a broken/hijacked
-      // DNS setup it can hang far longer than the user should wait for
-      // an error message. Bound it explicitly.
-      final result = await InternetAddress.lookup(
-        "google.com",
-      ).timeout(const Duration(seconds: 3));
-      final hasConnection =
-          result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-      _logger.debug(
-        "Internet connectivity check",
-        tag: "Connectivity",
-        metadata: {"hasConnection": hasConnection},
-      );
-      return hasConnection;
-    } on SocketException {
-      _logger.debug("No internet connection detected", tag: "Connectivity");
-      return false;
+      final results = await Connectivity().checkConnectivity();
+      if (results.isEmpty ||
+          results.contains(ConnectivityResult.none)) {
+        _logger.debug("No network link", tag: "Connectivity");
+        return false;
+      }
     } catch (e) {
+      // Link check failed; fall through to the DNS probes, which are
+      // the ground truth anyway.
       _logger.debug(
-        "Connectivity check failed",
+        "Connectivity link check failed",
         tag: "Connectivity",
         metadata: {"error": e.toString()},
       );
-      return false;
     }
+    for (final host in _internetProbeHosts) {
+      try {
+        // lookup() itself has no built-in timeout: on a broken/hijacked
+        // DNS setup it can hang far longer than the user should wait
+        // for an error message. Bound it explicitly.
+        final result = await InternetAddress.lookup(
+          host,
+        ).timeout(const Duration(seconds: 3));
+        if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
+          _logger.debug(
+            "Internet connectivity check",
+            tag: "Connectivity",
+            metadata: {"hasConnection": true, "probeHost": host},
+          );
+          return true;
+        }
+      } catch (_) {
+        // Try the next candidate.
+      }
+    }
+    _logger.debug("No internet connection detected", tag: "Connectivity");
+    return false;
   }
 
   // Check if a specific host is reachable

@@ -135,8 +135,17 @@ class MediaStoreFiles {
             <String, Object>{'uri': uri, 'bytes': payload},
           ) ??
           false;
-    } on PlatformException {
-      return false;
+    } on PlatformException catch (e) {
+      // L4: the cause used to be dropped here (a bare `return false`),
+      // so a storage failure surfaced only as a generic "pending write
+      // failed" with no code. Log it (same pattern as publish/create
+      // above) and let it through — the writer's catch records it in
+      // _writeError, code included.
+      AppLog.report(
+        'MediaStore writePendingChunk failed: ${e.code} ${e.message}',
+        tag: 'media_store',
+      );
+      rethrow;
     }
   }
 

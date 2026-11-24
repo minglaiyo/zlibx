@@ -37,6 +37,7 @@ Future<void> tryQuotaFallbackAndDownload(
   final currentUserId = ref.read(authProvider).user?.id;
   final annasApi = ref.read(annasArchieveProvider);
   final libgenService = ref.read(libgenServiceProvider);
+  final libgenSearch = ref.read(libgenSearchProvider);
   final downloadNotifier = ref.read(downloadProvider.notifier);
 
   final choice = await showQuotaExhaustedDialog(context);
@@ -68,6 +69,7 @@ Future<void> tryQuotaFallbackAndDownload(
     zBook: book,
     annasApi: annasApi,
     libgenService: libgenService,
+    libgenSearch: libgenSearch,
   );
   if (!context.mounted) return;
   if (result == null) {

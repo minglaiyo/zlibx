@@ -2,6 +2,8 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 import '../utils/diagnostics.dart';
+import 'hive_service.dart';
+import 'mirror_trust.dart';
 import 'webview_challenge_solver.dart';
 
 
@@ -123,5 +125,27 @@ Future<void> deleteSessionCookies({required String pageUrl}) async {
     await manager.deleteCookie(url: url, name: 'remix_userkey');
   } catch (error) {
     logIgnored('wall_cookie_bridge', error);
+  }
+}
+
+/// L7: startup cleanup for session cookies left behind by a SIGKILL.
+/// A `finally` never runs when the process is killed, so `remix_userid`
+/// / `remix_userkey` can survive in the WebView's cookie store; the
+/// next anonymous solve for the same host would then carry them.
+/// Clear them once at startup for every host the app has trusted
+/// (confirmed + user-entered) plus the current line. Best-effort and
+/// never throws (deleteSessionCookies already swallows CookieManager
+/// failures); the cost is a few CookieManager calls.
+Future<void> deleteStaleSessionCookies() async {
+  final hosts = <String>{
+    ...MirrorTrust.confirmed(),
+    ...MirrorTrust.customEntered(),
+  };
+  final saved = HiveService.settingsBox.get('domain');
+  if (saved is String && saved.isNotEmpty) {
+    hosts.add(MirrorTrust.hostOf(saved));
+  }
+  for (final host in hosts) {
+    await deleteSessionCookies(pageUrl: 'https://$host/');
   }
 }

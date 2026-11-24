@@ -164,20 +164,38 @@ class InstanceManager {
     return (map[service.name] ?? const []).toSet();
   }
 
+  // L3: serialises host-map writes. setEnabled / setManualOrder are
+  // read-modify-write with awaits in between; two rapid toggles read
+  // the same map and the later write overwrites the earlier one. A
+  // Future chain makes each write wait for the previous one to finish
+  // (including its read, so it sees the earlier write's result).
+  Future<void> _writeChain = Future.value();
+
+  /// Runs [write] after every earlier queued write has finished. The
+  /// returned future completes with [write]'s result; a failure does
+  /// not poison the chain for later writes.
+  Future<void> _runSerialized(Future<void> Function() write) {
+    final done = _writeChain.then((_) => write());
+    _writeChain = done.then((_) {}, onError: (_) {});
+    return done;
+  }
+
   Future<void> setEnabled(
     MirrorService service,
     String host,
     bool enabled,
   ) async {
-    final map = await _readHostMap(_disabledKey);
-    final list = map[service.name] ?? <String>[];
-    if (enabled) {
-      list.remove(host);
-    } else if (!list.contains(host)) {
-      list.add(host);
-    }
-    map[service.name] = list;
-    await _writeHostMap(_disabledKey, map);
+    await _runSerialized(() async {
+      final map = await _readHostMap(_disabledKey);
+      final list = map[service.name] ?? <String>[];
+      if (enabled) {
+        list.remove(host);
+      } else if (!list.contains(host)) {
+        list.add(host);
+      }
+      map[service.name] = list;
+      await _writeHostMap(_disabledKey, map);
+    });
     _logger.info(
       enabled ? 'Mirror enabled' : 'Mirror disabled',
       tag: 'InstanceManager',
@@ -194,9 +212,12 @@ class InstanceManager {
   /// Pins the full manual order for a service; hosts not in [hosts] fall
   /// back to their auto position.
   Future<void> setManualOrder(MirrorService service, List<String> hosts) async {
-    final map = await _readHostMap(_orderKey);
-    map[service.name] = hosts;
-    await _writeHostMap(_orderKey, map);
+    // L3: same read-modify-write race as setEnabled — serialise it too.
+    await _runSerialized(() async {
+      final map = await _readHostMap(_orderKey);
+      map[service.name] = hosts;
+      await _writeHostMap(_orderKey, map);
+    });
   }
 
   /// Moves [host] one slot up or down in the manual order, materialising

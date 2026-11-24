@@ -208,8 +208,10 @@ Future<DownloadTarget> resolveExternalDownload(BookInfoData info) async {
 
     // Route 4 — plain Dio GET on the slow page (unprotected mirrors
     // only) + HTML parse.
+    // M9: a single-use Dio — close it so its HttpClient (and
+    // keep-alive pool) does not leak into a long session.
+    final dio = createDio();
     try {
-      final dio = createDio();
       // Cancel the underlying request on timeout: otherwise the slow
       // page keeps downloading in the background after this route
       // has already given up and moved on.
@@ -232,6 +234,8 @@ Future<DownloadTarget> resolveExternalDownload(BookInfoData info) async {
       }
     } catch (e) {
       logger.debug('Slow-link HTML fallback failed', tag: 'ExternalDownload');
+    } finally {
+      dio.close();
     }
   }
 

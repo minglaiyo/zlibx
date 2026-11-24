@@ -69,6 +69,7 @@ Future<QuotaFallbackResult?> tryQuotaFallback({
   required Book zBook,
   required AnnasArchieve annasApi,
   required LibgenService libgenService,
+  required LibgenProvider libgenSearch,
 }) async {
   // Prefer the ISBN: an exact identifier beats a fuzzy title match.
   final isbn = _isbnOf(zBook);
@@ -85,6 +86,7 @@ Future<QuotaFallbackResult?> tryQuotaFallback({
       isIsbnQuery: isIsbnQuery,
       annasApi: annasApi,
       libgenService: libgenService,
+      libgenSearch: libgenSearch,
     ).timeout(_fallbackTimeout, onTimeout: () => null);
   } on Object catch (error) {
     logIgnored('quota_fallback', error);
@@ -103,13 +105,14 @@ Future<QuotaFallbackResult?> _tryFallback({
   required bool isIsbnQuery,
   required AnnasArchieve annasApi,
   required LibgenService libgenService,
+  required LibgenProvider libgenSearch,
 }) async {
   // LibGen first: plain-HTML search and a direct get.php link.
   final libgen = await _trySource(
     zBook: zBook,
     isIsbnQuery: isIsbnQuery,
     source: BookSource.libgen,
-    search: () => LibgenProvider().search(SearchQuery(text: query)),
+    search: () => libgenSearch.search(SearchQuery(text: query)),
     detail: (link) => libgenService.bookInfo(link),
   );
   if (libgen != null) return libgen;

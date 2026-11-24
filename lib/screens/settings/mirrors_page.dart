@@ -45,6 +45,11 @@ class _MirrorsPageState extends State<MirrorsPage> {
   bool _probing = false;
   final Map<MirrorService, List<InstanceView>> _views = {};
 
+  // M9: one speed-test instance (and its Dio) for the page's lifetime
+  // — a fresh one per cachedMs/probeAll call built a new Dio (and a
+  // new keep-alive HttpClient pool) every time.
+  final MirrorSpeedTest _speedTest = MirrorSpeedTest();
+
   /// Device-measured milliseconds per host, from the last speed test
   /// (fresh cache only). Shown next to SLUM's latency in each row.
   final Map<MirrorService, Map<String, int>> _measured = {};
@@ -81,8 +86,8 @@ class _MirrorsPageState extends State<MirrorsPage> {
       ]);
       final measured = <MirrorService, Map<String, int>>{
         for (final service in _serviceOrder)
-          if (MirrorSpeedTest().cachedMs(service) != null)
-            service: MirrorSpeedTest().cachedMs(service)!,
+          if (_speedTest.cachedMs(service) != null)
+            service: _speedTest.cachedMs(service)!,
       };
       if (!mounted) return;
       setState(() {
@@ -113,7 +118,7 @@ class _MirrorsPageState extends State<MirrorsPage> {
     final l10n = AppLocalizations.of(context)!;
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await MirrorSpeedTest().probeAll();
+      await _speedTest.probeAll();
       if (!mounted) return;
       await _loadAll();
       if (!mounted) return;

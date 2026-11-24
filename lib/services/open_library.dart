@@ -35,8 +35,10 @@ abstract class TrendingBooksImpl {
   Future<List<TrendingBookData>> _parser(dynamic data);
 
   Future<List<TrendingBookData>> trendingBooks() async {
+    // M9: a single-use Dio — close it so its HttpClient (and
+    // keep-alive pool) does not leak into a long session.
+    final dio = createDio();
     try {
-      final dio = createDio();
       final response = await dio.get(
         url,
         options: Options(
@@ -52,6 +54,8 @@ abstract class TrendingBooksImpl {
         metadata: {'url': url, 'error': e.message},
       );
       return [];
+    } finally {
+      dio.close();
     }
   }
 }
@@ -108,8 +112,10 @@ class OpenLibrary extends TrendingBooksImpl {
 
   @override
   Future<List<TrendingBookData>> trendingBooks() async {
+    // M9: a single-use Dio — close it so its HttpClient (and
+    // keep-alive pool) does not leak into a long session.
+    final dio = createDio();
     try {
-      final dio = createDio();
       const timeOutDuration = 5;
       Options timeoutOptions() => Options(
         sendTimeout: const Duration(seconds: timeOutDuration),
@@ -124,9 +130,13 @@ class OpenLibrary extends TrendingBooksImpl {
           options: timeoutOptions(),
         ),
       ]);
-      return _parser(
-        '${responses[0].data.toString()}${responses[1].data.toString()}',
-      );
+      // L2: parse each page on its own, then merge. Concatenating the
+      // two HTML documents into one string left the second
+      // `<!DOCTYPE html><html>` as content inside the first body —
+      // only the html5 parser's error tolerance kept page 2 visible.
+      final first = await _parser(responses[0].data.toString());
+      final second = await _parser(responses[1].data.toString());
+      return [...first, ...second];
     } on DioException catch (e) {
       _logger.warning(
         'Failed to fetch OpenLibrary trending books',
@@ -134,6 +144,8 @@ class OpenLibrary extends TrendingBooksImpl {
         metadata: {'error': e.message},
       );
       return [];
+    } finally {
+      dio.close();
     }
   }
 }

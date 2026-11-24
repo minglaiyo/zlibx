@@ -9,6 +9,27 @@ part of 'download_provider.dart';
 bool isVerifiableMd5(String? hash) =>
     hash != null && RegExp(r'^[0-9a-fA-F]{32}$').hasMatch(hash);
 
+/// M4: whether a download failure is worth retrying with backoff.
+/// Only transient transport failures: a dropped connection, a 5xx
+/// answer, or a stream that ended early. A content error (the server
+/// answered HTML instead of a book), quota exhaustion, or a user
+/// cancel never retries. The vendor plugin reports a truncation as a
+/// StateError with a fixed message prefix (see _downloadOnce), so
+/// that is recognised too.
+bool isRetryableDownloadError(Object e) {
+  if (e is DownloadTruncatedException) return true;
+  if (e is StateError &&
+      e.message.toString().startsWith('download truncated:')) {
+    return true;
+  }
+  if (e is DioException) {
+    if (e.type == DioExceptionType.connectionError) return true;
+    final status = e.response?.statusCode;
+    if (status != null && status >= 500 && status < 600) return true;
+  }
+  return false;
+}
+
 /// The download execution cluster: startDownload plus the resumable
 /// transport and its failure cleanup.
 mixin _DownloadEngineMixin on _DownloadPathsMixin {
@@ -292,65 +313,92 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         }
       }
 
-      if (!alreadyExists && presetUrl != null) {
-        // presetUrl 路径（外部源解析链接）：直接 stream 到本地，
-        // 用独立 Dio，不带 z站 cookie / auth，也不带任何自定义头 —
-        // followRedirects 必须为 true：LibGen get.php 307 跳到 CDN
-        // 文件，不跟随会把重定向响应本身存成文件；跟随时不带上层
-        // 自定义头，所以跨主机跳转没有凭据外泄面（S5）。
-        // receiveTimeout: null = 不限接收超时：大文件慢速网络不能被打断。
-        // The Dio is a single-use instance for this one download:
-        // close it in a finally so a failed or cancelled download
-        // does not leak its HttpClient (O13).
-        final dio = createDio(receiveTimeout: null);
-        try {
-          await _downloadResumable(
-            dio,
-            presetUrl,
-            temporaryPath,
-            onProgress: (received, total) {
-              // `total` can be 0 (empty body / CDN without length): only a
-              // positive total yields a valid fraction — 0/0 would push a
-              // NaN into the state and straight into the progress bar.
-              if (total > 0) {
-                final progress = received / total;
-                _updateProgress(id, progress);
-                _notifyDownloadProgress(progress);
-              }
-            },
-            cancelToken: cancelToken,
-            pendingWriter: pendingWriter,
-          );
-        } finally {
-          dio.close();
+      void onProgress(int received, int total) {
+        // `total` can be 0 (empty body / CDN without length): only a
+        // positive total yields a valid fraction — 0/0 would push a
+        // NaN into the state and straight into the progress bar.
+        if (total > 0) {
+          final progress = received / total;
+          _updateProgress(id, progress);
+          _notifyDownloadProgress(progress);
         }
-      } else if (!alreadyExists) {
-        // 默认路径：用户自己 z站 账号查 URL + 下载
-        try {
-          await _api.downloadBook(
-            effectiveBook.id.toString(),
-            effectiveBook.hash ?? '',
-            temporaryPath,
-            onProgress: (received, total) {
-              // Same NaN guard as the preset branch above.
-              if (total > 0) {
-                final progress = received / total;
-                _updateProgress(id, progress);
-                _notifyDownloadProgress(progress);
+      }
+
+      if (!alreadyExists) {
+        // temporaryPath is already non-null here (assigned above) —
+        // hoist it into a final local: a closure does not inherit the
+        // outer flow's null promotion, so passing the variable
+        // directly fails analyze.
+        final savePath = temporaryPath;
+        // M4: retry transient failures with exponential backoff. The
+        // partial (.part / pending entry) survives each attempt, so a
+        // retry resumes instead of restarting. Only connection errors,
+        // 5xx and truncations retry — a content error (HTML instead of
+        // a book), quota exhaustion, or a user cancel never does.
+        Future<void> downloadAttempt() async {
+          if (presetUrl != null) {
+            // presetUrl 路径（外部源解析链接）：直接 stream 到本地，
+            // 用独立 Dio，不带 z站 cookie / auth，也不带任何自定义头 —
+            // followRedirects 必须为 true：LibGen get.php 307 跳到 CDN
+            // 文件，不跟随会把重定向响应本身存成文件；跟随时不带上层
+            // 自定义头，所以跨主机跳转没有凭据外泄面（S5）。
+            // receiveTimeout: null = 不限接收超时：大文件慢速网络不能被打断。
+            // The Dio is a single-use instance for this one download:
+            // close it in a finally so a failed or cancelled download
+            // does not leak its HttpClient (O13).
+            final dio = createDio(receiveTimeout: null);
+            try {
+              await _downloadResumable(
+                dio,
+                presetUrl,
+                savePath,
+                onProgress: onProgress,
+                cancelToken: cancelToken,
+                pendingWriter: pendingWriter,
+              );
+            } finally {
+              dio.close();
+            }
+          } else {
+            // 默认路径：用户自己 z站 账号查 URL + 下载
+            try {
+              await _api.downloadBook(
+                effectiveBook.id.toString(),
+                effectiveBook.hash ?? '',
+                savePath,
+                onProgress: onProgress,
+                cancelToken: cancelToken,
+                title: book.title,
+                pendingWriter: pendingWriter,
+              );
+            } on DownloadLimitReachedException {
+              rethrow;
+            } catch (e) {
+              // Z 站额度用尽的返回形态不稳定，失败后再查一次资料兜底识别
+              if (!cancelToken.isCancelled &&
+                  await _isOwnQuotaExhausted()) {
+                throw DownloadLimitReachedException();
               }
-            },
-            cancelToken: cancelToken,
-            title: book.title,
-            pendingWriter: pendingWriter,
-          );
-        } on DownloadLimitReachedException {
-          rethrow;
-        } catch (e) {
-          // Z 站额度用尽的返回形态不稳定，失败后再查一次资料兜底识别
-          if (!cancelToken.isCancelled && await _isOwnQuotaExhausted()) {
-            throw DownloadLimitReachedException();
+              rethrow;
+            }
           }
-          rethrow;
+        }
+
+        const retryDelays = [Duration(seconds: 2), Duration(seconds: 6)];
+        for (var attempt = 0; ; attempt++) {
+          try {
+            await downloadAttempt();
+            break;
+          } on Object catch (e) {
+            if (cancelToken.isCancelled ||
+                !isRetryableDownloadError(e) ||
+                attempt >= retryDelays.length) {
+              rethrow;
+            }
+            logIgnored('download_retry', e);
+            await Future.delayed(retryDelays[attempt]);
+            if (cancelToken.isCancelled) return;
+          }
         }
       }
 

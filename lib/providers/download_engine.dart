@@ -429,7 +429,9 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       // 的兜底，那是给 externalBookId 用的，不能改成 ''），那种 hash
       // 永远比对不上，会删掉已下好的文件。非 hex 直接跳过校验。
       final expectedMd5 = book.hash;
-      if (presetUrl != null && isVerifiableMd5(expectedMd5)) {
+      if (presetUrl != null &&
+          expectedMd5 != null &&
+          isVerifiableMd5(expectedMd5)) {
         final actual = await DownloadForegroundService.md5OfContent(
           recordedPath,
         );

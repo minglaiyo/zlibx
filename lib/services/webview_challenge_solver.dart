@@ -275,11 +275,15 @@ class WebviewChallengeSolver {
   /// (null/empty HTML) must NOT complete, or the poll loop below would be
   /// dead and the solve would return null even though the challenge had
   /// already been cleared. See the Android log regression this guards.
+  /// H1: a Chromium network error page ("Webpage not available") also
+  /// fires onLoadStop and must not complete — it is not a solved page,
+  /// and caching it would pin an empty result for 10 minutes.
   @visibleForTesting
   static bool shouldCompleteFromLoadStop(String title, String? capturedHtml) =>
       capturedHtml != null &&
       capturedHtml.isNotEmpty &&
-      !isChallengePage(title: title, bodySnippet: '');
+      !isChallengePage(title: title, bodySnippet: '') &&
+      !ChallengeHtmlCache.isBrowserErrorPage(capturedHtml);
 
   static Future<String?> _solveHeadless(String url, Duration timeout) async {
     HeadlessInAppWebView? headless;
@@ -329,6 +333,22 @@ class WebviewChallengeSolver {
           if (!controllerHolder.isCompleted) {
             controllerHolder.complete(controller);
           }
+        },
+        onReceivedError: (controller, request, error) {
+          // H1: only a MAIN-FRAME error means the page is unavailable
+          // (mirror_fetcher does the same). A dead mirror / DNS failure
+          // loads Chromium's internal error page, which onLoadStop would
+          // otherwise accept as a solved page. Fail fast instead of
+          // waiting out the full timeout, then letting the caller fall
+          // back to the visible solver. Sub-resource errors (favicon /
+          // image 404s) are ignored — the document itself may be fine.
+          if (request.isForMainFrame != true) return;
+          _logger.error(
+            'Headless webview load error',
+            tag: 'ChallengeSolver',
+            error: error.description,
+          );
+          if (!completer.isCompleted) completer.complete(null);
         },
       );
 
@@ -441,6 +461,11 @@ class WebviewChallengeSolver {
     // captured here as solved. Reject a captured challenge page
     // outright so the solve keeps waiting for the real page instead.
     if (html != null && isChallengeHtml(html)) return null;
+    // H1: same for a Chromium network error page — it is not a solved
+    // page, and returning it would cache an empty result for 10 min.
+    if (html != null && ChallengeHtmlCache.isBrowserErrorPage(html)) {
+      return null;
+    }
     return html;
   }
 

@@ -267,10 +267,28 @@ class ResumableDownloader {
           firstChunk = false;
           // A fresh body that is really an HTML page (mislabelled
           // Content-Type) must not touch the disk.
-          if (!resumed && looksLikeHtml(chunk)) {
-            throw const DownloadContentException(
-              'download body is an HTML page, not a book file',
-            );
+          if (looksLikeHtml(chunk)) {
+            if (!resumed) {
+              throw const DownloadContentException(
+                'download body is an HTML page, not a book file',
+              );
+            }
+            // M3: a resumed 206 body that is really HTML — the server
+            // or proxy is serving a page at the resume offset (the
+            // Content-Range check only proves the offset, not the
+            // content). Discard the partial and restart from zero,
+            // like the 416 / Content-Range paths. The fresh attempt
+            // throws if the server still serves HTML.
+            if (!await DownloadRange.discardPartialBytes(
+              file,
+              pendingWriter,
+            )) {
+              throw const DownloadContentException(
+                'cannot recreate the pending MediaStore entry',
+              );
+            }
+            if (await meta.exists()) await meta.delete();
+            return true;
           }
           if (!resumed) {
             // New file: remember its validator for future resumes.

@@ -1,5 +1,14 @@
 part of 'download_provider.dart';
 
+/// Whether [hash] is a 32-char hex MD5 digest worth verifying a
+/// downloaded file against (H2). External-source parsers fall back to
+/// the book title or a numeric id when a search row carries no md5 link;
+/// those are not digests and must never trigger the delete-on-mismatch
+/// path — a non-hex "hash" can never match the file's real MD5, so
+/// verifying it would delete a good download.
+bool isVerifiableMd5(String? hash) =>
+    hash != null && RegExp(r'^[0-9a-fA-F]{32}$').hasMatch(hash);
+
 /// The download execution cluster: startDownload plus the resumable
 /// transport and its failure cleanup.
 mixin _DownloadEngineMixin on _DownloadPathsMixin {
@@ -415,13 +424,20 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       // 件 MD5，跳过。校验失败：删掉发布出去的文件与 sidecar，任务错
       // 误态引导换镜像重试；哈希算不出（通道失败）放行——不能因校验
       // 通道故障把下好的书扔掉。
-      if (presetUrl != null && (book.hash?.isNotEmpty ?? false)) {
+      // H2：只有 book.hash 是 32 位 hex 才校验。外部源解析器拿不到
+      // md5 时会把书名/数字 id 塞进来（libgen_service、external_search
+      // 的兜底，那是给 externalBookId 用的，不能改成 ''），那种 hash
+      // 永远比对不上，会删掉已下好的文件。非 hex 直接跳过校验。
+      final expectedMd5 = book.hash;
+      if (presetUrl != null &&
+          expectedMd5 != null &&
+          isVerifiableMd5(expectedMd5)) {
         final actual = await DownloadForegroundService.md5OfContent(
           recordedPath,
         );
         if (actual == null) {
           logIgnored('download_md5', StateError('hash unavailable'));
-        } else if (actual.toLowerCase() != book.hash!.toLowerCase()) {
+        } else if (actual.toLowerCase() != expectedMd5.toLowerCase()) {
           await MediaStoreFiles.delete(recordedPath);
           await _deleteSidecarQuietly(temporaryPath);
           _updateTask(

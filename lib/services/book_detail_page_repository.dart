@@ -4,9 +4,11 @@ import 'booklist_solver.dart';
 import 'wall_cookie_bridge.dart';
 import 'webview_challenge_solver.dart';
 
-/// Data layer for one book detail page: the payload
+/// Data layer for one book detail page: the decoration payload
 /// ([BookDetailExtras] — metadata rows, keywords and the related-
-/// booklists block) the detail screen merges onto the eapi book.
+/// booklists block) the detail screen merges onto the eapi book, the
+/// book body itself for a book eapi will not address ([fetchBook]) and
+/// the recommendation shelf ([fetchSimilarBooks]).
 ///
 /// The page is an HTML route behind the DiamWall, so fetching runs in
 /// two stages, like every other HTML route (booklists / full-text /
@@ -68,6 +70,95 @@ class BookDetailPageRepository {
     final parsed = await parsePage(html, baseUrl: Uri.parse(url).origin);
     if (parsed == null) return first;
     return ApiResponse.ok(parsed);
+  }
+
+  /// The book itself as its own page describes it — the fallback body
+  /// for a book whose hash is a webpage short hash (eapi rejects that
+  /// hash outright, see [ZLibraryApi.getBookInfoFromHtmlPage]).
+  ///
+  /// Same two-stage contract as [fetch]: Dio first, and only a
+  /// wall-shaped failure escalates to the WebView solver. Unlike the
+  /// decoration payload, a failure here means the screen has nothing
+  /// to show, so the caller decides whether a visible challenge page is
+  /// acceptable ([allowVisibleSolver]) — the detail provider allows it
+  /// because the alternative is an error page.
+  ///
+  /// Returns the original Dio failure when the solve or the parse
+  /// fails, so the caller's error text still says what broke.
+  Future<ApiResponse<Book>> fetchBook({
+    required String href,
+    String? userId,
+    String? userKey,
+    bool allowVisibleSolver = true,
+    Duration? solverTimeout,
+  }) async {
+    final first = await _api.getBookInfoFromHtmlPage(href);
+    if (first.success) return first;
+    if (!isChallengeError(first.error)) return first;
+    final url = pageUrl(href);
+    final html = await fetchViaSolver(
+      url,
+      userId: userId,
+      userKey: userKey,
+      allowVisibleSolver: allowVisibleSolver,
+      timeout: solverTimeout,
+    );
+    if (html == null) return first;
+    final book = parseBook(html, baseUrl: Uri.parse(url).origin, href: href);
+    if (book == null) return first;
+    return ApiResponse.ok(book);
+  }
+
+  /// The detail page's own recommendation shelf — the fallback for
+  /// `GET /eapi/book/{id}/{hash}/similar` for the same hash condition
+  /// as [fetchBook].
+  ///
+  /// An empty shelf is success with an empty list (a book the site has
+  /// nothing to recommend is a real answer, not a failure), so this
+  /// only rethrows the fetch error when the page never arrived.
+  Future<ApiResponse<List<Book>>> fetchSimilarBooks({
+    required String href,
+    String? userId,
+    String? userKey,
+    bool allowVisibleSolver = true,
+    Duration? solverTimeout,
+  }) async {
+    final first = await _api.getSimilarBooksFromHtmlPage(href);
+    if (first.success) return first;
+    if (!isChallengeError(first.error)) return first;
+    final url = pageUrl(href);
+    final html = await fetchViaSolver(
+      url,
+      userId: userId,
+      userKey: userKey,
+      allowVisibleSolver: allowVisibleSolver,
+      timeout: solverTimeout,
+    );
+    if (html == null) return first;
+    return ApiResponse.ok(
+      parseSimilarBooks(html, baseUrl: Uri.parse(url).origin),
+    );
+  }
+
+  /// Solver-fetched page → [Book], or null when the page is not a book
+  /// page. Mirrors [parsePage]'s rule: a broken page must not throw out
+  /// of a load, and a wall/error page the solver landed on is a parse
+  /// failure, not an empty book.
+  Book? parseBook(String html, {required String baseUrl, String? href}) {
+    try {
+      return parseBookDetailPage(html, baseUrl: baseUrl, href: href);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Solver-fetched page → the recommendation shelf (possibly empty).
+  List<Book> parseSimilarBooks(String html, {required String baseUrl}) {
+    try {
+      return parseBookDetailRecommendations(html, baseUrl: baseUrl);
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// The absolute detail-page URL for one site-relative [href] — the

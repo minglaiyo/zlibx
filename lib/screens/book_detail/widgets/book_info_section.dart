@@ -186,6 +186,7 @@ class _BookInfoSectionState extends ConsumerState<BookInfoSection> {
               bookId: book.id,
               hashId: book.hash!,
               bookTitle: book.title,
+              href: book.href,
             ),
           ),
         ),

@@ -40,6 +40,17 @@ class Book {
   final String? interestScore;
   final String? readOnlineUrl;
 
+  /// The site's own download address (`/dl/{token}`), from an HTML
+  /// card's `download` attribute (see `parseSearchBooksPage`). Null
+  /// for every eapi payload: the eapi book object has no such field
+  /// and eapi books download through `GET /eapi/book/{id}/{hash}/file`.
+  ///
+  /// The token is its own value — neither the card's short hash nor
+  /// the eapi hash — and it is the only download link the HTML
+  /// carries, so a book that came from an HTML listing needs it to be
+  /// downloadable at all.
+  final String? downloadPath;
+
   /// Detail-page-only metadata (NOT in the eapi book object): parsed
   /// from the book detail HTML (`property_volume` / `property_isbn_13` /
   /// `property_isbn_10` / `property_ipfs_cid` rows — see
@@ -101,6 +112,7 @@ class Book {
     this.filesizeString,
     this.interestScore,
     this.readOnlineUrl,
+    this.downloadPath,
     this.volume,
     this.isbn10,
     this.isbn13,
@@ -148,6 +160,14 @@ class Book {
       readOnlineUrl: _asString(
         json['readOnlineUrl'] ?? json['read_online_url'],
       ),
+      // Defensive only: no eapi payload carries it (an HTML card
+      // does — see `parseSearchBooksPage`), but map it if one ever
+      // starts to.
+      downloadPath: _nonEmptyString(
+        json['downloadPath'] ??
+            json['download_path'] ??
+            json['download'],
+      ),
       // Defensive only: the eapi book object does not carry these
       // (they live in the detail HTML), but map them if a future
       // endpoint ever does.
@@ -176,11 +196,19 @@ class Book {
   static String? hashFromBookHref(String? href) {
     if (href == null || href.isEmpty) return null;
     final segments = Uri.tryParse(href)?.pathSegments ?? const <String>[];
-    if (segments.length >= 2 && segments[0] == 'book') {
-      final hash = segments[1];
-      return hash.isEmpty ? null : hash;
+    if (segments.length < 2 || segments[0] != 'book') return null;
+    final second = segments[1];
+    if (second.isEmpty) return null;
+    // 两种形状都在真页面上出现过：卡片是 `/book/{hash}/{文件名}`，书页
+    // 自己的规范地址是 `/book/{id}/{hash}/`。第二段整串是数字就是 id，
+    // hash 在它后面那一段——把它当 hash 交出去，eapi 只会回 `Invalid
+    // hash`，而那句话会把真正的失败盖掉。
+    if (RegExp(r'^\d+$').hasMatch(second)) {
+      return segments.length >= 3 && segments[2].isNotEmpty
+          ? segments[2]
+          : null;
     }
-    return null;
+    return second;
   }
 
   Map<String, dynamic> toJson() => {
@@ -202,6 +230,7 @@ class Book {
     if (filesizeString != null) 'filesizeString': filesizeString,
     if (interestScore != null) 'interestScore': interestScore,
     if (readOnlineUrl != null) 'readOnlineUrl': readOnlineUrl,
+    if (downloadPath != null) 'downloadPath': downloadPath,
     if (volume != null) 'volume': volume,
     if (isbn10 != null) 'isbn10': isbn10,
     if (isbn13 != null) 'isbn13': isbn13,
@@ -236,6 +265,7 @@ class Book {
     String? filesizeString,
     String? interestScore,
     String? readOnlineUrl,
+    String? downloadPath,
     String? volume,
     String? isbn10,
     String? isbn13,
@@ -267,6 +297,7 @@ class Book {
       filesizeString: filesizeString ?? this.filesizeString,
       interestScore: interestScore ?? this.interestScore,
       readOnlineUrl: readOnlineUrl ?? this.readOnlineUrl,
+      downloadPath: downloadPath ?? this.downloadPath,
       volume: volume ?? this.volume,
       isbn10: isbn10 ?? this.isbn10,
       isbn13: isbn13 ?? this.isbn13,

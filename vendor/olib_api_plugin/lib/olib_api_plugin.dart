@@ -18,5 +18,6 @@ export 'src/category.dart';
 export 'src/download_range.dart';
 export 'src/download_stats.dart';
 export 'src/fulltext.dart';
+export 'src/search_html.dart';
 export 'src/user.dart';
 export 'src/zlibrary_api.dart';

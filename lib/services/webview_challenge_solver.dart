@@ -43,10 +43,46 @@ import 'package:zlibx/services/challenge_html_cache.dart';
 import 'package:zlibx/services/webview_security.dart';
 import 'package:zlibx/services/external_logger.dart';
 
+/// 一次后台 WebView 跑完的两种产出。
+///
+/// 书页那条腿要 [html]（按钮就在渲染出来的页面里）。`/dl/{token}` 那条腿
+/// 要的是 [fileUrl]（第 9 轮，2026-11-24 真机第 7 份报告）：那一跳过了墙
+/// 之后交出来的是文件，浏览器会被交予一个直链，而这个直链才是 Dio 能拿走
+/// 的东西——「把墙 cookie 回灌进 Dio 再重发 `/dl/`」在真机上重发回来仍是
+/// 校验页。两种产出共用同一发 WebView：cookie jar 照样被这一次求解填满。
+class HeadlessSolveResult {
+  const HeadlessSolveResult({
+    this.html,
+    this.fileUrl,
+    this.fileSource = 'none',
+    this.landedUrl,
+  });
+
+  final String? html;
+
+  /// 浏览器在这一跳被交予的文件地址（https，见 [looksLikeFileUrl]）。
+  final String? fileUrl;
+
+  /// 这个地址是从哪儿认出来的：`download-start`（WebView 的下载回调，
+  /// 最强证据）/ `landed-url`（浏览器最终停在的地址看着就是个文件）/
+  /// `none`（没拿到）。写进失败文案，为了把「墙没过」和「过了墙但这一跳
+  /// 根本不以文件收尾」分开。
+  final String fileSource;
+
+  /// 这一发 WebView 最后停在哪个地址（诊断用，未掩码——只进记录函数）。
+  final String? landedUrl;
+
+  bool get gotFileUrl => fileUrl != null && fileUrl!.isNotEmpty;
+}
+
 class WebviewChallengeSolver {
   WebviewChallengeSolver._();
 
   static final AppLogger _logger = AppLogger();
+
+  /// 最近一次**成功抓回 HTML** 时 WebView 真正停在哪一页（诊断用）。
+  /// 请求 `/book/{id}/{hash}/` 却被弹回首页，只有这里看得见。
+  static String lastNavigatedUrl = '';
 
   /// Test seam for the platform check: when set, overrides the real
   /// platform check. Production never sets it.
@@ -193,7 +229,9 @@ class WebviewChallengeSolver {
     final effectiveTimeout = timeout ?? const Duration(seconds: 60);
 
     final tryHeadless = guiEnabled && headlessEnabled;
-    var html = tryHeadless ? await _solveHeadless(url, effectiveTimeout) : null;
+    var html = tryHeadless
+        ? (await _solveHeadless(url, effectiveTimeout)).html
+        : null;
 
     if (html == null && _isMobile && visibleSolverFallback != null) {
       _logger.info(
@@ -223,14 +261,41 @@ class WebviewChallengeSolver {
     Duration? timeout,
   }) async {
     if (!isSupported || !guiEnabled || !headlessEnabled) return null;
-    final html = await _solveHeadless(
+    final html = (await _solveHeadless(
       url,
       timeout ?? const Duration(seconds: 60),
-    );
+    )).html;
     if (html != null) {
       ChallengeHtmlCache.store(url, html);
     }
     return html;
+  }
+
+  /// `/dl/{token}` 那一跳专用（第 9 轮）：让浏览器去领这个文件，把它被
+  /// 交予的地址带回来。判据不是 HTML（那一跳过了墙也不是页面），所以
+  /// 求解循环等的是下载回调或一个看着就是文件的落地地址，等到就走；
+  /// 等不到也照样把这一次 WebView 的产出交回去——cookie jar 在这一发里
+  /// 已经被填过了，调用方仍值得回灌一次。
+  ///
+  /// headless：下载跑在后台任务池里，弹校验页等于劫持界面。
+  static Future<HeadlessSolveResult> solveHeadlessForFileUrl(
+    String url, {
+    Duration? timeout,
+  }) async {
+    if (!isSupported || !guiEnabled || !headlessEnabled) {
+      return const HeadlessSolveResult();
+    }
+    final result = await _solveHeadless(
+      url,
+      // 与其它腿同一个上限：这一发是用户在等的下载，不是后台预热。
+      timeout ?? const Duration(seconds: 60),
+      captureFileUrl: true,
+    );
+    final html = result.html;
+    if (html != null && html.isNotEmpty) {
+      ChallengeHtmlCache.store(url, html);
+    }
+    return result;
   }
 
   /// Visible-only solve: skips the headless webview entirely and runs
@@ -281,10 +346,21 @@ class WebviewChallengeSolver {
       capturedHtml.isNotEmpty &&
       !isChallengePage(title: title, bodySnippet: '');
 
-  static Future<String?> _solveHeadless(String url, Duration timeout) async {
+  static Future<HeadlessSolveResult> _solveHeadless(
+    String url,
+    Duration timeout, {
+    bool captureFileUrl = false,
+  }) async {
     HeadlessInAppWebView? headless;
+    // 下载回调由平台侧送达，这里只留**第一个**地址：那一发就是浏览器自己
+    // 认领的文件，比事后猜落地页可靠。取文件那一腿之外的模式不填它。
+    String? downloadUrl;
+    String? landedUrl;
+    // 页面已经落定（过墙了、document 读完了）但还没见到文件的时刻。下载
+    // 回调要的就宽限这么一下：`/dl/` 过墙之后是先重定向再交文件的。
+    DateTime? settledWithoutFileAt;
     try {
-      final completer = Completer<String?>();
+      final completer = Completer<HeadlessSolveResult>();
       final controllerHolder = Completer<InAppWebViewController>();
 
       headless = HeadlessInAppWebView(
@@ -292,7 +368,20 @@ class WebviewChallengeSolver {
         // 安全基线与阅读器对齐（审查 2026-11-21 5.4）——见
         // webview_security.dart 的文档。
         initialSettings: kThirdPartyWebViewSettings,
-        onLoadStop: (controller, loadedUrl) async {
+        // 只在取文件地址那一腿挂这个回调：flutter_inappwebview 见到它会替
+        // headless WebView 打开 `useOnDownloadStart`，Android 交出文件时
+        // 地址就从这里进来。书页那条腿不挂，免得动到已经验过的产出。
+        onDownloadStartRequest: captureFileUrl
+            ? (controller, request) {
+                final target = _secureUrl(request.url.toString());
+                if (target != null && downloadUrl == null) {
+                  downloadUrl = target;
+                }
+              }
+            : null,
+        onLoadStop: captureFileUrl
+            ? null
+            : (controller, loadedUrl) async {
           try {
             final title = (await controller.getTitle()) ?? '';
             final bodySnippet =
@@ -315,7 +404,9 @@ class WebviewChallengeSolver {
             final html = await _captureHtml(controller);
             if (shouldCompleteFromLoadStop(title, html) &&
                 !completer.isCompleted) {
-              completer.complete(html);
+              completer.complete(
+                HeadlessSolveResult(html: html, landedUrl: lastNavigatedUrl),
+              );
             }
           } catch (e) {
             _logger.debug(
@@ -347,7 +438,54 @@ class WebviewChallengeSolver {
           if (controller != null && _wallUserAgents[_hostOf(url)] == null) {
             await _rememberWallUserAgent(controller, url);
           }
-          if (controller != null) {
+          final direct = downloadUrl;
+          if (captureFileUrl && direct != null && !completer.isCompleted) {
+            completer.complete(
+              HeadlessSolveResult(
+                fileUrl: direct,
+                fileSource: 'download-start',
+                landedUrl: landedUrl,
+              ),
+            );
+            break;
+          }
+          if (controller != null && captureFileUrl) {
+            // 浏览器已经走到哪儿：落地地址看着就是个文件也算数——有的
+            // 镜像不走下载回调，而是把 WebView 直接导航到直链上。
+            landedUrl = _secureUrl((await controller.getUrl())?.toString());
+            final landed = landedUrl;
+            if (landed != null && looksLikeFileUrl(landed)) {
+              if (!completer.isCompleted) {
+                completer.complete(
+                  HeadlessSolveResult(
+                    fileUrl: landed,
+                    fileSource: 'landed-url',
+                    landedUrl: landed,
+                  ),
+                );
+              }
+              break;
+            }
+            // 过墙了、页面也落定了，却迟迟没有文件：再等 10 秒就给结论。
+            // 没有这一步，`/dl/` 答一张普通页面（配额页、"请稍后"页）时
+            // 用户要为一发注定没有文件的下载干等整个超时。
+            final withoutFile = settledWithoutFileAt;
+            if (landed != null &&
+                !looksLikeFileUrl(landed) &&
+                await _pageSettled(controller)) {
+              settledWithoutFileAt = withoutFile ?? DateTime.now();
+              if (withoutFile != null &&
+                  DateTime.now().difference(withoutFile) >=
+                      const Duration(seconds: 10) &&
+                  !completer.isCompleted) {
+                completer.complete(
+                  HeadlessSolveResult(landedUrl: landed),
+                );
+                break;
+              }
+            }
+          }
+          if (controller != null && !captureFileUrl) {
             final title = (await controller.getTitle()) ?? '';
             // Same check as onLoadStop: a wall page whose title carries
             // no challenge marker must not complete the solve — check
@@ -362,7 +500,9 @@ class WebviewChallengeSolver {
                 !isChallengePage(title: title, bodySnippet: bodySnippet)) {
               final html = await _captureHtml(controller);
               if (html != null && html.isNotEmpty && !completer.isCompleted) {
-                completer.complete(html);
+                completer.complete(
+                  HeadlessSolveResult(html: html, landedUrl: lastNavigatedUrl),
+                );
               }
             }
           }
@@ -372,8 +512,12 @@ class WebviewChallengeSolver {
         await Future.delayed(const Duration(milliseconds: 1000));
       }
 
-      // The only place the completer may complete with null: the deadline.
-      if (!completer.isCompleted) completer.complete(null);
+      // The only place the completer may complete empty: the deadline.
+      if (!completer.isCompleted) {
+        completer.complete(
+          HeadlessSolveResult(landedUrl: landedUrl ?? lastNavigatedUrl),
+        );
+      }
       return await completer.future;
     } catch (e, st) {
       _logger.error(
@@ -382,7 +526,7 @@ class WebviewChallengeSolver {
         error: e,
         stackTrace: st,
       );
-      return null;
+      return const HeadlessSolveResult();
     } finally {
       try {
         await headless?.dispose();
@@ -410,6 +554,72 @@ class WebviewChallengeSolver {
   // ------------------------------------------------------------------
 
   static String _hostOf(String url) => Uri.tryParse(url)?.host ?? '';
+
+  /// 只放行 https 的绝对地址，其余一律 null。
+  ///
+  /// 这条链的产出会被当成"下载器的下一个地址"用（见
+  /// `ZLibraryDownloads.downloadBook`），所以校验放在生产端：一个 http
+  /// 直链、或 `getUrl()` 还没导航完时的空串，都不该往下传。
+  static String? _secureUrl(String? url) {
+    final raw = url?.trim() ?? '';
+    if (raw.isEmpty) return null;
+    final uri = Uri.tryParse(raw);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
+    return raw;
+  }
+
+  /// 一个地址"看着就是本书"：扩展名是电子书格式，或查询里带着文件名/
+  /// 附件Disposition。非 https 直接否。
+  ///
+  /// 这是 `/dl/{token}` 那一跳的第二把判据（第一把是 WebView 自己的下载
+  /// 回调）：Z-Library 的直链常见形态是 `…/file/xxxx.epub?filename=…`，
+  /// 扩展名和 query 各有一半样本只有其中一个，所以两条都认。
+  @visibleForTesting
+  static bool looksLikeFileUrl(String url) {
+    if (_secureUrl(url) == null) return false;
+    final uri = Uri.parse(url);
+    final last = uri.pathSegments.isEmpty ? '' : uri.pathSegments.last;
+    const exts = [
+      'epub',
+      'pdf',
+      'mobi',
+      'azw',
+      'azw3',
+      'azw4',
+      'djvu',
+      'fb2',
+      'lit',
+      'cbr',
+      'cbz',
+      'zip',
+      'txt',
+      'rtf',
+      'odt',
+      'chm',
+    ];
+    final dot = last.lastIndexOf('.');
+    if (dot > 0 && dot < last.length - 1) {
+      if (exts.contains(last.substring(dot + 1).toLowerCase())) return true;
+    }
+    final query = uri.query.toLowerCase();
+    return query.contains('filename=') || query.contains('content-disposition');
+  }
+
+  /// 这一发 WebView 有没有"落定"：document 读完了，而且页面不是校验页。
+  /// 取文件地址那一腿用它来给下载回调划一条等待尽头（见 `_solveHeadless`）
+  /// ——校验页落定不代表没墙，所以两道判据都要过。
+  static Future<bool> _pageSettled(InAppWebViewController controller) async {
+    final ready = await _js(controller, "document.readyState");
+    if (ready != 'complete') return false;
+    final title = (await controller.getTitle()) ?? '';
+    final bodySnippet =
+        (await _js(
+          controller,
+          "document.body ? document.body.innerHTML.slice(0, 3000) : ''",
+        )) ??
+        '';
+    return !isChallengePage(title: title, bodySnippet: bodySnippet);
+  }
 
   /// Captures outerHTML once the document is complete and settled.
   static Future<String?> _captureHtml(InAppWebViewController controller) async {
@@ -441,6 +651,15 @@ class WebviewChallengeSolver {
     // captured here as solved. Reject a captured challenge page
     // outright so the solve keeps waiting for the real page instead.
     if (html != null && isChallengeHtml(html)) return null;
+    if (html != null) {
+      // 下载失败那句要能说出「请求的是书页、落在的却是首页」。值本身
+      // 不进文案（插件按 host+path 结构掩码），这里只留最后一次的地址。
+      try {
+        lastNavigatedUrl = (await controller.getUrl())?.toString() ?? '';
+      } catch (e) {
+        logIgnored('webview_challenge_solver', e);
+      }
+    }
     return html;
   }
 

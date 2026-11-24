@@ -99,9 +99,10 @@ class _FakeApi implements ZLibraryApi {
 }
 
 BookIdentifier _id({
+  String bookId = '26610712',
   String hash = 'Ej8q7Dmrv9',
   String? href = '/book/Ej8q7Dmrv9/三体.html',
-}) => BookIdentifier('26610712', hash, title: '三体', href: href);
+}) => BookIdentifier(bookId, hash, title: '三体', href: href);
 
 void main() {
   Directory? hiveDir;
@@ -155,15 +156,23 @@ void main() {
   });
 
   test('详情页正文同样进 7 天缓存：重开零请求', () async {
+    // Own book id: the earlier tests share '26610712' and their
+    // unawaited cache writes can land after setUp's clear, so a
+    // shared key would make this first read hit a stale cache and
+    // never fetch the HTML page (htmlCalls 0, expected 1).
     final api = _FakeApi(
       detail: ApiResponse.fail('无效哈希', statusCode: 400),
       htmlBook: _htmlBook(),
     );
-    final first = await makeContainer(api).read(bookDetailsProvider(_id()).future);
+    final first = await makeContainer(api).read(
+      bookDetailsProvider(_id(bookId: '26610713')).future,
+    );
     expect(first.description, '详情页正文');
     expect(api.htmlCalls, 1);
 
-    final second = await makeContainer(api).read(bookDetailsProvider(_id()).future);
+    final second = await makeContainer(api).read(
+      bookDetailsProvider(_id(bookId: '26610713')).future,
+    );
     expect(second.description, '详情页正文');
     expect(api.detailCalls, 1, reason: 'eapi 也不再打');
     expect(api.htmlCalls, 1, reason: '详情页也不再抓');

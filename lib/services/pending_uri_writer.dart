@@ -46,10 +46,14 @@ import 'media_store.dart';
 /// `_downloadOnce` inside olib_api_plugin — can write through it
 /// without the plugin depending on app code.
 class PendingUriWriter implements PendingDownloadWriter {
-  PendingUriWriter._({required String uri, required String savePath})
-    : _uri = uri,
-      _savePath = savePath,
-      _statePath = statePathFor(savePath) {
+  PendingUriWriter._({
+    required String uri,
+    required String savePath,
+    String? subfolder,
+  }) : _uri = uri,
+       _savePath = savePath,
+       _subfolder = subfolder,
+       _statePath = statePathFor(savePath) {
     _live[_statePath] = this;
   }
 
@@ -80,6 +84,12 @@ class PendingUriWriter implements PendingDownloadWriter {
   String _uri;
   final String _savePath;
   final String _statePath;
+
+  /// M1: the organize-mode subfolder under Download/zlibx (null =
+  /// flat). [reset] recreates the MediaStore entry, so the subfolder
+  /// must survive on the writer — otherwise a reset drops the file
+  /// into the Download/zlibx root instead of the user's folder.
+  final String? _subfolder;
 
   final List<List<int>> _bufferedChunks = <List<int>>[];
   var _buffered = 0;
@@ -143,7 +153,11 @@ class PendingUriWriter implements PendingDownloadWriter {
       subfolder: subfolder,
     );
     if (uri == null) return null;
-    final writer = PendingUriWriter._(uri: uri, savePath: savePath);
+    final writer = PendingUriWriter._(
+      uri: uri,
+      savePath: savePath,
+      subfolder: subfolder,
+    );
     await writer._persistState();
     return writer;
   }
@@ -171,7 +185,12 @@ class PendingUriWriter implements PendingDownloadWriter {
       if (uri is! String || uri.isEmpty || bytes is! int || bytes < 0) {
         return null;
       }
-      final writer = PendingUriWriter._(uri: uri, savePath: savePath);
+      final writer = PendingUriWriter._(
+        uri: uri,
+        savePath: savePath,
+        // M1: old sidecars predate this key — absent means flat.
+        subfolder: decoded['subfolder'] as String?,
+      );
       writer._committed = bytes;
       final actual = await MediaStoreFiles.pendingEntrySize(uri);
       if (actual >= 0 && actual != writer._committed) {
@@ -321,6 +340,7 @@ class PendingUriWriter implements PendingDownloadWriter {
     final fresh = await MediaStoreFiles.createPendingDownload(
       displayName: _displayName,
       mimeType: _mimeType,
+      subfolder: _subfolder,
     );
     if (fresh == null) return false;
     _uri = fresh;
@@ -356,7 +376,13 @@ class PendingUriWriter implements PendingDownloadWriter {
       // This avoids leaving a truncated JSON sidecar if the process is
       // interrupted during serialization or disk I/O.
       await tempFile.writeAsString(
-        jsonEncode(<String, Object>{'uri': _uri, 'bytesWritten': _committed}),
+        jsonEncode(<String, Object?>{
+          'uri': _uri,
+          'bytesWritten': _committed,
+          // M1: keep the subfolder across app restarts so a resumed
+          // download that later hits reset() still lands in it.
+          if (_subfolder != null) 'subfolder': _subfolder,
+        }),
         flush: true,
       );
       try {

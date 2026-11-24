@@ -38,8 +38,27 @@ class ChallengeHtmlCache {
   static int get entryCount => _entries.length;
   static int get totalChars => _totalChars;
 
+  /// Whether [html] is Chromium's built-in network error page
+  /// ("Webpage not available") rather than real content (H1). A dead
+  /// mirror / DNS failure loads this page, and onLoadStop still fires —
+  /// without this check the error page is captured, cached for 10
+  /// minutes, and parsed as an empty result list. The markers are
+  /// Chromium-internal strings that never appear on the sites this
+  /// solver visits (Z-Library / Anna's Archive / LibGen).
+  static bool isBrowserErrorPage(String html) {
+    final h = html.toLowerCase();
+    return h.contains('chrome-error://') ||
+        h.contains('net::err_') ||
+        h.contains('webpage not available');
+  }
+
   static void store(String url, String html) {
-    if (url.isEmpty || html.isEmpty || html.length > maxEntryChars) return;
+    if (url.isEmpty ||
+        html.isEmpty ||
+        html.length > maxEntryChars ||
+        isBrowserErrorPage(html)) {
+      return;
+    }
     _remove(url); // re-inserting moves the key to the "newest" end
     _entries[url] = _CacheEntry(html: html, capturedAt: DateTime.now());
     _totalChars += html.length;

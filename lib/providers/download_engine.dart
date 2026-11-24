@@ -325,6 +325,11 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       }
 
       if (!alreadyExists) {
+        // temporaryPath is assigned above (before the download
+        // section) — hoist it into a non-null local: a closure does
+        // not inherit the outer flow's null promotion, so passing the
+        // nullable variable directly fails analyze.
+        final savePath = temporaryPath!;
         // M4: retry transient failures with exponential backoff. The
         // partial (.part / pending entry) survives each attempt, so a
         // retry resumes instead of restarting. Only connection errors,
@@ -346,7 +351,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
               await _downloadResumable(
                 dio,
                 presetUrl,
-                temporaryPath,
+                savePath,
                 onProgress: onProgress,
                 cancelToken: cancelToken,
                 pendingWriter: pendingWriter,
@@ -360,7 +365,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
               await _api.downloadBook(
                 effectiveBook.id.toString(),
                 effectiveBook.hash ?? '',
-                temporaryPath,
+                savePath,
                 onProgress: onProgress,
                 cancelToken: cancelToken,
                 title: book.title,

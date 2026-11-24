@@ -263,37 +263,4 @@ void main() {
     expect(viaText.author, viaMap.author);
     expect(viaText.filesizeString, viaMap.filesizeString);
   });
-
-  group('hashFromBookHref', () {
-    test('takes the hash out of both book-url shapes', () {
-      // 搜索卡片：`/book/{hash}/{文件名}`。
-      expect(Book.hashFromBookHref('/book/Ej8q7Dmrv9/三体.html'),
-          'Ej8q7Dmrv9');
-      expect(Book.hashFromBookHref('https://zh.z-library.sk/book/Ej8q7Dmrv9/'),
-          'Ej8q7Dmrv9');
-      // 书页自己的规范地址：`/book/{id}/{hash}/`——hash 在第三段。
-      expect(Book.hashFromBookHref('/book/26018814/EwAD8KXkBL/'),
-          'EwAD8KXkBL');
-      expect(
-          Book.hashFromBookHref(
-              'https://bookroom.lifestyle/book/26610712/Ej8q7Dmrv9/x.html'),
-          'Ej8q7Dmrv9');
-    });
-
-    test('never hands the numeric id back as a hash', () {
-      // 这是下载那条腿的入口条件：id 当 hash 送去 eapi 只会换回
-      // `Invalid hash`，把真实失败盖住。宁缺不造。
-      expect(Book.hashFromBookHref('/book/26018814/'), isNull);
-      expect(Book.hashFromBookHref('/book/26018814'), isNull);
-      expect(Book.hashFromBookHref('/book/26018814/'), isNull);
-    });
-
-    test('refuses urls that are not a book page', () {
-      expect(Book.hashFromBookHref(''), isNull);
-      expect(Book.hashFromBookHref(null), isNull);
-      expect(Book.hashFromBookHref('/dl/ABVGVr08wz'), isNull);
-      expect(Book.hashFromBookHref('/author/刘慈欣'), isNull);
-      expect(Book.hashFromBookHref('/book/'), isNull);
-    });
-  });
 }

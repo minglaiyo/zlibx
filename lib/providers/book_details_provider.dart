@@ -184,15 +184,6 @@ final bookDetailsProvider = FutureProvider.autoDispose
         title: identifier.title,
       );
       if (!response.success) {
-        final user = ref.read(authProvider).user;
-        final fallback = await _bookFromDetailPage(
-          api,
-          storage,
-          identifier,
-          userId: user?.id,
-          userKey: user?.remixUserkey,
-        );
-        if (fallback != null) return fallback;
         throw StateError(response.error ?? 'Failed to load book details');
       }
       final book = response.data;
@@ -208,58 +199,6 @@ final bookDetailsProvider = FutureProvider.autoDispose
           ? book
           : book.copyWith(href: routeHref);
     });
-
-/// eapi 取不到书时，从这本书自己的详情页 HTML 读正文。
-///
-/// 触发条件收窄成"eapi 根本没法寻址这本书"——路由带的 hash 不是
-/// eapi 的 6 位 hash。2026-11-24 实测的两条硬事实决定了这个判据：
-///  * 网页侧只有 10 位短 hash（`/book/Ej8q7Dmrv9/…`），eapi 对它回
-///    `400 无效哈希`；换成同长度但错误的 6 位值同样被拒，所以它是
-///    真正的每书密钥，不能猜。
-///  * 能把 id 映射到 6 位 hash 的只有搜索返回，而 `POST
-///    /eapi/book/search` 现在整条路 `400 Access denied`（在凭证之前
-///    就被拒）；`/json/search`、`/json/get-book`、`/api/get-book/`、
-///    `/papi/book/search` 探过一遍：要么返回 HTML 壳，要么 404。站点上
-///    已经没有任何一条网页通道能拿到 eapi hash。
-///  * 站点还按镜像语言本地化错误文案（中文镜像回 `无效哈希`，不是
-///    `Invalid hash`），所以这里不按错误字符串分流，只按 hash 形态。
-///
-/// 6 位 hash 却失败 = 书真没了/会话坏了，HTML 页不会给出相反结论，
-/// 那种错误必须原样抛给用户，不能偷偷换通道。
-///
-/// 求解允许前台：走到这里屏幕上本来就只有"加载失败 + 重试"，弹验证
-/// 页比弹错误强。失败（含求解不成）返回 null，由调用方抛原错误。
-Future<Book?> _bookFromDetailPage(
-  ZLibraryApi api,
-  StorageService storage,
-  BookIdentifier identifier, {
-  String? userId,
-  String? userKey,
-}) async {
-  final href = identifier.href;
-  if (href == null || href.isEmpty) return null;
-  if (identifier.hashId.length == 6) return null;
-  final ApiResponse<Book> result;
-  try {
-    result = await BookDetailPageRepository(api).fetchBook(
-      href: href,
-      userId: userId,
-      userKey: userKey,
-    );
-  } catch (_) {
-    // 兜底自己炸了（网络、解析、注入的 fake）不算新错误：原 eapi 错误
-    // 才是用户该看到的那一条。
-    return null;
-  }
-  final book = result.data;
-  if (!result.success || book == null) return null;
-  // 与 eapi 路径同一份 7 天正文缓存：HTML 正文字段少几项（阅读链接、
-  // 收藏状态这些 eapi 才有的东西），但一本 eapi 永远取不到的书，重复
-  // 打开时省掉几百 KB 的 HTML 下载比补齐那几项更要紧。附加字段仍由
-  // bookDetailExtrasProvider 独立并进来。
-  unawaited(storage.putBookDetailCache(identifier.bookId, book.toJson()));
-  return book;
-}
 
 /// 详情页 HTML 上的附加字段（卷/ISBN/IPFS/评分），按
 /// [bookDetailExtrasKey] 缓存；并进本文见 [applyBookDetailExtras]。

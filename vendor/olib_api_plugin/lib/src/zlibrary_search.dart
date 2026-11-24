@@ -20,138 +20,6 @@ part of 'zlibrary_api.dart';
 mixin ZLibrarySearch on ZLibraryApiBase {
   // ── Search & lists ─────────────────────────────────────────────────
 
-  /// Book search over the site's own HTML results route
-  /// (`/s/{query}`) — the channel [ZLibraryApiBase.search]'s
-  /// `POST /eapi/book/search` falls back to when the eapi search is
-  /// unavailable.
-  ///
-  /// Why a second search channel exists at all: as of 2026-11-23 the
-  /// eapi search route answers `400 Access denied` on every mirror
-  /// tried, before credentials are even checked (a fake-cookie request
-  /// to a live eapi route still answers `Invalid credentials`, so the
-  /// rejection is the route's, not the session's). The HTML route is
-  /// the site's own search and keeps answering; it is what the
-  /// browser shows.
-  ///
-  /// [order] is the site's sort dropdown (`bestmatch`, `date`,
-  /// `year`, `popular`, ...) passed through as-is. Filter parameter
-  /// names are site-verified from the 2026-11-24 capture of the
-  /// `/s/` form: it submits `['q', 'e', 'yearFrom', 'yearTo',
-  /// 'languages[]', 'extensions[]']`, so [languages] / [extensions]
-  /// ride on dio's `ListFormat.multiCompatible` list expansion
-  /// exactly like the category and article routes. [exact] is the
-  /// form's `e` checkbox. [page] is 1-based (`pagerOptions.baseUrl`
-  /// is `/s/{query}?page=%number%`).
-  ///
-  /// There is deliberately no `limit`: the route has no page-size
-  /// parameter — it renders ~51 cards per page (measured 2026-11-24)
-  /// and ignores anything else. A caller that wants N books takes the
-  /// first N of the page it gets.
-  ///
-  /// The books a page yields carry the webpage's 10-char short hash
-  /// and a `/dl/{token}` link, never a 6-char eapi hash, so they must
-  /// not be fed to the eapi detail endpoints (see
-  /// [parseSearchBooksPage]'s field notes).
-  ///
-  /// A stale or wrong page is guarded the way the article search
-  /// guards: the results form re-renders the submitted query in its
-  /// `q` input and a mismatch fails the call instead of painting the
-  /// wrong list. A browser-check wall is reported as
-  /// `'HTTP $status: browser check page'` so the caller can hand the
-  /// URL to the WebView solver (the app's `SearchHtmlRepository`).
-  Future<ApiResponse<BookSearchPage>> searchBooksHtml({
-    required String query,
-    String? order,
-    int page = 1,
-    List<String>? languages,
-    List<String>? extensions,
-    int? yearFrom,
-    int? yearTo,
-    bool exact = false,
-    CancelToken? cancelToken,
-  }) async {
-    final trimmed = query.trim();
-    if (trimmed.isEmpty) {
-      return ApiResponse.fail('book search: empty query');
-    }
-    // `_getWithRedirects`, not `_get`: `/s/` may hop (a slugged or
-    // normalised search URL) and a non-following `_get` would answer
-    // the 30x itself and fail the search.
-    final raw = await _getWithRedirects(
-      '/s/${Uri.encodeComponent(trimmed)}',
-      queryParameters: {
-        if (order != null) 'order': order,
-        if (exact) 'e': '1',
-        if (yearFrom != null) 'yearFrom': yearFrom,
-        if (yearTo != null) 'yearTo': yearTo,
-        if (languages != null && languages.isNotEmpty) 'languages': languages,
-        if (extensions != null && extensions.isNotEmpty)
-          'extensions': extensions,
-        'page': page,
-      },
-      extraHeaders: const {'Accept': 'text/html'},
-      cancelToken: cancelToken,
-    );
-    final status = raw.status;
-    final html = raw.body;
-    if (status == null || status < 200 || status >= 300) {
-      return ApiResponse.fail(
-        raw.error ?? 'book search failed',
-        statusCode: status,
-      );
-    }
-    if (html == null || html.isEmpty) {
-      return ApiResponse.fail(raw.error ?? 'book search failed',
-          statusCode: status);
-    }
-    if (ZLibraryApiBase._looksLikeChallengePage(html)) {
-      return ApiResponse.fail(
-        'HTTP $status: browser check page',
-        statusCode: status,
-      );
-    }
-    final echoedQuery = extractSearchBooksQuery(html);
-    if (echoedQuery == null || echoedQuery != trimmed) {
-      return ApiResponse.fail('book search answered a different query',
-          statusCode: status);
-    }
-    // Parse off the main isolate: a results page is ~190 KB of HTML
-    // (measured 2026-11-24) and the parse is pure work on a string.
-    final pageResult = await Isolate.run(
-      () => parseSearchBooksPage(html, baseUrl: _base),
-    );
-    return ApiResponse.ok(pageResult);
-  }
-
-  /// The full URL of one book results page — the string the app's
-  /// screens hand to the WebView solver, the same role the article
-  /// route's `articlePageUrl` plays there. The filters mirror
-  /// [searchBooksHtml].
-  String searchBooksHtmlPageUrl({
-    required String query,
-    String? order,
-    int page = 1,
-    List<String>? languages,
-    List<String>? extensions,
-    int? yearFrom,
-    int? yearTo,
-    bool exact = false,
-  }) {
-    final trimmed = query.trim();
-    final parts = <String>[
-      if (order != null) 'order=${Uri.encodeComponent(order)}',
-      if (exact) 'e=1',
-      if (yearFrom != null) 'yearFrom=$yearFrom',
-      if (yearTo != null) 'yearTo=$yearTo',
-      for (final language in languages ?? const <String>[])
-        'languages[]=${Uri.encodeComponent(language)}',
-      for (final extension in extensions ?? const <String>[])
-        'extensions[]=${Uri.encodeComponent(extension)}',
-      'page=$page',
-    ];
-    return '$_base/s/${Uri.encodeComponent(trimmed)}?${parts.join('&')}';
-  }
-
   /// Full detail for one book. [hashId] is the eapi hash from a search
   /// response; a webpage short hash (from booklist/profile HTML, or a
   /// shared-book link) is rejected with "Invalid hash".
@@ -253,66 +121,23 @@ mixin ZLibrarySearch on ZLibraryApiBase {
   Future<ApiResponse<BookDetailExtras>> fetchBookDetailExtras(
     String href,
   ) async {
-    final page = await _fetchBookDetailPageHtml(href);
-    if (!page.success) {
-      return ApiResponse.fail(
-        page.error ?? 'book detail page failed',
-        statusCode: page.statusCode,
-      );
-    }
-    final html = page.data!;
-    // Phase 3: the host-injected Rust hook parses when present; the
-    // Dart implementation stays as the fallback.
-    final metadata = bookDetailParseOverride != null
-        ? await bookDetailParseOverride!(html)
-        : parseBookDetailProperties(html);
-    // 关键词独立提取：Rust 钩子只负责 metadata 行，/terms/ 链接是
-    // Dart-only 的一遍查询（site-verified 2026-11-19）。
-    final keywords = parseBookDetailKeywords(html);
-    // 关联书单同理：`z-booklist` 卡片是服务端渲染进同一文档的
-    // （site-verified 2026-11-12），一次抓取顺带解析，无需额外请求。
-    final relatedBooklists = parseRelatedBooklists(html, baseUrl: _base);
-    // 非书页守卫（审查 v2 P2-11）：solver 腿先验 bookDetailsBox 才算
-    // 书页，这条腿对 200 页不验——soft-404/重定向落到的非书 200 页会
-    // 解析成全空 extras，被当成功回写、`booklists` 键在场即视为新鲜，
-    // 空结果钉 7 天（关联书单页显示"没有书单"而非"失败重试"）。三样
-    // 全空 = 不是书页。
-    if (metadata.isEmpty && keywords.isEmpty && relatedBooklists.isEmpty) {
-      return ApiResponse.fail('book detail page failed: not a book page');
-    }
-    return ApiResponse.ok(
-      BookDetailExtras(
-        metadata: metadata,
-        keywords: keywords,
-        relatedBooklists: relatedBooklists,
-      ),
-    );
-  }
-
-  /// One Dio fetch of a book's detail page, with the wall verdicts:
-  /// the shared front half of every detail-page read
-  /// ([fetchBookDetailExtras], [getBookInfoFromHtmlPage],
-  /// [getSimilarBooksFromHtmlPage]) so all three agree on what a wall,
-  /// a redirect and a dead page look like.
-  ///
-  /// `_getWithRedirects`, not `_get`: the detail page may hop (e.g. a
-  /// canonical-URL redirect), and a non-redirect-following `_get` would
-  /// answer the 30x itself and drop the rating. Same helper the article
-  /// search and category pages use; it follows up to 5 hops, harvests
-  /// the wall cookies a hop re-issues, and returns an error _Raw
-  /// instead of throwing.
-  ///
-  /// 300s receive timeout, not the Dio default (60s): a detail page is
-  /// a large HTML document (hundreds of KB), and on a slow link
-  /// (~10 kB/s) it does not finish inside 60s — the fetch then fails
-  /// silently and the rating vanishes while the small eapi book loads
-  /// fine (device-verified 2026-11-12). Same 300s the downloads use for
-  /// the same reason.
-  Future<ApiResponse<String>> _fetchBookDetailPageHtml(String href) async {
     final path = Uri.tryParse(href)?.path ?? '';
     if (!path.startsWith('/book/')) {
       return ApiResponse.fail('book detail page failed: bad href');
     }
+    // `_getWithRedirects`, not `_get`: the detail page may hop (e.g.
+    // a canonical-URL redirect), and a non-redirect-following `_get`
+    // would answer the 30x itself and drop the rating. Same helper
+    // the article search and category pages use; it follows up to 5
+    // hops, harvests the wall cookies a hop re-issues, and returns an
+    // error _Raw instead of throwing.
+    //
+    // 300s receive timeout, not the Dio default (60s): a detail page
+    // is a large HTML document (hundreds of KB), and on a slow link
+    // (~10 kB/s) it does not finish inside 60s — the fetch then fails
+    // silently and the rating vanishes while the small eapi book
+    // loads fine (device-verified 2026-11-12).
+    // Same 300s the downloads use for the same reason.
     final raw = await _getWithRedirects(
       path,
       extraHeaders: const {'Accept': 'text/html'},
@@ -345,72 +170,35 @@ mixin ZLibrarySearch on ZLibraryApiBase {
         statusCode: status,
       );
     }
-    return ApiResponse.ok(html);
-  }
-
-  /// The book itself, read off its own detail page — the fallback for
-  /// [getBookInfo] when the caller's hash is a webpage short hash.
-  ///
-  /// Why the page has to be able to describe the book at all: eapi
-  /// wants its own 6-character hash and HTML only ever carries the
-  /// 10-character short one (site-verified 2026-11-24 — and this time
-  /// against a KNOWN pair: book 24126585's eapi hash `217fd6` appears
-  /// nowhere in that book's `/s/` result card or detail page, and a
-  /// same-length-but-wrong hash is rejected exactly like a short one,
-  /// so the value is a real per-book secret, not a format check).
-  /// `/json/search`, `/json/get-book`, `/api/get-book/` and
-  /// `/papi/book/search` were probed the same day and every one of
-  /// them answers HTML or `Requested page not found` — no route left
-  /// on the webpage maps an id to an eapi hash. A book that reached
-  /// the app through HTML therefore has no eapi detail call, and this
-  /// is the channel that fills the screen.
-  ///
-  /// Wall contract identical to [fetchBookDetailExtras]: a challenge
-  /// answer fails as `'HTTP $status: browser check page'` so the app's
-  /// repository can escalate to the WebView solver.
-  Future<ApiResponse<Book>> getBookInfoFromHtmlPage(String href) async {
-    final page = await _fetchBookDetailPageHtml(href);
-    if (!page.success) {
+    // Phase 3: the host-injected Rust hook parses when present; the
+    // Dart implementation stays as the fallback.
+    final metadata = bookDetailParseOverride != null
+        ? await bookDetailParseOverride!(html)
+        : parseBookDetailProperties(html);
+    // 关键词独立提取：Rust 钩子只负责 metadata 行，/terms/ 链接是
+    // Dart-only 的一遍查询（site-verified 2026-11-19）。
+    final keywords = parseBookDetailKeywords(html);
+    // 关联书单同理：`z-booklist` 卡片是服务端渲染进同一文档的
+    // （site-verified 2026-11-12），一次抓取顺带解析，无需额外请求。
+    final relatedBooklists = parseRelatedBooklists(html, baseUrl: _base);
+    // 非书页守卫（审查 v2 P2-11）：solver 腿先验 bookDetailsBox 才算
+    // 书页，这条腿对 200 页不验——soft-404/重定向落到的非书 200 页会
+    // 解析成全空 extras，被当成功回写、`booklists` 键在场即视为新鲜，
+    // 空结果钉 7 天（关联书单页显示"没有书单"而非"失败重试"）。三样
+    // 全空 = 不是书页。
+    if (metadata.isEmpty && keywords.isEmpty && relatedBooklists.isEmpty) {
       return ApiResponse.fail(
-        page.error ?? 'book detail page failed',
-        statusCode: page.statusCode,
+        'book detail page failed: not a book page (HTTP $status)',
+        statusCode: status,
       );
     }
-    final html = page.data!;
-    final baseUrl = _base;
-    final book = await Isolate.run(
-      () => parseBookDetailPage(html, baseUrl: baseUrl, href: href),
+    return ApiResponse.ok(
+      BookDetailExtras(
+        metadata: metadata,
+        keywords: keywords,
+        relatedBooklists: relatedBooklists,
+      ),
     );
-    if (book == null) {
-      return ApiResponse.fail('book detail page failed: not a book page');
-    }
-    return ApiResponse.ok(book);
-  }
-
-  /// The detail page's own 相似书籍 block — the fallback for [similar]
-  /// under the same hash condition as [getBookInfoFromHtmlPage].
-  ///
-  /// An empty list is a legitimate answer here (a book the site has no
-  /// recommendations for renders no `books-mosaic`), so unlike the
-  /// detail-body path this must not turn "no rows" into a failure: the
-  /// caller distinguishes fetch failure from an empty shelf by
-  /// [ApiResponse.success].
-  Future<ApiResponse<List<Book>>> getSimilarBooksFromHtmlPage(
-    String href,
-  ) async {
-    final page = await _fetchBookDetailPageHtml(href);
-    if (!page.success) {
-      return ApiResponse.fail(
-        page.error ?? 'book detail page failed',
-        statusCode: page.statusCode,
-      );
-    }
-    final html = page.data!;
-    final baseUrl = _base;
-    final books = await Isolate.run(
-      () => parseBookDetailRecommendations(html, baseUrl: baseUrl),
-    );
-    return ApiResponse.ok(books);
   }
 
   /// Resolve the real eapi hash for a book whose stored hash is a

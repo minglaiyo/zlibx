@@ -388,7 +388,7 @@ jobs:
             echo "::error::apkanalyzer not found"
             exit 1
           fi
-          "$apkanalyzer_bin" dex packages --defined-only "zlibx-v$v.apk" | grep -E "com\.open_library\.app\.(MainActivity|DownloadForegroundService)"
+          "$apkanalyzer_bin" dex packages --defined-only "zlibx-v$v.apk" | grep -E "com\.minglaiyo\.zlibx\.(MainActivity|DownloadForegroundService)"
 
       - name: Cleanup signing material (defence in depth)
         if: always()

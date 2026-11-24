@@ -119,13 +119,9 @@ void main() {
     await hiveDir?.delete(recursive: true);
   });
 
-  // Await the clears: an unawaited Box.clear() can still be in flight
-  // when tearDownAll closes Hive, and its change notification then fires
-  // on the closed box ("Bad state: Cannot add new events after calling
-  // close", reported as "failed after test completion").
-  setUp(() async {
-    await HiveService.settingsBox.clear();
-    await HiveService.libraryBox.clear();
+  setUp(() {
+    HiveService.settingsBox.clear();
+    HiveService.libraryBox.clear();
   });
 
   ProviderContainer makeContainer(ZLibraryApi api) {

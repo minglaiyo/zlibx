@@ -3,10 +3,8 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
-import '../services/booklist_solver.dart';
 import '../services/hive_service.dart';
 import '../services/storage_service.dart';
-import '../services/wall_cookie_bridge.dart';
 import 'auth_provider.dart';
 
 
@@ -74,31 +72,5 @@ final zlibraryApiProvider = Provider<ZLibraryApi>((ref) {
   // (AuthNotifier reads this one while building).
   api.onSessionRejected = () =>
       ref.read(authProvider.notifier).handleSessionRejected();
-  // `/dl/{token}` 站在浏览器校验后面（2026-11-24 真机第二份探针报告：
-  // 三种请求头策略都在同一跳拿到 503 + HTML，一次重定向都没发生）。
-  // 插件只会用 Dio、开不了 WebView，所以过墙这条腿由这里接上：短 hash
-  // 那本书的下载撞到墙时，插件求解一次、回灌墙 cookie、再发同一发请求。
-  // 会话延迟读，理由同上面 onSessionRejected（authProvider 建的时候
-  // 会读这个 provider，反向早读就成了环）。
-  api.wallCookieRefresh = (url) => solveWallForDownloadLink(
-    api,
-    url,
-    userId: ref.read(authProvider).user?.id,
-    userKey: ref.read(authProvider).user?.remixUserkey,
-  );
-  // 书页那条腿要的是**那一页的 HTML**，不是过墙 cookie：书单和详情页在
-  // 真机上就是走这条通道读到的（BooklistSolver），它把会话装进 WebView、
-  // 过一次校验、把渲染完的 HTML 交回来。下载用它，插件只从 HTML 里取
-  // `a.dlButton` 那个 `/dl/{token}`——不再要求墙 cookie 的名字恰好落在
-  // [wallCookieNames] 里。
-  api.wallHtmlFetcher = (url) async {
-    final user = ref.read(authProvider).user;
-    return BooklistSolver.fetchHtml(
-      api,
-      url,
-      userId: user?.id,
-      userKey: user?.remixUserkey,
-    );
-  };
   return api;
 });

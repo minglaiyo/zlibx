@@ -332,16 +332,6 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
             },
             cancelToken: cancelToken,
             title: book.title,
-            // HTML 卡片自带的 `/dl/{token}`：插件只在 hash 路线确实
-            // 被拒（无效哈希）之后才用它，正常书永远走 eapi。短 hash
-            // 书（搜索 HTML 兜底、书单、分享链接来的那些）没有可解析
-            // 的 eapi hash，这条链接是它们唯一的下载地址。
-            htmlDownloadLink: effectiveBook.downloadPath,
-            // 卡片自己的书页地址：站里每本书的 URL 就是
-            // `/book/{hash}/{标题}.html`（2026-11-24 那份真页面 241 个
-            // `/book/` 链接全是这一形状），插件拿它当第一候选，比按 id+hash
-            // 现造的形状可靠得多。
-            bookPageHref: effectiveBook.href,
             pendingWriter: pendingWriter,
           );
         } on DownloadLimitReachedException {

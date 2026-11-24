@@ -19,7 +19,7 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
-    namespace = "com.open_library.app"
+    namespace = "com.minglaiyo.zlibx"
     compileSdk = 37
     ndkVersion = "28.2.13676358"
 
@@ -29,7 +29,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.open_library.app"
+        applicationId = "com.minglaiyo.zlibx"
         minSdk = 29
         // Target Android 17 (API 37) explicitly: Flutter 3.44's
         // flutter.targetSdkVersion is still 36. compileSdk is already 37.

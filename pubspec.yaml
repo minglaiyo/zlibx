@@ -84,6 +84,12 @@ dependencies:
   flutter_secure_storage: ^11.2.0
 
   path_provider: ^2.1.4
+  # Direct dependency: lib/services/txt_to_epub.dart and
+  # lib/services/web_service.dart import package:path, and tests use it too
+  # (pending_uri_writer_test joins temp paths). Already resolved transitively
+  # at 1.9.1; declared directly so the analyzer's
+  # depend_on_referenced_packages check passes.
+  path: ^1.9.1
   open_filex: ^4.4.0
   share_plus: ^13.1.0
   url_launcher: ^6.2.5
@@ -125,11 +131,6 @@ dev_dependencies:
 
   # App Icon Generator
   flutter_launcher_icons: ^0.14.2
-
-  # Tests use package:path (pending_uri_writer_test joins temp paths).
-  # Already resolved transitively at 1.9.1; declared directly so the
-  # analyzer's depend_on_referenced_packages check passes.
-  path: ^1.9.1
 
 # App Icon Configuration
 flutter_launcher_icons:

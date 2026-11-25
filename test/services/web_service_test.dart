@@ -9,23 +9,23 @@ import 'package:zlibx/providers/download_task.dart';
 import 'package:zlibx/services/txt_to_epub.dart';
 import 'package:zlibx/services/web_service.dart';
 
-class _Reply {
+class Reply {
   final int status;
   final String body;
   final List<int> bytes;
   final HttpHeaders headers;
-  _Reply(this.status, this.bytes, this.headers)
+  Reply(this.status, this.bytes, this.headers)
     : body = utf8.decode(bytes, allowMalformed: true);
 }
 
-Future<_Reply> get(int port, String path, {Map<String, String>? headers}) async {
+Future<Reply> get(int port, String path, {Map<String, String>? headers}) async {
   final client = HttpClient();
   try {
     final req = await client.getUrl(Uri.parse('http://127.0.0.1:$port$path'));
     headers?.forEach(req.headers.set);
     final res = await req.close();
     final bytes = await res.fold<List<int>>(<int>[], (a, b) => a..addAll(b));
-    return _Reply(res.statusCode, bytes, res.headers);
+    return Reply(res.statusCode, bytes, res.headers);
   } finally {
     client.close(force: true);
   }

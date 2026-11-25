@@ -296,8 +296,11 @@ Uint8List buildEpub({
 
   void add(String name, String content, {bool compress = true}) {
     final data = utf8.encode(content);
-    final file = ArchiveFile(name, data.length, data);
-    file.compress = compress;
+    // archive 4.x has no ArchiveFile.compress setter; noCompress keeps the
+    // entry stored. The mimetype entry must stay uncompressed (EPUB spec).
+    final file = compress
+        ? ArchiveFile(name, data.length, data)
+        : ArchiveFile.noCompress(name, data.length, data);
     archive.addFile(file);
   }
 

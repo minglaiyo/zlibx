@@ -573,7 +573,8 @@ class WebService extends ChangeNotifier {
     }
     if (downloadName != null) {
       response.headers.set(
-        HttpHeaders.contentDispositionHeader,
+        // dart:io has no HttpHeaders.contentDispositionHeader constant.
+        'content-disposition',
         _contentDisposition(downloadName),
       );
     }

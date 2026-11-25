@@ -238,6 +238,12 @@ class DownloadNotifier extends _DownloadNotifierBase
         .then((_) => _backfillMissingCovers());
     return [];
   }
+
+  /// The current download tasks, for callers that hold the notifier
+  /// directly (the web service's callbacks may run after the page's
+  /// ref is dead, so they cannot use ref.read). Read-only view of
+  /// [state].
+  List<DownloadTask> get tasks => state;
 }
 
 final downloadProvider = NotifierProvider<DownloadNotifier, List<DownloadTask>>(

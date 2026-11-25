@@ -190,7 +190,7 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
   ) async {
     final book = bookById[bookId];
     if (book == null) return WebDownloadRequest.notFound;
-    final tasks = notifier.state;
+    final tasks = notifier.tasks;
     for (final task in tasks) {
       if (task.book.id != bookId) continue;
       if (task.status == DownloadStatus.completed && !task.missingFile) {
@@ -216,8 +216,7 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
   /// repository's own calls: page 1 is the server-rendered detail
   /// document, page 2+ is the JSON endpoint. Any failure returns
   /// null and the service falls back to the snapshot's preview
-  /// books. [hasMore] is the JSON totalPages when the server gives
-  /// it, else "a full page probably has a next one".
+  /// books. [hasMore] is `page < totalPages`.
   Future<WebBooklistPage?> _fetchBooklistPage(
     BooklistRepository repository,
     Map<String, Booklist> booklistById,
@@ -242,9 +241,7 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
       final totalPages = data.totalPages;
       return WebBooklistPage(
         books: data.books,
-        hasMore: totalPages == null
-            ? data.books.length >= 20
-            : page < totalPages,
+        hasMore: page < totalPages,
       );
     } catch (error) {
       logIgnored('web_service_screen', error);

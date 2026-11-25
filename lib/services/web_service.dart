@@ -876,7 +876,7 @@ class WebService extends ChangeNotifier {
     );
   }
 
-  /// The detail page (item 5): /detail/<bookId>. A downloaded book
+  /// The detail page (item 5): `/detail/<bookId>`. A downloaded book
   /// is found in the files first; otherwise the library, then the
   /// booklist previews. Unknown ids are a 404.
   WebResponse _detailRoute(List<String> s) {
@@ -904,7 +904,7 @@ class WebService extends ChangeNotifier {
   }
 
   /// Zip download (item 2): /zip/all packs every downloaded book;
-  /// /zip/booklist/<id> packs that booklist's preview books that are
+  /// `/zip/booklist/<id>` packs that booklist's preview books that are
   /// on this phone. The zip is built in memory (archive's encoder
   /// is an in-memory operation) and returned as an attachment.
   Future<WebResponse> _zipRoute(List<String> s) async {
@@ -959,9 +959,6 @@ class WebService extends ChangeNotifier {
       );
     }
     final encoded = ZipEncoder().encode(archive);
-    if (encoded == null) {
-      return _plain(HttpStatus.internalServerError, 'Zip failed');
-    }
     final body = Uint8List.fromList(encoded);
     return WebResponse(
       status: HttpStatus.ok,
@@ -986,7 +983,7 @@ class WebService extends ChangeNotifier {
     return suffix == null ? '$stem$ext' : '$stem ($suffix)$ext';
   }
 
-  /// Web-triggered download (item 3): /request-download/<bookId>.
+  /// Web-triggered download (item 3): `/request-download/<bookId>`.
   /// Hands the book to the screen's downloader and answers with a
   /// confirmation page. The snapshot is frozen at start, so a book
   /// downloaded this way only shows up after the service restarts —

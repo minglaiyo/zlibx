@@ -52,6 +52,40 @@ import 'web_reader_page.dart';
 /// The fixed port. See the lifecycle notes above.
 const int kWebServicePort = 8080;
 
+/// Which page shell a list page (/ and /search) is served with.
+enum WebLayout {
+  /// Legado-style: left sidebar + right content area.
+  pc,
+
+  /// Single column: top bar + stacked card rows.
+  mobile,
+}
+
+/// Pick the shell for a request: `?layout=pc|mobile` forces one
+/// (handy for testing both shells from one device; any other value
+/// falls back to the User-Agent), otherwise a mobile User-Agent
+/// (Mobile / Android / iPhone / iPad / iPod / Windows Phone,
+/// case-insensitive) means mobile, anything else PC.
+WebLayout detectWebLayout({
+  required Map<String, String> query,
+  required Map<String, String> headers,
+}) {
+  final forced = (query['layout'] ?? '').toLowerCase();
+  if (forced == 'pc') return WebLayout.pc;
+  if (forced == 'mobile') return WebLayout.mobile;
+  final ua = (headers['user-agent'] ?? '').toLowerCase();
+  const mobileTokens = <String>[
+    'mobile',
+    'android',
+    'iphone',
+    'ipad',
+    'ipod',
+    'windows phone',
+  ];
+  if (mobileTokens.any(ua.contains)) return WebLayout.mobile;
+  return WebLayout.pc;
+}
+
 /// Format a byte count as "12.3 MB" (one decimal; B/KB/MB/GB).
 String formatFileSize(int bytes) {
   if (bytes < 1024) return '$bytes B';
@@ -76,7 +110,7 @@ String truncateDescription(String s, {int maxRunes = 120}) {
 
 /// One downloaded file that can be served.
 class WebFile {
-  /// The Z-Library book id (used by /detail and the zip routes).
+  /// The Z-Library book id (used by the zip routes).
   final int bookId;
   final String title;
   final String author;
@@ -92,12 +126,6 @@ class WebFile {
   /// The book's synopsis, if Z-Library has one.
   final String? description;
 
-  /// Detail-page metadata, when the book carries it.
-  final String? publisher;
-  final int? year;
-  final int? pages;
-  final String? language;
-
   /// Stored location: a plain path or a MediaStore content:// URI.
   final String location;
 
@@ -109,10 +137,6 @@ class WebFile {
     this.coverUrl,
     this.sizeLabel,
     this.description,
-    this.publisher,
-    this.year,
-    this.pages,
-    this.language,
     required this.location,
   });
 }
@@ -121,7 +145,7 @@ class WebFile {
 /// [WebSnapshot.files] when the book is on this phone, else null (the
 /// row is information only).
 class WebEntry {
-  /// The Z-Library book id, when known (used by /detail and the
+  /// The Z-Library book id, when known (used by the
   /// web-triggered download). Null only for rows built without a Book.
   final int? bookId;
   final String title;
@@ -138,12 +162,6 @@ class WebEntry {
   /// The book's synopsis, if Z-Library has one.
   final String? description;
 
-  /// Detail-page metadata, when the book carries it.
-  final String? publisher;
-  final int? year;
-  final int? pages;
-  final String? language;
-
   /// True when a download task exists for this book but has not
   /// finished (downloading / queued / paused): the web page shows
   /// "downloading" instead of offering to start another one.
@@ -158,31 +176,7 @@ class WebEntry {
     this.fileIndex,
     this.sizeLabel,
     this.description,
-    this.publisher,
-    this.year,
-    this.pages,
-    this.language,
     this.downloadPending = false,
-  });
-}
-
-class WebBooklist {
-  final String id;
-  final String name;
-
-  /// The booklist's full page on the Z-Library mirror.
-  final String url;
-  final int? count;
-
-  /// Preview books only (what the booklist's card carried).
-  final List<WebEntry> books;
-
-  const WebBooklist({
-    required this.id,
-    required this.name,
-    required this.url,
-    required this.count,
-    required this.books,
   });
 }
 
@@ -190,7 +184,6 @@ class WebBooklist {
 class WebSnapshot {
   final List<WebFile> files;
   final List<WebEntry> library;
-  final List<WebBooklist> booklists;
 
   /// Book ids with a download task that has not finished
   /// (downloading / queued / paused). The web page shows
@@ -200,14 +193,12 @@ class WebSnapshot {
   const WebSnapshot({
     this.files = const <WebFile>[],
     this.library = const <WebEntry>[],
-    this.booklists = const <WebBooklist>[],
     this.pendingBookIds = const <int>{},
   });
 
-  /// The three counts shown in settings.
+  /// The two counts shown in settings.
   int get downloadedCount => files.length;
   int get libraryCount => library.length;
-  int get booklistCount => booklists.length;
 
   /// The index of a downloaded file by its book id, or null.
   int? fileIndexForBookId(int bookId) {
@@ -223,11 +214,9 @@ class WebSnapshot {
   ///   still exists are served.
   /// * [saved]: the shelf (收藏). A saved book that is also downloaded
   ///   gets the download link.
-  /// * [booklists]: the user's booklists, with their preview books.
   factory WebSnapshot.build({
     required List<DownloadTask> tasks,
     required List<Book> saved,
-    required List<Booklist> booklists,
   }) {
     final files = <WebFile>[];
     final indexById = <String, int>{};
@@ -258,10 +247,6 @@ class WebSnapshot {
           coverUrl: task.book.cover,
           sizeLabel: _sizeLabelFor(task),
           description: task.book.description,
-          publisher: task.book.publisher,
-          year: task.book.year,
-          pages: task.book.pages,
-          language: task.book.language,
           location: location,
         ),
       );
@@ -280,10 +265,6 @@ class WebSnapshot {
         fileIndex: index,
         sizeLabel: index != null ? files[index].sizeLabel : null,
         description: book.description,
-        publisher: book.publisher,
-        year: book.year,
-        pages: book.pages,
-        language: book.language,
         downloadPending:
             index == null && pendingBookIds.contains(book.id),
       );
@@ -292,16 +273,6 @@ class WebSnapshot {
     return WebSnapshot(
       files: files,
       library: [for (final book in saved) entryFor(book)],
-      booklists: [
-        for (final list in booklists)
-          WebBooklist(
-            id: list.id,
-            name: list.name,
-            url: list.url,
-            count: list.count,
-            books: [for (final book in list.previewBooks) entryFor(book)],
-          ),
-      ],
       pendingBookIds: pendingBookIds,
     );
   }
@@ -330,14 +301,11 @@ class WebPageStrings {
   final String homeTitle;
   final String downloadedSection;
   final String librarySection;
-  final String booklistSection;
   final String download;
   final String read;
   final String notDownloaded;
   final String empty;
   final String backHome;
-  final String officialLink;
-  final String previewNote;
   final String notFound;
   final String convertFailed;
 
@@ -345,14 +313,11 @@ class WebPageStrings {
     required this.homeTitle,
     required this.downloadedSection,
     required this.librarySection,
-    required this.booklistSection,
     required this.download,
     required this.read,
     required this.notDownloaded,
     required this.empty,
     required this.backHome,
-    required this.officialLink,
-    required this.previewNote,
     required this.notFound,
     required this.convertFailed,
   });
@@ -362,14 +327,11 @@ class WebPageStrings {
     homeTitle: 'zlibx books',
     downloadedSection: 'Downloaded books',
     librarySection: 'Library',
-    booklistSection: 'Booklists',
     download: 'Download',
     read: 'Read',
     notDownloaded: 'not downloaded',
     empty: 'Nothing here',
     backHome: 'Back to home',
-    officialLink: 'Full list on Z-Library',
-    previewNote: 'Preview books only',
     notFound: 'Not found',
     convertFailed: 'This text file could not be converted for reading.',
   );
@@ -454,21 +416,6 @@ enum WebDownloadRequest {
 typedef RequestDownloadHandler =
     Future<WebDownloadRequest> Function(int bookId);
 
-/// One fetched booklist page (item 6): the books and whether a next
-/// page exists.
-class WebBooklistPage {
-  final List<Book> books;
-  final bool hasMore;
-  const WebBooklistPage({required this.books, required this.hasMore});
-}
-
-/// Fetch one page of a booklist from Z-Library (20 books per page,
-/// like the site). Returns null when the page could not be fetched
-/// (offline / 503 / challenge wall) — the service then falls back
-/// to the snapshot's preview books.
-typedef BooklistPageFetcher =
-    Future<WebBooklistPage?> Function(String booklistId, int page);
-
 class WebService extends ChangeNotifier {
   /// The one instance shared by the settings page and the server.
   static final WebService shared = WebService();
@@ -495,11 +442,9 @@ class WebService extends ChangeNotifier {
   WebSnapshot _snapshot = const WebSnapshot();
   WebPageStrings _strings = WebPageStrings.english;
 
-  /// Set by [start]: the screen's download trigger (item 3) and
-  /// booklist page fetcher (item 6). Null when the caller did not
-  /// provide them — those routes then degrade to the snapshot.
+  /// Set by [start]: the screen's download trigger (item 3). Null
+  /// when the caller did not provide it — that route then degrades.
   RequestDownloadHandler? _onRequestDownload;
-  BooklistPageFetcher? _onFetchBooklistPage;
 
   bool get isRunning => _server != null;
 
@@ -514,15 +459,13 @@ class WebService extends ChangeNotifier {
   ///
   /// Binds one 0.0.0.0 socket on [preferredPort]; when that port is
   /// taken, a system-chosen port is used instead, and [port] is always
-  /// the one actually in use. [onRequestDownload] and
-  /// [onFetchBooklistPage] are the screen's callbacks for the
-  /// web-triggered download and the on-demand booklist pages.
+  /// the one actually in use. [onRequestDownload] is the screen's
+  /// callback for the web-triggered download.
   Future<int> start({
     required WebSnapshot snapshot,
     WebPageStrings strings = WebPageStrings.english,
     int preferredPort = kWebServicePort,
     RequestDownloadHandler? onRequestDownload,
-    BooklistPageFetcher? onFetchBooklistPage,
   }) async {
     final running = _server;
     if (running != null) return running.port;
@@ -539,7 +482,6 @@ class WebService extends ChangeNotifier {
     _snapshot = snapshot;
     _strings = strings;
     _onRequestDownload = onRequestDownload;
-    _onFetchBooklistPage = onFetchBooklistPage;
     HttpServer server;
     try {
       server = await HttpServer.bind(
@@ -673,14 +615,13 @@ class WebService extends ChangeNotifier {
           .split('/')
           .where((s) => s.isNotEmpty)
           .toList(growable: false);
+      // List pages (/ and /search) get a PC or mobile shell: the
+      // layout is forced by ?layout=, else the User-Agent decides.
+      final layout = detectWebLayout(query: query, headers: lowerHeaders);
       if (segments.isEmpty) {
-        return _html(HttpStatus.ok, _homePage());
+        return _html(HttpStatus.ok, _homePage(layout));
       }
       switch (segments.first) {
-        case 'booklist':
-          return _booklistRoute(segments, query);
-        case 'detail':
-          return _detailRoute(segments);
         case 'zip':
           return _zipRoute(segments);
         case 'request-download':
@@ -697,7 +638,7 @@ class WebService extends ChangeNotifier {
         case 'reader-assets':
           return _assetRoute(segments);
         case 'search':
-          return _searchRoute(query);
+          return _searchRoute(query, layout);
         default:
           return _notFound();
       }
@@ -722,101 +663,6 @@ class WebService extends ChangeNotifier {
   WebResponse _notFound() =>
       _html(HttpStatus.notFound, _messagePage(_strings.notFound));
 
-  /// One booklist page, loaded on demand (item 6): page N is fetched
-  /// live from Z-Library (20 books per page, like the site) through
-  /// the screen's fetcher; `?page=N` moves between pages. When the
-  /// fetch fails (offline / 503 / challenge wall) or no fetcher was
-  /// provided, the snapshot's preview books are shown instead, with
-  /// a notice that the live load failed.
-  Future<WebResponse> _booklistRoute(
-    List<String> s,
-    Map<String, String> query,
-  ) async {
-    if (s.length != 2) return _notFound();
-    WebBooklist? found;
-    for (final list in _snapshot.booklists) {
-      if (list.id == s[1]) {
-        found = list;
-        break;
-      }
-    }
-    if (found == null) return _notFound();
-    final list = found;
-    final page = int.tryParse(query['page'] ?? '1') ?? 1;
-    final safePage = page < 1 ? 1 : page;
-    final fetcher = _onFetchBooklistPage;
-    if (fetcher != null) {
-      WebBooklistPage? fetched;
-      try {
-        fetched = await fetcher(list.id, safePage);
-      } catch (error) {
-        logIgnored('web_service', error);
-        fetched = null;
-      }
-      if (fetched != null) {
-        final entries = [
-          for (final book in fetched.books) _entryForFetchedBook(book),
-        ];
-        return _html(
-          HttpStatus.ok,
-          _booklistPage(
-            list,
-            entries,
-            page: safePage,
-            hasMore: fetched.hasMore,
-            loadFailed: false,
-            isPreview: false,
-          ),
-        );
-      }
-      return _html(
-        HttpStatus.ok,
-        _booklistPage(
-          list,
-          list.books,
-          page: safePage,
-          hasMore: false,
-          loadFailed: true,
-        ),
-      );
-    }
-    return _html(
-      HttpStatus.ok,
-      _booklistPage(
-        list,
-        list.books,
-        page: safePage,
-        hasMore: false,
-        loadFailed: false,
-      ),
-    );
-  }
-
-  /// Convert a live-fetched book into a card row: link it to a
-  /// downloaded file when this phone has it, else mark it
-  /// downloadable / downloading from the snapshot's state.
-  WebEntry _entryForFetchedBook(Book book) {
-    final index = _snapshot.fileIndexForBookId(book.id);
-    return WebEntry(
-      bookId: book.id,
-      title: book.title,
-      author: book.author ?? '',
-      extension: index != null
-          ? _snapshot.files[index].extension
-          : (book.extension ?? '').toLowerCase(),
-      coverUrl: book.cover,
-      fileIndex: index,
-      sizeLabel: index != null ? _snapshot.files[index].sizeLabel : null,
-      description: book.description,
-      publisher: book.publisher,
-      year: book.year,
-      pages: book.pages,
-      language: book.language,
-      downloadPending:
-          index == null && _snapshot.pendingBookIds.contains(book.id),
-    );
-  }
-
   /// Build a card row from a downloaded file (keeps the home page
   /// and the search results in sync with the detail page).
   WebEntry _entryFromFile(int index) {
@@ -830,64 +676,18 @@ class WebService extends ChangeNotifier {
       fileIndex: index,
       sizeLabel: f.sizeLabel,
       description: f.description,
-      publisher: f.publisher,
-      year: f.year,
-      pages: f.pages,
-      language: f.language,
     );
   }
 
-  /// The detail page (item 5): `/detail/<bookId>`. A downloaded book
-  /// is found in the files first; otherwise the library, then the
-  /// booklist previews. Unknown ids are a 404.
-  WebResponse _detailRoute(List<String> s) {
-    if (s.length != 2 || !RegExp(r'^\d{1,9}$').hasMatch(s[1])) {
-      return _notFound();
-    }
-    final bookId = int.parse(s[1]);
-    final entry = _detailEntryForBookId(bookId);
-    if (entry == null) return _notFound();
-    return _html(HttpStatus.ok, _detailPage(entry));
-  }
-
-  WebEntry? _detailEntryForBookId(int bookId) {
-    final fileIndex = _snapshot.fileIndexForBookId(bookId);
-    if (fileIndex != null) return _entryFromFile(fileIndex);
-    for (final e in _snapshot.library) {
-      if (e.bookId == bookId) return e;
-    }
-    for (final list in _snapshot.booklists) {
-      for (final e in list.books) {
-        if (e.bookId == bookId) return e;
-      }
-    }
-    return null;
-  }
-
-  /// Zip download (item 2): /zip/all packs every downloaded book;
-  /// `/zip/booklist/<id>` packs that booklist's preview books that are
-  /// on this phone. The zip is built in memory (archive's encoder
-  /// is an in-memory operation) and returned as an attachment.
+  /// Zip download (item 2): /zip/all packs every downloaded book.
+  /// The zip is built in memory (archive's encoder is an in-memory
+  /// operation) and returned as an attachment.
   Future<WebResponse> _zipRoute(List<String> s) async {
     List<int> indices;
     String zipName;
     if (s.length == 2 && s[1] == 'all') {
       indices = [for (var i = 0; i < _snapshot.files.length; i++) i];
       zipName = 'downloaded-books.zip';
-    } else if (s.length == 3 && s[1] == 'booklist') {
-      WebBooklist? found;
-      for (final list in _snapshot.booklists) {
-        if (list.id == s[2]) {
-          found = list;
-          break;
-        }
-      }
-      if (found == null) return _notFound();
-      indices = [
-        for (final e in found.books)
-          if (e.fileIndex != null) e.fileIndex!,
-      ];
-      zipName = '${found.name}.zip';
     } else {
       return _notFound();
     }
@@ -1008,7 +808,7 @@ class WebService extends ChangeNotifier {
   /// downloaded file already in the results is not listed twice.
   /// Renders the same book cards as the home page; an empty query
   /// shows the empty state.
-  WebResponse _searchRoute(Map<String, String> query) {
+  WebResponse _searchRoute(Map<String, String> query, WebLayout layout) {
     final q = (query['q'] ?? '').trim();
     final needle = q.toLowerCase();
     bool hit(String s) => s.toLowerCase().contains(needle);
@@ -1029,7 +829,7 @@ class WebService extends ChangeNotifier {
         }
       }
     }
-    return _html(HttpStatus.ok, _searchPage(q, cards));
+    return _html(HttpStatus.ok, _searchPage(q, cards, layout));
   }
 
   Future<File?> _fileFor(int index) async {
@@ -1265,12 +1065,13 @@ class WebService extends ChangeNotifier {
 
   // ── Plain-HTML pages (NO JavaScript — e-readers must work) ───────
   //
-  // Layout, after Legado's web bookshelf: a light-grey sidebar on
-  // the left (title, poem, search box, recent-reading and settings
-  // sections, GitHub link at the bottom) and the white main area on
-  // the right, where each section is a grid of borderless book cards
-  // (cover left, title / author · format / actions right). On a
-  // narrow screen the sidebar stacks above the main area. The grid
+  // Two shells, picked per request (see [detectWebLayout]): PC keeps
+  // Legado's web bookshelf — a light-grey sidebar on the left (title,
+  // poem, search box, settings section, GitHub link at the bottom)
+  // and the white main area on the right, where each section is a
+  // grid of borderless book cards (cover left, title / author ·
+  // format / actions right). Mobile is a single column: a top bar
+  // (title + search box) over stacked horizontal card rows. The grid
   // degrades to a plain vertical stack on readers that do not
   // understand CSS grid.
 
@@ -1286,7 +1087,6 @@ class WebService extends ChangeNotifier {
       '.side-sec{margin-top:1.6em}'
       '.side-sec h3{font-size:1em;margin:0 0 0.6em;color:#333}'
       '.tag{display:inline-block;border-radius:4px;padding:0.2em 0.7em;font-size:0.9em}'
-      '.tag-warn{background:#fdf6ec;color:#e6a23c;border:1px solid #faecd8}'
       '.tag-info{background:#ecf5ff;color:#409eff;border:1px solid #d9ecff}'
       '.github{margin-top:auto;padding-top:2em;color:#666;text-decoration:none;font-size:0.9em}'
       '.main{flex:1;min-width:0;padding:1em 1.4em 2em;background:#fff}'
@@ -1299,36 +1099,47 @@ class WebService extends ChangeNotifier {
       'display:flex;align-items:center;justify-content:center;font-size:2em}'
       '.info{flex:1;min-width:0}'
       '.name{font-weight:700}'
-      '.name a{color:#222;text-decoration:none}'
-      '.name a:hover{text-decoration:underline}'
       '.meta{color:#666;font-size:0.9em}'
       '.desc{color:#555;font-size:0.9em;margin-top:0.3em;display:-webkit-box;'
       '-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'
       '.actions{margin-top:0.4em}'
       '.actions a{display:inline-block;border:1px solid #888;border-radius:4px;'
       'padding:0.15em 0.8em;margin-right:0.5em;text-decoration:none;color:#222}'
-      '.list-card{display:block;padding:0.6em 0;text-decoration:none;color:#222}'
       '.dim{color:#888}'
-      '.detail{display:flex;gap:1.2em;align-items:flex-start}'
-      '.cover-lg{width:180px;height:240px;flex:0 0 180px;object-fit:cover;background:#eee}'
-      '.cover-lg-ph{width:180px;height:240px;flex:0 0 180px;background:#7a8699;color:#fff;'
-      'display:flex;align-items:center;justify-content:center;font-size:4em}'
-      '.detail .info{flex:1;min-width:0}'
-      '.detail h1{font-size:1.3em;margin:0 0 0.4em}'
-      '.detail .meta{margin:0.2em 0}'
-      '.detail .desc-full{color:#333;margin-top:0.8em;white-space:pre-wrap}'
       '.zip-btn{display:inline-block;border:1px solid #888;border-radius:4px;'
       'padding:0.3em 1em;text-decoration:none;color:#222;margin:0.4em 0}'
       'a{color:#0645ad}'
-      '@media (max-width:640px){.layout{display:block}.sidebar{width:auto}.detail{display:block}.cover-lg,.cover-lg-ph{margin-bottom:0.8em}}';
+      '@media (max-width:640px){.layout{display:block}.sidebar{width:auto}}'
+      // Mobile shell overrides (body.layout-mobile): the sidebar is
+      // gone, the grid becomes one stacked column of horizontal card
+      // rows with a smaller cover and thumb-friendly buttons.
+      'body.layout-mobile .layout{display:block}'
+      'body.layout-mobile .sidebar{display:none}'
+      'body.layout-mobile .main{padding:0.8em 1em 2em}'
+      'body.layout-mobile .grid{display:block}'
+      'body.layout-mobile .card{margin-bottom:1.2em}'
+      'body.layout-mobile .cover,body.layout-mobile .cover-ph{width:64px;height:84px;flex-basis:64px}'
+      'body.layout-mobile .cover-ph{font-size:1.6em}'
+      'body.layout-mobile .actions a{padding:0.5em 1em;font-size:1em}'
+      '.m-top{padding:1em 1em 0.8em;border-bottom:1px solid #e4e7ed}'
+      '.m-title{font-size:1.4em;font-weight:700}'
+      '.m-sub{color:#666;font-size:0.9em;margin:0.3em 0 0.8em}'
+      '.m-search input{width:100%;box-sizing:border-box;border:1px solid #dcdfe6;'
+      'border-radius:16px;padding:0.6em 0.9em;font-size:1em;background:#fff}'
+      '.m-main{padding:0.8em 1em 2em}';
 
-  String _page(String title, String body) =>
-      '<!DOCTYPE html><html><head><meta charset="utf-8">'
-      '<meta name="viewport" content="width=device-width, initial-scale=1">'
-      '<link rel="icon" type="image/png" href="/icon.png">'
-      '<link rel="apple-touch-icon" href="/icon.png">'
-      '<title>${escapeHtml(title)}</title><style>$_css</style></head>'
-      '<body>$body</body></html>';
+  /// Every page carries its layout on the <body> so tests (and CSS)
+  /// can tell the shells apart: `layout-pc` or `layout-mobile`.
+  /// Message pages ([_messagePage]) keep the PC shell.
+  String _page(String title, String body, {WebLayout layout = WebLayout.pc}) {
+    final cls = layout == WebLayout.mobile ? 'layout-mobile' : 'layout-pc';
+    return '<!DOCTYPE html><html><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<link rel="icon" type="image/png" href="/icon.png">'
+        '<link rel="apple-touch-icon" href="/icon.png">'
+        '<title>${escapeHtml(title)}</title><style>$_css</style></head>'
+        '<body class="$cls">$body</body></html>';
+  }
 
   /// Every page shares this shell: the sidebar on the left, the
   /// page's own content in the white main area on the right.
@@ -1336,13 +1147,28 @@ class WebService extends ChangeNotifier {
       '<div class="layout">${_sidebar(searchValue: searchValue)}'
       '<main class="main">$main</main></div>';
 
+  /// The mobile shell: a top bar (title + search box) over stacked
+  /// content. No sidebar, nothing hover-dependent.
+  String _mobileLayout(String main, {String searchValue = ''}) {
+    final value = searchValue.isEmpty
+        ? ''
+        : ' value="${escapeHtml(searchValue)}"';
+    return '<header class="m-top">'
+        '<div class="m-title">${escapeHtml(_strings.homeTitle)}</div>'
+        '<div class="m-sub">清风不识字，何故乱翻书</div>'
+        '<form class="m-search" method="get" action="/search">'
+        '<input name="q" type="search" '
+        'placeholder="搜索书籍，在线书籍自动加入书架"$value>'
+        '</form>'
+        '</header>'
+        '<main class="m-main">$main</main>';
+  }
+
   /// The sidebar, after Legado's bookshelf: title, poem, a working
-  /// search box (plain GET form, no JS), recent reading (the server
-  /// cannot know the browser's reading progress, so it honestly
-  /// shows the empty state), settings (a "connected" tag — no URL,
-  /// the browser's address bar already shows it), GitHub at the
-  /// bottom. The labels are Legado's fixed UI copy, so they are
-  /// literal here rather than localised strings.
+  /// search box (plain GET form, no JS), settings (a "connected" tag
+  /// — no URL, the browser's address bar already shows it), GitHub
+  /// at the bottom. The labels are Legado's fixed UI copy, so they
+  /// are literal here rather than localised strings.
   String _sidebar({String searchValue = ''}) {
     final value = searchValue.isEmpty
         ? ''
@@ -1354,8 +1180,6 @@ class WebService extends ChangeNotifier {
         '<input name="q" type="search" '
         'placeholder="搜索书籍，在线书籍自动加入书架"$value>'
         '</form>'
-        '<div class="side-sec"><h3>最近阅读</h3>'
-        '<span class="tag tag-warn">尚无阅读记录</span></div>'
         '<div class="side-sec"><h3>基本设定</h3>'
         '<span class="tag tag-info">已连接</span></div>'
         '<a class="github" href="https://github.com/minglaiyo/zlibx">'
@@ -1377,8 +1201,8 @@ class WebService extends ChangeNotifier {
 
   /// One book card, after Legado's bookshelf: borderless, cover on
   /// the left, title / author · format · size / description / actions
-  /// on the right. The title opens the detail page. A downloaded
-  /// book gets [Download] and, when it can be opened, [Read] —
+  /// on the right. A downloaded book gets [Download] and, when it
+  /// can be opened, [Read] —
   /// foliate formats go to /read, a PDF goes straight to /book so
   /// the browser's own PDF viewer opens it. A book that is not on
   /// this phone gets a "download to phone" trigger link, unless a
@@ -1402,11 +1226,7 @@ class WebService extends ChangeNotifier {
     }
     b.write('<div class="info">');
     final title = escapeHtml(e.title);
-    if (e.bookId != null) {
-      b.write('<div class="name"><a href="/detail/${e.bookId}">$title</a></div>');
-    } else {
-      b.write('<div class="name">$title</div>');
-    }
+    b.write('<div class="name">$title</div>');
     final meta = [
       if (e.author.isNotEmpty) e.author,
       if (e.extension.isNotEmpty) e.extension.toUpperCase(),
@@ -1454,191 +1274,45 @@ class WebService extends ChangeNotifier {
     return b.toString();
   }
 
-  /// One booklist card: its name and how many of its preview books
-  /// are already on this phone. Borderless, like the book cards.
-  String _booklistCard(WebBooklist l) {
-    final downloaded = [
-      for (final e in l.books)
-        if (e.fileIndex != null) e,
-    ].length;
-    final count = l.count;
-    final meta = count != null
-        ? '已下载 $downloaded / 共 $count 本'
-        : '已下载 $downloaded 本';
-    return '<a class="list-card" href="/booklist/${Uri.encodeComponent(l.id)}">'
-        '<div class="name">${escapeHtml(l.name)}</div>'
-        '<div class="meta">${escapeHtml(meta)}</div>'
-        '</a>';
-  }
-
   String _grid(Iterable<String> cards) => cards.isEmpty
       ? '<p class="dim">${escapeHtml(_strings.empty)}</p>'
       : '<div class="grid">${cards.join()}</div>';
 
-  String _homePage() {
+  String _homePage(WebLayout layout) {
     final downloaded = [
       for (var i = 0; i < _snapshot.files.length; i++) _bookCard(_entryFromFile(i)),
     ];
     final library = _snapshot.library.map(_bookCard);
-    final lists = _snapshot.booklists.map(_booklistCard);
     final packAll = downloaded.isEmpty
         ? ''
         : ' <a class="zip-btn" href="/zip/all">全部打包</a>';
-    return _page(
-      _strings.homeTitle,
-      _layout(
+    final main =
         '<h2 id="downloaded">${escapeHtml(_strings.downloadedSection)} (${downloaded.length})</h2>'
         '$packAll'
         '${_grid(downloaded)}'
         '<h2 id="library">${escapeHtml(_strings.librarySection)} (${library.length})</h2>'
-        '${_grid(library)}'
-        '<h2 id="booklists">${escapeHtml(_strings.booklistSection)} (${lists.length})</h2>'
-        '${_grid(lists)}',
-      ),
+        '${_grid(library)}';
+    return _page(
+      _strings.homeTitle,
+      layout == WebLayout.mobile ? _mobileLayout(main) : _layout(main),
+      layout: layout,
     );
   }
 
   /// Search results, in the same shell: the search term at the top,
   /// a link back home, and the matching cards (or the empty state).
-  String _searchPage(String q, List<String> cards) => _page(
-    '搜索“$q”',
-    _layout(
-      '<p><a href="/">${escapeHtml(_strings.backHome)}</a></p>'
-      '<h1>搜索“${escapeHtml(q)}”</h1>'
-      '${_grid(cards)}',
-      searchValue: q,
-    ),
-  );
-
-  /// A booklist page (item 6): [entries] are this page's books —
-  /// live-fetched when available, else the snapshot's preview books.
-  /// [page]/[hasMore] drive the prev/next links; [loadFailed] adds
-  /// the fallback notice. A "pack download" button appears when the
-  /// list has downloaded books on this phone.
-  String _booklistPage(
-    WebBooklist list,
-    List<WebEntry> entries, {
-    required int page,
-    required bool hasMore,
-    required bool loadFailed,
-    bool isPreview = true,
-  }) {
-    final link = list.url.startsWith('http')
-        ? '<p><a href="${escapeHtml(list.url)}">'
-              '${escapeHtml(_strings.officialLink)}</a></p>'
-        : '';
-    final hasDownloaded = entries.any((e) => e.fileIndex != null);
-    final pack = hasDownloaded
-        ? '<a class="zip-btn" href="/zip/booklist/${Uri.encodeComponent(list.id)}">打包下载</a>'
-        : '';
-    final note = loadFailed
-        ? '<p class="dim">加载失败，显示的是快照里的预览书。</p>'
-        : isPreview
-            ? '<p class="meta">${escapeHtml(_strings.previewNote)}</p>'
-            : '';
-    final nav = StringBuffer('<p>');
-    if (page > 1) {
-      nav.write(
-        '<a href="/booklist/${Uri.encodeComponent(list.id)}?page=${page - 1}">上一页</a> ',
-      );
-    }
-    nav.write('第 $page 页');
-    if (hasMore) {
-      nav.write(
-        ' <a href="/booklist/${Uri.encodeComponent(list.id)}?page=${page + 1}">下一页</a>',
-      );
-    }
-    nav.write('</p>');
-    return _page(
-      list.name,
-      _layout(
+  String _searchPage(String q, List<String> cards, WebLayout layout) {
+    final main =
         '<p><a href="/">${escapeHtml(_strings.backHome)}</a></p>'
-        '<h1>${escapeHtml(list.name)}</h1>'
-        '$note'
-        '$pack'
-        '${_grid(entries.map(_bookCard))}'
-        '${nav.toString()}'
-        '$link',
-      ),
+        '<h1>搜索“${escapeHtml(q)}”</h1>'
+        '${_grid(cards)}';
+    return _page(
+      '搜索“$q”',
+      layout == WebLayout.mobile
+          ? _mobileLayout(main, searchValue: q)
+          : _layout(main, searchValue: q),
+      layout: layout,
     );
   }
 
-  /// The detail page (item 5): a large cover, the full synopsis,
-  /// author / publisher / year / pages / language / format, and the
-  /// download / read buttons — or, for a book that is not on this
-  /// phone, "not downloaded" plus the download-to-phone trigger.
-  String _detailPage(WebEntry e) {
-    final b = StringBuffer('<div class="detail">');
-    final cover = e.coverUrl;
-    if (cover != null && cover.isNotEmpty) {
-      b.write(
-        '<img class="cover-lg" src="${escapeHtml(cover)}" loading="lazy" '
-        'alt="${escapeHtml(e.title)}">',
-      );
-    } else {
-      b.write(
-        '<div class="cover-lg-ph" aria-hidden="true">'
-        '${escapeHtml(_firstChar(e.title))}</div>',
-      );
-    }
-    b.write('<div class="info">');
-    b.write('<h1>${escapeHtml(e.title)}</h1>');
-    final metaLines = <String>[
-      if (e.author.isNotEmpty) '作者：${e.author}',
-      if (e.publisher != null && e.publisher!.isNotEmpty)
-        '出版社：${e.publisher!}',
-      if (e.year != null) '出版年份：${e.year}',
-      if (e.pages != null) '页数：${e.pages}',
-      if (e.language != null && e.language!.isNotEmpty) '语言：${e.language!}',
-      if (e.extension.isNotEmpty) '格式：${e.extension.toUpperCase()}',
-      if (e.sizeLabel != null && e.sizeLabel!.isNotEmpty)
-        '大小：${e.sizeLabel!}',
-    ];
-    for (final line in metaLines) {
-      b.write('<div class="meta">${escapeHtml(line)}</div>');
-    }
-    final desc = e.description;
-    if (desc != null && desc.trim().isNotEmpty) {
-      b.write(
-        '<div class="desc-full">${escapeHtml(desc.trim())}</div>',
-      );
-    }
-    final index = e.fileIndex;
-    if (index != null) {
-      b.write('<div class="actions">');
-      b.write(
-        '<a href="/download/$index">${escapeHtml(_strings.download)}</a>',
-      );
-      final ext = e.extension.toLowerCase();
-      if (isReadableExtension(ext)) {
-        b.write(' <a href="/read/$index">${escapeHtml(_strings.read)}</a>');
-      } else if (isPdfExtension(ext)) {
-        b.write(' <a href="/book/$index">${escapeHtml(_strings.read)}</a>');
-      }
-      b.write('</div>');
-    } else if (e.downloadPending) {
-      b.write(
-        '<div class="actions"><span class="dim">正在下载…</span></div>',
-      );
-    } else if (e.bookId != null) {
-      b.write(
-        '<div class="actions">'
-        '<a href="/request-download/${e.bookId}">下载到手机</a>'
-        '</div>',
-      );
-    } else {
-      b.write(
-        '<div class="actions"><span class="dim">'
-        '${escapeHtml(_strings.notDownloaded)}</span></div>',
-      );
-    }
-    b.write('</div></div>');
-    return _page(
-      e.title,
-      _layout(
-        '<p><a href="/">${escapeHtml(_strings.backHome)}</a></p>'
-        '${b.toString()}',
-      ),
-    );
-  }
 }

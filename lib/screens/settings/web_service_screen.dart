@@ -8,16 +8,16 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../l10n/generated/app_localizations.dart';
-import '../../providers/booklists_provider.dart';
 import '../../providers/download_provider.dart';
 import '../../providers/saved_books_notifier.dart';
-import '../../providers/zlibrary_provider.dart';
-import '../../services/booklist_repository.dart';
 import '../../services/lan_share.dart';
 import '../../services/network_state_channel.dart';
 import '../../services/web_service.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_metrics.dart';
 import '../../utils/app_snack.dart';
 import '../../utils/diagnostics.dart';
+import 'widgets/settings_card.dart';
 
 /// Settings → Web service.
 ///
@@ -87,21 +87,17 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
       // re-enabled, so the QR code must be regenerated.
       await _detectNetwork();
       final built = await _buildSnapshot();
-      // Capture the long-lived objects now, not the widget's ref:
-      // the callbacks below may run after this page is left, when
-      // the ref is dead. The notifier and the repository both live
-      // in the ProviderContainer, so holding them is safe.
+      // Capture the long-lived object now, not the widget's ref:
+      // the callback below may run after this page is left, when
+      // the ref is dead. The notifier lives in the ProviderContainer,
+      // so holding it is safe.
       final notifier = ref.read(downloadProvider.notifier);
-      final repository = BooklistRepository(ref.read(zlibraryApiProvider));
       final bookById = built.bookById;
-      final booklistById = built.booklistById;
       await _service.start(
         snapshot: built.snapshot,
         strings: _pageStrings(t),
         onRequestDownload: (bookId) =>
             _requestDownload(notifier, bookById, bookId),
-        onFetchBooklistPage: (booklistId, page) =>
-            _fetchBooklistPage(repository, booklistById, booklistId, page),
       );
     } on LocalNetworkPermissionDenied {
       logIgnored('web_service_screen', 'local network permission denied');
@@ -145,35 +141,20 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     }
   }
 
-  /// Freeze the three lists at the moment the service starts, plus
-  /// the lookups the web callbacks need (book id -> Book, booklist
-  /// id -> Booklist) so a web request can find the real objects.
-  Future<
-    ({
-      WebSnapshot snapshot,
-      Map<int, Book> bookById,
-      Map<String, Booklist> booklistById,
-    })
-  >
+  /// Freeze the two lists at the moment the service starts, plus
+  /// the lookup the web callback needs (book id -> Book) so a web
+  /// request can find the real object.
+  Future<({WebSnapshot snapshot, Map<int, Book> bookById})>
   _buildSnapshot() async {
     final tasks = ref.read(downloadProvider);
     final saved = await _loadSaved();
-    final booklists = await _loadBooklists();
     final bookById = <int, Book>{};
     for (final book in saved) {
       bookById[book.id] = book;
     }
-    final booklistById = <String, Booklist>{};
-    for (final list in booklists) {
-      booklistById[list.id] = list;
-      for (final book in list.previewBooks) {
-        bookById[book.id] = book;
-      }
-    }
     return (
-      snapshot: WebSnapshot.build(tasks: tasks, saved: saved, booklists: booklists),
+      snapshot: WebSnapshot.build(tasks: tasks, saved: saved),
       bookById: bookById,
-      booklistById: booklistById,
     );
   }
 
@@ -212,43 +193,6 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     return WebDownloadRequest.started;
   }
 
-  /// One booklist page from Z-Library (item 6), reusing the
-  /// repository's own calls: page 1 is the server-rendered detail
-  /// document, page 2+ is the JSON endpoint. Any failure returns
-  /// null and the service falls back to the snapshot's preview
-  /// books. [hasMore] is `page < totalPages`.
-  Future<WebBooklistPage?> _fetchBooklistPage(
-    BooklistRepository repository,
-    Map<String, Booklist> booklistById,
-    String booklistId,
-    int page,
-  ) async {
-    final list = booklistById[booklistId];
-    if (list == null) return null;
-    try {
-      if (page <= 1) {
-        final response = await repository.fetchDetailBooks(list);
-        if (!response.success || response.data == null) return null;
-        final books = response.data!;
-        return WebBooklistPage(books: books, hasMore: books.length >= 20);
-      }
-      final response = await repository.fetchBooksPage(
-        booklistId,
-        page: page,
-      );
-      if (!response.success || response.data == null) return null;
-      final data = response.data!;
-      final totalPages = data.totalPages;
-      return WebBooklistPage(
-        books: data.books,
-        hasMore: page < totalPages,
-      );
-    } catch (error) {
-      logIgnored('web_service_screen', error);
-      return null;
-    }
-  }
-
   /// The shelf may still be loading on a cold start; wait briefly.
   Future<List<Book>> _loadSaved() async {
     for (var i = 0; i < 40; i++) {
@@ -259,49 +203,15 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     return ref.read(savedBooksProvider).valueOrNull ?? const <Book>[];
   }
 
-  /// The user's own booklists (the controller is auto-dispose, so hold
-  /// a subscription while it loads), with a page cap.
-  Future<List<Booklist>> _loadBooklists() async {
-    final done = Completer<void>();
-    final sub = ref.listenManual<BooklistsState>(booklistsControllerProvider, (
-      _,
-      next,
-    ) {
-      if (next.phase != BooklistsPhase.loading && !done.isCompleted) {
-        done.complete();
-      }
-    }, fireImmediately: true);
-    try {
-      await done.future.timeout(const Duration(seconds: 8));
-      final controller = ref.read(booklistsControllerProvider.notifier);
-      for (var i = 0; i < 20; i++) {
-        final s = sub.read();
-        if (s.phase != BooklistsPhase.ready || !s.hasMore) break;
-        await controller.loadMore();
-      }
-      final state = sub.read();
-      return state.phase == BooklistsPhase.ready
-          ? List<Booklist>.of(state.lists)
-          : const <Booklist>[];
-    } on TimeoutException {
-      return const <Booklist>[];
-    } finally {
-      sub.close();
-    }
-  }
-
   WebPageStrings _pageStrings(AppLocalizations t) => WebPageStrings(
     homeTitle: t.webPageHome,
     downloadedSection: t.webPageDownloaded,
     librarySection: t.webPageLibrary,
-    booklistSection: t.webPageBooklists,
     download: t.webPageDownload,
     read: t.webPageRead,
     notDownloaded: t.webPageNotDownloaded,
     empty: t.webPageEmpty,
     backHome: t.webPageBackHome,
-    officialLink: t.webPageOfficialLink,
-    previewNote: t.webPagePreviewNote,
     notFound: t.webPageNotFound,
     convertFailed: t.webPageConvertFailed,
   );
@@ -338,69 +248,68 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(t.webService)),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          Text(t.webServiceSubtitle, style: TextStyle(color: cs.onSurfaceVariant)),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  running ? t.webServiceRunning : t.webServiceStopped,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              FilledButton(
-                onPressed: _busy ? null : (running ? _stop : _start),
-                child: Text(running ? t.webServiceStop : t.webServiceStart),
-              ),
-            ],
-          ),
+          _statusCard(t, cs, running),
           if (running && port != null) ...[
-            const SizedBox(height: 16),
-            _primaryArea(t, cs, selection, port),
-            const SizedBox(height: 12),
-            if (_clients != null)
-              Text(
-                t.webServiceClients(_clients!.join(', ')),
-                style: TextStyle(color: cs.onSurfaceVariant),
-              ),
-            const SizedBox(height: 8),
-            // Always shown: works even when the client list is unknown.
-            Text(t.webServiceSelfCheck, style: TextStyle(color: cs.onSurfaceVariant)),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _detectNetwork,
-                icon: const Icon(Icons.refresh),
-                label: Text(t.webServiceRefreshNetwork),
-              ),
-            ),
-            if (selection != null && selection.others.isNotEmpty)
-              _otherAddresses(t, selection.others, port),
-            const Divider(height: 32),
-            Text(
-              t.webServiceCounts(
-                snapshot.downloadedCount,
-                snapshot.libraryCount,
-                snapshot.booklistCount,
-              ),
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              t.webServiceSnapshotNote,
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-            ),
+            const SizedBox(height: AppSpacing.xl),
+            _addressCard(t, cs, selection, port),
+            const SizedBox(height: AppSpacing.xl),
+            _statsCard(t, cs, snapshot),
+            const SizedBox(height: AppSpacing.xl),
+            _selfCheckCard(t),
           ],
         ],
       ),
     );
   }
 
-  /// ONE labelled URL + ONE QR code, or the "turn on hotspot" hint.
-  Widget _primaryArea(
+  /// Status, in the settings page's own language: a flat bordered
+  /// card with a leading icon, a status dot (green while running,
+  /// muted otherwise) and the start/stop button. The subtitle says
+  /// what the service does.
+  Widget _statusCard(AppLocalizations t, ColorScheme cs, bool running) {
+    final statusColor = running ? AppColors.success : cs.onSurfaceVariant;
+    return SettingsCard(
+      child: ListTile(
+        leading: Icon(
+          Icons.wifi_tethering_rounded,
+          color: running ? AppColors.success : cs.onSurfaceVariant,
+        ),
+        title: Row(
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: statusColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              running ? t.webServiceRunning : t.webServiceStopped,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        subtitle: Text(
+          t.webServiceSubtitle,
+          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        ),
+        trailing: FilledButton(
+          onPressed: _busy ? null : (running ? _stop : _start),
+          child: Text(running ? t.webServiceStop : t.webServiceStart),
+        ),
+      ),
+    );
+  }
+
+  /// The address block: one labelled URL + QR code, the copy / open
+  /// actions, connected devices, and the other addresses. While the
+  /// address is still being detected, a spinner; with no usable
+  /// network, the hint plus the open-in-browser button.
+  Widget _addressCard(
     AppLocalizations t,
     ColorScheme cs,
     LanSelection? selection,
@@ -408,59 +317,143 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
   ) {
     final primary = selection?.primary;
     if (selection == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (primary == null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(t.webServiceNoNetwork),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () => _openLocal(port),
-            icon: const Icon(Icons.open_in_browser),
-            label: Text(t.webServiceOpenLocal),
-          ),
-        ],
+      return const SettingsCard(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
       );
     }
-    final url = lanUrl(primary.address, port);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          _labelFor(primary.kind, t),
-          style: TextStyle(color: cs.primary, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        SelectableText(url, style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 12),
-        Center(
-          child: Container(
-            color: Colors.white,
-            padding: const EdgeInsets.all(8),
-            // A new QR is built from the current URL on every rebuild,
-            // so it always matches the address after a restart.
-            child: QrImageView(data: url, size: 200),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
+    if (primary == null) {
+      return SettingsCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            OutlinedButton.icon(
-              onPressed: () => _copy(url),
-              icon: const Icon(Icons.copy),
-              label: Text(t.webServiceCopyUrl),
+            ListTile(
+              leading: const Icon(Icons.wifi_off_rounded),
+              title: Text(t.webServiceNoNetwork),
             ),
-            OutlinedButton.icon(
-              onPressed: () => _openLocal(port),
-              icon: const Icon(Icons.open_in_browser),
-              label: Text(t.webServiceOpenLocal),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: OutlinedButton.icon(
+                onPressed: () => _openLocal(port),
+                icon: const Icon(Icons.open_in_browser),
+                label: Text(t.webServiceOpenLocal),
+              ),
             ),
           ],
         ),
-      ],
+      );
+    }
+    final url = lanUrl(primary.address, port);
+    return SettingsCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.link_rounded),
+            title: Text(
+              _labelFor(primary.kind, t),
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: SelectableText(
+              url,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          Center(
+            child: Container(
+              // White on purpose: a QR code needs a light quiet zone
+              // to scan, in dark mode too.
+              color: Colors.white,
+              padding: const EdgeInsets.all(8),
+              // A new QR is built from the current URL on every rebuild,
+              // so it always matches the address after a restart.
+              child: QrImageView(data: url, size: 200),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Wrap(
+              spacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _copy(url),
+                  icon: const Icon(Icons.copy),
+                  label: Text(t.webServiceCopyUrl),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _openLocal(port),
+                  icon: const Icon(Icons.open_in_browser),
+                  label: Text(t.webServiceOpenLocal),
+                ),
+                TextButton.icon(
+                  onPressed: _detectNetwork,
+                  icon: const Icon(Icons.refresh),
+                  label: Text(t.webServiceRefreshNetwork),
+                ),
+              ],
+            ),
+          ),
+          if (_clients != null) ...[
+            const SettingsDivider(),
+            ListTile(
+              leading: const Icon(Icons.devices_rounded),
+              title: Text(t.webServiceClients(_clients!.join(', '))),
+            ),
+          ],
+          if (selection.others.isNotEmpty) ...[
+            const SettingsDivider(),
+            _otherAddresses(t, selection.others, port),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Snapshot counts (frozen at start) plus the snapshot note,
+  /// aligned with the rows above it.
+  Widget _statsCard(
+    AppLocalizations t,
+    ColorScheme cs,
+    WebSnapshot snapshot,
+  ) {
+    const countStyle = TextStyle(fontWeight: FontWeight.w600);
+    return SettingsCard(
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.download_rounded),
+            title: Text(t.webPageDownloaded),
+            trailing: Text('${snapshot.downloadedCount}', style: countStyle),
+          ),
+          const SettingsDivider(),
+          ListTile(
+            leading: const Icon(Icons.library_books_rounded),
+            title: Text(t.webPageLibrary),
+            trailing: Text('${snapshot.libraryCount}', style: countStyle),
+          ),
+          const SettingsDivider(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(56, 12, 16, 12),
+            child: Text(
+              t.webServiceSnapshotNote,
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Self-check hint.
+  Widget _selfCheckCard(AppLocalizations t) {
+    return SettingsCard(
+      child: ListTile(
+        leading: const Icon(Icons.info_outline_rounded),
+        title: Text(t.webServiceSelfCheck),
+      ),
     );
   }
 
@@ -470,13 +463,12 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     int port,
   ) {
     return ExpansionTile(
-      tilePadding: EdgeInsets.zero,
+      tilePadding: const EdgeInsets.symmetric(horizontal: 16),
       title: Text(t.webServiceOtherUrls),
       children: [
         for (final c in others)
           ListTile(
             dense: true,
-            contentPadding: EdgeInsets.zero,
             title: Text(lanUrl(c.address, port)),
             // Every listed address is bound by the server, including
             // the mobile-data one, so each gets a copy button.

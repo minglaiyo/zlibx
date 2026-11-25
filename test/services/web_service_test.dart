@@ -83,10 +83,6 @@ void main() {
               'A very long synopsis that keeps going and going and going '
               'and going and going and going and going and going and going '
               'and going past one hundred and twenty characters for sure.',
-          publisher: 'Test Press',
-          year: 2020,
-          pages: 300,
-          language: 'en',
           location: '${tmp.path}/a.epub',
         ),
         WebFile(
@@ -119,23 +115,6 @@ void main() {
           author: '',
           extension: 'epub',
           description: 'A shelf book that is not on this phone.',
-        ),
-      ],
-      booklists: const [
-        WebBooklist(
-          id: '42',
-          name: 'My list',
-          url: 'https://z-library.example/booklist/42/x',
-          count: 9,
-          books: [
-            WebEntry(
-              bookId: 1,
-              title: 'In list',
-              author: '',
-              extension: 'epub',
-              fileIndex: 0,
-            ),
-          ],
         ),
       ],
     );
@@ -310,47 +289,22 @@ void main() {
           ),
           Book(id: 9, title: 'Nine', extension: 'epub'),
         ],
-        booklists: const [
-          Booklist(
-            id: '7',
-            name: 'L',
-            url: 'https://z.example/booklist/7',
-            count: 3,
-            previewBooks: [
-              Book(id: 1, title: 'One', cover: 'https://covers.example/preview.jpg'),
-              Book(id: 8, title: 'Eight'),
-            ],
-          ),
-        ],
       );
       expect(snap.downloadedCount, 1);
       expect(snap.libraryCount, 2);
-      expect(snap.booklistCount, 1);
       expect(snap.library[0].fileIndex, 0);
       expect(snap.library[1].fileIndex, isNull);
-      expect(snap.booklists.single.books[0].fileIndex, 0);
-      expect(snap.booklists.single.books[1].fileIndex, isNull);
       expect(snap.files.single.extension, 'epub');
       // Covers flow from the book into the file and every entry.
       expect(snap.files.single.coverUrl, 'https://covers.example/task.jpg');
       expect(snap.library[0].coverUrl, 'https://covers.example/saved.jpg');
       expect(snap.library[1].coverUrl, isNull);
-      expect(
-        snap.booklists.single.books[0].coverUrl,
-        'https://covers.example/preview.jpg',
-      );
-      expect(snap.booklists.single.books[1].coverUrl, isNull);
-      // Items 1/4/5: the book id, the real file size (the task's own
-      // byte count wins over the book's server-reported size), the
-      // synopsis and the detail metadata flow into the file and the
-      // entries.
+      // Items 1/4: the book id, the real file size (the task's own
+      // byte count wins over the book's server-reported size) and the
+      // synopsis flow into the file and the entries.
       expect(snap.files.single.bookId, 1);
       expect(snap.files.single.sizeLabel, '1.5 KB');
       expect(snap.files.single.description, 'A synopsis.');
-      expect(snap.files.single.publisher, 'Test Press');
-      expect(snap.files.single.year, 2020);
-      expect(snap.files.single.pages, 300);
-      expect(snap.files.single.language, 'en');
       expect(snap.library[0].bookId, 1);
       expect(snap.library[0].sizeLabel, '1.5 KB');
       // Item 3: a book with a running download is marked pending,
@@ -366,11 +320,11 @@ void main() {
       await service.start(snapshot: snapshot, preferredPort: 0);
     });
 
-    test('three sections, links, escaping, and no JavaScript', () async {
+    test('two sections, links, escaping, and no JavaScript', () async {
       final r = await get('/');
       expect(r.status, 200);
       // Sidebar, after Legado's bookshelf: title, poem, a working
-      // search form, recent reading and settings sections, GitHub.
+      // search form, settings section, GitHub.
       expect(r.body, contains('class="sidebar"'));
       expect(r.body, contains('清风不识字，何故乱翻书'));
       expect(
@@ -378,16 +332,16 @@ void main() {
         contains('<form class="search" method="get" action="/search">'),
       );
       expect(r.body, contains('name="q"'));
-      expect(r.body, contains('最近阅读'));
-      expect(r.body, contains('尚无阅读记录'));
       expect(r.body, contains('基本设定'));
       expect(r.body, contains('已连接'));
       expect(r.body, contains('https://github.com/minglaiyo/zlibx'));
+      // No User-Agent: the PC shell (sidebar layout, layout-pc class).
+      expect(r.body, contains('class="layout-pc"'));
+      expect(r.body, isNot(contains('class="m-top"')));
       // No dark banner, no three-button section navigation.
       expect(r.body, isNot(contains('class="banner"')));
       expect(r.body, isNot(contains('href="#downloaded"')));
       expect(r.body, isNot(contains('href="#library"')));
-      expect(r.body, isNot(contains('href="#booklists"')));
       // Book cards in a grid, not a plain list; borderless, no badge.
       expect(r.body, contains('class="grid"'));
       expect(r.body, contains('class="card"'));
@@ -409,7 +363,6 @@ void main() {
       // PDF reads in the browser's own viewer via /book, not /read.
       expect(r.body, contains('href="/book/1"'));
       expect(r.body, isNot(contains('href="/read/1"')));
-      expect(r.body, contains('href="/booklist/42"'));
       expect(r.body, contains('Epub &lt;Book&gt;')); // escaped
       expect(r.body.toLowerCase(), isNot(contains('<script')));
       expect(r.body, contains('(3)')); // downloaded section count
@@ -427,8 +380,6 @@ void main() {
       // Item 3: an undownloaded library book gets the trigger link.
       expect(r.body, contains('href="/request-download/9"'));
       expect(r.body, contains('下载到手机'));
-      // Item 7: the booklist card shows how many are downloaded.
-      expect(r.body, contains('已下载 1 / 共 9 本'));
       // Item 2: the downloaded section offers a pack-all button.
       expect(r.body, contains('href="/zip/all"'));
       expect(r.body, contains('全部打包'));
@@ -523,19 +474,6 @@ void main() {
       expect(headR.response.fileEnd, 20);
     });
 
-    test('booklist page lists preview books and the official link', () async {
-      final r = await get('/booklist/42');
-      expect(r.status, 200);
-      expect(r.body, contains('In list'));
-      expect(r.body, contains('class="grid"'));
-      expect(r.body, contains('class="sidebar"'));
-      expect(r.body, contains('href="/download/0"'));
-      expect(r.body, contains('https://z-library.example/booklist/42/x'));
-      // Item 2: a downloaded book in the list means a pack button.
-      expect(r.body, contains('href="/zip/booklist/42"'));
-      expect(r.body, contains('打包下载'));
-    });
-
     test('out-of-range indexes and odd paths 404 without crashing', () async {
       // Paths are already percent-decoded here (Kotlin decodes before
       // Dart sees them), so '..' arrives as '..'.
@@ -551,8 +489,6 @@ void main() {
         '/read/7',
         '/read/x',
         '/book/7',
-        '/booklist/nope',
-        '/booklist/42/more',
         '/nothing',
       ]) {
         final r = await get(path);
@@ -652,7 +588,7 @@ void main() {
     });
   });
 
-  group('detail page, zip, request-download, booklist pages, icon', () {
+  group('zip, request-download, icon', () {
     test('formatFileSize and truncateDescription', () {
       expect(formatFileSize(0), '0 B');
       expect(formatFileSize(512), '512 B');
@@ -663,27 +599,6 @@ void main() {
       final long = 'x' * 200;
       expect(truncateDescription(long).length, 121);
       expect(truncateDescription(long), endsWith('…'));
-    });
-
-    test('detail page shows the full synopsis and metadata', () async {
-      await service.start(snapshot: snapshot, preferredPort: 0);
-      final r = await get('/detail/1');
-      expect(r.status, 200);
-      // The full description, not the 120-char truncation.
-      expect(r.body, contains('past one hundred and twenty characters'));
-      expect(r.body, contains('Test Press'));
-      expect(r.body, contains('2020'));
-      expect(r.body, contains('300'));
-      expect(r.body, contains('12.3 MB'));
-      expect(r.body, contains('href="/download/0"'));
-      expect(r.body, contains('href="/read/0"'));
-      // An undownloaded book shows "not downloaded" plus the trigger.
-      final missing = await get('/detail/9');
-      expect(missing.status, 200);
-      expect(missing.body, contains('A shelf book that is not on this phone.'));
-      expect(missing.body, contains('href="/request-download/9"'));
-      expect((await get('/detail/999')).status, 404);
-      expect((await get('/detail/abc')).status, 404);
     });
 
     test('zip routes pack the files and attach them', () async {
@@ -702,13 +617,6 @@ void main() {
       expect(all.body, contains('Au.epub'));
       expect(all.body, contains('Pdf Book.pdf'));
       expect(all.body, contains('Blank Text.txt'));
-      // A booklist zip packs only that list's downloaded books.
-      final list = await get('/zip/booklist/42');
-      expect(list.status, 200);
-      expect(list.header('content-type'), 'application/zip');
-      expect(list.body, contains('Au.epub'));
-      expect(list.body, isNot(contains('Pdf Book.pdf')));
-      expect((await get('/zip/booklist/nope')).status, 404);
       expect((await get('/zip/other')).status, 404);
     });
 
@@ -764,56 +672,6 @@ void main() {
       expect(r.body, isNot(contains('已开始下载')));
     });
 
-    test('booklist page 2 comes from the fetcher, page 1 falls back', () async {
-      final svc = WebService(
-        assetLoader: (path) async => utf8.encode('// $path'),
-        txtConverter: TxtToEpub(cacheDir: () async => Directory('${tmp.path}/cache')),
-      );
-      addTearDown(svc.stop);
-      await svc.start(
-        snapshot: snapshot,
-        preferredPort: 0,
-        onFetchBooklistPage: (id, page) async {
-          if (id != '42') return null;
-          if (page == 1) return null; // simulate a failed fetch
-          return WebBooklistPage(
-            books: const [
-              Book(id: 1, title: 'Page two one', extension: 'epub'),
-              Book(id: 77, title: 'Page two two', extension: 'epub'),
-            ],
-            hasMore: true,
-          );
-        },
-      );
-      // Page 2: the live books, a prev link and a next link.
-      final page2 = Reply(
-        await svc.handleRequest(
-          method: 'GET',
-          path: '/booklist/42',
-          query: {'page': '2'},
-        ),
-      );
-      expect(page2.status, 200);
-      expect(page2.body, contains('Page two one'));
-      expect(page2.body, contains('Page two two'));
-      expect(page2.body, contains('上一页'));
-      expect(page2.body, contains('下一页'));
-      expect(page2.body, contains('第 2 页'));
-      expect(page2.body, isNot(contains('In list')));
-      // The downloaded book on the live page gets its links.
-      expect(page2.body, contains('href="/download/0"'));
-      // The undownloaded one gets the trigger link.
-      expect(page2.body, contains('href="/request-download/77"'));
-      // Page 1 with a failed fetch falls back to the preview books.
-      final page1 = Reply(
-        await svc.handleRequest(method: 'GET', path: '/booklist/42'),
-      );
-      expect(page1.status, 200);
-      expect(page1.body, contains('In list'));
-      expect(page1.body, contains('加载失败'));
-      expect(page1.body, isNot(contains('下一页')));
-    });
-
     test('icon routes serve the app icon as PNG', () async {
       await service.start(snapshot: snapshot, preferredPort: 0);
       for (final path in ['/icon.png', '/favicon.ico']) {
@@ -829,5 +687,86 @@ void main() {
         expect(bytes.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47]);
       }
     });
+
+  group('pc and mobile layouts', () {
+    setUp(() async {
+      await service.start(snapshot: snapshot, preferredPort: 0);
+    });
+
+    // Desktop browsers (and no User-Agent at all) get the Legado
+    // sidebar shell; phones get the single-column shell. The body
+    // class is what these tests assert on.
+    test('desktop UA gets the PC sidebar layout', () async {
+      const desktopUa =
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+          '(KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+      final r = await get('/', headers: {'User-Agent': desktopUa});
+      expect(r.status, 200);
+      expect(r.body, contains('class="layout-pc"'));
+      expect(r.body, contains('class="sidebar"'));
+      expect(r.body, isNot(contains('class="m-top"')));
+    });
+
+    test('mobile UA gets the single-column layout', () async {
+      const androidUa =
+          'Mozilla/5.0 (Linux; Android 14; Pixel 9) AppleWebKit/537.36 '
+          '(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36';
+      final r = await get('/', headers: {'User-Agent': androidUa});
+      expect(r.status, 200);
+      expect(r.body, contains('class="layout-mobile"'));
+      expect(r.body, contains('class="m-top"'));
+      expect(r.body, isNot(contains('class="sidebar"')));
+      // Same cards, stacked; download/read links still there.
+      expect(r.body, contains('href="/download/0"'));
+      expect(r.body, contains('href="/read/0"'));
+      expect(r.body.toLowerCase(), isNot(contains('<script')));
+      // An iPad UA counts as mobile too.
+      const ipadUa =
+          'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) '
+          'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 '
+          'Mobile/15E148 Safari/604.1';
+      final ipad = await get('/', headers: {'User-Agent': ipadUa});
+      expect(ipad.body, contains('class="layout-mobile"'));
+    });
+
+    test('?layout= forces a layout either way', () async {
+      const mobileUa =
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
+          'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 '
+          'Mobile/15E148 Safari/604.1';
+      const desktopUa =
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+          'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+      final forcedPc = await get(
+        '/',
+ headers: {'User-Agent': mobileUa}, query: {'layout': 'pc'},
+      );
+      expect(forcedPc.body, contains('class="layout-pc"'));
+      final forcedMobile = await get(
+        '/', headers: {'User-Agent': desktopUa}, query: {'layout': 'mobile'},
+      );
+      expect(forcedMobile.body, contains('class="layout-mobile"'));
+      // An illegal value falls back to the User-Agent.
+      final illegal = await get(
+        '/', headers: {'User-Agent': mobileUa}, query: {'layout': 'tablet'},
+      );
+      expect(illegal.body, contains('class="layout-mobile"'));
+    });
+
+    test('search page follows the same layout', () async {
+      const androidUa =
+          'Mozilla/5.0 (Linux; Android 14; Pixel 9) AppleWebKit/537.36 '
+          '(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36';
+      final r = await get(
+        '/search',
+        query: {'q': 'book'},
+        headers: {'User-Agent': androidUa},
+      );
+      expect(r.status, 200);
+      expect(r.body, contains('class="layout-mobile"'));
+      expect(r.body, contains('class="m-top"'));
+      expect(r.body, contains('value="book"'));
+    });
+  });
   });
 }

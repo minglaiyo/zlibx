@@ -464,13 +464,21 @@ class WebService extends ChangeNotifier {
   /// to write. Pure apart from file reads and TXT conversion, so it
   /// is unit-testable without any socket. [path] is the percent-
   /// decoded request path (query string already stripped by Kotlin);
-  /// [headers] is keyed lowercase (only `range` is read).
+  /// [headers] may use any casing (only `range` is read); keys are
+  /// normalised to lowercase on entry.
   Future<WebResponse> handleRequest({
     required String method,
     required String path,
     Map<String, String> headers = const <String, String>{},
   }) async {
     try {
+      // Header names are case-insensitive: Kotlin already lowercases
+      // them, but a direct caller (tests, future transports) may pass
+      // 'Range'. Normalise once so `range` is always found.
+      final lowerHeaders = <String, String>{
+        for (final entry in headers.entries)
+          entry.key.toLowerCase(): entry.value,
+      };
       final normalizedMethod = method.toUpperCase();
       if (normalizedMethod != 'GET' && normalizedMethod != 'HEAD') {
         return _plain(HttpStatus.methodNotAllowed, 'Method Not Allowed');
@@ -486,11 +494,11 @@ class WebService extends ChangeNotifier {
         case 'booklist':
           return _booklistRoute(segments);
         case 'download':
-          return _downloadRoute(segments, headers['range']);
+          return _downloadRoute(segments, lowerHeaders['range']);
         case 'read':
           return _readRoute(segments);
         case 'book':
-          return _bookRoute(segments, headers['range']);
+          return _bookRoute(segments, lowerHeaders['range']);
         case 'reader-assets':
           return _assetRoute(segments);
         default:

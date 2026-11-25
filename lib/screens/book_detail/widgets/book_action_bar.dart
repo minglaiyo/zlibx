@@ -13,13 +13,11 @@ import '../../../providers/download_provider.dart';
 import '../../../providers/update_provider.dart';
 import '../../../routes/app_routes.dart';
 import '../../../services/media_store.dart';
-import '../../../services/reader_formats.dart';
 import '../../../theme/app_metrics.dart';
 import '../../../utils/app_snack.dart';
 import '../../../utils/host_utils.dart';
 import '../../../widgets/motion/motion.dart';
 import '../../../widgets/update_dialog.dart';
-import '../../reader/local_reader_screen.dart';
 import '../../reader/reader_screen.dart';
 import 'download_location_dialog.dart';
 import 'file_exists_dialog.dart';
@@ -53,14 +51,6 @@ class BookActionBar extends ConsumerWidget {
     final theme = Theme.of(context);
     final hasReadOnline =
         book.readOnlineUrl != null && book.readOnlineUrl!.isNotEmpty;
-    // 已下载且格式是阅读器能开的（EPUB/MOBI/AZW3/FB2/CBZ/TXT）：
-    // “阅读”按钮进 in-app 本地阅读器（不用联网、整本可读），
-    // 优先于在线预览。PDF 不进阅读器，走“打开文件”外部打开。
-    final task = downloadTask;
-    final canReadLocally =
-        isCompleted &&
-        task != null &&
-        isReadableExtension(task.book.extension);
 
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -98,19 +88,11 @@ class BookActionBar extends ConsumerWidget {
                   ),
           ),
 
-          if (canReadLocally || hasReadOnline) ...[
+          if (hasReadOnline) ...[
             const SizedBox(width: 12),
 
             // ── Read Button (Primary) ──
-            // 已下载：进 in-app 本地阅读器；未下载：在线预览。
-            Expanded(
-              child: _buildReadButton(
-                context,
-                ref,
-                l10n,
-                local: canReadLocally,
-              ),
-            ),
+            Expanded(child: _buildReadButton(context, ref, l10n)),
           ],
         ],
       ),
@@ -233,20 +215,16 @@ class BookActionBar extends ConsumerWidget {
   Widget _buildReadButton(
     BuildContext context,
     WidgetRef ref,
-    AppLocalizations l10n, {
-    bool local = false,
-  }) {
+    AppLocalizations l10n,
+  ) {
     final cs = Theme.of(context).colorScheme;
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 48),
       child: ElevatedButton.icon(
-        onPressed: () => local
-            ? _handleReadLocal(context, ref)
-            : _handleRead(context, ref),
+        onPressed: () => _handleRead(context, ref),
         icon: const Icon(Icons.menu_book_rounded, size: 20),
         label: Text(
-          // 本地阅读是整本已下载的书，不是“预览”。
-          local ? '阅读' : l10n.preview,
+          l10n.preview,
           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         ),
         style: ElevatedButton.styleFrom(
@@ -259,15 +237,6 @@ class BookActionBar extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  /// 已下载的书进 in-app 本地阅读器。打不开（文件没了）时
-  /// openLocalReaderForTask 已弹提示，这里直接返回；PDF 等格式
-  /// 不会走到这里（canReadLocally 已排除），走“打开文件”。
-  void _handleReadLocal(BuildContext context, WidgetRef ref) {
-    final task = downloadTask;
-    if (task == null) return;
-    unawaited(openLocalReaderForTask(context, ref, task));
   }
 
   // ════════════════════════════════════════════════════════════

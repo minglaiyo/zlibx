@@ -24,7 +24,6 @@ import '../screens/downloads/local_downloads_screen.dart';
 import '../screens/favorites/favorites_screen.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/popular/popular_books_screen.dart';
-import '../screens/reader/local_reader_screen.dart';
 import '../screens/reader/reader_screen.dart';
 import '../screens/recent/recent_books_screen.dart';
 import '../screens/search/barcode_scanner_screen.dart';
@@ -60,7 +59,6 @@ class AppRoutes {
   static const String myComments = '/my-comments';
   static const String userProfile = '/user-profile';
   static const String reader = '/reader';
-  static const String localReader = '/local-reader';
   static const String settings = '/settings';
   static const String downloads = '/downloads';
   static const String categoriesDirectory = '/categories-directory';
@@ -167,14 +165,6 @@ class AppRoutes {
     BuildContext context,
     ReaderArgs args,
   ) => Navigator.of(context).pushNamed<T>(reader, arguments: args);
-
-  /// The in-app LOCAL reader (downloaded books, foliate-js over a
-  /// loopback server). The file path is a real on-disk path, resolved
-  /// by the caller — never a content:// URI.
-  static Future<T?> openLocalReader<T extends Object?>(
-    BuildContext context,
-    LocalReaderArgs args,
-  ) => Navigator.of(context).pushNamed<T>(localReader, arguments: args);
 
   /// 分类目录树（F1）。
   static Future<T?> openCategoriesDirectory<T extends Object?>(
@@ -445,13 +435,6 @@ Map<String, WidgetBuilder> buildAppRoutes() {
             },
           ),
         );
-      }
-      return const _MissingRouteArgsScreen();
-    },
-    AppRoutes.localReader: (context) {
-      final args = ModalRoute.of(context)!.settings.arguments;
-      if (args is LocalReaderArgs) {
-        return LocalReaderScreen(args: args);
       }
       return const _MissingRouteArgsScreen();
     },

@@ -24,7 +24,6 @@ void main() {
         AppRoutes.myComments,
         AppRoutes.userProfile,
         AppRoutes.reader,
-        AppRoutes.localReader,
         AppRoutes.settings,
         AppRoutes.downloads,
         AppRoutes.categoriesDirectory,
@@ -34,9 +33,9 @@ void main() {
 
       final routes = buildAppRoutes();
 
-      expect(expected.length, 25);
+      expect(expected.length, 24);
       expect(routes.keys.toSet(), expected);
-      expect(routes.length, 25);
+      expect(routes.length, 24);
     });
 
     test('/web-service route is reachable', () {

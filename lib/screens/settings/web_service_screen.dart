@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -77,13 +78,45 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     });
   }
 
+  /// Addresses for the server to bind, one socket each (see
+  /// [WebService.start]): the loopback, so the phone's own browser
+  /// keeps working, plus every detected address — primary first, then
+  /// the others, including the mobile-data one (it is reachable from
+  /// the computer on this phone, despite the old "unreachable" label).
+  /// Deduplicated, usable IPv4 only. Null when nothing was detected:
+  /// the service then falls back to its single 0.0.0.0 socket.
+  List<InternetAddress>? _bindAddresses(LanSelection? selection) {
+    if (selection == null) return null;
+    final seen = <String>{InternetAddress.loopbackIPv4.address};
+    final addresses = <InternetAddress>[InternetAddress.loopbackIPv4];
+    void add(String address) {
+      if (!isUsableIPv4(address)) return;
+      if (!seen.add(address)) return;
+      addresses.add(InternetAddress(address));
+    }
+
+    final primary = selection.primary;
+    if (primary != null) add(primary.address);
+    for (final candidate in selection.others) {
+      add(candidate.address);
+    }
+    return addresses;
+  }
+
   Future<void> _start() async {
     final t = AppLocalizations.of(context)!;
     setState(() => _busy = true);
     try {
-      final snapshot = await _buildSnapshot();
-      await _service.start(snapshot: snapshot, strings: _pageStrings(t));
+      // Detect first: the bind list comes from the detected
+      // addresses, and a hotspot address changes when the hotspot is
+      // re-enabled, so the QR code must be regenerated.
       await _detectNetwork();
+      final snapshot = await _buildSnapshot();
+      await _service.start(
+        snapshot: snapshot,
+        strings: _pageStrings(t),
+        bindAddresses: _bindAddresses(_selection),
+      );
     } catch (error) {
       logIgnored('web_service_screen', error);
       if (mounted) {
@@ -250,7 +283,7 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
               ),
             ),
             if (selection != null && selection.others.isNotEmpty)
-              _otherAddresses(t, cs, selection.others, port),
+              _otherAddresses(t, selection.others, port),
             const Divider(height: 32),
             Text(
               t.webServiceCounts(
@@ -338,7 +371,6 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
 
   Widget _otherAddresses(
     AppLocalizations t,
-    ColorScheme cs,
     List<LanCandidate> others,
     int port,
   ) {
@@ -351,20 +383,13 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
             dense: true,
             contentPadding: EdgeInsets.zero,
             title: Text(lanUrl(c.address, port)),
-            subtitle: c.kind == LanKind.cellular
-                ? Text(
-                    t.webServiceCellularWarn,
-                    style: TextStyle(color: cs.error),
-                  )
-                : null,
-            // The mobile-data address gets NO copy button.
-            trailing: c.kind == LanKind.cellular
-                ? null
-                : IconButton(
-                    icon: const Icon(Icons.copy, size: 18),
-                    tooltip: t.webServiceCopyUrl,
-                    onPressed: () => _copy(lanUrl(c.address, port)),
-                  ),
+            // Every listed address is bound by the server, including
+            // the mobile-data one, so each gets a copy button.
+            trailing: IconButton(
+              icon: const Icon(Icons.copy, size: 18),
+              tooltip: t.webServiceCopyUrl,
+              onPressed: () => _copy(lanUrl(c.address, port)),
+            ),
           ),
       ],
     );

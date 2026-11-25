@@ -144,6 +144,39 @@ void main() {
     });
   });
 
+  group('bindAddresses', () {
+    test('binds the given addresses and serves on them', () async {
+      final want = await freePort();
+      final got = await service.start(
+        snapshot: snapshot,
+        preferredPort: want,
+        bindAddresses: <InternetAddress>[InternetAddress.loopbackIPv4],
+      );
+      expect(got, want);
+      expect(service.port, want);
+      expect(service.isRunning, isTrue);
+      expect((await get(want, '/')).status, 200);
+    });
+
+    test('skips an address that cannot bind and serves the rest', () async {
+      final want = await freePort();
+      final got = await service.start(
+        snapshot: snapshot,
+        preferredPort: want,
+        bindAddresses: <InternetAddress>[
+          // TEST-NET-1: never assigned to a local interface, so the
+          // bind always fails with "cannot assign requested address".
+          InternetAddress('192.0.2.1'),
+          InternetAddress.loopbackIPv4,
+        ],
+      );
+      expect(got, want);
+      expect(service.port, want);
+      expect(service.isRunning, isTrue);
+      expect((await get(want, '/')).status, 200);
+    });
+  });
+
   group('snapshot', () {
     test('counts, shelf linking and filtering of unfinished tasks', () {
       final done = DownloadTask(

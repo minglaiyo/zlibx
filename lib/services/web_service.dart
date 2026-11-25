@@ -12,6 +12,11 @@
 //  * Port 8888 is fixed; only when it cannot be bound does the server
 //    fall back to a system-chosen port, and [port] is always the one
 //    actually in use.
+//  * The server binds one socket per detected address (loopback plus
+//    every address the picker found), not a single 0.0.0.0 socket:
+//    0.0.0.0 alone did not accept connections from other devices on
+//    this phone, while binding each address directly does. With no
+//    detected addresses it falls back to the single 0.0.0.0 socket.
 //  * The book lists are a snapshot taken at start; they do not follow
 //    later downloads / favourites. Restarting refreshes them.
 //  * Files are addressed ONLY by their index in the snapshot — a
@@ -290,50 +295,104 @@ class WebService extends ChangeNotifier {
        _resolvePath = pathResolver ?? MediaStoreFiles.realPath,
        _txt = txtConverter ?? TxtToEpub();
 
-  HttpServer? _server;
+  /// Every socket currently serving, one per bound address (see
+  /// [start]). A single 0.0.0.0 socket did not accept connections
+  /// from other devices on this phone, while binding each detected
+  /// address directly does — the same shape as Legado's server.
+  List<HttpServer> _servers = <HttpServer>[];
   WebSnapshot _snapshot = const WebSnapshot();
   WebPageStrings _strings = WebPageStrings.english;
 
-  bool get isRunning => _server != null;
+  bool get isRunning => _servers.isNotEmpty;
 
   /// The port actually bound, or null when stopped.
-  int? get port => _server?.port;
+  int? get port => _servers.isEmpty ? null : _servers.first.port;
 
   WebSnapshot get snapshot => _snapshot;
 
   /// Start serving [snapshot]. Idempotent: starting while running just
   /// returns the current port (the snapshot is NOT replaced — stop and
-  /// start again to refresh it). Binds [preferredPort] and, only if
-  /// that fails, a system-chosen port.
+  /// start again to refresh it).
+  ///
+  /// [bindAddresses] lists the addresses to listen on, one socket
+  /// each. When it is null or empty the historical single-socket
+  /// behaviour is kept: bind [InternetAddress.anyIPv4] on
+  /// [preferredPort], falling back to a system-chosen port only if
+  /// that fails. When addresses are given, each is bound on
+  /// [preferredPort]; an address that fails to bind is skipped (and
+  /// logged) so one bad address cannot kill the whole service. If no
+  /// address binds at all, the last [SocketException] is rethrown.
   Future<int> start({
     required WebSnapshot snapshot,
     WebPageStrings strings = WebPageStrings.english,
     int preferredPort = kWebServicePort,
+    List<InternetAddress>? bindAddresses,
   }) async {
-    final running = _server;
-    if (running != null) return running.port;
+    if (_servers.isNotEmpty) return _servers.first.port;
 
     _snapshot = snapshot;
     _strings = strings;
-    HttpServer server;
-    try {
-      server = await HttpServer.bind(InternetAddress.anyIPv4, preferredPort);
-    } on SocketException {
-      // Preferred port taken by another program: any free port.
-      server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
+    final servers = await _bindServers(
+      bindAddresses: bindAddresses,
+      preferredPort: preferredPort,
+    );
+    _servers = servers;
+    for (final server in _servers) {
+      server.listen(
+        _dispatch,
+        onError: (Object e) => logIgnored('web_service', e),
+      );
     }
-    _server = server;
-    server.listen(_dispatch, onError: (Object e) => logIgnored('web_service', e));
     notifyListeners();
-    return server.port;
+    return _servers.first.port;
+  }
+
+  /// Bind the sockets [start] will serve. Split out so the two bind
+  /// shapes stay readable: the legacy anyIPv4 socket (with its
+  /// port-0 fallback) and the per-address list.
+  Future<List<HttpServer>> _bindServers({
+    required List<InternetAddress>? bindAddresses,
+    required int preferredPort,
+  }) async {
+    if (bindAddresses == null || bindAddresses.isEmpty) {
+      try {
+        return <HttpServer>[
+          await HttpServer.bind(InternetAddress.anyIPv4, preferredPort),
+        ];
+      } on SocketException {
+        // Preferred port taken by another program: any free port.
+        return <HttpServer>[
+          await HttpServer.bind(InternetAddress.anyIPv4, 0),
+        ];
+      }
+    }
+    final bound = <HttpServer>[];
+    SocketException? lastError;
+    for (final address in bindAddresses) {
+      try {
+        bound.add(await HttpServer.bind(address, preferredPort));
+      } on SocketException catch (error) {
+        // One address may be gone (or the port taken on it): skip it
+        // and keep serving the addresses that did bind.
+        logIgnored('web_service', error);
+        lastError = error;
+      }
+    }
+    if (bound.isEmpty) {
+      throw lastError ??
+          StateError('web_service: no bind address succeeded');
+    }
+    return bound;
   }
 
   /// Stop serving. Called ONLY from the Stop button.
   Future<void> stop() async {
-    final server = _server;
-    if (server == null) return;
-    _server = null;
-    await server.close(force: true);
+    final servers = _servers;
+    if (servers.isEmpty) return;
+    _servers = <HttpServer>[];
+    for (final server in servers) {
+      await server.close(force: true);
+    }
     notifyListeners();
   }
 

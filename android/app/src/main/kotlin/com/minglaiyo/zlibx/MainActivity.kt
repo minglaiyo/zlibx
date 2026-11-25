@@ -61,7 +61,21 @@ class MainActivity : FlutterFragmentActivity() {
     /// its action handler.
     private var _downloadActionChannel: MethodChannel? = null
 
+    /// The LAN web server (zlibx/web_server). Created in
+    /// [configureFlutterEngine] once the binary messenger exists; Dart
+    /// owns all content and routing, this only owns the sockets.
+    private var webServer: LanWebServer? = null
+
     override fun onDestroy() {
+        // The web server lives in this process, not in the Dart
+        // isolate: stop it here, or it would keep listening (and
+        // answering 500s, since no Dart is left to answer) after the
+        // app is gone.
+        try {
+            webServer?.stop()
+        } catch (e: Exception) {
+            Log.w(TAG, "web server stop failed", e)
+        }
         // Close any held pending streams (entries stay IS_PENDING and
         // resumable), then let queued work drain.
         try {
@@ -251,6 +265,62 @@ class MainActivity : FlutterFragmentActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // Web service: the HTTP server itself runs natively
+        // (zlibx/web_server). Dart keeps all content logic and answers
+        // each request through "handleRequest"; this side only owns
+        // sockets and bytes — the Dart HttpServer never accepted
+        // connections from other devices on this phone.
+        val webServerChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "zlibx/web_server",
+        )
+        webServer = LanWebServer(webServerChannel)
+        webServerChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "start" -> {
+                    val port = (call.argument<Number>("port") ?: 8888).toInt()
+                    val addresses = call.argument<List<*>>("addresses")
+                        ?.mapNotNull { it as? String }
+                        ?: emptyList()
+                    // Binding is a fast local syscall, but a wedged
+                    // interface must never stall the platform thread.
+                    lightExecutor.execute {
+                        try {
+                            val actual = webServer?.start(port, addresses)
+                            runOnUiThread {
+                                try {
+                                    result.success(actual)
+                                } catch (e: IllegalStateException) {
+                                    // Engine detached while binding.
+                                    Log.w(TAG, "reply after detach ignored", e)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "web server start failed", e)
+                            runOnUiThread {
+                                try {
+                                    result.error("BIND_FAILED", e.message, null)
+                                } catch (ignored: IllegalStateException) {
+                                    Log.w(TAG, "reply after detach ignored", ignored)
+                                }
+                            }
+                        }
+                    }
+                }
+                "stop" -> {
+                    // Never let this throw: Dart's stop() must complete
+                    // or the settings page hangs on its spinner.
+                    try {
+                        webServer?.stop()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "web server stop failed", e)
+                    }
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         // O1: background download keep-alive. Dart starts/stops the
         // foreground service, pushes progress, and registers the channel

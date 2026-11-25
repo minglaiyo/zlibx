@@ -122,13 +122,21 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
       if (mounted) {
         showAppSnack(
           context,
-          t.webServiceStartFailed(error.runtimeType.toString()),
+          t.webServiceStartFailed(_startErrorText(error)),
           error: true,
         );
       }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// What the failure snackbar shows: the native bind reason when
+  /// the platform has one (e.g. "Permission denied"), else the error
+  /// type. The native side reports BIND_FAILED with the cause.
+  String _startErrorText(Object error) {
+    if (error is PlatformException) return error.message ?? error.code;
+    return error.runtimeType.toString();
   }
 
   Future<void> _stop() async {

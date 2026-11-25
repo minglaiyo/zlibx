@@ -1,28 +1,42 @@
-// The LAN web service: a process-wide HTTP server (dart:io only, no
-// framework) that lets other devices on the same hotspot / Wi-Fi
+// The LAN web service: lets other devices on the same hotspot / Wi-Fi
 //   * download the books on this phone from a plain-HTML home page
 //     (no JavaScript, so e-readers and weak browsers work), and
 //   * read shelf books in the user's own desktop browser through the
 //     vendored foliate-js reader (/read, /book, /reader-assets).
 //
+// The HTTP transport is NATIVE (LanWebServer.kt, MethodChannel
+// "zlibx/web_server"): the Dart `HttpServer` (a single 0.0.0.0 socket
+// and then one socket per detected address, ports 8080 and 8888)
+// served loopback fine but never accepted a connection from another
+// device on this phone, while Legado — a native Android app — serves
+// the same phone without trouble. The one variable never changed in
+// any attempt was the Dart socket itself. So this file owns the
+// snapshot, the HTML pages, routing, Range parsing, TXT→EPUB
+// conversion and the reader routes — and Kotlin owns sockets and
+// bytes. Dart answers each request through [handleRequest], which
+// returns a [WebResponse] descriptor; Kotlin writes the status line,
+// headers and body (streaming files from disk with Range support).
+//
 // Lifecycle rules (each one cost a delivery before):
 //  * [WebService.shared] is a process singleton. The settings page may
 //    be left and re-entered freely; ONLY [stop] (the Stop button) stops
 //    the server. Never call stop from a widget's dispose().
-//  * Port 8888 is fixed; only when it cannot be bound does the server
-//    fall back to a system-chosen port, and [port] is always the one
-//    actually in use.
+//  * Port 8888 is fixed; only when it cannot be bound does the native
+//    side fall back to a system-chosen port (single 0.0.0.0 socket
+//    only), and [port] is always the one actually in use.
 //  * The server binds one socket per detected address (loopback plus
-//    every address the picker found), not a single 0.0.0.0 socket:
-//    0.0.0.0 alone did not accept connections from other devices on
-//    this phone, while binding each address directly does. With no
-//    detected addresses it falls back to the single 0.0.0.0 socket.
+//    every address the picker found), not a single 0.0.0.0 socket.
+//    With no detected addresses it falls back to the single 0.0.0.0
+//    socket.
 //  * The book lists are a snapshot taken at start; they do not follow
 //    later downloads / favourites. Restarting refreshes them.
 //  * Files are addressed ONLY by their index in the snapshot — a
 //    request path never names a file system path.
+//  * Every response is answered with `Connection: close`: one request
+//    per connection, no keep-alive.
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -265,6 +279,54 @@ class WebPageStrings {
   );
 }
 
+// ───────────────────────── Response ─────────────────────────
+
+/// One HTTP response, as decided by Dart and written by Kotlin.
+///
+/// Wire shape (MethodChannel "zlibx/web_server", `handleRequest`
+/// reply): {status: int, headers: Map<String, String>,
+/// body: Uint8List?, filePath: String?, fileStart: int?,
+/// fileEnd: int?}. Exactly one of [body] / [filePath] carries the
+/// payload: [body] for small in-memory answers (HTML, plain text,
+/// reader assets, converted EPUBs), [filePath] for a real file on disk
+/// that Kotlin streams, bytes [fileStart]..[fileEnd] inclusive
+/// (null start = 0, null end = end of file). [headers] always carries
+/// Content-Type and Content-Length (and Content-Range for a 206), so
+/// Kotlin never has to guess a length. For a HEAD request the
+/// descriptor is the same as for GET — Kotlin, not Dart, drops the
+/// body.
+///
+/// One deliberate deviation from the old Dart server: a 416 used to
+/// go out chunked (dart:io sent no Content-Length for it); it now
+/// carries `Content-Length: 0`, which bare-bones clients handle
+/// better. Same status, same Content-Range.
+class WebResponse {
+  final int status;
+  final Map<String, String> headers;
+  final Uint8List? body;
+  final String? filePath;
+  final int? fileStart;
+  final int? fileEnd;
+
+  const WebResponse({
+    required this.status,
+    this.headers = const <String, String>{},
+    this.body,
+    this.filePath,
+    this.fileStart,
+    this.fileEnd,
+  });
+
+  Map<String, Object?> toMap() => <String, Object?>{
+    'status': status,
+    'headers': headers,
+    'body': body,
+    'filePath': filePath,
+    'fileStart': fileStart,
+    'fileEnd': fileEnd,
+  };
+}
+
 // ───────────────────────── Service ─────────────────────────
 
 typedef AssetLoader = Future<List<int>?> Function(String assetPath);
@@ -283,6 +345,11 @@ class WebService extends ChangeNotifier {
   /// The one instance shared by the settings page and the server.
   static final WebService shared = WebService();
 
+  /// The native transport (LanWebServer.kt). Dart calls `start` /
+  /// `stop` on it; it calls back with `handleRequest`, answered by
+  /// [shared] (the server only ever runs for the shared instance).
+  static const MethodChannel _channel = MethodChannel('zlibx/web_server');
+
   final AssetLoader _loadAsset;
   final PathResolver _resolvePath;
   final TxtToEpub _txt;
@@ -295,18 +362,15 @@ class WebService extends ChangeNotifier {
        _resolvePath = pathResolver ?? MediaStoreFiles.realPath,
        _txt = txtConverter ?? TxtToEpub();
 
-  /// Every socket currently serving, one per bound address (see
-  /// [start]). A single 0.0.0.0 socket did not accept connections
-  /// from other devices on this phone, while binding each detected
-  /// address directly does — the same shape as Legado's server.
-  List<HttpServer> _servers = <HttpServer>[];
+  bool _running = false;
+  int? _port;
   WebSnapshot _snapshot = const WebSnapshot();
   WebPageStrings _strings = WebPageStrings.english;
 
-  bool get isRunning => _servers.isNotEmpty;
+  bool get isRunning => _running;
 
   /// The port actually bound, or null when stopped.
-  int? get port => _servers.isEmpty ? null : _servers.first.port;
+  int? get port => _port;
 
   WebSnapshot get snapshot => _snapshot;
 
@@ -315,127 +379,130 @@ class WebService extends ChangeNotifier {
   /// start again to refresh it).
   ///
   /// [bindAddresses] lists the addresses to listen on, one socket
-  /// each. When it is null or empty the historical single-socket
-  /// behaviour is kept: bind [InternetAddress.anyIPv4] on
-  /// [preferredPort], falling back to a system-chosen port only if
-  /// that fails. When addresses are given, each is bound on
-  /// [preferredPort]; an address that fails to bind is skipped (and
-  /// logged) so one bad address cannot kill the whole service. If no
-  /// address binds at all, the last [SocketException] is rethrown.
+  /// each. When it is null or empty the native side falls back to its
+  /// single 0.0.0.0 socket (with a port-0 fallback if the preferred
+  /// port is taken). A [PlatformException] with code BIND_FAILED
+  /// means no address could be bound at all.
   Future<int> start({
     required WebSnapshot snapshot,
     WebPageStrings strings = WebPageStrings.english,
     int preferredPort = kWebServicePort,
     List<InternetAddress>? bindAddresses,
   }) async {
-    if (_servers.isNotEmpty) return _servers.first.port;
+    if (_running) return _port!;
 
     _snapshot = snapshot;
     _strings = strings;
-    final servers = await _bindServers(
-      bindAddresses: bindAddresses,
-      preferredPort: preferredPort,
-    );
-    _servers = servers;
-    for (final server in _servers) {
-      server.listen(
-        _dispatch,
-        onError: (Object e) => logIgnored('web_service', e),
-      );
-    }
-    notifyListeners();
-    return _servers.first.port;
-  }
-
-  /// Bind the sockets [start] will serve. Split out so the two bind
-  /// shapes stay readable: the legacy anyIPv4 socket (with its
-  /// port-0 fallback) and the per-address list.
-  Future<List<HttpServer>> _bindServers({
-    required List<InternetAddress>? bindAddresses,
-    required int preferredPort,
-  }) async {
-    if (bindAddresses == null || bindAddresses.isEmpty) {
-      try {
-        return <HttpServer>[
-          await HttpServer.bind(InternetAddress.anyIPv4, preferredPort),
-        ];
-      } on SocketException {
-        // Preferred port taken by another program: any free port.
-        return <HttpServer>[
-          await HttpServer.bind(InternetAddress.anyIPv4, 0),
-        ];
+    _channel.setMethodCallHandler(_onMethodCall);
+    try {
+      final args = <String, Object?>{
+        'port': preferredPort,
+        'addresses': <String>[
+          for (final a in bindAddresses ?? const <InternetAddress>[])
+            a.address,
+        ],
+      };
+      final result = await _channel.invokeMethod<Object?>('start', args);
+      final actual = result is int ? result : null;
+      if (actual == null) {
+        throw StateError('web_server: native start returned no port');
       }
+      _port = actual;
+      _running = true;
+      notifyListeners();
+      return actual;
+    } catch (error) {
+      // No server, so the handler would never be called.
+      _channel.setMethodCallHandler(null);
+      rethrow;
     }
-    final bound = <HttpServer>[];
-    SocketException? lastError;
-    for (final address in bindAddresses) {
-      try {
-        bound.add(await HttpServer.bind(address, preferredPort));
-      } on SocketException catch (error) {
-        // One address may be gone (or the port taken on it): skip it
-        // and keep serving the addresses that did bind.
-        logIgnored('web_service', error);
-        lastError = error;
-      }
-    }
-    if (bound.isEmpty) {
-      throw lastError ??
-          StateError('web_service: no bind address succeeded');
-    }
-    return bound;
   }
 
   /// Stop serving. Called ONLY from the Stop button.
   Future<void> stop() async {
-    final servers = _servers;
-    if (servers.isEmpty) return;
-    _servers = <HttpServer>[];
-    for (final server in servers) {
-      await server.close(force: true);
+    if (!_running) return;
+    try {
+      await _channel.invokeMethod<void>('stop');
+    } catch (error) {
+      logIgnored('web_service', error);
     }
+    _running = false;
+    _port = null;
+    _channel.setMethodCallHandler(null);
     notifyListeners();
+  }
+
+  /// Incoming `handleRequest` calls from the native server. The
+  /// native side already percent-decoded the path; [headers] arrives
+  /// with lowercase keys.
+  static Future<Object?> _onMethodCall(MethodCall call) async {
+    if (call.method != 'handleRequest') {
+      throw MissingPluginException('web_server: ${call.method}');
+    }
+    final args = call.arguments;
+    if (args is! Map) {
+      throw ArgumentError('web_server: handleRequest arguments must be a Map');
+    }
+    final headers = <String, String>{};
+    final rawHeaders = args['headers'];
+    if (rawHeaders is Map) {
+      for (final entry in rawHeaders.entries) {
+        headers[entry.key.toString().toLowerCase()] =
+            entry.value?.toString() ?? '';
+      }
+    }
+    final response = await shared.handleRequest(
+      method: args['method']?.toString() ?? '',
+      path: args['path']?.toString() ?? '/',
+      headers: headers,
+    );
+    return response.toMap();
   }
 
   // ── Routing ──────────────────────────────────────────────────────
 
-  Future<void> _dispatch(HttpRequest request) async {
+  /// Answer one HTTP request, as a [WebResponse] for the native side
+  /// to write. Pure apart from file reads and TXT conversion, so it
+  /// is unit-testable without any socket. [path] is the percent-
+  /// decoded request path (query string already stripped by Kotlin);
+  /// [headers] is keyed lowercase (only `range` is read).
+  Future<WebResponse> handleRequest({
+    required String method,
+    required String path,
+    Map<String, String> headers = const <String, String>{},
+  }) async {
     try {
-      if (request.method != 'GET' && request.method != 'HEAD') {
-        await _plain(request, HttpStatus.methodNotAllowed, 'Method Not Allowed');
-        return;
+      final normalizedMethod = method.toUpperCase();
+      if (normalizedMethod != 'GET' && normalizedMethod != 'HEAD') {
+        return _plain(HttpStatus.methodNotAllowed, 'Method Not Allowed');
       }
-      final segments = request.uri.pathSegments
+      final segments = path
+          .split('/')
           .where((s) => s.isNotEmpty)
           .toList(growable: false);
       if (segments.isEmpty) {
-        await _html(request, HttpStatus.ok, _homePage());
-        return;
+        return _html(HttpStatus.ok, _homePage());
       }
       switch (segments.first) {
         case 'booklist':
-          await _booklistRoute(request, segments);
+          return _booklistRoute(segments);
         case 'download':
-          await _downloadRoute(request, segments);
+          return _downloadRoute(segments, headers['range']);
         case 'read':
-          await _readRoute(request, segments);
+          return _readRoute(segments);
         case 'book':
-          await _bookRoute(request, segments);
+          return _bookRoute(segments, headers['range']);
         case 'reader-assets':
-          await _assetRoute(request, segments);
+          return _assetRoute(segments);
         default:
-          await _notFound(request);
+          return _notFound();
       }
     } catch (error) {
       logIgnored('web_service', error);
-      try {
-        await _plain(
-          request,
-          HttpStatus.internalServerError,
-          'Internal Server Error',
-        );
-      } catch (_) {
-        // Response already started / closed: nothing more to do.
-      }
+      return _plain(
+        HttpStatus.internalServerError,
+        'Internal Server Error',
+      );
     }
   }
 
@@ -448,17 +515,17 @@ class WebService extends ChangeNotifier {
     return index < _snapshot.files.length ? index : null;
   }
 
-  Future<void> _notFound(HttpRequest request) =>
-      _html(request, HttpStatus.notFound, _messagePage(_strings.notFound));
+  WebResponse _notFound() =>
+      _html(HttpStatus.notFound, _messagePage(_strings.notFound));
 
-  Future<void> _booklistRoute(HttpRequest request, List<String> s) async {
-    if (s.length != 2) return _notFound(request);
+  WebResponse _booklistRoute(List<String> s) {
+    if (s.length != 2) return _notFound();
     for (final list in _snapshot.booklists) {
       if (list.id == s[1]) {
-        return _html(request, HttpStatus.ok, _booklistPage(list));
+        return _html(HttpStatus.ok, _booklistPage(list));
       }
     }
-    return _notFound(request);
+    return _notFound();
   }
 
   Future<File?> _fileFor(int index) async {
@@ -468,26 +535,29 @@ class WebService extends ChangeNotifier {
     return await file.exists() ? file : null;
   }
 
-  Future<void> _downloadRoute(HttpRequest request, List<String> s) async {
+  Future<WebResponse> _downloadRoute(
+    List<String> s,
+    String? rangeHeader,
+  ) async {
     final index = _fileIndex(s);
-    if (index == null) return _notFound(request);
+    if (index == null) return _notFound();
     final file = await _fileFor(index);
-    if (file == null) return _notFound(request);
-    await _sendFile(
-      request,
+    if (file == null) return _notFound();
+    return _sendFile(
       file,
       contentType: _mimeFor(_snapshot.files[index].extension),
       downloadName: p.basename(file.path),
+      rangeHeader: rangeHeader,
     );
   }
 
-  Future<void> _readRoute(HttpRequest request, List<String> s) async {
+  Future<WebResponse> _readRoute(List<String> s) async {
     final index = _fileIndex(s);
-    if (index == null) return _notFound(request);
+    if (index == null) return _notFound();
     final entry = _snapshot.files[index];
-    if (!isReadableExtension(entry.extension)) return _notFound(request);
+    if (!isReadableExtension(entry.extension)) return _notFound();
     final file = await _fileFor(index);
-    if (file == null) return _notFound(request);
+    if (file == null) return _notFound();
 
     if (entry.extension.toLowerCase() == 'txt') {
       // Convert up front so a failure becomes a readable page here
@@ -496,14 +566,12 @@ class WebService extends ChangeNotifier {
         await _txt.epubFor(file.path, title: entry.title);
       } on TxtConvertException {
         return _html(
-          request,
           HttpStatus.unprocessableEntity,
           _messagePage(_strings.convertFailed),
         );
       }
     }
-    await _html(
-      request,
+    return _html(
       HttpStatus.ok,
       buildReaderPage(
         index: index,
@@ -513,13 +581,13 @@ class WebService extends ChangeNotifier {
     );
   }
 
-  Future<void> _bookRoute(HttpRequest request, List<String> s) async {
+  Future<WebResponse> _bookRoute(List<String> s, String? rangeHeader) async {
     final index = _fileIndex(s);
-    if (index == null) return _notFound(request);
+    if (index == null) return _notFound();
     final entry = _snapshot.files[index];
-    if (!isReadableExtension(entry.extension)) return _notFound(request);
+    if (!isReadableExtension(entry.extension)) return _notFound();
     final file = await _fileFor(index);
-    if (file == null) return _notFound(request);
+    if (file == null) return _notFound();
 
     final ext = entry.extension.toLowerCase();
     if (ext == 'txt') {
@@ -527,77 +595,89 @@ class WebService extends ChangeNotifier {
       try {
         epub = await _txt.epubFor(file.path, title: entry.title);
       } on TxtConvertException {
-        return _plain(request, HttpStatus.unprocessableEntity, 'convert failed');
+        return _plain(HttpStatus.unprocessableEntity, 'convert failed');
       }
-      request.response
-        ..statusCode = HttpStatus.ok
-        ..headers.contentType = ContentType('application', 'epub+zip')
-        ..headers.set('X-Book-Name', 'book.epub')
-        ..headers.contentLength = epub.length;
-      if (request.method != 'HEAD') request.response.add(epub);
-      await request.response.close();
-      return;
+      return WebResponse(
+        status: HttpStatus.ok,
+        headers: <String, String>{
+          'Content-Type': 'application/epub+zip',
+          'X-Book-Name': 'book.epub',
+          'Content-Length': epub.length.toString(),
+        },
+        body: epub,
+      );
     }
-    request.response.headers.set('X-Book-Name', 'book.$ext');
-    await _sendFile(request, file, contentType: _mimeFor(ext));
+    return _sendFile(
+      file,
+      contentType: _mimeFor(ext),
+      downloadName: null,
+      rangeHeader: rangeHeader,
+      extraHeaders: <String, String>{'X-Book-Name': 'book.$ext'},
+    );
   }
 
-  Future<void> _assetRoute(HttpRequest request, List<String> s) async {
+  Future<WebResponse> _assetRoute(List<String> s) async {
     final name = s.sublist(1).join('/');
-    if (!kReaderAssetWhitelist.contains(name)) return _notFound(request);
+    if (!kReaderAssetWhitelist.contains(name)) return _notFound();
     final bytes = await _loadAsset('assets/web-reader/$name');
-    if (bytes == null) return _notFound(request);
-    request.response
-      ..statusCode = HttpStatus.ok
-      ..headers.contentType = ContentType(
-        'text',
-        'javascript',
-        charset: 'utf-8',
-      )
-      ..headers.contentLength = bytes.length;
-    if (request.method != 'HEAD') request.response.add(bytes);
-    await request.response.close();
+    if (bytes == null) return _notFound();
+    return WebResponse(
+      status: HttpStatus.ok,
+      headers: <String, String>{
+        'Content-Type': 'text/javascript; charset=utf-8',
+        'Content-Length': bytes.length.toString(),
+      },
+      body: Uint8List.fromList(bytes),
+    );
   }
 
   // ── Responses ────────────────────────────────────────────────────
 
-  Future<void> _html(HttpRequest request, int status, String body) async {
+  WebResponse _html(int status, String body) {
     final bytes = utf8.encode(body);
-    request.response
-      ..statusCode = status
-      ..headers.contentType = ContentType.html
-      ..headers.contentLength = bytes.length;
-    if (request.method != 'HEAD') request.response.add(bytes);
-    await request.response.close();
+    return WebResponse(
+      status: status,
+      headers: <String, String>{
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Length': bytes.length.toString(),
+      },
+      body: Uint8List.fromList(bytes),
+    );
   }
 
-  Future<void> _plain(HttpRequest request, int status, String body) async {
+  WebResponse _plain(int status, String body) {
     final bytes = utf8.encode(body);
-    request.response
-      ..statusCode = status
-      ..headers.contentType = ContentType.text
-      ..headers.contentLength = bytes.length;
-    if (request.method != 'HEAD') request.response.add(bytes);
-    await request.response.close();
+    return WebResponse(
+      status: status,
+      headers: <String, String>{
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Content-Length': bytes.length.toString(),
+      },
+      body: Uint8List.fromList(bytes),
+    );
   }
 
-  /// Stream [file] straight from disk (never copied to a cache first).
-  /// Supports a single `Range: bytes=a-b` so interrupted downloads can
-  /// resume.
-  Future<void> _sendFile(
-    HttpRequest request,
+  /// Describe [file] for the native side to stream straight from disk
+  /// (never copied to a cache first). Supports a single
+  /// `Range: bytes=a-b` so interrupted downloads can resume.
+  /// [extraHeaders] are extra response headers (e.g. X-Book-Name);
+  /// [rangeHeader] is the request's `Range` value, if any.
+  Future<WebResponse> _sendFile(
     File file, {
-    required ContentType contentType,
+    required String contentType,
     String? downloadName,
+    String? rangeHeader,
+    Map<String, String> extraHeaders = const <String, String>{},
   }) async {
     final length = await file.length();
     var start = 0;
     var end = length - 1;
     var status = HttpStatus.ok;
 
-    final range = request.headers.value(HttpHeaders.rangeHeader);
-    if (range != null) {
-      final match = RegExp(r'^bytes=(\d*)-(\d*)$').firstMatch(range.trim());
+    if (rangeHeader != null) {
+      final match = RegExp(
+        r'^bytes=(\d*)-(\d*)$',
+      ).firstMatch(rangeHeader.trim());
       if (match != null && (match[1]!.isNotEmpty || match[2]!.isNotEmpty)) {
         if (match[1]!.isEmpty) {
           final suffix = int.tryParse(match[2]!) ?? 0;
@@ -608,39 +688,41 @@ class WebService extends ChangeNotifier {
         }
         if (end > length - 1) end = length - 1;
         if (start > end || start >= length) {
-          request.response
-            ..statusCode = HttpStatus.requestedRangeNotSatisfiable
-            ..headers.set(HttpHeaders.contentRangeHeader, 'bytes */$length');
-          await request.response.close();
-          return;
+          return WebResponse(
+            status: HttpStatus.requestedRangeNotSatisfiable,
+            headers: <String, String>{
+              'Content-Range': 'bytes */$length',
+              'Content-Length': '0',
+            },
+          );
         }
         status = HttpStatus.partialContent;
       }
     }
 
     final count = length == 0 ? 0 : end - start + 1;
-    final response = request.response
-      ..statusCode = status
-      ..headers.contentType = contentType
-      ..headers.set(HttpHeaders.acceptRangesHeader, 'bytes')
-      ..headers.contentLength = count;
+    final headers = <String, String>{
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': count.toString(),
+      ...extraHeaders,
+    };
     if (status == HttpStatus.partialContent) {
-      response.headers.set(
-        HttpHeaders.contentRangeHeader,
-        'bytes $start-$end/$length',
-      );
+      headers['Content-Range'] = 'bytes $start-$end/$length';
     }
     if (downloadName != null) {
-      response.headers.set(
-        // dart:io has no HttpHeaders.contentDispositionHeader constant.
-        'content-disposition',
-        _contentDisposition(downloadName),
-      );
+      headers['Content-Disposition'] = _contentDisposition(downloadName);
     }
-    if (request.method != 'HEAD' && count > 0) {
-      await response.addStream(file.openRead(start, end + 1));
+    if (count == 0) {
+      return WebResponse(status: status, headers: headers, body: Uint8List(0));
     }
-    await response.close();
+    return WebResponse(
+      status: status,
+      headers: headers,
+      filePath: file.path,
+      fileStart: start,
+      fileEnd: end,
+    );
   }
 
   static String _contentDisposition(String name) {
@@ -652,25 +734,25 @@ class WebService extends ChangeNotifier {
         "filename*=UTF-8''${Uri.encodeComponent(name)}";
   }
 
-  static ContentType _mimeFor(String extension) {
+  static String _mimeFor(String extension) {
     switch (extension.toLowerCase()) {
       case 'epub':
-        return ContentType('application', 'epub+zip');
+        return 'application/epub+zip';
       case 'pdf':
-        return ContentType('application', 'pdf');
+        return 'application/pdf';
       case 'mobi':
-        return ContentType('application', 'x-mobipocket-ebook');
+        return 'application/x-mobipocket-ebook';
       case 'azw3':
       case 'azw':
-        return ContentType('application', 'vnd.amazon.ebook');
+        return 'application/vnd.amazon.ebook';
       case 'fb2':
-        return ContentType('application', 'x-fictionbook+xml');
+        return 'application/x-fictionbook+xml';
       case 'cbz':
-        return ContentType('application', 'vnd.comicbook+zip');
+        return 'application/vnd.comicbook+zip';
       case 'txt':
-        return ContentType('text', 'plain', charset: 'utf-8');
+        return 'text/plain; charset=utf-8';
       default:
-        return ContentType('application', 'octet-stream');
+        return 'application/octet-stream';
     }
   }
 

@@ -45,51 +45,12 @@ import '../providers/download_task.dart';
 import '../utils/diagnostics.dart';
 import 'app_icon.dart';
 import 'media_store.dart';
+import 'reader_formats.dart';
 import 'txt_to_epub.dart';
 import 'web_reader_page.dart';
 
 /// The fixed port. See the lifecycle notes above.
 const int kWebServicePort = 8080;
-
-/// The only files /reader-assets/ will ever serve (the 13 vendored
-/// foliate-js files). Anything else is a 404.
-const Set<String> kReaderAssetWhitelist = <String>{
-  'view.js',
-  'epubcfi.js',
-  'progress.js',
-  'overlayer.js',
-  'text-walker.js',
-  'epub.js',
-  'mobi.js',
-  'fb2.js',
-  'comic-book.js',
-  'paginator.js',
-  'fixed-layout.js',
-  'vendor/zip.js',
-  'vendor/fflate.js',
-};
-
-/// Formats the reader can open. PDF is not opened by the reader —
-/// a desktop browser renders it with its own PDF viewer through
-/// /book instead (see [isPdfExtension]). DRM is not handled at all.
-const Set<String> kReadableExtensions = <String>{
-  'epub',
-  'mobi',
-  'azw3',
-  'fb2',
-  'cbz',
-  'txt',
-};
-
-bool isReadableExtension(String? extension) =>
-    kReadableExtensions.contains((extension ?? '').toLowerCase());
-
-/// A PDF is viewable in the browser itself: /book serves it inline
-/// (no Content-Disposition: attachment), so Chrome / Edge / Firefox
-/// open it in their built-in PDF viewer. The foliate reader cannot
-/// open PDFs, so /read still refuses them.
-bool isPdfExtension(String? extension) =>
-    (extension ?? '').toLowerCase() == 'pdf';
 
 /// Format a byte count as "12.3 MB" (one decimal; B/KB/MB/GB).
 String formatFileSize(int bytes) {

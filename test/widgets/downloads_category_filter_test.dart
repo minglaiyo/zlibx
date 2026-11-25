@@ -119,14 +119,16 @@ void main() {
       book: const Book(id: 8, title: 'Queued one', author: 'A'),
       status: DownloadStatus.pending,
     );
+    // 错误任务在真实结构里属于进行中（completedIds 只含已完成），
+    // 所以 wifi 文案在进行中 Tab 里断言；已完成 Tab 改成书架后
+    // 不再显示错误文案。
     await tester.pumpWidget(
       app([
         downloadListStructureProvider.overrideWithValue(
           const DownloadListStructure(
-            ongoingIds: ['8'],
-            completedIds: ['9'],
-            // Task '9' is an error task with no downloadedAt.
-            completedDates: {'9': null},
+            ongoingIds: ['8', '9'],
+            completedIds: [],
+            completedDates: {},
           ),
         ),
         downloadTaskProvider('8').overrideWithValue(pending),
@@ -138,23 +140,16 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
 
-    // E1：wifi-only 旗标的错误文案（不是裸 error 字符串）。先切
-    // Completed 再开菜单——模态菜单会吞掉之后的 Tab 切换点击。
-    final tabFinder = find.text('Completed (1)');
-    expect(tabFinder, findsOneWidget);
-    await tester.tap(tabFinder);
-    for (var i = 0; i < 5; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-    expect(find.textContaining('Waiting for Wi-Fi'), findsOneWidget);
-
-    // E2：pending 任务的菜单带「置顶」（切回进行中 Tab）。
-    final ongoingTab = find.text('Ongoing (1)');
+    // E1：wifi-only 旗标的错误文案（不是裸 error 字符串）。
+    final ongoingTab = find.text('Ongoing (2)');
     expect(ongoingTab, findsOneWidget);
     await tester.tap(ongoingTab);
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
+    expect(find.textContaining('Waiting for Wi-Fi'), findsOneWidget);
+
+    // E2：pending 任务的菜单带「置顶」。
     await tester.tap(find.byIcon(Icons.more_horiz_rounded).first);
     // 菜单弹出动画在假时钟里要 pump 够 200ms；100ms 步进不够开。
     await tester.pump(const Duration(seconds: 1));

@@ -16,6 +16,7 @@ const _routesWithArgs = <String>[
   AppRoutes.userProfile,
   AppRoutes.similarBooks,
   AppRoutes.reader,
+  AppRoutes.localReader,
 ];
 
 /// Pumps an app whose home page has one button that pushes [route] with

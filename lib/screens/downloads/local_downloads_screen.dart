@@ -13,7 +13,9 @@ import '../../providers/download_provider.dart';
 import '../../providers/shelf_categories_provider.dart';
 import '../../screens/favorites/category_actions.dart';
 import '../../screens/favorites/widgets/shelf_chip.dart';
+import '../../screens/reader/local_reader_screen.dart';
 import '../../services/media_store.dart';
+import '../../services/reader_formats.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/app_snack.dart';
 import '../../utils/cover_cache.dart';
@@ -105,7 +107,6 @@ class _LocalDownloadsScreenState extends ConsumerState<LocalDownloadsScreen> {
                   ),
                   _CompletedTab(
                     taskIds: completedIds,
-                    completedDates: structure.completedDates,
                     filter: _completedFilter,
                     onFilterChanged: (value) =>
                         setState(() => _completedFilter = value),
@@ -120,22 +121,18 @@ class _LocalDownloadsScreenState extends ConsumerState<LocalDownloadsScreen> {
   }
 }
 
-/// 已完成 Tab：分类筛选条 + 列表。任务 id 就是 bookId（历史条目按
+/// 已完成 Tab：分类筛选条 + 书架网格。任务 id 就是 bookId（历史条目按
 /// bookId 存），分类归属用 `download:<bookId>` 键写进书架分类的
-/// assignments 表。
+/// assignments 表。点一本书进 in-app 阅读器（foliate，见
+/// local_reader_screen.dart）；PDF 等阅读器打不开的格式走外部打开。
 class _CompletedTab extends ConsumerWidget {
   const _CompletedTab({
     required this.taskIds,
-    required this.completedDates,
     required this.filter,
     required this.onFilterChanged,
   });
 
   final List<String> taskIds;
-
-  /// Download stamp per completed id (from the list structure):
-  /// the list groups by date from this map.
-  final Map<String, DateTime?> completedDates;
   final String? filter;
   final ValueChanged<String?> onFilterChanged;
 
@@ -158,9 +155,8 @@ class _CompletedTab extends ConsumerWidget {
           onSelected: onFilterChanged,
         ),
         Expanded(
-          child: _DownloadList(
+          child: _CompletedBookshelf(
             taskIds: visible,
-            groupDates: completedDates,
             emptyIcon: filter == null
                 ? Icons.check_circle_outline_rounded
                 : Icons.search_off_rounded,
@@ -173,6 +169,200 @@ class _CompletedTab extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 已完成书架：封面网格，点书进阅读器。顺序就是 completedIds 的顺序
+/// （最新下载在前）。分类筛选在上层 [_CompletedTab] 里做。
+class _CompletedBookshelf extends StatelessWidget {
+  const _CompletedBookshelf({
+    required this.taskIds,
+    required this.emptyIcon,
+    required this.emptyTitle,
+    required this.emptyMessage,
+  });
+
+  final List<String> taskIds;
+  final IconData emptyIcon;
+  final String emptyTitle;
+  final String emptyMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    if (taskIds.isEmpty) {
+      return EmptyState(
+        icon: emptyIcon,
+        title: emptyTitle,
+        message: emptyMessage,
+      );
+    }
+    // Bottom 124 = 28 gap + 96 floating-nav clearance, reserved
+    // inside the grid so items scroll behind the pill (like the
+    // home grid).
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 124),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 120,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.55,
+      ),
+      itemCount: taskIds.length,
+      itemBuilder: (context, index) => MotionEntrance(
+        index: index,
+        child: _BookshelfCard(id: taskIds[index]),
+      ),
+    );
+  }
+}
+
+/// 书架上的一本书：封面 + 书名 + 作者·格式。点卡片进阅读器（PDF
+/// 等打不开的格式走外部打开）；右上角小菜单保留原有的归类 / 详情 /
+/// 分享 / 删除。
+class _BookshelfCard extends ConsumerWidget {
+  const _BookshelfCard({required this.id});
+
+  final String id;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final task = ref.watch(downloadTaskProvider(id));
+    if (task == null) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    final meta = [
+      if (task.book.author?.isNotEmpty == true) task.book.author!,
+      if (task.book.extension?.isNotEmpty ?? false)
+        task.book.extension!.toUpperCase(),
+    ].join(' · ');
+
+    return InkWell(
+      onTap: () => _openBook(context, ref, task),
+      borderRadius: BorderRadius.circular(9),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(9),
+                  child: SizedBox.expand(
+                    child: task.book.cover?.isNotEmpty == true
+                        ? CachedNetworkImage(
+                            imageUrl: task.book.cover!,
+                            fit: BoxFit.cover,
+                            memCacheWidth: coverCacheWidth(120, context),
+                            memCacheHeight: coverCacheHeight(160, context),
+                            errorWidget: (_, __, ___) =>
+                                _coverPlaceholder(cs, task.book.title),
+                          )
+                        : _coverPlaceholder(cs, task.book.title),
+                  ),
+                ),
+                Positioned(
+                  top: 2,
+                  right: 2,
+                  child: _CardMenuButton(task: task),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            task.book.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              height: 1.25,
+            ),
+          ),
+          if (meta.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              meta,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _coverPlaceholder(ColorScheme cs, String title) => ColoredBox(
+    color: cs.surfaceContainerHighest,
+    child: Center(
+      child: Text(
+        title.isNotEmpty ? title[0] : '?',
+        style: TextStyle(
+          fontSize: 32,
+          fontWeight: FontWeight.w700,
+          color: cs.onSurfaceVariant,
+        ),
+      ),
+    ),
+  );
+
+  Future<void> _openBook(
+    BuildContext context,
+    WidgetRef ref,
+    DownloadTask task,
+  ) async {
+    // 阅读器能开的格式进 in-app 阅读器；PDF 等进外部打开。
+    if (isReadableExtension(task.book.extension)) {
+      // openLocalReaderForTask 返回 false = 文件没了（已弹提示并
+      // 标记），不用再外部打开。
+      await openLocalReaderForTask(context, ref, task);
+      return;
+    }
+    await openDownloadedFileExternally(context, ref, task);
+  }
+}
+
+/// 书架卡片右上角的小菜单：归类 / 文件详情 / 分享 / 删除（与列表
+/// 行的菜单同一套处理，见 [handleDownloadMenuAction]）。
+class _CardMenuButton extends ConsumerWidget {
+  const _CardMenuButton({required this.task});
+
+  final DownloadTask task;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context)!;
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(
+          context,
+        ).colorScheme.surface.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: SizedBox(
+        width: 26,
+        height: 26,
+        child: PopupMenuButton<String>(
+          tooltip: l.more,
+          padding: EdgeInsets.zero,
+          iconSize: 18,
+          onSelected: (value) =>
+              handleDownloadMenuAction(context, ref, task, value),
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: 'category',
+              child: Text(l.shelfAddToCategory),
+            ),
+            PopupMenuItem(value: 'details', child: Text(l.fileDetails)),
+            PopupMenuItem(value: 'share', child: Text(l.share)),
+            const PopupMenuDivider(),
+            PopupMenuItem(value: 'delete', child: Text(l.downloadDeleteFile)),
+          ],
+          icon: const Icon(Icons.more_horiz_rounded),
+        ),
+      ),
     );
   }
 }
@@ -483,7 +673,8 @@ class _DownloadItem extends ConsumerWidget {
               children: [
                 if (isComplete)
                   FilledButton.tonalIcon(
-                    onPressed: () => _openFile(context, ref, task),
+                    onPressed: () =>
+                        openDownloadedFileExternally(context, ref, task),
                     icon: const Icon(Icons.open_in_new_rounded, size: 18),
                     label: Text(l.openFile),
                   )
@@ -531,7 +722,8 @@ class _DownloadItem extends ConsumerWidget {
                 const Spacer(),
                 PopupMenuButton<String>(
                   tooltip: l.more,
-                  onSelected: (value) => _onMenu(context, ref, task, value),
+                  onSelected: (value) =>
+                      handleDownloadMenuAction(context, ref, task, value),
                   itemBuilder: (_) => [
                     // 排队中（pending）可置顶（E2）：下一个空出的槽位
                     // 给这本。
@@ -619,206 +811,208 @@ class _DownloadItem extends ConsumerWidget {
       ),
     );
   }
+}
 
-  static String _formatSize(int bytes) {
-    if (bytes >= 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
-    return '$bytes B';
+/// File-size label shared by the list row, the bookshelf card and
+/// the file-details dialog.
+String _formatSize(int bytes) {
+  if (bytes >= 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
+  if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+  return '$bytes B';
+}
 
-  Future<bool> _fileExists(
-    BuildContext context,
-    WidgetRef ref,
-    DownloadTask task,
-  ) async {
-    final path = task.filePath;
-    if (path != null && await MediaStoreFiles.exists(path)) return true;
-    ref.read(downloadProvider.notifier).markMissingFile(task.id);
+Future<bool> downloadTaskFileExists(
+  BuildContext context,
+  WidgetRef ref,
+  DownloadTask task,
+) async {
+  final path = task.filePath;
+  if (path != null && await MediaStoreFiles.exists(path)) return true;
+  ref.read(downloadProvider.notifier).markMissingFile(task.id);
+  if (context.mounted) {
+    showAppSnack(context, AppLocalizations.of(context)!.downloadFileMissing);
+  }
+  return false;
+}
+
+Future<void> openDownloadedFileExternally(
+  BuildContext context,
+  WidgetRef ref,
+  DownloadTask task,
+) async {
+  if (!await downloadTaskFileExists(context, ref, task)) return;
+  try {
+    // MediaStore-published downloads live at a content:// URI, which
+    // OpenFilex cannot open — those go through the platform channel.
+    if (MediaStoreFiles.isContentUri(task.filePath!)) {
+      final opened = await MediaStoreFiles.open(task.filePath!);
+      if (!opened && context.mounted) {
+        showAppSnack(context, AppLocalizations.of(context)!.openFileFailed);
+      }
+      return;
+    }
+    final result = await OpenFilex.open(task.filePath!);
+    if (result.type != ResultType.done && context.mounted) {
+      showAppSnack(context, result.message);
+    }
+  } catch (error) {
     if (context.mounted) {
-      showAppSnack(context, AppLocalizations.of(context)!.downloadFileMissing);
-    }
-    return false;
-  }
-
-  Future<void> _openFile(
-    BuildContext context,
-    WidgetRef ref,
-    DownloadTask task,
-  ) async {
-    if (!await _fileExists(context, ref, task)) return;
-    try {
-      // MediaStore-published downloads live at a content:// URI, which
-      // OpenFilex cannot open — those go through the platform channel.
-      if (MediaStoreFiles.isContentUri(task.filePath!)) {
-        final opened = await MediaStoreFiles.open(task.filePath!);
-        if (!opened && context.mounted) {
-          showAppSnack(context, AppLocalizations.of(context)!.openFileFailed);
-        }
-        return;
-      }
-      final result = await OpenFilex.open(task.filePath!);
-      if (result.type != ResultType.done && context.mounted) {
-        showAppSnack(context, result.message);
-      }
-    } catch (error) {
-      if (context.mounted) {
-        showAppSnack(
-          context,
-          friendlyErrorText(error, AppLocalizations.of(context)!),
-        );
-      }
+      showAppSnack(
+        context,
+        friendlyErrorText(error, AppLocalizations.of(context)!),
+      );
     }
   }
+}
 
-  Future<void> _onMenu(
-    BuildContext context,
-    WidgetRef ref,
-    DownloadTask task,
-    String action,
-  ) async {
-    final l = AppLocalizations.of(context)!;
-    switch (action) {
-      case 'pin':
-        // E2：pending 任务置顶——slot 池插队，下一个空出的槽位给它。
-        ref.read(downloadProvider.notifier).pinToTop(task.id);
-        return;
-      case 'category':
-        // 归类进与书架同一棵分类树（方案 C1）：键 `download:<bookId>`。
-        // 删除下载记录不清归属——重新下载回来还在原分类里。
-        await showKeysCategoryPicker(
-          context,
-          ref,
-          ['download:${task.id}'],
-          current: ref
-              .read(shelfCategoriesProvider)
-              .assignments['download:${task.id}'],
-        );
-        return;
-      case 'details':
-        if (!context.mounted) return;
-        // #123 follow-up：先把 content:// URI 解析成真实路径再显示；
-        // 解析不到（文件已删等）就回退到原来存的路径。
-        final storedPath = task.filePath ?? '';
-        final displayPath = storedPath.isEmpty
-            ? ''
-            : (await MediaStoreFiles.realPath(storedPath) ?? storedPath);
-        if (!context.mounted) return;
-        await showDialog<void>(
-          context: context,
-          builder: (_) => AlertDialog(
-            title: Text(l.fileDetails),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(task.book.title),
-                const SizedBox(height: 8),
-                if (task.fileSize != null) Text(_formatSize(task.fileSize!)),
-                if (task.downloadedAt != null)
-                  Text(formatDownloadDate(task.downloadedAt!)),
-                const SizedBox(height: 8),
-                // 点路径跳文件管理器（文件所在目录）；复制走下面的按钮。
-                InkWell(
-                  onTap: () async {
-                    final folder = downloadRelativeFolder(displayPath);
-                    final ok = folder != null
-                        ? await openFolder(folder)
-                        : await openDownloadFolder();
-                    if (!context.mounted) return;
-                    if (ok) {
-                      Navigator.pop(context);
-                    } else {
-                      showAppSnack(context, l.openFolderFailed);
-                    }
-                  },
-                  child: Text(
-                    displayPath,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      decoration: TextDecoration.underline,
-                    ),
+Future<void> handleDownloadMenuAction(
+  BuildContext context,
+  WidgetRef ref,
+  DownloadTask task,
+  String action,
+) async {
+  final l = AppLocalizations.of(context)!;
+  switch (action) {
+    case 'pin':
+      // E2：pending 任务置顶——slot 池插队，下一个空出的槽位给它。
+      ref.read(downloadProvider.notifier).pinToTop(task.id);
+      return;
+    case 'category':
+      // 归类进与书架同一棵分类树（方案 C1）：键 `download:<bookId>`。
+      // 删除下载记录不清归属——重新下载回来还在原分类里。
+      await showKeysCategoryPicker(
+        context,
+        ref,
+        ['download:${task.id}'],
+        current: ref
+            .read(shelfCategoriesProvider)
+            .assignments['download:${task.id}'],
+      );
+      return;
+    case 'details':
+      if (!context.mounted) return;
+      // #123 follow-up：先把 content:// URI 解析成真实路径再显示；
+      // 解析不到（文件已删等）就回退到原来存的路径。
+      final storedPath = task.filePath ?? '';
+      final displayPath = storedPath.isEmpty
+          ? ''
+          : (await MediaStoreFiles.realPath(storedPath) ?? storedPath);
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(l.fileDetails),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(task.book.title),
+              const SizedBox(height: 8),
+              if (task.fileSize != null) Text(_formatSize(task.fileSize!)),
+              if (task.downloadedAt != null)
+                Text(formatDownloadDate(task.downloadedAt!)),
+              const SizedBox(height: 8),
+              // 点路径跳文件管理器（文件所在目录）；复制走下面的按钮。
+              InkWell(
+                onTap: () async {
+                  final folder = downloadRelativeFolder(displayPath);
+                  final ok = folder != null
+                      ? await openFolder(folder)
+                      : await openDownloadFolder();
+                  if (!context.mounted) return;
+                  if (ok) {
+                    Navigator.pop(context);
+                  } else {
+                    showAppSnack(context, l.openFolderFailed);
+                  }
+                },
+                child: Text(
+                  displayPath,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    decoration: TextDecoration.underline,
                   ),
                 ),
-              ],
-            ),
-            actions: [
-              // #123：一点就把路径拷到剪贴板，不用长按选中再拷。
-              // 拷的是真实路径（解析不到才拷原来存的）。
-              if (displayPath.isNotEmpty)
-                TextButton(
-                  onPressed: () async {
-                    await Clipboard.setData(
-                      ClipboardData(text: displayPath),
-                    );
-                    if (!context.mounted) return;
-                    Navigator.pop(context);
-                    showAppSnack(context, l.copiedToClipboard);
-                  },
-                  child: Text(l.copyPath),
-                ),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(l.done),
               ),
             ],
           ),
-        );
-        return;
-      case 'share':
-        if (!await _fileExists(context, ref, task)) return;
-        // MediaStore-published downloads live at a content:// URI,
-        // which share_plus cannot share as a file path — those are
-        // copied to a temp file in the app cache dir first.
-        final sharePath = await MediaStoreFiles.shareablePath(task.filePath!);
-        if (sharePath == null) {
-          if (context.mounted) {
-            showAppSnack(context, l.shareFailed);
-          }
-          return;
+          actions: [
+            // #123：一点就把路径拷到剪贴板，不用长按选中再拷。
+            // 拷的是真实路径（解析不到才拷原来存的）。
+            if (displayPath.isNotEmpty)
+              TextButton(
+                onPressed: () async {
+                  await Clipboard.setData(
+                    ClipboardData(text: displayPath),
+                  );
+                  if (!context.mounted) return;
+                  Navigator.pop(context);
+                  showAppSnack(context, l.copiedToClipboard);
+                },
+                child: Text(l.copyPath),
+              ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(l.done),
+            ),
+          ],
+        ),
+      );
+      return;
+    case 'share':
+      if (!await downloadTaskFileExists(context, ref, task)) return;
+      // MediaStore-published downloads live at a content:// URI,
+      // which share_plus cannot share as a file path — those are
+      // copied to a temp file in the app cache dir first.
+      final sharePath = await MediaStoreFiles.shareablePath(task.filePath!);
+      if (sharePath == null) {
+        if (context.mounted) {
+          showAppSnack(context, l.shareFailed);
         }
-        try {
-          await SharePlus.instance.share(
-            ShareParams(files: [XFile(sharePath)], text: task.book.title),
-          );
-        } catch (error) {
-          if (context.mounted) {
-            showAppSnack(context, l.shareFailed);
-          }
-        }
         return;
-      case 'delete':
-        await _confirmDelete(context, ref, task);
-        return;
-    }
-  }
-
-  Future<void> _confirmDelete(
-    BuildContext context,
-    WidgetRef ref,
-    DownloadTask task,
-  ) async {
-    final l = AppLocalizations.of(context)!;
-    final confirmed = await showConfirmDialog(
-      context,
-      title: task.status == DownloadStatus.completed
-          ? l.downloadDeleteFile
-          : l.downloadRemoveRecord,
-      message: task.status == DownloadStatus.completed
-          ? l.deleteDesc
-          : l.downloadRemoveRecordHint,
-      confirmLabel: l.delete,
-      cancelLabel: l.cancel,
-    );
-    if (!confirmed) return;
-    unawaited(HapticFeedback.mediumImpact());
-    try {
-      await ref.read(downloadProvider.notifier).removeTask(task.id);
-    } catch (error) {
-      if (context.mounted) {
-        showAppSnack(context, l.downloadDeleteFailed);
       }
+      try {
+        await SharePlus.instance.share(
+          ShareParams(files: [XFile(sharePath)], text: task.book.title),
+        );
+      } catch (error) {
+        if (context.mounted) {
+          showAppSnack(context, l.shareFailed);
+        }
+      }
+      return;
+    case 'delete':
+      await confirmDeleteDownload(context, ref, task);
+      return;
+  }
+}
+
+Future<void> confirmDeleteDownload(
+  BuildContext context,
+  WidgetRef ref,
+  DownloadTask task,
+) async {
+  final l = AppLocalizations.of(context)!;
+  final confirmed = await showConfirmDialog(
+    context,
+    title: task.status == DownloadStatus.completed
+        ? l.downloadDeleteFile
+        : l.downloadRemoveRecord,
+    message: task.status == DownloadStatus.completed
+        ? l.deleteDesc
+        : l.downloadRemoveRecordHint,
+    confirmLabel: l.delete,
+    cancelLabel: l.cancel,
+  );
+  if (!confirmed) return;
+  unawaited(HapticFeedback.mediumImpact());
+  try {
+    await ref.read(downloadProvider.notifier).removeTask(task.id);
+  } catch (error) {
+    if (context.mounted) {
+      showAppSnack(context, l.downloadDeleteFailed);
     }
   }
 }

@@ -2,6 +2,13 @@
 // in-app 阅读器。导航用 onGenerateRoute 拦截 '/local-reader'，
 // 只记录参数、不真起 WebView（WebView 的启动由
 // local_reader_server_test 覆盖）。PDF 不进阅读器，走外部打开。
+//
+// #515 教训：本文件原来全程用 pumpAndSettle，Check 里 EPUB 测试
+// 10 分钟超时、之后测试运行器再无输出（Test 步 19m21s 后被取消）。
+// 同目录 downloads_category_filter_test 早有同样教训（pending 行
+// 的不确定进度条让 pumpAndSettle 永不结束），所以本文件也全程用
+// 定步进 pump（见下面的 pumpSettled），不给任何动画/定时器挂住
+// 测试的机会；点卡片后的导航等待同样定次数上限。
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -90,6 +97,17 @@ void main() {
     return file.path;
   }
 
+  /// 定步进 settle，替代 pumpAndSettle：Tab 切换动画 300ms，
+  /// 5×100ms 足够走完；即使个别动画/定时器一直排帧，有限次数
+  /// 的 pump 也不会把测试挂住（#515 的 EPUB 测试就是被
+  /// pumpAndSettle 挂了 10 分钟超时）。
+  Future<void> pumpSettled(WidgetTester tester) async {
+    await tester.pump();
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
+
   List<Override> overridesFor(Map<String, DownloadTask> tasks) => [
     downloadListStructureProvider.overrideWithValue(
       DownloadListStructure(
@@ -115,10 +133,10 @@ void main() {
         }),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpSettled(tester);
 
     await tester.tap(find.text('Completed (2)'));
-    await tester.pumpAndSettle();
+    await pumpSettled(tester);
 
     // 书架网格：书名、作者·格式都在卡片上；列表行的状态标签不在。
     expect(find.text('Epub book'), findsOneWidget);
@@ -129,8 +147,14 @@ void main() {
 
     // 点 EPUB 卡片：进 /local-reader，带真实路径与任务 id。
     await tester.tap(find.text('Epub book'));
+    // 点卡片后 openLocalReaderForTask 先 await 文件存在检查（真实
+    // IO），再 pushNamed；定次数 pump 等导航落定（最多 10×100ms），
+    // 导航一到就停，不用 pumpAndSettle。
+    for (var i = 0; i < 10 && pushedArgs == null; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    // 路由已 push，再 pump 一帧把它建出来。
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
     expect(pushedArgs, isNotNull);
     expect(pushedArgs!.filePath, epubPath);
     expect(pushedArgs!.bookKey, '1');
@@ -146,13 +170,16 @@ void main() {
         overridesFor({'3': _task('3', 'Txt notes', 'txt', txtPath)}),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpSettled(tester);
     await tester.tap(find.text('Completed (1)'));
-    await tester.pumpAndSettle();
+    await pumpSettled(tester);
 
     await tester.tap(find.text('Txt notes'));
+    // 同 EPUB：定次数 pump 等导航落定（最多 10×100ms）。
+    for (var i = 0; i < 10 && pushedArgs == null; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
     expect(pushedArgs, isNotNull);
     expect(pushedArgs!.filePath, txtPath);
     expect(pushedArgs!.bookKey, '3');
@@ -166,13 +193,13 @@ void main() {
         overridesFor({'4': _task('4', 'Pdf doc', 'pdf', pdfPath)}),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpSettled(tester);
     await tester.tap(find.text('Completed (1)'));
-    await tester.pumpAndSettle();
+    await pumpSettled(tester);
 
     await tester.tap(find.text('Pdf doc'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    // PDF 不进阅读器：定步进 pump 让外部打开的异步链跑完即可。
+    await pumpSettled(tester);
     // 没进 /local-reader（外部打开走平台通道，测试里被接住）。
     expect(pushedArgs, isNull);
     expect(find.text('mock reader'), findsNothing);
@@ -181,9 +208,9 @@ void main() {
 
   testWidgets('已完成为空时显示空状态', (tester) async {
     await tester.pumpWidget(app(overridesFor({})));
-    await tester.pumpAndSettle();
+    await pumpSettled(tester);
     await tester.tap(find.text('Completed (0)'));
-    await tester.pumpAndSettle();
+    await pumpSettled(tester);
     expect(find.byType(GridView), findsNothing);
     expect(find.textContaining('No completed'), findsOneWidget);
     expect(tester.takeException(), isNull);

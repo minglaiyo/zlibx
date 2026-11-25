@@ -117,6 +117,11 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
         strings: _pageStrings(t),
         bindAddresses: _bindAddresses(_selection),
       );
+    } on LocalNetworkPermissionDenied {
+      logIgnored('web_service_screen', 'local network permission denied');
+      if (mounted) {
+        showAppSnack(context, t.webServiceLocalNetworkDenied, error: true);
+      }
     } catch (error) {
       logIgnored('web_service_screen', error);
       if (mounted) {

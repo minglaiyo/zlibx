@@ -236,6 +236,60 @@ void main() {
       expect(service.isRunning, isFalse);
       expect(service.port, isNull);
     });
+
+    test('denied local-network permission refuses to start', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            channelCalls.add(call);
+            switch (call.method) {
+              case 'ensureLocalNetworkPermission':
+                return false;
+              case 'start':
+                final want = (call.arguments as Map)['port'] as int;
+                return want;
+              case 'stop':
+                return null;
+              default:
+                throw MissingPluginException(call.method);
+            }
+          });
+      await expectLater(
+        service.start(snapshot: snapshot, preferredPort: testPort),
+        throwsA(isA<LocalNetworkPermissionDenied>()),
+      );
+      expect(service.isRunning, isFalse);
+      expect(service.port, isNull);
+      // The native start was never attempted.
+      expect(
+        channelCalls.where((c) => c.method == 'start'),
+        isEmpty,
+      );
+    });
+
+    test('granted local-network permission starts normally', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            channelCalls.add(call);
+            switch (call.method) {
+              case 'ensureLocalNetworkPermission':
+                return true;
+              case 'start':
+                final want = (call.arguments as Map)['port'] as int;
+                return want;
+              case 'stop':
+                return null;
+              default:
+                throw MissingPluginException(call.method);
+            }
+          });
+      final got = await service.start(snapshot: snapshot, preferredPort: testPort);
+      expect(got, testPort);
+      expect(service.isRunning, isTrue);
+      expect(
+        channelCalls.where((c) => c.method == 'ensureLocalNetworkPermission'),
+        hasLength(1),
+      );
+    });
   });
 
   group('snapshot', () {

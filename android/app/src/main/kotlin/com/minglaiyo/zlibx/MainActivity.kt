@@ -1,13 +1,17 @@
 package com.minglaiyo.zlibx
 
+import android.Manifest
 import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -25,6 +29,10 @@ class MainActivity : FlutterFragmentActivity() {
     companion object {
         private const val CHANNEL = "zlibx/media_store"
         private const val TAG = "ZlibxMediaStore"
+
+        /// Request code for the Android 17 local-network permission
+        /// (ACCESS_LOCAL_NETWORK), asked from the web-service channel.
+        private const val REQUEST_LOCAL_NETWORK = 1001
     }
 
     // File copies (publish to Downloads, copy to cache) can move hundreds
@@ -66,6 +74,11 @@ class MainActivity : FlutterFragmentActivity() {
     /// owns all content and routing, this only owns the sockets.
     private var webServer: LanWebServer? = null
 
+    /// Pending reply for an in-flight local-network permission
+    /// request. Only one may be outstanding; a second call while one
+    /// is in flight is answered false at once (the caller retries).
+    private var pendingLocalNetworkResult: MethodChannel.Result? = null
+
     override fun onDestroy() {
         // The web server lives in this process, not in the Dart
         // isolate: stop it here, or it would keep listening (and
@@ -88,6 +101,26 @@ class MainActivity : FlutterFragmentActivity() {
         ioExecutor.shutdown()
         lightExecutor.shutdown()
         super.onDestroy()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_LOCAL_NETWORK) return
+        // Answer the Dart call that asked for the local-network
+        // permission (see "ensureLocalNetworkPermission" above).
+        val granted = grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        try {
+            pendingLocalNetworkResult?.success(granted)
+        } catch (e: IllegalStateException) {
+            // Engine detached while the dialog was up.
+            Log.w(TAG, "local network reply after detach ignored", e)
+        }
+        pendingLocalNetworkResult = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -317,6 +350,31 @@ class MainActivity : FlutterFragmentActivity() {
                         Log.w(TAG, "web server stop failed", e)
                     }
                     result.success(null)
+                }
+                "ensureLocalNetworkPermission" -> {
+                    // Android 17+ (targetSdk 37) blocks local-network
+                    // sockets without ACCESS_LOCAL_NETWORK: without it,
+                    // inbound TCP from other devices times out in the
+                    // network stack, before the SYN reaches our socket.
+                    // Below API 37 the gate does not exist.
+                    if (Build.VERSION.SDK_INT < 37) {
+                        result.success(true)
+                    } else if (ContextCompat.checkSelfPermission(
+                            this,
+                            Manifest.permission.ACCESS_LOCAL_NETWORK,
+                        ) == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        result.success(true)
+                    } else if (pendingLocalNetworkResult != null) {
+                        result.success(false)
+                    } else {
+                        pendingLocalNetworkResult = result
+                        ActivityCompat.requestPermissions(
+                            this,
+                            arrayOf(Manifest.permission.ACCESS_LOCAL_NETWORK),
+                            REQUEST_LOCAL_NETWORK,
+                        )
+                    }
                 }
                 else -> result.notImplemented()
             }

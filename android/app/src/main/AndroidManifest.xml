@@ -6,6 +6,13 @@
     <!-- Web service: read the Wi-Fi / hotspot state to pick the address
          shown to the user (normal permission, granted at install). -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Web service: Android 17+ (targetSdk 37) blocks local-network
+         sockets without this runtime permission — without it, inbound
+         TCP from other devices times out in the network stack before
+         the SYN reaches our socket. Requested at runtime before the
+         server starts (MainActivity "ensureLocalNetworkPermission");
+         older Android ignores the declaration. -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <!-- Privacy lock: BiometricPrompt (fingerprint / face; falls back to
          the device credential, which needs no extra permission). -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />

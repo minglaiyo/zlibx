@@ -802,6 +802,7 @@
         }
     }
   },
+  "webServiceLocalNetworkDenied": "需要本地網絡權限，其他設備才能訪問。請在系統設置里允許「附近設備」後重試。",
   "webServiceRefreshNetwork": "重新偵測網路",
   "webPageHome": "zlibx 書架",
   "webPageDownloaded": "下載的書",

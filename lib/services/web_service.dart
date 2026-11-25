@@ -9,13 +9,18 @@
 // and then one socket per detected address, ports 8080 and 8888)
 // served loopback fine but never accepted a connection from another
 // device on this phone, while Legado — a native Android app — serves
-// the same phone without trouble. The one variable never changed in
-// any attempt was the Dart socket itself. So this file owns the
-// snapshot, the HTML pages, routing, Range parsing, TXT→EPUB
-// conversion and the reader routes — and Kotlin owns sockets and
-// bytes. Dart answers each request through [handleRequest], which
-// returns a [WebResponse] descriptor; Kotlin writes the status line,
-// headers and body (streaming files from disk with Range support).
+// the same phone without trouble. The real cause turned out to be
+// Android 17's local-network protection, not the socket at all:
+// targetSdk 37 apps need the ACCESS_LOCAL_NETWORK runtime permission,
+// without it inbound TCP from other devices times out in the network
+// stack before the SYN reaches any socket (Legado targets a lower SDK
+// and is exempt). So [start] asks the native side to ensure the
+// permission is granted before binding. This file owns the snapshot,
+// the HTML pages, routing, Range parsing, TXT→EPUB conversion and the
+// reader routes — and Kotlin owns sockets and bytes. Dart answers each
+// request through [handleRequest], which returns a [WebResponse]
+// descriptor; Kotlin writes the status line, headers and body
+// (streaming files from disk with Range support).
 //
 // Lifecycle rules (each one cost a delivery before):
 //  * [WebService.shared] is a process singleton. The settings page may
@@ -340,6 +345,14 @@ Future<List<int>?> _bundleAsset(String assetPath) async {
   }
 }
 
+/// Thrown by [WebService.start] when the user denies the local-network
+/// permission. The settings page catches it and shows a localized hint
+/// (grant "Nearby devices" in system settings) instead of the generic
+/// start-failed message.
+class LocalNetworkPermissionDenied implements Exception {
+  const LocalNetworkPermissionDenied();
+}
+
 class WebService extends ChangeNotifier {
   /// The one instance shared by the settings page and the server.
   static final WebService shared = WebService();
@@ -390,6 +403,15 @@ class WebService extends ChangeNotifier {
   }) async {
     if (_running) return _port!;
 
+    // Android 17+ (targetSdk 37) blocks local-network sockets without
+    // the ACCESS_LOCAL_NETWORK runtime permission: without it, inbound
+    // TCP from other devices times out in the network stack, before
+    // the SYN ever reaches our socket. Ask the native side to make
+    // sure it is granted before binding.
+    if (!await _ensureLocalNetworkPermission()) {
+      throw const LocalNetworkPermissionDenied();
+    }
+
     _snapshot = snapshot;
     _strings = strings;
     _channel.setMethodCallHandler(_onMethodCall);
@@ -414,6 +436,22 @@ class WebService extends ChangeNotifier {
       // No server, so the handler would never be called.
       _channel.setMethodCallHandler(null);
       rethrow;
+    }
+  }
+
+  /// Ask the native side to ensure the local-network permission is
+  /// granted (Android 17+ only; older Android answers true at once).
+  /// Returns false when the user denied it. A missing channel method
+  /// (unit tests, older builds) counts as granted — there is no such
+  /// gate on those platforms.
+  Future<bool> _ensureLocalNetworkPermission() async {
+    try {
+      return await _channel.invokeMethod<bool>(
+            'ensureLocalNetworkPermission',
+          ) ??
+          true;
+    } on MissingPluginException {
+      return true;
     }
   }
 

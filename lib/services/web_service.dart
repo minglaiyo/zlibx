@@ -9,7 +9,7 @@
 //  * [WebService.shared] is a process singleton. The settings page may
 //    be left and re-entered freely; ONLY [stop] (the Stop button) stops
 //    the server. Never call stop from a widget's dispose().
-//  * Port 8080 is fixed; only when it cannot be bound does the server
+//  * Port 8888 is fixed; only when it cannot be bound does the server
 //    fall back to a system-chosen port, and [port] is always the one
 //    actually in use.
 //  * The book lists are a snapshot taken at start; they do not follow
@@ -31,7 +31,7 @@ import 'txt_to_epub.dart';
 import 'web_reader_page.dart';
 
 /// The fixed port. See the lifecycle notes above.
-const int kWebServicePort = 8080;
+const int kWebServicePort = 8888;
 
 /// The only files /reader-assets/ will ever serve (the 13 vendored
 /// foliate-js files). Anything else is a 404.

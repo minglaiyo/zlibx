@@ -1128,7 +1128,7 @@ class WebService extends ChangeNotifier {
       'border-radius:16px;padding:0.6em 0.9em;font-size:1em;background:#fff}'
       '.m-main{padding:0.8em 1em 2em}';
 
-  /// Every page carries its layout on the <body> so tests (and CSS)
+  /// Every page carries its layout on the `<body>` so tests (and CSS)
   /// can tell the shells apart: `layout-pc` or `layout-mobile`.
   /// Message pages ([_messagePage]) keep the PC shell.
   String _page(String title, String body, {WebLayout layout = WebLayout.pc}) {

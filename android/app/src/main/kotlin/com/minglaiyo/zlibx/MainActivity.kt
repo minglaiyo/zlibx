@@ -279,7 +279,7 @@ class MainActivity : FlutterFragmentActivity() {
         webServerChannel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "start" -> {
-                    val port = (call.argument<Number>("port") ?: 8888).toInt()
+                    val port = (call.argument<Number>("port") ?: 1122).toInt()
                     val addresses = call.argument<List<*>>("addresses")
                         ?.mapNotNull { it as? String }
                         ?: emptyList()

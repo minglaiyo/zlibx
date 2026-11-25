@@ -155,8 +155,8 @@ void main() {
       channelCalls.singleWhere((c) => c.method == 'start');
 
   group('lifecycle & port', () {
-    test('the fixed port is 8888', () {
-      expect(kWebServicePort, 8888);
+    test('the fixed port is 1122', () {
+      expect(kWebServicePort, 1122);
     });
 
     test('shared is one instance', () {
@@ -192,7 +192,7 @@ void main() {
       // The native port-0 fallback: the requested port was taken, so
       // the bound port is what Dart must report.
       mockStartPort = 48123;
-      final got = await service.start(snapshot: snapshot, preferredPort: 8888);
+      final got = await service.start(snapshot: snapshot, preferredPort: 1122);
       expect(got, 48123);
       expect(service.port, 48123);
       expect(service.isRunning, isTrue);

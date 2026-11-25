@@ -28,13 +28,20 @@ void main() {
         AppRoutes.downloads,
         AppRoutes.categoriesDirectory,
         AppRoutes.author,
+        AppRoutes.webService,
       };
 
       final routes = buildAppRoutes();
 
-      expect(expected.length, 23);
+      expect(expected.length, 24);
       expect(routes.keys.toSet(), expected);
-      expect(routes.length, 23);
+      expect(routes.length, 24);
+    });
+
+    test('/web-service route is reachable', () {
+      final routes = buildAppRoutes();
+      expect(AppRoutes.webService, '/web-service');
+      expect(routes.containsKey('/web-service'), isTrue);
     });
   });
 }

@@ -754,5 +754,66 @@
   "downloadOrganizeAuthor": "著者別",
   "downloadOrganizeAuthorDesc": "著者ごとにサブフォルダを作成",
   "downloadOrganizeCategory": "カテゴリ別",
-  "downloadOrganizeCategoryDesc": "カテゴリごとにサブフォルダを作成"
+  "downloadOrganizeCategoryDesc": "カテゴリごとにサブフォルダを作成",
+  "webService": "Web サービス",
+  "webServiceSubtitle": "ローカルネットワークで本を共有・閲覧",
+  "webServiceStart": "開始",
+  "webServiceStop": "停止",
+  "webServiceRunning": "実行中",
+  "webServiceStopped": "停止中",
+  "webServiceUrlHotspot": "スマホのホットスポット：このアドレスを使用",
+  "webServiceUrlWifi": "同じ Wi-Fi：このアドレスを使用",
+  "webServiceUrlLan": "ローカルネットワーク：このアドレスを使用",
+  "webServiceNoNetwork": "先にホットスポットをオンにするか Wi-Fi に接続してください。利用できるローカルアドレスがありません。",
+  "webServiceCopyUrl": "アドレスをコピー",
+  "webServiceCopied": "アドレスをコピーしました",
+  "webServiceOpenLocal": "このスマホのブラウザで開く",
+  "webServiceOtherUrls": "その他のアドレス",
+  "webServiceCellularWarn": "モバイルデータ：パソコンからは開けません。使用しないでください",
+  "webServiceSelfCheck": "確認方法：パソコンで ipconfig を実行すると、デフォルトゲートウェイのアドレスがこのスマホのアドレスです。",
+  "webServiceClients": "接続中のデバイス：{clients}",
+  "@webServiceClients": {
+    "placeholders": {
+        "clients": {
+          "type": "String"
+        }
+    }
+  },
+  "webServiceCounts": "ダウンロード {downloaded} 冊 · ライブラリ {library} 冊 · ブックリスト {booklists} 件",
+  "@webServiceCounts": {
+    "placeholders": {
+        "downloaded": {
+          "type": "int"
+        },
+        "library": {
+          "type": "int"
+        },
+        "booklists": {
+          "type": "int"
+        }
+    }
+  },
+  "webServiceSnapshotNote": "一覧はサービス開始時のスナップショットです。更新するには停止してもう一度開始してください。",
+  "webServiceStartFailed": "サービスを開始できませんでした：{error}",
+  "@webServiceStartFailed": {
+    "placeholders": {
+        "error": {
+          "type": "String"
+        }
+    }
+  },
+  "webServiceRefreshNetwork": "ネットワークを再検出",
+  "webPageHome": "zlibx 本棚",
+  "webPageDownloaded": "ダウンロードした本",
+  "webPageLibrary": "ライブラリ",
+  "webPageBooklists": "ブックリスト",
+  "webPageDownload": "ダウンロード",
+  "webPageRead": "読む",
+  "webPageNotDownloaded": "未ダウンロード",
+  "webPageEmpty": "まだ何もありません",
+  "webPageBackHome": "ホームに戻る",
+  "webPageOfficialLink": "Z-Library 公式サイトで全リストを見る",
+  "webPagePreviewNote": "プレビューの本のみ",
+  "webPageNotFound": "見つかりません",
+  "webPageConvertFailed": "このテキストファイルは読める形式に変換できませんでした。ダウンロードは可能です。"
 }

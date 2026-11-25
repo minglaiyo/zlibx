@@ -754,5 +754,66 @@
   "downloadOrganizeAuthor": "按作者",
   "downloadOrganizeAuthorDesc": "每个作者一个子文件夹",
   "downloadOrganizeCategory": "按分类",
-  "downloadOrganizeCategoryDesc": "每个分类一个子文件夹"
+  "downloadOrganizeCategoryDesc": "每个分类一个子文件夹",
+  "webService": "Web 服务",
+  "webServiceSubtitle": "在局域网内分享和阅读书籍",
+  "webServiceStart": "开启",
+  "webServiceStop": "停止",
+  "webServiceRunning": "运行中",
+  "webServiceStopped": "未运行",
+  "webServiceUrlHotspot": "手机热点，用这个地址",
+  "webServiceUrlWifi": "同一 Wi-Fi，用这个地址",
+  "webServiceUrlLan": "局域网，用这个地址",
+  "webServiceNoNetwork": "请先开启热点或连接 Wi-Fi，目前没有可用的局域网地址。",
+  "webServiceCopyUrl": "复制地址",
+  "webServiceCopied": "地址已复制",
+  "webServiceOpenLocal": "在本机浏览器打开",
+  "webServiceOtherUrls": "其他地址",
+  "webServiceCellularWarn": "移动数据，电脑打不开，别用这个",
+  "webServiceSelfCheck": "自查：在电脑上运行 ipconfig，默认网关地址就是手机地址。",
+  "webServiceClients": "已连接设备：{clients}",
+  "@webServiceClients": {
+    "placeholders": {
+        "clients": {
+          "type": "String"
+        }
+    }
+  },
+  "webServiceCounts": "下载的书 {downloaded} 本 · 图书馆 {library} 本 · 书单 {booklists} 个",
+  "@webServiceCounts": {
+    "placeholders": {
+        "downloaded": {
+          "type": "int"
+        },
+        "library": {
+          "type": "int"
+        },
+        "booklists": {
+          "type": "int"
+        }
+    }
+  },
+  "webServiceSnapshotNote": "列表是开启服务时的快照，运行期间的变化不会同步；停止后重新开启即可刷新。",
+  "webServiceStartFailed": "无法开启服务：{error}",
+  "@webServiceStartFailed": {
+    "placeholders": {
+        "error": {
+          "type": "String"
+        }
+    }
+  },
+  "webServiceRefreshNetwork": "重新检测网络",
+  "webPageHome": "zlibx 书架",
+  "webPageDownloaded": "下载的书",
+  "webPageLibrary": "图书馆",
+  "webPageBooklists": "书单",
+  "webPageDownload": "下载",
+  "webPageRead": "阅读",
+  "webPageNotDownloaded": "未下载",
+  "webPageEmpty": "这里还没有内容",
+  "webPageBackHome": "返回首页",
+  "webPageOfficialLink": "在 Z-Library 官网查看完整书单",
+  "webPagePreviewNote": "仅显示预览书目",
+  "webPageNotFound": "没有找到",
+  "webPageConvertFailed": "这个文本文件无法转换为可阅读格式，但仍可下载。"
 }

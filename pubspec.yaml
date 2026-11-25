@@ -110,6 +110,12 @@ dependencies:
     path: vendor/olib_api_plugin
   connectivity_plus: ^7.3.2
 
+  # LAN web service (设置 → Web 服务): QR code for the address, EPUB
+  # packing for the TXT reader, GBK / GB18030 decoding for Chinese TXT.
+  qr_flutter: ^4.1.0
+  archive: ^4.7.1
+  chinese_codec: ^0.1.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -155,6 +161,11 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Vendored foliate-js for the web reader (see assets/web-reader/VENDORED.md).
+  assets:
+    - assets/web-reader/
+    - assets/web-reader/vendor/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

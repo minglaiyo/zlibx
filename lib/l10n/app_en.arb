@@ -754,5 +754,66 @@
   "downloadOrganizeAuthor": "By author",
   "downloadOrganizeAuthorDesc": "One subfolder per author",
   "downloadOrganizeCategory": "By category",
-  "downloadOrganizeCategoryDesc": "One subfolder per category"
+  "downloadOrganizeCategoryDesc": "One subfolder per category",
+  "webService": "Web service",
+  "webServiceSubtitle": "Share books over the local network",
+  "webServiceStart": "Start",
+  "webServiceStop": "Stop",
+  "webServiceRunning": "Running",
+  "webServiceStopped": "Not running",
+  "webServiceUrlHotspot": "Phone hotspot — use this address",
+  "webServiceUrlWifi": "Same Wi-Fi — use this address",
+  "webServiceUrlLan": "Local network — use this address",
+  "webServiceNoNetwork": "Turn on the hotspot or connect to Wi-Fi first. No local address is available yet.",
+  "webServiceCopyUrl": "Copy address",
+  "webServiceCopied": "Address copied",
+  "webServiceOpenLocal": "Open in this phone's browser",
+  "webServiceOtherUrls": "Other addresses",
+  "webServiceCellularWarn": "Mobile data — your computer can't open this, don't use it",
+  "webServiceSelfCheck": "Check: run ipconfig on your computer; the default gateway address is this phone's address.",
+  "webServiceClients": "Connected devices: {clients}",
+  "@webServiceClients": {
+    "placeholders": {
+        "clients": {
+          "type": "String"
+        }
+    }
+  },
+  "webServiceCounts": "Downloaded {downloaded} · Library {library} · Booklists {booklists}",
+  "@webServiceCounts": {
+    "placeholders": {
+        "downloaded": {
+          "type": "int"
+        },
+        "library": {
+          "type": "int"
+        },
+        "booklists": {
+          "type": "int"
+        }
+    }
+  },
+  "webServiceSnapshotNote": "These lists are a snapshot taken when the service started. Stop and start again to refresh them.",
+  "webServiceStartFailed": "Could not start the service: {error}",
+  "@webServiceStartFailed": {
+    "placeholders": {
+        "error": {
+          "type": "String"
+        }
+    }
+  },
+  "webServiceRefreshNetwork": "Re-detect network",
+  "webPageHome": "zlibx books",
+  "webPageDownloaded": "Downloaded books",
+  "webPageLibrary": "Library",
+  "webPageBooklists": "Booklists",
+  "webPageDownload": "Download",
+  "webPageRead": "Read",
+  "webPageNotDownloaded": "not downloaded",
+  "webPageEmpty": "Nothing here",
+  "webPageBackHome": "Back to home",
+  "webPageOfficialLink": "Full list on Z-Library",
+  "webPagePreviewNote": "Preview books only",
+  "webPageNotFound": "Not found",
+  "webPageConvertFailed": "This text file could not be converted for reading. You can still download it."
 }

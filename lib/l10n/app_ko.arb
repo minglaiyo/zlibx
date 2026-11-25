@@ -754,5 +754,66 @@
   "downloadOrganizeAuthor": "저자별",
   "downloadOrganizeAuthorDesc": "저자별 하위 폴더",
   "downloadOrganizeCategory": "카테고리별",
-  "downloadOrganizeCategoryDesc": "카테고리별 하위 폴더"
+  "downloadOrganizeCategoryDesc": "카테고리별 하위 폴더",
+  "webService": "웹 서비스",
+  "webServiceSubtitle": "로컬 네트워크에서 책 공유 및 읽기",
+  "webServiceStart": "시작",
+  "webServiceStop": "중지",
+  "webServiceRunning": "실행 중",
+  "webServiceStopped": "실행 중 아님",
+  "webServiceUrlHotspot": "휴대폰 핫스팟 — 이 주소를 사용하세요",
+  "webServiceUrlWifi": "같은 Wi-Fi — 이 주소를 사용하세요",
+  "webServiceUrlLan": "로컬 네트워크 — 이 주소를 사용하세요",
+  "webServiceNoNetwork": "먼저 핫스팟을 켜거나 Wi-Fi에 연결하세요. 사용할 수 있는 로컬 주소가 없습니다.",
+  "webServiceCopyUrl": "주소 복사",
+  "webServiceCopied": "주소를 복사했습니다",
+  "webServiceOpenLocal": "이 휴대폰 브라우저에서 열기",
+  "webServiceOtherUrls": "다른 주소",
+  "webServiceCellularWarn": "모바일 데이터 — 컴퓨터에서 열 수 없으니 사용하지 마세요",
+  "webServiceSelfCheck": "확인: 컴퓨터에서 ipconfig를 실행하면 기본 게이트웨이 주소가 이 휴대폰의 주소입니다.",
+  "webServiceClients": "연결된 기기: {clients}",
+  "@webServiceClients": {
+    "placeholders": {
+        "clients": {
+          "type": "String"
+        }
+    }
+  },
+  "webServiceCounts": "다운로드 {downloaded}권 · 라이브러리 {library}권 · 북리스트 {booklists}개",
+  "@webServiceCounts": {
+    "placeholders": {
+        "downloaded": {
+          "type": "int"
+        },
+        "library": {
+          "type": "int"
+        },
+        "booklists": {
+          "type": "int"
+        }
+    }
+  },
+  "webServiceSnapshotNote": "목록은 서비스를 시작한 시점의 스냅샷입니다. 새로 고치려면 중지했다가 다시 시작하세요.",
+  "webServiceStartFailed": "서비스를 시작할 수 없습니다: {error}",
+  "@webServiceStartFailed": {
+    "placeholders": {
+        "error": {
+          "type": "String"
+        }
+    }
+  },
+  "webServiceRefreshNetwork": "네트워크 다시 감지",
+  "webPageHome": "zlibx 책장",
+  "webPageDownloaded": "다운로드한 책",
+  "webPageLibrary": "라이브러리",
+  "webPageBooklists": "북리스트",
+  "webPageDownload": "다운로드",
+  "webPageRead": "읽기",
+  "webPageNotDownloaded": "다운로드 안 됨",
+  "webPageEmpty": "아직 없습니다",
+  "webPageBackHome": "홈으로",
+  "webPageOfficialLink": "Z-Library 사이트에서 전체 목록 보기",
+  "webPagePreviewNote": "미리보기 도서만 표시",
+  "webPageNotFound": "찾을 수 없음",
+  "webPageConvertFailed": "이 텍스트 파일을 읽을 수 있는 형식으로 변환할 수 없습니다. 다운로드는 가능합니다."
 }

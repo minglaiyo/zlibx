@@ -3,6 +3,9 @@
     <!-- Network permissions required for API access -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Web service: read the Wi-Fi / hotspot state to pick the address
+         shown to the user (normal permission, granted at install). -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Privacy lock: BiometricPrompt (fingerprint / face; falls back to
          the device credential, which needs no extra permission). -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />

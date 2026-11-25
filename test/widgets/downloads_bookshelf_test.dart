@@ -66,6 +66,12 @@ void main() {
     await hiveDir!.delete(recursive: true);
   });
 
+  Future<String> makeBook(String name, List<int> bytes) async {
+    final file = File('${filesDir.path}/$name');
+    await file.writeAsBytes(bytes);
+    return file.path;
+  }
+
   setUp(() async {
     filesDir = await Directory.systemTemp.createTemp('bookshelf_files');
     pushedArgs = null;
@@ -105,12 +111,6 @@ void main() {
       },
     ),
   );
-
-  Future<String> makeBook(String name, List<int> bytes) async {
-    final file = File('${filesDir.path}/$name');
-    await file.writeAsBytes(bytes);
-    return file.path;
-  }
 
   /// 定步进 settle，替代 pumpAndSettle：Tab 切换动画 300ms，
   /// 5×100ms 足够走完；即使个别动画/定时器一直排帧，有限次数

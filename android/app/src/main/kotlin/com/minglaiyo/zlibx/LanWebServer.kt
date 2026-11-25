@@ -48,14 +48,11 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
 import java.io.InputStream
-import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
-import java.nio.channels.ServerSocketChannel
-import java.nio.channels.StandardProtocolFamily
 import java.nio.charset.StandardCharsets
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
@@ -120,42 +117,29 @@ class LanWebServer(private val channel: MethodChannel) {
     /// Bind and start serving. Idempotent: starting while running just
     /// returns the port already bound.
     ///
-    /// [addresses] lists the IPv4 addresses to listen on, one socket
-    /// each. Empty means the legacy single 0.0.0.0 socket, which falls
-    /// back to a system-chosen port when [port] is taken. With
-    /// addresses, one that fails to bind is skipped; if none binds,
-    /// the last error is thrown.
+    /// Binds a single wildcard socket on `::` (IPv6 wildcard,
+    /// dual-stack), exactly like Legado. Binding specific IPv4
+    /// addresses creates IPv4-mapped IPv6 sockets that other devices
+    /// cannot reach (visible in /proc/net/tcp6 but never accepting
+    /// external connections); the `::` wildcard is what works.
+    /// [addresses] is accepted for compatibility but ignored for
+    /// binding; the wildcard covers every interface. Falls back to
+    /// 0.0.0.0 when `::` cannot bind, and to a system-chosen port
+    /// when [port] is taken.
     @Synchronized
     fun start(port: Int, addresses: List<String>): Int {
         if (serverSockets.isNotEmpty()) return boundPort
         val bound = ArrayList<ServerSocket>()
-        var lastError: IOException? = null
-        if (addresses.isEmpty()) {
+        try {
+            bound.add(bindSocket(InetAddress.getByName("::"), port))
+        } catch (e: IOException) {
+            Log.w(TAG, "bind [::]:$port failed, trying 0.0.0.0", e)
             try {
                 bound.add(bindSocket(InetAddress.getByName("0.0.0.0"), port))
-            } catch (e: IOException) {
-                lastError = e
-                Log.w(TAG, "bind 0.0.0.0:$port failed, trying any port", e)
+            } catch (e2: IOException) {
+                Log.w(TAG, "bind 0.0.0.0:$port failed, trying any port", e2)
                 // Throws if this fails too: start fails, as before.
                 bound.add(bindSocket(InetAddress.getByName("0.0.0.0"), 0))
-            }
-        } else {
-            for (text in addresses) {
-                try {
-                    val address = InetAddress.getByName(text)
-                    if (address !is Inet4Address) {
-                        Log.w(TAG, "not an IPv4 address, skipped: $text")
-                        continue
-                    }
-                    bound.add(bindSocket(address, port))
-                } catch (e: IOException) {
-                    Log.w(TAG, "bind $text:$port failed, skipped", e)
-                    lastError = e
-                }
-            }
-            if (bound.isEmpty()) {
-                throw lastError
-                    ?: IOException("web_server: no bind address succeeded")
             }
         }
         serverSockets = bound
@@ -200,18 +184,7 @@ class LanWebServer(private val channel: MethodChannel) {
     }
 
     private fun bindSocket(address: InetAddress, port: Int): ServerSocket {
-        // Force a plain IPv4 socket. A plain `ServerSocket()` on Android
-        // binds an IPv4-mapped IPv6 socket (visible only in
-        // /proc/net/tcp6), and inbound IPv4 connections from other
-        // devices never reach it — Legado binds plain IPv4 and works on
-        // the same address/port. `StandardProtocolFamily.INET` is
-        // IPv4-only (API 24+, minSdk 29).
-        val server = try {
-            ServerSocketChannel.open(StandardProtocolFamily.INET).socket()
-        } catch (e: Exception) {
-            Log.w(TAG, "IPv4-only channel unsupported, falling back to ServerSocket", e)
-            ServerSocket()
-        }
+        val server = ServerSocket()
         // Let a stop/start cycle rebind at once instead of waiting out
         // TIME_WAIT on the old socket.
         server.reuseAddress = true

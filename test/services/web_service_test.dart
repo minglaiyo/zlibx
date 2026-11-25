@@ -99,8 +99,8 @@ void main() {
   });
 
   group('lifecycle & port', () {
-    test('the fixed port is 8080', () {
-      expect(kWebServicePort, 8080);
+    test('the fixed port is 8888', () {
+      expect(kWebServicePort, 8888);
     });
 
     test('shared is one instance', () {

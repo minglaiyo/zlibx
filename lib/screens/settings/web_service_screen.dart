@@ -11,6 +11,8 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../providers/booklists_provider.dart';
 import '../../providers/download_provider.dart';
 import '../../providers/saved_books_notifier.dart';
+import '../../providers/zlibrary_provider.dart';
+import '../../services/booklist_repository.dart';
 import '../../services/lan_share.dart';
 import '../../services/network_state_channel.dart';
 import '../../services/web_service.dart';
@@ -84,10 +86,22 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
       // Detect first: the hotspot address changes when the hotspot is
       // re-enabled, so the QR code must be regenerated.
       await _detectNetwork();
-      final snapshot = await _buildSnapshot();
+      final built = await _buildSnapshot();
+      // Capture the long-lived objects now, not the widget's ref:
+      // the callbacks below may run after this page is left, when
+      // the ref is dead. The notifier and the repository both live
+      // in the ProviderContainer, so holding them is safe.
+      final notifier = ref.read(downloadProvider.notifier);
+      final repository = BooklistRepository(ref.read(zlibraryApiProvider));
+      final bookById = built.bookById;
+      final booklistById = built.booklistById;
       await _service.start(
-        snapshot: snapshot,
+        snapshot: built.snapshot,
         strings: _pageStrings(t),
+        onRequestDownload: (bookId) =>
+            _requestDownload(notifier, bookById, bookId),
+        onFetchBooklistPage: (booklistId, page) =>
+            _fetchBooklistPage(repository, booklistById, booklistId, page),
       );
     } on LocalNetworkPermissionDenied {
       logIgnored('web_service_screen', 'local network permission denied');
@@ -131,12 +145,111 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     }
   }
 
-  /// Freeze the three lists at the moment the service starts.
-  Future<WebSnapshot> _buildSnapshot() async {
+  /// Freeze the three lists at the moment the service starts, plus
+  /// the lookups the web callbacks need (book id -> Book, booklist
+  /// id -> Booklist) so a web request can find the real objects.
+  Future<
+    ({
+      WebSnapshot snapshot,
+      Map<int, Book> bookById,
+      Map<String, Booklist> booklistById,
+    })
+  >
+  _buildSnapshot() async {
     final tasks = ref.read(downloadProvider);
     final saved = await _loadSaved();
     final booklists = await _loadBooklists();
-    return WebSnapshot.build(tasks: tasks, saved: saved, booklists: booklists);
+    final bookById = <int, Book>{};
+    for (final book in saved) {
+      bookById[book.id] = book;
+    }
+    final booklistById = <String, Booklist>{};
+    for (final list in booklists) {
+      booklistById[list.id] = list;
+      for (final book in list.previewBooks) {
+        bookById[book.id] = book;
+      }
+    }
+    return (
+      snapshot: WebSnapshot.build(tasks: tasks, saved: saved, booklists: booklists),
+      bookById: bookById,
+      booklistById: booklistById,
+    );
+  }
+
+  /// Web-triggered download (item 3): enqueue the book with the
+  /// app's own download logic. Never starts a second round for a
+  /// book that is already on this phone or already downloading —
+  /// the caller reports that instead. [notifier] and [bookById] are
+  /// captured at start time so this keeps working after the page
+  /// is left.
+  Future<WebDownloadRequest> _requestDownload(
+    DownloadNotifier notifier,
+    Map<int, Book> bookById,
+    int bookId,
+  ) async {
+    final book = bookById[bookId];
+    if (book == null) return WebDownloadRequest.notFound;
+    final tasks = notifier.state;
+    for (final task in tasks) {
+      if (task.book.id != bookId) continue;
+      if (task.status == DownloadStatus.completed && !task.missingFile) {
+        return WebDownloadRequest.alreadyDownloaded;
+      }
+    }
+    for (final task in tasks) {
+      if (task.book.id != bookId) continue;
+      if (task.status == DownloadStatus.downloading ||
+          task.status == DownloadStatus.pending ||
+          task.status == DownloadStatus.paused) {
+        return WebDownloadRequest.alreadyDownloading;
+      }
+    }
+    // Fire and forget: startDownload returns the round's future,
+    // which only settles when the whole file is down. The web page
+    // answers "started" at once.
+    unawaited(notifier.startDownload(book));
+    return WebDownloadRequest.started;
+  }
+
+  /// One booklist page from Z-Library (item 6), reusing the
+  /// repository's own calls: page 1 is the server-rendered detail
+  /// document, page 2+ is the JSON endpoint. Any failure returns
+  /// null and the service falls back to the snapshot's preview
+  /// books. [hasMore] is the JSON totalPages when the server gives
+  /// it, else "a full page probably has a next one".
+  Future<WebBooklistPage?> _fetchBooklistPage(
+    BooklistRepository repository,
+    Map<String, Booklist> booklistById,
+    String booklistId,
+    int page,
+  ) async {
+    final list = booklistById[booklistId];
+    if (list == null) return null;
+    try {
+      if (page <= 1) {
+        final response = await repository.fetchDetailBooks(list);
+        if (!response.success || response.data == null) return null;
+        final books = response.data!;
+        return WebBooklistPage(books: books, hasMore: books.length >= 20);
+      }
+      final response = await repository.fetchBooksPage(
+        booklistId,
+        page: page,
+      );
+      if (!response.success || response.data == null) return null;
+      final data = response.data!;
+      final totalPages = data.totalPages;
+      return WebBooklistPage(
+        books: data.books,
+        hasMore: totalPages == null
+            ? data.books.length >= 20
+            : page < totalPages,
+      );
+    } catch (error) {
+      logIgnored('web_service_screen', error);
+      return null;
+    }
   }
 
   /// The shelf may still be loading on a cold start; wait briefly.

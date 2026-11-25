@@ -35,6 +35,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
@@ -42,6 +43,7 @@ import 'package:path/path.dart' as p;
 
 import '../providers/download_task.dart';
 import '../utils/diagnostics.dart';
+import 'app_icon.dart';
 import 'media_store.dart';
 import 'txt_to_epub.dart';
 import 'web_reader_page.dart';
@@ -89,10 +91,32 @@ bool isReadableExtension(String? extension) =>
 bool isPdfExtension(String? extension) =>
     (extension ?? '').toLowerCase() == 'pdf';
 
+/// Format a byte count as "12.3 MB" (one decimal; B/KB/MB/GB).
+String formatFileSize(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  const units = <String>['KB', 'MB', 'GB'];
+  var value = bytes / 1024.0;
+  var unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return '${value.toStringAsFixed(1)} ${units[unit]}';
+}
+
+/// Truncate a description to about two lines on a card (rune-safe).
+/// Longer text gets an ellipsis; the CSS line-clamp is a second net.
+String truncateDescription(String s, {int maxRunes = 120}) {
+  if (s.runes.length <= maxRunes) return s;
+  return '${String.fromCharCodes(s.runes.take(maxRunes))}…';
+}
+
 // ───────────────────────── Snapshot ─────────────────────────
 
 /// One downloaded file that can be served.
 class WebFile {
+  /// The Z-Library book id (used by /detail and the zip routes).
+  final int bookId;
   final String title;
   final String author;
   final String extension;
@@ -101,14 +125,33 @@ class WebFile {
   /// loads it directly; a missing cover gets a first-letter tile.
   final String? coverUrl;
 
+  /// Human-readable file size ("12.3 MB"), or null when unknown.
+  final String? sizeLabel;
+
+  /// The book's synopsis, if Z-Library has one.
+  final String? description;
+
+  /// Detail-page metadata, when the book carries it.
+  final String? publisher;
+  final int? year;
+  final int? pages;
+  final String? language;
+
   /// Stored location: a plain path or a MediaStore content:// URI.
   final String location;
 
   const WebFile({
+    required this.bookId,
     required this.title,
     required this.author,
     required this.extension,
     this.coverUrl,
+    this.sizeLabel,
+    this.description,
+    this.publisher,
+    this.year,
+    this.pages,
+    this.language,
     required this.location,
   });
 }
@@ -117,6 +160,9 @@ class WebFile {
 /// [WebSnapshot.files] when the book is on this phone, else null (the
 /// row is information only).
 class WebEntry {
+  /// The Z-Library book id, when known (used by /detail and the
+  /// web-triggered download). Null only for rows built without a Book.
+  final int? bookId;
   final String title;
   final String author;
   final String extension;
@@ -125,12 +171,37 @@ class WebEntry {
   final String? coverUrl;
   final int? fileIndex;
 
+  /// Human-readable file size, when the book is downloaded.
+  final String? sizeLabel;
+
+  /// The book's synopsis, if Z-Library has one.
+  final String? description;
+
+  /// Detail-page metadata, when the book carries it.
+  final String? publisher;
+  final int? year;
+  final int? pages;
+  final String? language;
+
+  /// True when a download task exists for this book but has not
+  /// finished (downloading / queued / paused): the web page shows
+  /// "downloading" instead of offering to start another one.
+  final bool downloadPending;
+
   const WebEntry({
+    this.bookId,
     required this.title,
     required this.author,
     required this.extension,
     this.coverUrl,
     this.fileIndex,
+    this.sizeLabel,
+    this.description,
+    this.publisher,
+    this.year,
+    this.pages,
+    this.language,
+    this.downloadPending = false,
   });
 }
 
@@ -160,16 +231,30 @@ class WebSnapshot {
   final List<WebEntry> library;
   final List<WebBooklist> booklists;
 
+  /// Book ids with a download task that has not finished
+  /// (downloading / queued / paused). The web page shows
+  /// "downloading" for these instead of offering to start another.
+  final Set<int> pendingBookIds;
+
   const WebSnapshot({
     this.files = const <WebFile>[],
     this.library = const <WebEntry>[],
     this.booklists = const <WebBooklist>[],
+    this.pendingBookIds = const <int>{},
   });
 
   /// The three counts shown in settings.
   int get downloadedCount => files.length;
   int get libraryCount => library.length;
   int get booklistCount => booklists.length;
+
+  /// The index of a downloaded file by its book id, or null.
+  int? fileIndexForBookId(int bookId) {
+    for (var i = 0; i < files.length; i++) {
+      if (files[i].bookId == bookId) return i;
+    }
+    return null;
+  }
 
   /// Build the snapshot from app data.
   ///
@@ -185,6 +270,13 @@ class WebSnapshot {
   }) {
     final files = <WebFile>[];
     final indexById = <String, int>{};
+    final pendingBookIds = <int>{
+      for (final task in tasks)
+        if (task.status == DownloadStatus.downloading ||
+            task.status == DownloadStatus.pending ||
+            task.status == DownloadStatus.paused)
+          task.book.id,
+    };
     for (final task in tasks) {
       final location = task.filePath;
       if (task.status != DownloadStatus.completed ||
@@ -198,10 +290,17 @@ class WebSnapshot {
       indexById[task.id] = files.length;
       files.add(
         WebFile(
+          bookId: task.book.id,
           title: task.book.title,
           author: task.book.author ?? '',
           extension: ext,
           coverUrl: task.book.cover,
+          sizeLabel: _sizeLabelFor(task),
+          description: task.book.description,
+          publisher: task.book.publisher,
+          year: task.book.year,
+          pages: task.book.pages,
+          language: task.book.language,
           location: location,
         ),
       );
@@ -210,6 +309,7 @@ class WebSnapshot {
     WebEntry entryFor(Book book) {
       final index = indexById['${book.id}'];
       return WebEntry(
+        bookId: book.id,
         title: book.title,
         author: book.author ?? '',
         extension: index != null
@@ -217,6 +317,14 @@ class WebSnapshot {
             : (book.extension ?? '').toLowerCase(),
         coverUrl: book.cover,
         fileIndex: index,
+        sizeLabel: index != null ? files[index].sizeLabel : null,
+        description: book.description,
+        publisher: book.publisher,
+        year: book.year,
+        pages: book.pages,
+        language: book.language,
+        downloadPending:
+            index == null && pendingBookIds.contains(book.id),
       );
     }
 
@@ -233,7 +341,18 @@ class WebSnapshot {
             books: [for (final book in list.previewBooks) entryFor(book)],
           ),
       ],
+      pendingBookIds: pendingBookIds,
     );
+  }
+
+  /// Human-readable size for a downloaded file: the task's own
+  /// byte count first (the real file size), then the book's
+  /// server-reported size, then its pre-formatted string.
+  static String? _sizeLabelFor(DownloadTask task) {
+    final bytes = task.fileSize ?? task.book.filesize;
+    if (bytes != null) return formatFileSize(bytes);
+    final s = task.book.filesizeString;
+    return (s == null || s.isEmpty) ? null : s;
   }
 
   static String _extensionOf(String? declared, String location) {
@@ -352,6 +471,43 @@ class LocalNetworkPermissionDenied implements Exception {
   const LocalNetworkPermissionDenied();
 }
 
+/// Outcome of a web-triggered download request (/request-download).
+enum WebDownloadRequest {
+  /// A new download round was started.
+  started,
+
+  /// The book is already on this phone.
+  alreadyDownloaded,
+
+  /// A download for this book is already running or queued.
+  alreadyDownloading,
+
+  /// No such book in the snapshot.
+  notFound,
+}
+
+/// The settings page's answer to a web-triggered download: enqueue
+/// the book with the app's own download logic. Must NOT start a
+/// second round for a book that is already downloading or downloaded
+/// — the caller checks that first and reports it instead.
+typedef RequestDownloadHandler =
+    Future<WebDownloadRequest> Function(int bookId);
+
+/// One fetched booklist page (item 6): the books and whether a next
+/// page exists.
+class WebBooklistPage {
+  final List<Book> books;
+  final bool hasMore;
+  const WebBooklistPage({required this.books, required this.hasMore});
+}
+
+/// Fetch one page of a booklist from Z-Library (20 books per page,
+/// like the site). Returns null when the page could not be fetched
+/// (offline / 503 / challenge wall) — the service then falls back
+/// to the snapshot's preview books.
+typedef BooklistPageFetcher =
+    Future<WebBooklistPage?> Function(String booklistId, int page);
+
 class WebService extends ChangeNotifier {
   /// The one instance shared by the settings page and the server.
   static final WebService shared = WebService();
@@ -378,6 +534,12 @@ class WebService extends ChangeNotifier {
   WebSnapshot _snapshot = const WebSnapshot();
   WebPageStrings _strings = WebPageStrings.english;
 
+  /// Set by [start]: the screen's download trigger (item 3) and
+  /// booklist page fetcher (item 6). Null when the caller did not
+  /// provide them — those routes then degrade to the snapshot.
+  RequestDownloadHandler? _onRequestDownload;
+  BooklistPageFetcher? _onFetchBooklistPage;
+
   bool get isRunning => _server != null;
 
   /// The port actually bound, or null when stopped.
@@ -391,11 +553,15 @@ class WebService extends ChangeNotifier {
   ///
   /// Binds one 0.0.0.0 socket on [preferredPort]; when that port is
   /// taken, a system-chosen port is used instead, and [port] is always
-  /// the one actually in use.
+  /// the one actually in use. [onRequestDownload] and
+  /// [onFetchBooklistPage] are the screen's callbacks for the
+  /// web-triggered download and the on-demand booklist pages.
   Future<int> start({
     required WebSnapshot snapshot,
     WebPageStrings strings = WebPageStrings.english,
     int preferredPort = kWebServicePort,
+    RequestDownloadHandler? onRequestDownload,
+    BooklistPageFetcher? onFetchBooklistPage,
   }) async {
     final running = _server;
     if (running != null) return running.port;
@@ -411,6 +577,8 @@ class WebService extends ChangeNotifier {
 
     _snapshot = snapshot;
     _strings = strings;
+    _onRequestDownload = onRequestDownload;
+    _onFetchBooklistPage = onFetchBooklistPage;
     HttpServer server;
     try {
       server = await HttpServer.bind(
@@ -549,7 +717,16 @@ class WebService extends ChangeNotifier {
       }
       switch (segments.first) {
         case 'booklist':
-          return _booklistRoute(segments);
+          return _booklistRoute(segments, query);
+        case 'detail':
+          return _detailRoute(segments);
+        case 'zip':
+          return _zipRoute(segments);
+        case 'request-download':
+          return _requestDownloadRoute(segments);
+        case 'icon.png':
+        case 'favicon.ico':
+          return _iconRoute();
         case 'download':
           return _downloadRoute(segments, lowerHeaders['range']);
         case 'read':
@@ -584,14 +761,288 @@ class WebService extends ChangeNotifier {
   WebResponse _notFound() =>
       _html(HttpStatus.notFound, _messagePage(_strings.notFound));
 
-  WebResponse _booklistRoute(List<String> s) {
+  /// One booklist page, loaded on demand (item 6): page N is fetched
+  /// live from Z-Library (20 books per page, like the site) through
+  /// the screen's fetcher; `?page=N` moves between pages. When the
+  /// fetch fails (offline / 503 / challenge wall) or no fetcher was
+  /// provided, the snapshot's preview books are shown instead, with
+  /// a notice that the live load failed.
+  Future<WebResponse> _booklistRoute(
+    List<String> s,
+    Map<String, String> query,
+  ) async {
     if (s.length != 2) return _notFound();
+    WebBooklist? found;
     for (final list in _snapshot.booklists) {
       if (list.id == s[1]) {
-        return _html(HttpStatus.ok, _booklistPage(list));
+        found = list;
+        break;
       }
     }
-    return _notFound();
+    if (found == null) return _notFound();
+    final list = found;
+    final page = int.tryParse(query['page'] ?? '1') ?? 1;
+    final safePage = page < 1 ? 1 : page;
+    final fetcher = _onFetchBooklistPage;
+    if (fetcher != null) {
+      WebBooklistPage? fetched;
+      try {
+        fetched = await fetcher(list.id, safePage);
+      } catch (error) {
+        logIgnored('web_service', error);
+        fetched = null;
+      }
+      if (fetched != null) {
+        final entries = [
+          for (final book in fetched.books) _entryForFetchedBook(book),
+        ];
+        return _html(
+          HttpStatus.ok,
+          _booklistPage(
+            list,
+            entries,
+            page: safePage,
+            hasMore: fetched.hasMore,
+            loadFailed: false,
+            isPreview: false,
+          ),
+        );
+      }
+      return _html(
+        HttpStatus.ok,
+        _booklistPage(
+          list,
+          list.books,
+          page: safePage,
+          hasMore: false,
+          loadFailed: true,
+        ),
+      );
+    }
+    return _html(
+      HttpStatus.ok,
+      _booklistPage(
+        list,
+        list.books,
+        page: safePage,
+        hasMore: false,
+        loadFailed: false,
+      ),
+    );
+  }
+
+  /// Convert a live-fetched book into a card row: link it to a
+  /// downloaded file when this phone has it, else mark it
+  /// downloadable / downloading from the snapshot's state.
+  WebEntry _entryForFetchedBook(Book book) {
+    final index = _snapshot.fileIndexForBookId(book.id);
+    return WebEntry(
+      bookId: book.id,
+      title: book.title,
+      author: book.author ?? '',
+      extension: index != null
+          ? _snapshot.files[index].extension
+          : (book.extension ?? '').toLowerCase(),
+      coverUrl: book.cover,
+      fileIndex: index,
+      sizeLabel: index != null ? _snapshot.files[index].sizeLabel : null,
+      description: book.description,
+      publisher: book.publisher,
+      year: book.year,
+      pages: book.pages,
+      language: book.language,
+      downloadPending:
+          index == null && _snapshot.pendingBookIds.contains(book.id),
+    );
+  }
+
+  /// Build a card row from a downloaded file (keeps the home page
+  /// and the search results in sync with the detail page).
+  WebEntry _entryFromFile(int index) {
+    final f = _snapshot.files[index];
+    return WebEntry(
+      bookId: f.bookId,
+      title: f.title,
+      author: f.author,
+      extension: f.extension,
+      coverUrl: f.coverUrl,
+      fileIndex: index,
+      sizeLabel: f.sizeLabel,
+      description: f.description,
+      publisher: f.publisher,
+      year: f.year,
+      pages: f.pages,
+      language: f.language,
+    );
+  }
+
+  /// The detail page (item 5): /detail/<bookId>. A downloaded book
+  /// is found in the files first; otherwise the library, then the
+  /// booklist previews. Unknown ids are a 404.
+  WebResponse _detailRoute(List<String> s) {
+    if (s.length != 2 || !RegExp(r'^\d{1,9}$').hasMatch(s[1])) {
+      return _notFound();
+    }
+    final bookId = int.parse(s[1]);
+    final entry = _detailEntryForBookId(bookId);
+    if (entry == null) return _notFound();
+    return _html(HttpStatus.ok, _detailPage(entry));
+  }
+
+  WebEntry? _detailEntryForBookId(int bookId) {
+    final fileIndex = _snapshot.fileIndexForBookId(bookId);
+    if (fileIndex != null) return _entryFromFile(fileIndex);
+    for (final e in _snapshot.library) {
+      if (e.bookId == bookId) return e;
+    }
+    for (final list in _snapshot.booklists) {
+      for (final e in list.books) {
+        if (e.bookId == bookId) return e;
+      }
+    }
+    return null;
+  }
+
+  /// Zip download (item 2): /zip/all packs every downloaded book;
+  /// /zip/booklist/<id> packs that booklist's preview books that are
+  /// on this phone. The zip is built in memory (archive's encoder
+  /// is an in-memory operation) and returned as an attachment.
+  Future<WebResponse> _zipRoute(List<String> s) async {
+    List<int> indices;
+    String zipName;
+    if (s.length == 2 && s[1] == 'all') {
+      indices = [for (var i = 0; i < _snapshot.files.length; i++) i];
+      zipName = 'downloaded-books.zip';
+    } else if (s.length == 3 && s[1] == 'booklist') {
+      WebBooklist? found;
+      for (final list in _snapshot.booklists) {
+        if (list.id == s[2]) {
+          found = list;
+          break;
+        }
+      }
+      if (found == null) return _notFound();
+      indices = [
+        for (final e in found.books)
+          if (e.fileIndex != null) e.fileIndex!,
+      ];
+      zipName = '${found.name}.zip';
+    } else {
+      return _notFound();
+    }
+    if (indices.isEmpty) {
+      return _html(
+        HttpStatus.ok,
+        _messagePage('这里还没有已下载的书，打包是空的。'),
+      );
+    }
+    final archive = Archive();
+    final usedNames = <String>{};
+    for (final index in indices) {
+      final file = await _fileFor(index);
+      if (file == null) continue;
+      final entry = _snapshot.files[index];
+      final bytes = await file.readAsBytes();
+      var name = _zipEntryName(entry);
+      var n = 2;
+      while (usedNames.contains(name)) {
+        name = _zipEntryName(entry, suffix: n);
+        n++;
+      }
+      usedNames.add(name);
+      archive.addFile(ArchiveFile(name, bytes.length, bytes));
+    }
+    if (archive.files.isEmpty) {
+      return _html(
+        HttpStatus.ok,
+        _messagePage('这里还没有已下载的书，打包是空的。'),
+      );
+    }
+    final encoded = ZipEncoder().encode(archive);
+    if (encoded == null) {
+      return _plain(HttpStatus.internalServerError, 'Zip failed');
+    }
+    final body = Uint8List.fromList(encoded);
+    return WebResponse(
+      status: HttpStatus.ok,
+      headers: <String, String>{
+        'Content-Type': 'application/zip',
+        'Content-Length': body.length.toString(),
+        'Content-Disposition': _contentDisposition(zipName),
+      },
+      body: body,
+    );
+  }
+
+  /// A safe, unique file name inside the zip: "Title - Author.ext"
+  /// with path-unsafe characters replaced.
+  String _zipEntryName(WebFile f, {int? suffix}) {
+    final base = [
+      f.title,
+      if (f.author.isNotEmpty) f.author,
+    ].join(' - ').replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
+    final ext = f.extension.isNotEmpty ? '.${f.extension}' : '';
+    final stem = base.isEmpty ? 'book' : base;
+    return suffix == null ? '$stem$ext' : '$stem ($suffix)$ext';
+  }
+
+  /// Web-triggered download (item 3): /request-download/<bookId>.
+  /// Hands the book to the screen's downloader and answers with a
+  /// confirmation page. The snapshot is frozen at start, so a book
+  /// downloaded this way only shows up after the service restarts —
+  /// the confirmation says so.
+  Future<WebResponse> _requestDownloadRoute(List<String> s) async {
+    if (s.length != 2 || !RegExp(r'^\d{1,9}$').hasMatch(s[1])) {
+      return _notFound();
+    }
+    final handler = _onRequestDownload;
+    if (handler == null) {
+      return _html(
+        HttpStatus.ok,
+        _messagePage('下载功能当前不可用，请在手机上直接下载。'),
+      );
+    }
+    final bookId = int.parse(s[1]);
+    WebDownloadRequest outcome;
+    try {
+      outcome = await handler(bookId);
+    } catch (error) {
+      logIgnored('web_service', error);
+      return _plain(HttpStatus.internalServerError, 'Internal Server Error');
+    }
+    switch (outcome) {
+      case WebDownloadRequest.started:
+        return _html(
+          HttpStatus.ok,
+          _messagePage(
+            '已开始下载，会占用下载额度。下载完成后重启 Web 服务，'
+            '才能在网页上看到这本书。',
+          ),
+        );
+      case WebDownloadRequest.alreadyDownloaded:
+        return _html(HttpStatus.ok, _messagePage('这本书已经下载过了。'));
+      case WebDownloadRequest.alreadyDownloading:
+        return _html(HttpStatus.ok, _messagePage('这本书正在下载中，请稍后再来。'));
+      case WebDownloadRequest.notFound:
+        return _notFound();
+    }
+  }
+
+  /// The app icon (item 8): /icon.png and /favicon.ico serve the
+  /// same bytes, so "add to home screen" gets an icon. The icon is
+  /// embedded as a base64 constant (see app_icon.dart) rather than
+  /// a Flutter asset, because the push tooling only carries UTF-8
+  /// text files — the bytes are the launcher icon's, unchanged.
+  WebResponse _iconRoute() {
+    final bytes = base64Decode(kAppIconBase64);
+    return WebResponse(
+      status: HttpStatus.ok,
+      headers: <String, String>{
+        'Content-Type': 'image/png',
+        'Content-Length': bytes.length.toString(),
+      },
+      body: Uint8List.fromList(bytes),
+    );
   }
 
   /// Search downloaded books and the library by a title/author
@@ -610,17 +1061,7 @@ class WebService extends ChangeNotifier {
         final f = _snapshot.files[i];
         if (hit(f.title) || hit(f.author)) {
           matchedFiles.add(i);
-          cards.add(
-            _bookCard(
-              WebEntry(
-                title: f.title,
-                author: f.author,
-                extension: f.extension,
-                coverUrl: f.coverUrl,
-                fileIndex: i,
-              ),
-            ),
-          );
+          cards.add(_bookCard(_entryFromFile(i)));
         }
       }
       for (final e in _snapshot.library) {
@@ -900,18 +1341,34 @@ class WebService extends ChangeNotifier {
       'display:flex;align-items:center;justify-content:center;font-size:2em}'
       '.info{flex:1;min-width:0}'
       '.name{font-weight:700}'
+      '.name a{color:#222;text-decoration:none}'
+      '.name a:hover{text-decoration:underline}'
       '.meta{color:#666;font-size:0.9em}'
+      '.desc{color:#555;font-size:0.9em;margin-top:0.3em;display:-webkit-box;'
+      '-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'
       '.actions{margin-top:0.4em}'
       '.actions a{display:inline-block;border:1px solid #888;border-radius:4px;'
       'padding:0.15em 0.8em;margin-right:0.5em;text-decoration:none;color:#222}'
       '.list-card{display:block;padding:0.6em 0;text-decoration:none;color:#222}'
       '.dim{color:#888}'
+      '.detail{display:flex;gap:1.2em;align-items:flex-start}'
+      '.cover-lg{width:180px;height:240px;flex:0 0 180px;object-fit:cover;background:#eee}'
+      '.cover-lg-ph{width:180px;height:240px;flex:0 0 180px;background:#7a8699;color:#fff;'
+      'display:flex;align-items:center;justify-content:center;font-size:4em}'
+      '.detail .info{flex:1;min-width:0}'
+      '.detail h1{font-size:1.3em;margin:0 0 0.4em}'
+      '.detail .meta{margin:0.2em 0}'
+      '.detail .desc-full{color:#333;margin-top:0.8em;white-space:pre-wrap}'
+      '.zip-btn{display:inline-block;border:1px solid #888;border-radius:4px;'
+      'padding:0.3em 1em;text-decoration:none;color:#222;margin:0.4em 0}'
       'a{color:#0645ad}'
-      '@media (max-width:640px){.layout{display:block}.sidebar{width:auto}}';
+      '@media (max-width:640px){.layout{display:block}.sidebar{width:auto}.detail{display:block}.cover-lg,.cover-lg-ph{margin-bottom:0.8em}}';
 
   String _page(String title, String body) =>
       '<!DOCTYPE html><html><head><meta charset="utf-8">'
       '<meta name="viewport" content="width=device-width, initial-scale=1">'
+      '<link rel="icon" type="image/png" href="/icon.png">'
+      '<link rel="apple-touch-icon" href="/icon.png">'
       '<title>${escapeHtml(title)}</title><style>$_css</style></head>'
       '<body>$body</body></html>';
 
@@ -961,13 +1418,16 @@ class WebService extends ChangeNotifier {
       title.isEmpty ? '?' : String.fromCharCode(title.runes.first);
 
   /// One book card, after Legado's bookshelf: borderless, cover on
-  /// the left, title / author · format / actions on the right. A
-  /// downloaded book gets [Download] and, when it can be opened,
-  /// [Read] — foliate formats go to /read, a PDF goes straight to
-  /// /book so the browser's own PDF viewer opens it. A book that is
-  /// not on this phone shows only "not downloaded", with no buttons.
-  /// (Legado shows chapter counts and read progress here; zlibx has
-  /// no such data, so its lines are title, author · format, actions.)
+  /// the left, title / author · format · size / description / actions
+  /// on the right. The title opens the detail page. A downloaded
+  /// book gets [Download] and, when it can be opened, [Read] —
+  /// foliate formats go to /read, a PDF goes straight to /book so
+  /// the browser's own PDF viewer opens it. A book that is not on
+  /// this phone gets a "download to phone" trigger link, unless a
+  /// download for it is already running — then it just says
+  /// "downloading". (Legado shows chapter counts and read progress
+  /// here; zlibx has no such data, so its lines are title,
+  /// author · format · size, description, actions.)
   String _bookCard(WebEntry e) {
     final b = StringBuffer('<article class="card">');
     final cover = e.coverUrl;
@@ -983,13 +1443,25 @@ class WebService extends ChangeNotifier {
       );
     }
     b.write('<div class="info">');
-    b.write('<div class="name">${escapeHtml(e.title)}</div>');
+    final title = escapeHtml(e.title);
+    if (e.bookId != null) {
+      b.write('<div class="name"><a href="/detail/${e.bookId}">$title</a></div>');
+    } else {
+      b.write('<div class="name">$title</div>');
+    }
     final meta = [
       if (e.author.isNotEmpty) e.author,
       if (e.extension.isNotEmpty) e.extension.toUpperCase(),
+      if (e.sizeLabel != null && e.sizeLabel!.isNotEmpty) e.sizeLabel!,
     ].join(' • ');
     if (meta.isNotEmpty) {
       b.write('<div class="meta">${escapeHtml(meta)}</div>');
+    }
+    final desc = e.description;
+    if (desc != null && desc.trim().isNotEmpty) {
+      b.write(
+        '<div class="desc">${escapeHtml(truncateDescription(desc.trim()))}</div>',
+      );
     }
     final index = e.fileIndex;
     if (index != null) {
@@ -1004,6 +1476,16 @@ class WebService extends ChangeNotifier {
         b.write(' <a href="/book/$index">${escapeHtml(_strings.read)}</a>');
       }
       b.write('</div>');
+    } else if (e.downloadPending) {
+      b.write(
+        '<div class="actions"><span class="dim">正在下载…</span></div>',
+      );
+    } else if (e.bookId != null) {
+      b.write(
+        '<div class="actions">'
+        '<a href="/request-download/${e.bookId}">下载到手机</a>'
+        '</div>',
+      );
     } else {
       b.write(
         '<div class="actions"><span class="dim">'
@@ -1014,13 +1496,22 @@ class WebService extends ChangeNotifier {
     return b.toString();
   }
 
-  /// One booklist card: its name and book count, linking to the
-  /// booklist page. Borderless, like the book cards.
-  String _booklistCard(WebBooklist l) =>
-      '<a class="list-card" href="/booklist/${Uri.encodeComponent(l.id)}">'
-      '<div class="name">${escapeHtml(l.name)}</div>'
-      '${l.count != null ? '<div class="meta">(${l.count})</div>' : ''}'
-      '</a>';
+  /// One booklist card: its name and how many of its preview books
+  /// are already on this phone. Borderless, like the book cards.
+  String _booklistCard(WebBooklist l) {
+    final downloaded = [
+      for (final e in l.books)
+        if (e.fileIndex != null) e,
+    ].length;
+    final count = l.count;
+    final meta = count != null
+        ? '已下载 $downloaded / 共 $count 本'
+        : '已下载 $downloaded 本';
+    return '<a class="list-card" href="/booklist/${Uri.encodeComponent(l.id)}">'
+        '<div class="name">${escapeHtml(l.name)}</div>'
+        '<div class="meta">${escapeHtml(meta)}</div>'
+        '</a>';
+  }
 
   String _grid(Iterable<String> cards) => cards.isEmpty
       ? '<p class="dim">${escapeHtml(_strings.empty)}</p>'
@@ -1028,23 +1519,18 @@ class WebService extends ChangeNotifier {
 
   String _homePage() {
     final downloaded = [
-      for (var i = 0; i < _snapshot.files.length; i++)
-        _bookCard(
-          WebEntry(
-            title: _snapshot.files[i].title,
-            author: _snapshot.files[i].author,
-            extension: _snapshot.files[i].extension,
-            coverUrl: _snapshot.files[i].coverUrl,
-            fileIndex: i,
-          ),
-        ),
+      for (var i = 0; i < _snapshot.files.length; i++) _bookCard(_entryFromFile(i)),
     ];
     final library = _snapshot.library.map(_bookCard);
     final lists = _snapshot.booklists.map(_booklistCard);
+    final packAll = downloaded.isEmpty
+        ? ''
+        : ' <a class="zip-btn" href="/zip/all">全部打包</a>';
     return _page(
       _strings.homeTitle,
       _layout(
         '<h2 id="downloaded">${escapeHtml(_strings.downloadedSection)} (${downloaded.length})</h2>'
+        '$packAll'
         '${_grid(downloaded)}'
         '<h2 id="library">${escapeHtml(_strings.librarySection)} (${library.length})</h2>'
         '${_grid(library)}'
@@ -1066,19 +1552,134 @@ class WebService extends ChangeNotifier {
     ),
   );
 
-  String _booklistPage(WebBooklist list) {
+  /// A booklist page (item 6): [entries] are this page's books —
+  /// live-fetched when available, else the snapshot's preview books.
+  /// [page]/[hasMore] drive the prev/next links; [loadFailed] adds
+  /// the fallback notice. A "pack download" button appears when the
+  /// list has downloaded books on this phone.
+  String _booklistPage(
+    WebBooklist list,
+    List<WebEntry> entries, {
+    required int page,
+    required bool hasMore,
+    required bool loadFailed,
+    bool isPreview = true,
+  }) {
     final link = list.url.startsWith('http')
         ? '<p><a href="${escapeHtml(list.url)}">'
               '${escapeHtml(_strings.officialLink)}</a></p>'
         : '';
+    final hasDownloaded = entries.any((e) => e.fileIndex != null);
+    final pack = hasDownloaded
+        ? '<a class="zip-btn" href="/zip/booklist/${Uri.encodeComponent(list.id)}">打包下载</a>'
+        : '';
+    final note = loadFailed
+        ? '<p class="dim">加载失败，显示的是快照里的预览书。</p>'
+        : isPreview
+            ? '<p class="meta">${escapeHtml(_strings.previewNote)}</p>'
+            : '';
+    final nav = StringBuffer('<p>');
+    if (page > 1) {
+      nav.write(
+        '<a href="/booklist/${Uri.encodeComponent(list.id)}?page=${page - 1}">上一页</a> ',
+      );
+    }
+    nav.write('第 $page 页');
+    if (hasMore) {
+      nav.write(
+        ' <a href="/booklist/${Uri.encodeComponent(list.id)}?page=${page + 1}">下一页</a>',
+      );
+    }
+    nav.write('</p>');
     return _page(
       list.name,
       _layout(
         '<p><a href="/">${escapeHtml(_strings.backHome)}</a></p>'
         '<h1>${escapeHtml(list.name)}</h1>'
-        '<p class="meta">${escapeHtml(_strings.previewNote)}</p>'
-        '${_grid(list.books.map(_bookCard))}'
+        '$note'
+        '$pack'
+        '${_grid(entries.map(_bookCard))}'
+        '${nav.toString()}'
         '$link',
+      ),
+    );
+  }
+
+  /// The detail page (item 5): a large cover, the full synopsis,
+  /// author / publisher / year / pages / language / format, and the
+  /// download / read buttons — or, for a book that is not on this
+  /// phone, "not downloaded" plus the download-to-phone trigger.
+  String _detailPage(WebEntry e) {
+    final b = StringBuffer('<div class="detail">');
+    final cover = e.coverUrl;
+    if (cover != null && cover.isNotEmpty) {
+      b.write(
+        '<img class="cover-lg" src="${escapeHtml(cover)}" loading="lazy" '
+        'alt="${escapeHtml(e.title)}">',
+      );
+    } else {
+      b.write(
+        '<div class="cover-lg-ph" aria-hidden="true">'
+        '${escapeHtml(_firstChar(e.title))}</div>',
+      );
+    }
+    b.write('<div class="info">');
+    b.write('<h1>${escapeHtml(e.title)}</h1>');
+    final metaLines = <String>[
+      if (e.author.isNotEmpty) '作者：${e.author}',
+      if (e.publisher != null && e.publisher!.isNotEmpty)
+        '出版社：${e.publisher!}',
+      if (e.year != null) '出版年份：${e.year}',
+      if (e.pages != null) '页数：${e.pages}',
+      if (e.language != null && e.language!.isNotEmpty) '语言：${e.language!}',
+      if (e.extension.isNotEmpty) '格式：${e.extension.toUpperCase()}',
+      if (e.sizeLabel != null && e.sizeLabel!.isNotEmpty)
+        '大小：${e.sizeLabel!}',
+    ];
+    for (final line in metaLines) {
+      b.write('<div class="meta">${escapeHtml(line)}</div>');
+    }
+    final desc = e.description;
+    if (desc != null && desc.trim().isNotEmpty) {
+      b.write(
+        '<div class="desc-full">${escapeHtml(desc.trim())}</div>',
+      );
+    }
+    final index = e.fileIndex;
+    if (index != null) {
+      b.write('<div class="actions">');
+      b.write(
+        '<a href="/download/$index">${escapeHtml(_strings.download)}</a>',
+      );
+      final ext = e.extension.toLowerCase();
+      if (isReadableExtension(ext)) {
+        b.write(' <a href="/read/$index">${escapeHtml(_strings.read)}</a>');
+      } else if (isPdfExtension(ext)) {
+        b.write(' <a href="/book/$index">${escapeHtml(_strings.read)}</a>');
+      }
+      b.write('</div>');
+    } else if (e.downloadPending) {
+      b.write(
+        '<div class="actions"><span class="dim">正在下载…</span></div>',
+      );
+    } else if (e.bookId != null) {
+      b.write(
+        '<div class="actions">'
+        '<a href="/request-download/${e.bookId}">下载到手机</a>'
+        '</div>',
+      );
+    } else {
+      b.write(
+        '<div class="actions"><span class="dim">'
+        '${escapeHtml(_strings.notDownloaded)}</span></div>',
+      );
+    }
+    b.write('</div></div>');
+    return _page(
+      e.title,
+      _layout(
+        '<p><a href="/">${escapeHtml(_strings.backHome)}</a></p>'
+        '${b.toString()}',
       ),
     );
   }

@@ -72,19 +72,31 @@ void main() {
     snapshot = WebSnapshot(
       files: [
         WebFile(
+          bookId: 1,
           title: 'Epub <Book>',
           author: 'Au',
           extension: 'epub',
           coverUrl: 'https://covers.example/a.jpg',
+          sizeLabel: '12.3 MB',
+          description:
+              'A very long synopsis that keeps going and going and going '
+              'and going and going and going and going and going and going '
+              'and going past one hundred and twenty characters for sure.',
+          publisher: 'Test Press',
+          year: 2020,
+          pages: 300,
+          language: 'en',
           location: '${tmp.path}/a.epub',
         ),
         WebFile(
+          bookId: 2,
           title: 'Pdf Book',
           author: '',
           extension: 'pdf',
           location: '${tmp.path}/b.pdf',
         ),
         WebFile(
+          bookId: 3,
           title: 'Blank Text',
           author: '',
           extension: 'txt',
@@ -93,13 +105,20 @@ void main() {
       ],
       library: const [
         WebEntry(
+          bookId: 1,
           title: 'On shelf',
           author: '',
           extension: 'epub',
           coverUrl: 'https://covers.example/shelf.jpg',
           fileIndex: 0,
         ),
-        WebEntry(title: 'Not here', author: '', extension: 'epub'),
+        WebEntry(
+          bookId: 9,
+          title: 'Not here',
+          author: '',
+          extension: 'epub',
+          description: 'A shelf book that is not on this phone.',
+        ),
       ],
       booklists: const [
         WebBooklist(
@@ -108,7 +127,13 @@ void main() {
           url: 'https://z-library.example/booklist/42/x',
           count: 9,
           books: [
-            WebEntry(title: 'In list', author: '', extension: 'epub', fileIndex: 0),
+            WebEntry(
+              bookId: 1,
+              title: 'In list',
+              author: '',
+              extension: 'epub',
+              fileIndex: 0,
+            ),
           ],
         ),
       ],
@@ -249,9 +274,16 @@ void main() {
           author: 'A',
           extension: 'epub',
           cover: 'https://covers.example/task.jpg',
+          description: 'A synopsis.',
+          publisher: 'Test Press',
+          year: 2020,
+          pages: 300,
+          language: 'en',
+          filesize: 9999,
         ),
         status: DownloadStatus.completed,
         filePath: '/x/one.epub',
+        fileSize: 1536,
       );
       final missing = DownloadTask(
         id: '2',
@@ -262,9 +294,9 @@ void main() {
       );
       final running = DownloadTask(
         id: '3',
-        book: const Book(id: 3, title: 'Three', extension: 'epub'),
+        book: const Book(id: 9, title: 'Nine', extension: 'epub'),
         status: DownloadStatus.downloading,
-        filePath: '/x/three.epub',
+        filePath: '/x/nine.epub',
       );
       final snap = WebSnapshot.build(
         tasks: [done, missing, running],
@@ -307,6 +339,24 @@ void main() {
         'https://covers.example/preview.jpg',
       );
       expect(snap.booklists.single.books[1].coverUrl, isNull);
+      // Items 1/4/5: the book id, the real file size (the task's own
+      // byte count wins over the book's server-reported size), the
+      // synopsis and the detail metadata flow into the file and the
+      // entries.
+      expect(snap.files.single.bookId, 1);
+      expect(snap.files.single.sizeLabel, '1.5 KB');
+      expect(snap.files.single.description, 'A synopsis.');
+      expect(snap.files.single.publisher, 'Test Press');
+      expect(snap.files.single.year, 2020);
+      expect(snap.files.single.pages, 300);
+      expect(snap.files.single.language, 'en');
+      expect(snap.library[0].bookId, 1);
+      expect(snap.library[0].sizeLabel, '1.5 KB');
+      // Item 3: a book with a running download is marked pending,
+      // so the web page offers no second trigger link for it.
+      expect(snap.pendingBookIds, contains(9));
+      expect(snap.library[1].downloadPending, isTrue);
+      expect(snap.library[1].fileIndex, isNull);
     });
   });
 
@@ -362,6 +412,25 @@ void main() {
       expect(r.body, contains('Epub &lt;Book&gt;')); // escaped
       expect(r.body.toLowerCase(), isNot(contains('<script')));
       expect(r.body, contains('(3)')); // downloaded section count
+      // Item 8: the app icon is linked in the head.
+      expect(r.body, contains('rel="icon"'));
+      expect(r.body, contains('href="/icon.png"'));
+      // Item 1: the file size sits next to the download link.
+      expect(r.body, contains('12.3 MB'));
+      // Item 4: the card shows the truncated description, not the
+      // whole synopsis.
+      expect(r.body, contains('class="desc"'));
+      expect(r.body, contains('A very long synopsis'));
+      expect(r.body, contains('…'));
+      expect(r.body, isNot(contains('past one hundred and twenty')));
+      // Item 3: an undownloaded library book gets the trigger link.
+      expect(r.body, contains('href="/request-download/9"'));
+      expect(r.body, contains('下载到手机'));
+      // Item 7: the booklist card shows how many are downloaded.
+      expect(r.body, contains('已下载 1 / 共 9 本'));
+      // Item 2: the downloaded section offers a pack-all button.
+      expect(r.body, contains('href="/zip/all"'));
+      expect(r.body, contains('全部打包'));
     });
 
     test('search filters by title and author, case-insensitively', () async {
@@ -461,6 +530,9 @@ void main() {
       expect(r.body, contains('class="sidebar"'));
       expect(r.body, contains('href="/download/0"'));
       expect(r.body, contains('https://z-library.example/booklist/42/x'));
+      // Item 2: a downloaded book in the list means a pack button.
+      expect(r.body, contains('href="/zip/booklist/42"'));
+      expect(r.body, contains('打包下载'));
     });
 
     test('out-of-range indexes and odd paths 404 without crashing', () async {
@@ -576,6 +648,185 @@ void main() {
       await empty.start(snapshot: snapshot, preferredPort: 0);
       final r = await empty.handleRequest(method: 'GET', path: '/reader-assets/view.js');
       expect(r.status, 404);
+    });
+  });
+
+  group('detail page, zip, request-download, booklist pages, icon', () {
+    test('formatFileSize and truncateDescription', () {
+      expect(formatFileSize(0), '0 B');
+      expect(formatFileSize(512), '512 B');
+      expect(formatFileSize(1536), '1.5 KB');
+      expect(formatFileSize(12 * 1024 * 1024 + 300 * 1024), '12.3 MB');
+      expect(formatFileSize(2 * 1024 * 1024 * 1024), '2.0 GB');
+      expect(truncateDescription('short'), 'short');
+      final long = 'x' * 200;
+      expect(truncateDescription(long).length, 121);
+      expect(truncateDescription(long), endsWith('…'));
+    });
+
+    test('detail page shows the full synopsis and metadata', () async {
+      await service.start(snapshot: snapshot, preferredPort: 0);
+      final r = await get('/detail/1');
+      expect(r.status, 200);
+      // The full description, not the 120-char truncation.
+      expect(r.body, contains('past one hundred and twenty characters'));
+      expect(r.body, contains('Test Press'));
+      expect(r.body, contains('2020'));
+      expect(r.body, contains('300'));
+      expect(r.body, contains('12.3 MB'));
+      expect(r.body, contains('href="/download/0"'));
+      expect(r.body, contains('href="/read/0"'));
+      // An undownloaded book shows "not downloaded" plus the trigger.
+      final missing = await get('/detail/9');
+      expect(missing.status, 200);
+      expect(missing.body, contains('A shelf book that is not on this phone.'));
+      expect(missing.body, contains('href="/request-download/9"'));
+      expect((await get('/detail/999')).status, 404);
+      expect((await get('/detail/abc')).status, 404);
+    });
+
+    test('zip routes pack the files and attach them', () async {
+      await service.start(snapshot: snapshot, preferredPort: 0);
+      final all = await get('/zip/all');
+      expect(all.status, 200);
+      expect(all.header('content-type'), 'application/zip');
+      expect(
+        all.header('content-disposition'),
+        contains('attachment; filename="downloaded-books.zip"'),
+      );
+      expect(all.response.body, isNotNull);
+      expect(all.response.body!.length, greaterThan(0));
+      // A zip stores file names in plain text (the entry name is
+      // "Title - Author.ext", with unsafe characters replaced).
+      expect(all.body, contains('Au.epub'));
+      expect(all.body, contains('Pdf Book.pdf'));
+      expect(all.body, contains('Blank Text.txt'));
+      // A booklist zip packs only that list's downloaded books.
+      final list = await get('/zip/booklist/42');
+      expect(list.status, 200);
+      expect(list.header('content-type'), 'application/zip');
+      expect(list.body, contains('Au.epub'));
+      expect(list.body, isNot(contains('Pdf Book.pdf')));
+      expect((await get('/zip/booklist/nope')).status, 404);
+      expect((await get('/zip/other')).status, 404);
+    });
+
+    test('request-download calls the callback and confirms', () async {
+      final calls = <int>[];
+      final svc = WebService(
+        assetLoader: (path) async => utf8.encode('// $path'),
+        txtConverter: TxtToEpub(cacheDir: () async => Directory('${tmp.path}/cache')),
+      );
+      addTearDown(svc.stop);
+      await svc.start(
+        snapshot: snapshot,
+        preferredPort: 0,
+        onRequestDownload: (id) async {
+          calls.add(id);
+          return WebDownloadRequest.started;
+        },
+      );
+      final r = Reply(
+        await svc.handleRequest(method: 'GET', path: '/request-download/9'),
+      );
+      expect(r.status, 200);
+      expect(calls, [9]);
+      expect(r.body, contains('已开始下载'));
+      expect(r.body, contains('重启 Web 服务'));
+      expect(r.body, contains('下载额度'));
+      expect(
+        (await svc.handleRequest(
+          method: 'GET',
+          path: '/request-download/abc',
+        )).status,
+        404,
+      );
+    });
+
+    test('request-download reports an already-downloading book', () async {
+      final svc = WebService(
+        assetLoader: (path) async => utf8.encode('// $path'),
+        txtConverter: TxtToEpub(cacheDir: () async => Directory('${tmp.path}/cache')),
+      );
+      addTearDown(svc.stop);
+      await svc.start(
+        snapshot: snapshot,
+        preferredPort: 0,
+        onRequestDownload: (_) async =>
+            WebDownloadRequest.alreadyDownloading,
+      );
+      final r = Reply(
+        await svc.handleRequest(method: 'GET', path: '/request-download/9'),
+      );
+      expect(r.status, 200);
+      expect(r.body, contains('正在下载中'));
+      expect(r.body, isNot(contains('已开始下载')));
+    });
+
+    test('booklist page 2 comes from the fetcher, page 1 falls back', () async {
+      final svc = WebService(
+        assetLoader: (path) async => utf8.encode('// $path'),
+        txtConverter: TxtToEpub(cacheDir: () async => Directory('${tmp.path}/cache')),
+      );
+      addTearDown(svc.stop);
+      await svc.start(
+        snapshot: snapshot,
+        preferredPort: 0,
+        onFetchBooklistPage: (id, page) async {
+          if (id != '42') return null;
+          if (page == 1) return null; // simulate a failed fetch
+          return WebBooklistPage(
+            books: const [
+              Book(id: 1, title: 'Page two one', extension: 'epub'),
+              Book(id: 77, title: 'Page two two', extension: 'epub'),
+            ],
+            hasMore: true,
+          );
+        },
+      );
+      // Page 2: the live books, a prev link and a next link.
+      final page2 = Reply(
+        await svc.handleRequest(
+          method: 'GET',
+          path: '/booklist/42',
+          query: {'page': '2'},
+        ),
+      );
+      expect(page2.status, 200);
+      expect(page2.body, contains('Page two one'));
+      expect(page2.body, contains('Page two two'));
+      expect(page2.body, contains('上一页'));
+      expect(page2.body, contains('下一页'));
+      expect(page2.body, contains('第 2 页'));
+      expect(page2.body, isNot(contains('In list')));
+      // The downloaded book on the live page gets its links.
+      expect(page2.body, contains('href="/download/0"'));
+      // The undownloaded one gets the trigger link.
+      expect(page2.body, contains('href="/request-download/77"'));
+      // Page 1 with a failed fetch falls back to the preview books.
+      final page1 = Reply(
+        await svc.handleRequest(method: 'GET', path: '/booklist/42'),
+      );
+      expect(page1.status, 200);
+      expect(page1.body, contains('In list'));
+      expect(page1.body, contains('加载失败'));
+      expect(page1.body, isNot(contains('下一页')));
+    });
+
+    test('icon routes serve the app icon as PNG', () async {
+      await service.start(snapshot: snapshot, preferredPort: 0);
+      for (final path in ['/icon.png', '/favicon.ico']) {
+        final r = await get(path);
+        expect(r.status, 200, reason: path);
+        expect(r.header('content-type'), 'image/png');
+        expect(r.response.body, isNotNull);
+        expect(r.response.body, isNotEmpty);
+        // The embedded base64 really decodes to a PNG (192x192
+        // launcher icon): PNG magic bytes 89 50 4E 47.
+        final bytes = r.bytes;
+        expect(bytes.length, greaterThan(100));
+        expect(bytes.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47]);
+      }
     });
   });
 }

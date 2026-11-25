@@ -1,9 +1,10 @@
 // Web service: port reporting, singleton, snapshot, routes, path safety,
-// reader-asset whitelist. The HTTP transport is native now
-// (LanWebServer.kt), so there is no socket here at all: routing is
-// tested through [WebService.handleRequest] directly, and the
-// start/stop lifecycle is tested against a fake `zlibx/web_server`
-// channel that stands in for the native side.
+// reader-asset whitelist. The HTTP transport is a plain Dart HttpServer
+// again (the native LanWebServer rewrite was reverted — the socket was
+// never the problem, the missing local-network permission was), so
+// start/stop really bind a socket here; routing is tested through
+// [WebService.handleRequest] directly, and the permission gate is
+// tested against a fake `zlibx/local_network` channel.
 import 'dart:convert';
 import 'dart:io';
 
@@ -15,7 +16,7 @@ import 'package:zlibx/services/txt_to_epub.dart';
 import 'package:zlibx/services/web_service.dart';
 
 /// A [WebResponse] with the file bytes materialised, so the route
-/// tests read exactly what Kotlin would send: the in-memory [body],
+/// tests read exactly what [_dispatch] would send: the in-memory [body],
 /// or the [fileStart]..[fileEnd] slice of [filePath].
 class Reply {
   final WebResponse response;
@@ -45,22 +46,22 @@ class Reply {
   }
 }
 
-/// A port number for start() calls. Nothing actually binds in these
-/// tests (the channel is mocked), so any free-looking number works.
+/// A port number for the taken-port fallback test. A real socket
+/// binds here, so it must be a free-looking high port.
 const int testPort = 45678;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  const channel = MethodChannel('zlibx/web_server');
+  const channel = MethodChannel('zlibx/local_network');
 
   late Directory tmp;
   late WebService service;
   late WebSnapshot snapshot;
   late List<MethodCall> channelCalls;
 
-  /// The port the fake native side "binds". -1 = echo the requested
-  /// port; any other value = the native side picked a different one.
-  late int mockStartPort;
+  /// The permission answer the fake native side gives. true = granted
+  /// (the default); tests that need a denial override the handler.
+  late bool mockPermissionGranted;
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('web_service_test');
@@ -112,16 +113,13 @@ void main() {
     );
 
     channelCalls = <MethodCall>[];
-    mockStartPort = -1;
+    mockPermissionGranted = true;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
           channelCalls.add(call);
           switch (call.method) {
-            case 'start':
-              final want = (call.arguments as Map)['port'] as int;
-              return mockStartPort >= 0 ? mockStartPort : want;
-            case 'stop':
-              return null;
+            case 'ensureLocalNetworkPermission':
+              return mockPermissionGranted;
             default:
               throw MissingPluginException(call.method);
           }
@@ -135,8 +133,8 @@ void main() {
     tmp.deleteSync(recursive: true);
   });
 
-  /// Route a request through the service under test, the way the
-  /// native server does after percent-decoding the path. [path] is
+  /// Route a request through the service under test, the way
+  /// [_dispatch] does after percent-decoding the path. [path] is
   /// therefore already decoded here (e.g. '..', not '%2e%2e').
   Future<Reply> get(
     String path, {
@@ -151,139 +149,78 @@ void main() {
     return Reply(response);
   }
 
-  MethodCall startCall() =>
-      channelCalls.singleWhere((c) => c.method == 'start');
-
   group('lifecycle & port', () {
-    test('the fixed port is 1122', () {
-      expect(kWebServicePort, 1122);
+    test('the fixed port is 8080', () {
+      expect(kWebServicePort, 8080);
     });
 
     test('shared is one instance', () {
       expect(identical(WebService.shared, WebService.shared), isTrue);
     });
 
-    test('start reports the port the native side bound', () async {
-      final got = await service.start(snapshot: snapshot, preferredPort: testPort);
-      expect(got, testPort);
-      expect(service.port, testPort);
-      expect(service.isRunning, isTrue);
-      expect(startCall().arguments['port'], testPort);
-      // No addresses: the native side falls back to its 0.0.0.0 socket.
-      expect(startCall().arguments['addresses'], isEmpty);
-    });
-
-    test('start passes the bind addresses to native, as strings', () async {
-      await service.start(
-        snapshot: snapshot,
-        preferredPort: testPort,
-        bindAddresses: <InternetAddress>[
-          InternetAddress.loopbackIPv4,
-          InternetAddress('10.0.0.9'),
-        ],
-      );
-      expect(
-        startCall().arguments['addresses'],
-        ['127.0.0.1', '10.0.0.9'],
-      );
-    });
-
-    test('the native side may return a different port than requested', () async {
-      // The native port-0 fallback: the requested port was taken, so
-      // the bound port is what Dart must report.
-      mockStartPort = 48123;
-      final got = await service.start(snapshot: snapshot, preferredPort: 1122);
-      expect(got, 48123);
-      expect(service.port, 48123);
+    test('start binds and reports its port', () async {
+      final got = await service.start(snapshot: snapshot, preferredPort: 0);
+      expect(got, greaterThan(0));
+      expect(service.port, got);
       expect(service.isRunning, isTrue);
     });
 
-    test('keeps running until stop() and can restart on the same port', () async {
-      await service.start(snapshot: snapshot, preferredPort: testPort);
-      // Starting again while running is a no-op (same port, no second
-      // native call).
-      expect(await service.start(snapshot: snapshot, preferredPort: 1), testPort);
-      expect(
-        channelCalls.where((c) => c.method == 'start').length,
-        1,
+    test('a taken port falls back to a system-chosen port', () async {
+      // Hold the preferred port so the service cannot bind it.
+      final blocker = await ServerSocket.bind(
+        InternetAddress.anyIPv4,
+        testPort,
       );
+      try {
+        final got = await service.start(
+          snapshot: snapshot,
+          preferredPort: testPort,
+        );
+        expect(got, isNot(testPort));
+        expect(got, greaterThan(0));
+        expect(service.port, got);
+        expect(service.isRunning, isTrue);
+      } finally {
+        await blocker.close();
+      }
+    });
+
+    test('keeps running until stop() and can restart', () async {
+      final first = await service.start(snapshot: snapshot, preferredPort: 0);
+      // Starting again while running is a no-op (same port).
+      expect(await service.start(snapshot: snapshot, preferredPort: 0), first);
       expect((await get('/')).status, 200);
 
       await service.stop();
       expect(service.isRunning, isFalse);
       expect(service.port, isNull);
 
-      expect(
-        await service.start(snapshot: snapshot, preferredPort: testPort),
-        testPort,
+      final second = await service.start(
+        snapshot: snapshot,
+        preferredPort: 0,
       );
+      expect(second, greaterThan(0));
       expect((await get('/')).status, 200);
     });
 
-    test('a failed native start leaves the service stopped', () async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (call) async {
-            channelCalls.add(call);
-            throw PlatformException(
-              code: 'BIND_FAILED',
-              message: 'Permission denied (bind failed)',
-            );
-          });
-      await expectLater(
-        service.start(snapshot: snapshot, preferredPort: testPort),
-        throwsA(isA<PlatformException>()),
-      );
-      expect(service.isRunning, isFalse);
-      expect(service.port, isNull);
-    });
-
     test('denied local-network permission refuses to start', () async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (call) async {
-            channelCalls.add(call);
-            switch (call.method) {
-              case 'ensureLocalNetworkPermission':
-                return false;
-              case 'start':
-                final want = (call.arguments as Map)['port'] as int;
-                return want;
-              case 'stop':
-                return null;
-              default:
-                throw MissingPluginException(call.method);
-            }
-          });
+      mockPermissionGranted = false;
       await expectLater(
-        service.start(snapshot: snapshot, preferredPort: testPort),
+        service.start(snapshot: snapshot, preferredPort: 0),
         throwsA(isA<LocalNetworkPermissionDenied>()),
       );
       expect(service.isRunning, isFalse);
       expect(service.port, isNull);
-      // The native start was never attempted.
+      // The permission was asked exactly once, and no server was bound.
       expect(
-        channelCalls.where((c) => c.method == 'start'),
-        isEmpty,
+        channelCalls.where((c) => c.method == 'ensureLocalNetworkPermission'),
+        hasLength(1),
       );
     });
 
     test('granted local-network permission starts normally', () async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (call) async {
-            channelCalls.add(call);
-            switch (call.method) {
-              case 'ensureLocalNetworkPermission':
-                return true;
-              case 'start':
-                final want = (call.arguments as Map)['port'] as int;
-                return want;
-              case 'stop':
-                return null;
-              default:
-                throw MissingPluginException(call.method);
-            }
-          });
-      final got = await service.start(snapshot: snapshot, preferredPort: testPort);
-      expect(got, testPort);
+      final got = await service.start(snapshot: snapshot, preferredPort: 0);
+      expect(got, greaterThan(0));
       expect(service.isRunning, isTrue);
       expect(
         channelCalls.where((c) => c.method == 'ensureLocalNetworkPermission'),
@@ -342,7 +279,7 @@ void main() {
 
   group('home page and downloads', () {
     setUp(() async {
-      await service.start(snapshot: snapshot, preferredPort: testPort);
+      await service.start(snapshot: snapshot, preferredPort: 0);
     });
 
     test('three sections, links, escaping, and no JavaScript', () async {
@@ -451,7 +388,7 @@ void main() {
 
   group('reader routes', () {
     setUp(() async {
-      await service.start(snapshot: snapshot, preferredPort: testPort);
+      await service.start(snapshot: snapshot, preferredPort: 0);
     });
 
     test('/read serves the reader page for a readable book', () async {
@@ -520,7 +457,7 @@ void main() {
     test('a whitelisted but not-yet-vendored file is a clean 404', () async {
       final empty = WebService(assetLoader: (_) async => null);
       addTearDown(empty.stop);
-      await empty.start(snapshot: snapshot, preferredPort: testPort);
+      await empty.start(snapshot: snapshot, preferredPort: 0);
       final r = await empty.handleRequest(method: 'GET', path: '/reader-assets/view.js');
       expect(r.status, 404);
     });

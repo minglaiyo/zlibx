@@ -31,7 +31,7 @@ class MainActivity : FlutterFragmentActivity() {
         private const val TAG = "ZlibxMediaStore"
 
         /// Request code for the Android 17 local-network permission
-        /// (ACCESS_LOCAL_NETWORK), asked from the web-service channel.
+        /// (ACCESS_LOCAL_NETWORK), asked from the local-network channel.
         private const val REQUEST_LOCAL_NETWORK = 1001
     }
 
@@ -69,26 +69,12 @@ class MainActivity : FlutterFragmentActivity() {
     /// its action handler.
     private var _downloadActionChannel: MethodChannel? = null
 
-    /// The LAN web server (zlibx/web_server). Created in
-    /// [configureFlutterEngine] once the binary messenger exists; Dart
-    /// owns all content and routing, this only owns the sockets.
-    private var webServer: LanWebServer? = null
-
     /// Pending reply for an in-flight local-network permission
     /// request. Only one may be outstanding; a second call while one
     /// is in flight is answered false at once (the caller retries).
     private var pendingLocalNetworkResult: MethodChannel.Result? = null
 
     override fun onDestroy() {
-        // The web server lives in this process, not in the Dart
-        // isolate: stop it here, or it would keep listening (and
-        // answering 500s, since no Dart is left to answer) after the
-        // app is gone.
-        try {
-            webServer?.stop()
-        } catch (e: Exception) {
-            Log.w(TAG, "web server stop failed", e)
-        }
         // Close any held pending streams (entries stay IS_PENDING and
         // resumable), then let queued work drain.
         try {
@@ -299,86 +285,42 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }
 
-        // Web service: the HTTP server itself runs natively
-        // (zlibx/web_server). Dart keeps all content logic and answers
-        // each request through "handleRequest"; this side only owns
-        // sockets and bytes — the Dart HttpServer never accepted
-        // connections from other devices on this phone.
-        val webServerChannel = MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            "zlibx/web_server",
-        )
-        webServer = LanWebServer(webServerChannel)
-        webServerChannel.setMethodCallHandler { call, result ->
-            when (call.method) {
-                "start" -> {
-                    val port = (call.argument<Number>("port") ?: 1122).toInt()
-                    val addresses = call.argument<List<*>>("addresses")
-                        ?.mapNotNull { it as? String }
-                        ?: emptyList()
-                    // Binding is a fast local syscall, but a wedged
-                    // interface must never stall the platform thread.
-                    lightExecutor.execute {
-                        try {
-                            val actual = webServer?.start(port, addresses)
-                            runOnUiThread {
-                                try {
-                                    result.success(actual)
-                                } catch (e: IllegalStateException) {
-                                    // Engine detached while binding.
-                                    Log.w(TAG, "reply after detach ignored", e)
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.w(TAG, "web server start failed", e)
-                            runOnUiThread {
-                                try {
-                                    result.error("BIND_FAILED", e.message, null)
-                                } catch (ignored: IllegalStateException) {
-                                    Log.w(TAG, "reply after detach ignored", ignored)
-                                }
-                            }
+        // Web service: the Android 17 local-network permission only.
+        // The HTTP server itself is a Dart HttpServer now (the native
+        // LanWebServer rewrite was reverted — the socket was never the
+        // problem, the missing permission was). Dart asks here before
+        // binding, so other devices can actually reach the server.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zlibx/local_network")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "ensureLocalNetworkPermission" -> {
+                        // Android 17+ (targetSdk 37) blocks local-network
+                        // sockets without ACCESS_LOCAL_NETWORK: without it,
+                        // inbound TCP from other devices times out in the
+                        // network stack, before the SYN reaches our socket.
+                        // Below API 37 the gate does not exist.
+                        if (Build.VERSION.SDK_INT < 37) {
+                            result.success(true)
+                        } else if (ContextCompat.checkSelfPermission(
+                                this,
+                                Manifest.permission.ACCESS_LOCAL_NETWORK,
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            result.success(true)
+                        } else if (pendingLocalNetworkResult != null) {
+                            result.success(false)
+                        } else {
+                            pendingLocalNetworkResult = result
+                            ActivityCompat.requestPermissions(
+                                this,
+                                arrayOf(Manifest.permission.ACCESS_LOCAL_NETWORK),
+                                REQUEST_LOCAL_NETWORK,
+                            )
                         }
                     }
+                    else -> result.notImplemented()
                 }
-                "stop" -> {
-                    // Never let this throw: Dart's stop() must complete
-                    // or the settings page hangs on its spinner.
-                    try {
-                        webServer?.stop()
-                    } catch (e: Exception) {
-                        Log.w(TAG, "web server stop failed", e)
-                    }
-                    result.success(null)
-                }
-                "ensureLocalNetworkPermission" -> {
-                    // Android 17+ (targetSdk 37) blocks local-network
-                    // sockets without ACCESS_LOCAL_NETWORK: without it,
-                    // inbound TCP from other devices times out in the
-                    // network stack, before the SYN reaches our socket.
-                    // Below API 37 the gate does not exist.
-                    if (Build.VERSION.SDK_INT < 37) {
-                        result.success(true)
-                    } else if (ContextCompat.checkSelfPermission(
-                            this,
-                            Manifest.permission.ACCESS_LOCAL_NETWORK,
-                        ) == PackageManager.PERMISSION_GRANTED
-                    ) {
-                        result.success(true)
-                    } else if (pendingLocalNetworkResult != null) {
-                        result.success(false)
-                    } else {
-                        pendingLocalNetworkResult = result
-                        ActivityCompat.requestPermissions(
-                            this,
-                            arrayOf(Manifest.permission.ACCESS_LOCAL_NETWORK),
-                            REQUEST_LOCAL_NETWORK,
-                        )
-                    }
-                }
-                else -> result.notImplemented()
             }
-        }
 
         // O1: background download keep-alive. Dart starts/stops the
         // foreground service, pushes progress, and registers the channel

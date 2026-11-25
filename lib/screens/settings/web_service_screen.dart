@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -78,44 +77,17 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     });
   }
 
-  /// Addresses for the server to bind, one socket each (see
-  /// [WebService.start]): the loopback, so the phone's own browser
-  /// keeps working, plus every detected address — primary first, then
-  /// the others, including the mobile-data one (it is reachable from
-  /// the computer on this phone, despite the old "unreachable" label).
-  /// Deduplicated, usable IPv4 only. Null when nothing was detected:
-  /// the service then falls back to its single 0.0.0.0 socket.
-  List<InternetAddress>? _bindAddresses(LanSelection? selection) {
-    if (selection == null) return null;
-    final seen = <String>{InternetAddress.loopbackIPv4.address};
-    final addresses = <InternetAddress>[InternetAddress.loopbackIPv4];
-    void add(String address) {
-      if (!isUsableIPv4(address)) return;
-      if (!seen.add(address)) return;
-      addresses.add(InternetAddress(address));
-    }
-
-    final primary = selection.primary;
-    if (primary != null) add(primary.address);
-    for (final candidate in selection.others) {
-      add(candidate.address);
-    }
-    return addresses;
-  }
-
   Future<void> _start() async {
     final t = AppLocalizations.of(context)!;
     setState(() => _busy = true);
     try {
-      // Detect first: the bind list comes from the detected
-      // addresses, and a hotspot address changes when the hotspot is
+      // Detect first: the hotspot address changes when the hotspot is
       // re-enabled, so the QR code must be regenerated.
       await _detectNetwork();
       final snapshot = await _buildSnapshot();
       await _service.start(
         snapshot: snapshot,
         strings: _pageStrings(t),
-        bindAddresses: _bindAddresses(_selection),
       );
     } on LocalNetworkPermissionDenied {
       logIgnored('web_service_screen', 'local network permission denied');

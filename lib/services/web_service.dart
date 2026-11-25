@@ -4,35 +4,28 @@
 //   * read shelf books in the user's own desktop browser through the
 //     vendored foliate-js reader (/read, /book, /reader-assets).
 //
-// The HTTP transport is NATIVE (LanWebServer.kt, MethodChannel
-// "zlibx/web_server"): the Dart `HttpServer` (a single 0.0.0.0 socket
-// and then one socket per detected address, ports 8080 and 8888)
-// served loopback fine but never accepted a connection from another
-// device on this phone, while Legado — a native Android app — serves
-// the same phone without trouble. The real cause turned out to be
-// Android 17's local-network protection, not the socket at all:
-// targetSdk 37 apps need the ACCESS_LOCAL_NETWORK runtime permission,
-// without it inbound TCP from other devices times out in the network
-// stack before the SYN reaches any socket (Legado targets a lower SDK
-// and is exempt). So [start] asks the native side to ensure the
-// permission is granted before binding. This file owns the snapshot,
-// the HTML pages, routing, Range parsing, TXT→EPUB conversion and the
-// reader routes — and Kotlin owns sockets and bytes. Dart answers each
-// request through [handleRequest], which returns a [WebResponse]
-// descriptor; Kotlin writes the status line, headers and body
+// The HTTP transport is a plain Dart [HttpServer]: one 0.0.0.0 socket on
+// the fixed port 8080. An earlier native Kotlin rewrite (LanWebServer)
+// was reverted — it was built on a misdiagnosis. The server had
+// stopped accepting connections from other devices, and the socket
+// was blamed, but the real cause was Android 17's local-network
+// protection: targetSdk 37 apps need the ACCESS_LOCAL_NETWORK runtime
+// permission, without it inbound TCP from other devices times out in
+// the network stack before the SYN reaches any socket (Legado targets
+// a lower SDK and is exempt). So [start] asks the native side
+// (MethodChannel "zlibx/local_network") to ensure the permission is
+// granted before binding. Dart answers each request through
+// [handleRequest], which returns a [WebResponse] descriptor; [_dispatch]
+// writes the status line, headers and body to the HttpResponse
 // (streaming files from disk with Range support).
 //
 // Lifecycle rules (each one cost a delivery before):
 //  * [WebService.shared] is a process singleton. The settings page may
 //    be left and re-entered freely; ONLY [stop] (the Stop button) stops
 //    the server. Never call stop from a widget's dispose().
-//  * Port 1122 is fixed; only when it cannot be bound does the native
-//    side fall back to a system-chosen port (single 0.0.0.0 socket
-//    only), and [port] is always the one actually in use.
-//  * The server binds one socket per detected address (loopback plus
-//    every address the picker found), not a single 0.0.0.0 socket.
-//    With no detected addresses it falls back to the single 0.0.0.0
-//    socket.
+//  * Port 8080 is fixed; only when it cannot be bound does the server
+//    fall back to a system-chosen port, and [port] is always the one
+//    actually in use.
 //  * The book lists are a snapshot taken at start; they do not follow
 //    later downloads / favourites. Restarting refreshes them.
 //  * Files are addressed ONLY by their index in the snapshot — a
@@ -54,7 +47,7 @@ import 'txt_to_epub.dart';
 import 'web_reader_page.dart';
 
 /// The fixed port. See the lifecycle notes above.
-const int kWebServicePort = 1122;
+const int kWebServicePort = 8080;
 
 /// The only files /reader-assets/ will ever serve (the 13 vendored
 /// foliate-js files). Anything else is a 404.
@@ -285,25 +278,21 @@ class WebPageStrings {
 
 // ───────────────────────── Response ─────────────────────────
 
-/// One HTTP response, as decided by Dart and written by Kotlin.
+/// One HTTP response, as decided by Dart and written by [_dispatch].
 ///
-/// Wire shape (MethodChannel "zlibx/web_server", `handleRequest`
-/// reply): {status: int, headers: `Map<String, String>`,
-/// body: Uint8List?, filePath: String?, fileStart: int?,
-/// fileEnd: int?}. Exactly one of [body] / [filePath] carries the
-/// payload: [body] for small in-memory answers (HTML, plain text,
-/// reader assets, converted EPUBs), [filePath] for a real file on disk
-/// that Kotlin streams, bytes [fileStart]..[fileEnd] inclusive
+/// One answered request: [status], [headers], and exactly one payload
+/// — [body] for small in-memory answers (HTML, plain text, reader
+/// assets, converted EPUBs), or [filePath] for a real file on disk
+/// that [_dispatch] streams, bytes [fileStart]..[fileEnd] inclusive
 /// (null start = 0, null end = end of file). [headers] always carries
 /// Content-Type and Content-Length (and Content-Range for a 206), so
-/// Kotlin never has to guess a length. For a HEAD request the
-/// descriptor is the same as for GET — Kotlin, not Dart, drops the
-/// body.
+/// [_dispatch] never has to guess a length. For a HEAD request the
+/// descriptor is the same as for GET — [_dispatch], not the router,
+/// drops the body.
 ///
-/// One deliberate deviation from the old Dart server: a 416 used to
-/// go out chunked (dart:io sent no Content-Length for it); it now
-/// carries `Content-Length: 0`, which bare-bones clients handle
-/// better. Same status, same Content-Range.
+/// A 416 carries `Content-Length: 0` (dart:io would otherwise send it
+/// chunked, which bare-bones clients handle worse). Same status, same
+/// Content-Range.
 class WebResponse {
   final int status;
   final Map<String, String> headers;
@@ -320,15 +309,6 @@ class WebResponse {
     this.fileStart,
     this.fileEnd,
   });
-
-  Map<String, Object?> toMap() => <String, Object?>{
-    'status': status,
-    'headers': headers,
-    'body': body,
-    'filePath': filePath,
-    'fileStart': fileStart,
-    'fileEnd': fileEnd,
-  };
 }
 
 // ───────────────────────── Service ─────────────────────────
@@ -357,10 +337,11 @@ class WebService extends ChangeNotifier {
   /// The one instance shared by the settings page and the server.
   static final WebService shared = WebService();
 
-  /// The native transport (LanWebServer.kt). Dart calls `start` /
-  /// `stop` on it; it calls back with `handleRequest`, answered by
-  /// [shared] (the server only ever runs for the shared instance).
-  static const MethodChannel _channel = MethodChannel('zlibx/web_server');
+  /// The only native call the service needs: the Android 17
+  /// local-network permission (MethodChannel "zlibx/local_network",
+  /// `ensureLocalNetworkPermission`). Everything else is Dart.
+  static const MethodChannel _permissionChannel =
+      MethodChannel('zlibx/local_network');
 
   final AssetLoader _loadAsset;
   final PathResolver _resolvePath;
@@ -374,15 +355,14 @@ class WebService extends ChangeNotifier {
        _resolvePath = pathResolver ?? MediaStoreFiles.realPath,
        _txt = txtConverter ?? TxtToEpub();
 
-  bool _running = false;
-  int? _port;
+  HttpServer? _server;
   WebSnapshot _snapshot = const WebSnapshot();
   WebPageStrings _strings = WebPageStrings.english;
 
-  bool get isRunning => _running;
+  bool get isRunning => _server != null;
 
   /// The port actually bound, or null when stopped.
-  int? get port => _port;
+  int? get port => _server?.port;
 
   WebSnapshot get snapshot => _snapshot;
 
@@ -390,18 +370,16 @@ class WebService extends ChangeNotifier {
   /// returns the current port (the snapshot is NOT replaced — stop and
   /// start again to refresh it).
   ///
-  /// [bindAddresses] lists the addresses to listen on, one socket
-  /// each. When it is null or empty the native side falls back to its
-  /// single 0.0.0.0 socket (with a port-0 fallback if the preferred
-  /// port is taken). A [PlatformException] with code BIND_FAILED
-  /// means no address could be bound at all.
+  /// Binds one 0.0.0.0 socket on [preferredPort]; when that port is
+  /// taken, a system-chosen port is used instead, and [port] is always
+  /// the one actually in use.
   Future<int> start({
     required WebSnapshot snapshot,
     WebPageStrings strings = WebPageStrings.english,
     int preferredPort = kWebServicePort,
-    List<InternetAddress>? bindAddresses,
   }) async {
-    if (_running) return _port!;
+    final running = _server;
+    if (running != null) return running.port;
 
     // Android 17+ (targetSdk 37) blocks local-network sockets without
     // the ACCESS_LOCAL_NETWORK runtime permission: without it, inbound
@@ -414,29 +392,23 @@ class WebService extends ChangeNotifier {
 
     _snapshot = snapshot;
     _strings = strings;
-    _channel.setMethodCallHandler(_onMethodCall);
+    HttpServer server;
     try {
-      final args = <String, Object?>{
-        'port': preferredPort,
-        'addresses': <String>[
-          for (final a in bindAddresses ?? const <InternetAddress>[])
-            a.address,
-        ],
-      };
-      final result = await _channel.invokeMethod<Object?>('start', args);
-      final actual = result is int ? result : null;
-      if (actual == null) {
-        throw StateError('web_server: native start returned no port');
-      }
-      _port = actual;
-      _running = true;
-      notifyListeners();
-      return actual;
-    } catch (error) {
-      // No server, so the handler would never be called.
-      _channel.setMethodCallHandler(null);
-      rethrow;
+      server = await HttpServer.bind(
+        InternetAddress.anyIPv4,
+        preferredPort,
+      );
+    } on SocketException {
+      // Preferred port taken by another program: any free port.
+      server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
     }
+    _server = server;
+    server.listen(
+      _dispatch,
+      onError: (Object e) => logIgnored('web_service', e),
+    );
+    notifyListeners();
+    return server.port;
   }
 
   /// Ask the native side to ensure the local-network permission is
@@ -446,7 +418,7 @@ class WebService extends ChangeNotifier {
   /// gate on those platforms.
   Future<bool> _ensureLocalNetworkPermission() async {
     try {
-      return await _channel.invokeMethod<bool>(
+      return await _permissionChannel.invokeMethod<bool>(
             'ensureLocalNetworkPermission',
           ) ??
           true;
@@ -457,51 +429,74 @@ class WebService extends ChangeNotifier {
 
   /// Stop serving. Called ONLY from the Stop button.
   Future<void> stop() async {
-    if (!_running) return;
-    try {
-      await _channel.invokeMethod<void>('stop');
-    } catch (error) {
-      logIgnored('web_service', error);
-    }
-    _running = false;
-    _port = null;
-    _channel.setMethodCallHandler(null);
+    final server = _server;
+    if (server == null) return;
+    _server = null;
+    await server.close(force: true);
     notifyListeners();
   }
 
-  /// Incoming `handleRequest` calls from the native server. The
-  /// native side already percent-decoded the path; [headers] arrives
-  /// with lowercase keys.
-  static Future<Object?> _onMethodCall(MethodCall call) async {
-    if (call.method != 'handleRequest') {
-      throw MissingPluginException('web_server: ${call.method}');
-    }
-    final args = call.arguments;
-    if (args is! Map) {
-      throw ArgumentError('web_server: handleRequest arguments must be a Map');
-    }
-    final headers = <String, String>{};
-    final rawHeaders = args['headers'];
-    if (rawHeaders is Map) {
-      for (final entry in rawHeaders.entries) {
-        headers[entry.key.toString().toLowerCase()] =
-            entry.value?.toString() ?? '';
+  /// One incoming connection: route it through [handleRequest] and
+  /// write the descriptor to the response. [request.uri.path] is
+  /// already percent-decoded by dart:io and has no query string;
+  /// header names are lowered here so `range` is always found.
+  Future<void> _dispatch(HttpRequest request) async {
+    try {
+      final headers = <String, String>{};
+      request.headers.forEach((name, values) {
+        headers[name.toLowerCase()] = values.join(', ');
+      });
+      final response = await handleRequest(
+        method: request.method,
+        path: request.uri.path,
+        headers: headers,
+      );
+      final httpResponse = request.response;
+      httpResponse.statusCode = response.status;
+      response.headers.forEach((name, value) {
+        httpResponse.headers.set(name, value);
+      });
+      // One request per connection, as documented above.
+      httpResponse.persistentConnection = false;
+      final isHead = request.method.toUpperCase() == 'HEAD';
+      if (!isHead) {
+        final filePath = response.filePath;
+        if (filePath != null) {
+          final file = File(filePath);
+          final start = response.fileStart ?? 0;
+          final end = response.fileEnd;
+          await httpResponse.addStream(
+            file.openRead(start, end == null ? null : end + 1),
+          );
+        } else if (response.body != null) {
+          httpResponse.add(response.body!);
+        }
+      }
+      await httpResponse.close();
+    } catch (error) {
+      logIgnored('web_service', error);
+      try {
+        final httpResponse = request.response;
+        httpResponse.statusCode = HttpStatus.internalServerError;
+        httpResponse.persistentConnection = false;
+        httpResponse.headers.set(
+          HttpHeaders.contentTypeHeader,
+          'text/plain; charset=utf-8',
+        );
+        httpResponse.write('Internal Server Error');
+        await httpResponse.close();
+      } catch (_) {
+        // Response already started / closed: nothing more to do.
       }
     }
-    final response = await shared.handleRequest(
-      method: args['method']?.toString() ?? '',
-      path: args['path']?.toString() ?? '/',
-      headers: headers,
-    );
-    return response.toMap();
   }
 
   // ── Routing ──────────────────────────────────────────────────────
 
-  /// Answer one HTTP request, as a [WebResponse] for the native side
-  /// to write. Pure apart from file reads and TXT conversion, so it
+  /// Answer one HTTP request, as a [WebResponse] for [_dispatch] to
+  /// write. Pure apart from file reads and TXT conversion, so it
   /// is unit-testable without any socket. [path] is the percent-
-  /// decoded request path (query string already stripped by Kotlin);
+  /// decoded request path (query string already stripped);
   /// [headers] may use any casing (only `range` is read); keys are
   /// normalised to lowercase on entry.
   Future<WebResponse> handleRequest({
@@ -510,9 +505,10 @@ class WebService extends ChangeNotifier {
     Map<String, String> headers = const <String, String>{},
   }) async {
     try {
-      // Header names are case-insensitive: Kotlin already lowercases
-      // them, but a direct caller (tests, future transports) may pass
-      // 'Range'. Normalise once so `range` is always found.
+      // Header names are case-insensitive: [_dispatch] already
+      // lowercases them, but a direct caller (tests, future
+      // transports) may pass 'Range'. Normalise once so `range` is
+      // always found.
       final lowerHeaders = <String, String>{
         for (final entry in headers.entries)
           entry.key.toLowerCase(): entry.value,

@@ -36,7 +36,6 @@
 //    per connection, no keep-alive.
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -284,7 +283,7 @@ class WebPageStrings {
 /// One HTTP response, as decided by Dart and written by Kotlin.
 ///
 /// Wire shape (MethodChannel "zlibx/web_server", `handleRequest`
-/// reply): {status: int, headers: Map<String, String>,
+/// reply): {status: int, headers: `Map<String, String>`,
 /// body: Uint8List?, filePath: String?, fileStart: int?,
 /// fileEnd: int?}. Exactly one of [body] / [filePath] carries the
 /// payload: [body] for small in-memory answers (HTML, plain text,

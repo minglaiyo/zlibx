@@ -54,6 +54,8 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
+import java.nio.channels.ServerSocketChannel
+import java.nio.channels.StandardProtocolFamily
 import java.nio.charset.StandardCharsets
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
@@ -198,7 +200,18 @@ class LanWebServer(private val channel: MethodChannel) {
     }
 
     private fun bindSocket(address: InetAddress, port: Int): ServerSocket {
-        val server = ServerSocket()
+        // Force a plain IPv4 socket. A plain `ServerSocket()` on Android
+        // binds an IPv4-mapped IPv6 socket (visible only in
+        // /proc/net/tcp6), and inbound IPv4 connections from other
+        // devices never reach it — Legado binds plain IPv4 and works on
+        // the same address/port. `StandardProtocolFamily.INET` is
+        // IPv4-only (API 24+, minSdk 29).
+        val server = try {
+            ServerSocketChannel.open(StandardProtocolFamily.INET).socket()
+        } catch (e: Exception) {
+            Log.w(TAG, "IPv4-only channel unsupported, falling back to ServerSocket", e)
+            ServerSocket()
+        }
         // Let a stop/start cycle rebind at once instead of waiting out
         // TIME_WAIT on the old socket.
         server.reuseAddress = true

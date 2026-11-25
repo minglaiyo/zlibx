@@ -19,7 +19,6 @@ import '../../services/reader_formats.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/app_snack.dart';
 import '../../utils/cover_cache.dart';
-import '../../utils/date_text.dart';
 import '../../utils/error_text.dart';
 import '../../utils/file_utils.dart';
 import '../../widgets/confirm_dialog.dart';
@@ -442,18 +441,12 @@ class _DownloadList extends StatelessWidget {
     required this.emptyIcon,
     required this.emptyTitle,
     required this.emptyMessage,
-    this.groupDates,
   });
 
   final List<String> taskIds;
   final IconData emptyIcon;
   final String emptyTitle;
   final String emptyMessage;
-
-  /// Download stamp per task id: when given, the list groups by date
-  /// (today / yesterday / this week / earlier). Null = flat list
-  /// (the ongoing tab).
-  final Map<String, DateTime?>? groupDates;
 
   @override
   Widget build(BuildContext context) {
@@ -468,55 +461,14 @@ class _DownloadList extends StatelessWidget {
     // inside the list so items scroll behind the pill (like the
     // home grid).
     const padding = EdgeInsets.fromLTRB(16, 16, 16, 124);
-    if (groupDates == null) {
-      return ListView.separated(
-        padding: padding,
-        itemCount: taskIds.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (_, index) => MotionEntrance(
-          index: index,
-          child: _DownloadItem(id: taskIds[index]),
-        ),
-      );
-    }
-    final l10n = AppLocalizations.of(context)!;
-    final sections = groupByDateLabel<String>(
-      taskIds,
-      l10n,
-      (id) => groupDates![id],
-    );
-    final items = <({String? header, String? id})>[];
-    for (final section in sections) {
-      items.add((header: section.$1, id: null));
-      for (final id in section.$2) {
-        items.add((header: null, id: id));
-      }
-    }
-    return ListView.builder(
+    return ListView.separated(
       padding: padding,
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final item = items[index];
-        if (item.header != null) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-            child: Text(
-              item.header!,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-          );
-        }
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: MotionEntrance(
-            index: index,
-            child: _DownloadItem(id: item.id!),
-          ),
-        );
-      },
+      itemCount: taskIds.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (_, index) => MotionEntrance(
+        index: index,
+        child: _DownloadItem(id: taskIds[index]),
+      ),
     );
   }
 }

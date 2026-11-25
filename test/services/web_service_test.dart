@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/providers/download_task.dart';
+import 'package:zlibx/services/reader_formats.dart';
 import 'package:zlibx/services/txt_to_epub.dart';
 import 'package:zlibx/services/web_service.dart';
 

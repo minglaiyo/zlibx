@@ -56,10 +56,11 @@ class BookActionBar extends ConsumerWidget {
     // 已下载且格式是阅读器能开的（EPUB/MOBI/AZW3/FB2/CBZ/TXT）：
     // “阅读”按钮进 in-app 本地阅读器（不用联网、整本可读），
     // 优先于在线预览。PDF 不进阅读器，走“打开文件”外部打开。
+    final task = downloadTask;
     final canReadLocally =
         isCompleted &&
-        downloadTask != null &&
-        isReadableExtension(downloadTask.book.extension);
+        task != null &&
+        isReadableExtension(task.book.extension);
 
     return Container(
       padding: EdgeInsets.fromLTRB(

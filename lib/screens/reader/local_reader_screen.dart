@@ -145,7 +145,7 @@ class _LocalReaderScreenState extends State<LocalReaderScreen> {
                     _controller = controller;
                     // Register before the page loads: the reader page
                     // calls this on every relocate.
-                    await controller.addJavaScriptHandler(
+                    controller.addJavaScriptHandler(
                       handlerName: 'zlibxReaderProgress',
                       callback: (args) async {
                         if (args.length >= 2 &&

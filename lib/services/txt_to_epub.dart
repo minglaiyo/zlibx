@@ -190,6 +190,15 @@ class _RawChapter {
 }
 
 List<String> _toParagraphs(List<String> lines) {
+  // A trailing newline leaves a trailing empty line after split('\n');
+  // it is not a blank-line separator, so drop trailing blank lines
+  // before deciding whether the text has any.
+  var end = lines.length;
+  while (end > 0 && lines[end - 1].trim().isEmpty) {
+    end--;
+  }
+  final effective = lines.sublist(0, end);
+
   final blocks = <String>[];
   final buffer = <String>[];
   var sawBlank = false;
@@ -200,7 +209,7 @@ List<String> _toParagraphs(List<String> lines) {
     }
   }
 
-  for (final line in lines) {
+  for (final line in effective) {
     if (line.trim().isEmpty) {
       sawBlank = true;
       flush();

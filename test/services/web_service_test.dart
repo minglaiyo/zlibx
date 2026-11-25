@@ -142,15 +142,18 @@ void main() {
 
   /// Route a request through the service under test, the way
   /// [_dispatch] does after percent-decoding the path. [path] is
-  /// therefore already decoded here (e.g. '..', not '%2e%2e').
+  /// therefore already decoded here (e.g. '..', not '%2e%2e');
+  /// [query] is the decoded query string, used by /search.
   Future<Reply> get(
     String path, {
     String method = 'GET',
     Map<String, String>? headers,
+    Map<String, String>? query,
   }) async {
     final response = await service.handleRequest(
       method: method,
       path: path,
+      query: query ?? const <String, String>{},
       headers: headers ?? const <String, String>{},
     );
     return Reply(response);
@@ -315,15 +318,31 @@ void main() {
     test('three sections, links, escaping, and no JavaScript', () async {
       final r = await get('/');
       expect(r.status, 200);
-      // Banner with anchor navigation to the three sections.
-      expect(r.body, contains('class="banner"'));
-      expect(r.body, contains('href="#downloaded"'));
-      expect(r.body, contains('href="#library"'));
-      expect(r.body, contains('href="#booklists"'));
-      // Book cards in a grid, not a plain list.
+      // Sidebar, after Legado's bookshelf: title, poem, a working
+      // search form, recent reading and settings sections, GitHub.
+      expect(r.body, contains('class="sidebar"'));
+      expect(r.body, contains('清风不识字，何故乱翻书'));
+      expect(
+        r.body,
+        contains('<form class="search" method="get" action="/search">'),
+      );
+      expect(r.body, contains('name="q"'));
+      expect(r.body, contains('最近阅读'));
+      expect(r.body, contains('尚无阅读记录'));
+      expect(r.body, contains('基本设定'));
+      expect(r.body, contains('已连接'));
+      expect(r.body, contains('https://github.com/minglaiyo/zlibx'));
+      // No dark banner, no three-button section navigation.
+      expect(r.body, isNot(contains('class="banner"')));
+      expect(r.body, isNot(contains('href="#downloaded"')));
+      expect(r.body, isNot(contains('href="#library"')));
+      expect(r.body, isNot(contains('href="#booklists"')));
+      // Book cards in a grid, not a plain list; borderless, no badge.
       expect(r.body, contains('class="grid"'));
       expect(r.body, contains('class="card"'));
       expect(r.body, isNot(contains('<ul')));
+      expect(r.body, isNot(contains('border:1px solid #ddd')));
+      expect(r.body, isNot(contains('class="badge"')));
       // Covers: the EPUB has one, the PDF falls back to a
       // first-letter tile ('Pdf Book' -> 'P').
       expect(
@@ -343,6 +362,45 @@ void main() {
       expect(r.body, contains('Epub &lt;Book&gt;')); // escaped
       expect(r.body.toLowerCase(), isNot(contains('<script')));
       expect(r.body, contains('(3)')); // downloaded section count
+    });
+
+    test('search filters by title and author, case-insensitively', () async {
+      // "epub" matches only the EPUB's title.
+      final byTitle = await get('/search', query: {'q': 'EPUB'});
+      expect(byTitle.status, 200);
+      expect(byTitle.body, contains('Epub &lt;Book&gt;'));
+      expect(byTitle.body, isNot(contains('Pdf Book')));
+      expect(byTitle.body, isNot(contains('Blank Text')));
+      // "book" matches both book titles.
+      final both = await get('/search', query: {'q': 'book'});
+      expect(both.body, contains('Epub &lt;Book&gt;'));
+      expect(both.body, contains('Pdf Book'));
+      // "au" matches the EPUB's author.
+      final byAuthor = await get('/search', query: {'q': 'au'});
+      expect(byAuthor.body, contains('Epub &lt;Book&gt;'));
+      expect(byAuthor.body, isNot(contains('Pdf Book')));
+      // A library row that points at a matched file is not doubled.
+      final shelf = await get('/search', query: {'q': 'shelf'});
+      expect(shelf.body, contains('On shelf'));
+      expect(shelf.body, contains('href="/download/0"'));
+      expect(shelf.body, contains('href="/read/0"'));
+      // The search page shows the term, a way home, and the sidebar
+      // with the query prefilled.
+      expect(byTitle.body, contains('搜索“EPUB”'));
+      expect(byTitle.body, contains('Back to home'));
+      expect(byTitle.body, contains('value="EPUB"'));
+      expect(byTitle.body, contains('class="sidebar"'));
+    });
+
+    test('search with no match or no query shows the empty state', () async {
+      final none = await get('/search', query: {'q': 'zzz'});
+      expect(none.status, 200);
+      expect(none.body, contains('Nothing here'));
+      expect(none.body, contains('搜索“zzz”'));
+
+      final empty = await get('/search');
+      expect(empty.status, 200);
+      expect(empty.body, contains('Nothing here'));
     });
 
     test('a file downloads byte for byte, straight from its path', () async {
@@ -400,6 +458,7 @@ void main() {
       expect(r.status, 200);
       expect(r.body, contains('In list'));
       expect(r.body, contains('class="grid"'));
+      expect(r.body, contains('class="sidebar"'));
       expect(r.body, contains('href="/download/0"'));
       expect(r.body, contains('https://z-library.example/booklist/42/x'));
     });

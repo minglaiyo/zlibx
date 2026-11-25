@@ -6,6 +6,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zlibx/services/local_reader_server.dart';
 import 'package:zlibx/services/txt_to_epub.dart';
@@ -36,6 +37,31 @@ Future<List<int>> _getBytes(Uri base, String path) async {
       bytes.addAll(chunk);
     }
     return bytes;
+  } finally {
+    client.close();
+  }
+}
+
+/// Like [_getBytes] but also returns the status and headers.
+/// Use this for binary bodies: [_get] decodes the body as UTF-8 and
+/// throws FormatException on EPUB (ZIP) bytes.
+Future<(int, List<int>, Map<String, String>)> _getBytesWithHeaders(
+  Uri base,
+  String path,
+) async {
+  final client = HttpClient();
+  try {
+    final req = await client.getUrl(base.resolve(path));
+    final resp = await req.close();
+    final bytes = <int>[];
+    await for (final chunk in resp) {
+      bytes.addAll(chunk);
+    }
+    final headers = <String, String>{};
+    resp.headers.forEach((name, values) {
+      headers[name] = values.join(',');
+    });
+    return (resp.statusCode, bytes, headers);
   } finally {
     client.close();
   }
@@ -105,13 +131,25 @@ void main() {
     final server = serverFor(txt.path);
     final base = await server.start();
     try {
-      final (status, _, headers) = await _get(base, '/book');
+      // /book returns EPUB bytes (a ZIP): never decode the body as
+      // UTF-8 — _get's utf8.decoder throws FormatException
+      // ("Unexpected extension byte") on binary data. Read raw
+      // bytes + headers instead.
+      final (status, got, headers) = await _getBytesWithHeaders(
+        base,
+        '/book',
+      );
       expect(status, 200);
       expect(headers['content-type'], contains('application/epub+zip'));
       expect(headers['x-book-name'], 'book.epub');
-      final got = await _getBytes(base, '/book');
-      // EPUB is a zip: starts with PK.
+      // EPUB is a zip: starts with PK, and decodes as a real ZIP
+      // with the EPUB entries (proves the conversion output is a
+      // valid EPUB, not just PK-prefixed bytes).
       expect(got.sublist(0, 2), [0x50, 0x4B]);
+      final archive = ZipDecoder().decodeBytes(got);
+      final names = archive.files.map((f) => f.name);
+      expect(names, contains('mimetype'));
+      expect(names, contains('OEBPS/content.opf'));
     } finally {
       await server.stop();
     }

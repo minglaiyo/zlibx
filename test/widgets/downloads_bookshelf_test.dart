@@ -3,12 +3,17 @@
 // 只记录参数、不真起 WebView（WebView 的启动由
 // local_reader_server_test 覆盖）。PDF 不进阅读器，走外部打开。
 //
-// #515 教训：本文件原来全程用 pumpAndSettle，Check 里 EPUB 测试
-// 10 分钟超时、之后测试运行器再无输出（Test 步 19m21s 后被取消）。
-// 同目录 downloads_category_filter_test 早有同样教训（pending 行
-// 的不确定进度条让 pumpAndSettle 永不结束），所以本文件也全程用
-// 定步进 pump（见下面的 pumpSettled），不给任何动画/定时器挂住
-// 测试的机会；点卡片后的导航等待同样定次数上限。
+// FakeAsync 区的教训（#515/#516：EPUB 测试两次 10 分钟超时）：
+// testWidgets 体内跑在 FakeAsync 区，真实磁盘 IO 的 Future
+// 永远不完成——EPUB 测试挂在第一行 makeBook（File.writeAsBytes），
+// 跟 pumpAndSettle 无关（d31bc94 把 8 处 pumpAndSettle 换成定步进
+// pump 后 #516 照样超时）。所以：
+//   - 文件一律在 setUp（真实区）里建好，体内只用现成路径；
+//   - 点卡片后触发的文件存在检查同样是真实 IO，用 runAsync
+//     切到真实区驱动（见 pumpForNavigation / PDF 测试里的
+//     runAsync），光 pump 等不到它。
+// 同目录 downloads_category_filter_test 的文件头有同样的教训
+// （Hive put 落盘 Future 不完成）。
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -45,6 +50,10 @@ void main() {
   Directory? hiveDir;
   late Directory filesDir;
   LocalReaderArgs? pushedArgs;
+  late String epubPath;
+  late String txtPath;
+  late String notesTxtPath;
+  late String pdfPath;
 
   setUpAll(() async {
     hiveDir = await Directory.systemTemp.createTemp('downloads_bookshelf');
@@ -60,6 +69,12 @@ void main() {
   setUp(() async {
     filesDir = await Directory.systemTemp.createTemp('bookshelf_files');
     pushedArgs = null;
+    // 真实区：文件在这里建好；testWidgets 体内（FakeAsync 区）
+    // 写文件永远不完成（见文件头注释），所以体内只用现成路径。
+    epubPath = await makeBook('one.epub', [0x50, 0x4B, 0x03, 0x04]);
+    txtPath = await makeBook('two.txt', [0x68, 0x69]);
+    notesTxtPath = await makeBook('notes.txt', [0x68, 0x69]);
+    pdfPath = await makeBook('doc.pdf', [0x25, 0x50, 0x44, 0x46]);
   });
 
   tearDown(() async {
@@ -99,12 +114,25 @@ void main() {
 
   /// 定步进 settle，替代 pumpAndSettle：Tab 切换动画 300ms，
   /// 5×100ms 足够走完；即使个别动画/定时器一直排帧，有限次数
-  /// 的 pump 也不会把测试挂住（#515 的 EPUB 测试就是被
-  /// pumpAndSettle 挂了 10 分钟超时）。
+  /// 的 pump 也不会把测试挂住。
   Future<void> pumpSettled(WidgetTester tester) async {
     await tester.pump();
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
+
+  /// 点卡片后等导航落定：openLocalReaderForTask 先 await 真实文件
+  /// 存在检查（File.exists）。真实磁盘 IO 在 FakeAsync 区里不
+  /// 完成，光 pump 等不到它；每次 runAsync 用真实延时让出事件
+  /// 循环，IO 完成后外层排空 fake 微任务，导航的 pushNamed 得以
+  /// 执行；再 pump 一帧建出路由。最多 10×100ms 真实时间。
+  Future<void> pumpForNavigation(WidgetTester tester) async {
+    for (var i = 0; i < 10 && pushedArgs == null; i++) {
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      await tester.pump();
     }
   }
 
@@ -123,8 +151,6 @@ void main() {
   ];
 
   testWidgets('已完成 Tab 是书架网格，点 EPUB 进阅读器', (tester) async {
-    final epubPath = await makeBook('one.epub', [0x50, 0x4B, 0x03, 0x04]);
-    final txtPath = await makeBook('two.txt', [0x68, 0x69]);
     await tester.pumpWidget(
       app(
         overridesFor({
@@ -147,12 +173,7 @@ void main() {
 
     // 点 EPUB 卡片：进 /local-reader，带真实路径与任务 id。
     await tester.tap(find.text('Epub book'));
-    // 点卡片后 openLocalReaderForTask 先 await 文件存在检查（真实
-    // IO），再 pushNamed；定次数 pump 等导航落定（最多 10×100ms），
-    // 导航一到就停，不用 pumpAndSettle。
-    for (var i = 0; i < 10 && pushedArgs == null; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+    await pumpForNavigation(tester);
     // 路由已 push，再 pump 一帧把它建出来。
     await tester.pump();
     expect(pushedArgs, isNotNull);
@@ -164,10 +185,9 @@ void main() {
   });
 
   testWidgets('点 TXT 也进阅读器（转换在服务器里做）', (tester) async {
-    final txtPath = await makeBook('notes.txt', [0x68, 0x69]);
     await tester.pumpWidget(
       app(
-        overridesFor({'3': _task('3', 'Txt notes', 'txt', txtPath)}),
+        overridesFor({'3': _task('3', 'Txt notes', 'txt', notesTxtPath)}),
       ),
     );
     await pumpSettled(tester);
@@ -175,19 +195,15 @@ void main() {
     await pumpSettled(tester);
 
     await tester.tap(find.text('Txt notes'));
-    // 同 EPUB：定次数 pump 等导航落定（最多 10×100ms）。
-    for (var i = 0; i < 10 && pushedArgs == null; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+    await pumpForNavigation(tester);
     await tester.pump();
     expect(pushedArgs, isNotNull);
-    expect(pushedArgs!.filePath, txtPath);
+    expect(pushedArgs!.filePath, notesTxtPath);
     expect(pushedArgs!.bookKey, '3');
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('点 PDF 不进阅读器', (tester) async {
-    final pdfPath = await makeBook('doc.pdf', [0x25, 0x50, 0x44, 0x46]);
     await tester.pumpWidget(
       app(
         overridesFor({'4': _task('4', 'Pdf doc', 'pdf', pdfPath)}),
@@ -198,7 +214,12 @@ void main() {
     await pumpSettled(tester);
 
     await tester.tap(find.text('Pdf doc'));
-    // PDF 不进阅读器：定步进 pump 让外部打开的异步链跑完即可。
+    // PDF 不进阅读器：外部打开链同样先 await 真实文件存在检查，
+    // 用一次 runAsync 让它跑完（平台通道异常被接住弹提示），
+    // 再定步进 pump。
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
     await pumpSettled(tester);
     // 没进 /local-reader（外部打开走平台通道，测试里被接住）。
     expect(pushedArgs, isNull);

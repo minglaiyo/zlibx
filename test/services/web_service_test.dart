@@ -75,6 +75,7 @@ void main() {
           title: 'Epub <Book>',
           author: 'Au',
           extension: 'epub',
+          coverUrl: 'https://covers.example/a.jpg',
           location: '${tmp.path}/a.epub',
         ),
         WebFile(
@@ -91,7 +92,13 @@ void main() {
         ),
       ],
       library: const [
-        WebEntry(title: 'On shelf', author: '', extension: 'epub', fileIndex: 0),
+        WebEntry(
+          title: 'On shelf',
+          author: '',
+          extension: 'epub',
+          coverUrl: 'https://covers.example/shelf.jpg',
+          fileIndex: 0,
+        ),
         WebEntry(title: 'Not here', author: '', extension: 'epub'),
       ],
       booklists: const [
@@ -233,7 +240,13 @@ void main() {
     test('counts, shelf linking and filtering of unfinished tasks', () {
       final done = DownloadTask(
         id: '1',
-        book: const Book(id: 1, title: 'One', author: 'A', extension: 'epub'),
+        book: const Book(
+          id: 1,
+          title: 'One',
+          author: 'A',
+          extension: 'epub',
+          cover: 'https://covers.example/task.jpg',
+        ),
         status: DownloadStatus.completed,
         filePath: '/x/one.epub',
       );
@@ -253,7 +266,12 @@ void main() {
       final snap = WebSnapshot.build(
         tasks: [done, missing, running],
         saved: const [
-          Book(id: 1, title: 'One', extension: 'epub'),
+          Book(
+            id: 1,
+            title: 'One',
+            extension: 'epub',
+            cover: 'https://covers.example/saved.jpg',
+          ),
           Book(id: 9, title: 'Nine', extension: 'epub'),
         ],
         booklists: const [
@@ -262,7 +280,10 @@ void main() {
             name: 'L',
             url: 'https://z.example/booklist/7',
             count: 3,
-            previewBooks: [Book(id: 1, title: 'One'), Book(id: 8, title: 'Eight')],
+            previewBooks: [
+              Book(id: 1, title: 'One', cover: 'https://covers.example/preview.jpg'),
+              Book(id: 8, title: 'Eight'),
+            ],
           ),
         ],
       );
@@ -274,6 +295,15 @@ void main() {
       expect(snap.booklists.single.books[0].fileIndex, 0);
       expect(snap.booklists.single.books[1].fileIndex, isNull);
       expect(snap.files.single.extension, 'epub');
+      // Covers flow from the book into the file and every entry.
+      expect(snap.files.single.coverUrl, 'https://covers.example/task.jpg');
+      expect(snap.library[0].coverUrl, 'https://covers.example/saved.jpg');
+      expect(snap.library[1].coverUrl, isNull);
+      expect(
+        snap.booklists.single.books[0].coverUrl,
+        'https://covers.example/preview.jpg',
+      );
+      expect(snap.booklists.single.books[1].coverUrl, isNull);
     });
   });
 
@@ -285,10 +315,30 @@ void main() {
     test('three sections, links, escaping, and no JavaScript', () async {
       final r = await get('/');
       expect(r.status, 200);
+      // Banner with anchor navigation to the three sections.
+      expect(r.body, contains('class="banner"'));
+      expect(r.body, contains('href="#downloaded"'));
+      expect(r.body, contains('href="#library"'));
+      expect(r.body, contains('href="#booklists"'));
+      // Book cards in a grid, not a plain list.
+      expect(r.body, contains('class="grid"'));
+      expect(r.body, contains('class="card"'));
+      expect(r.body, isNot(contains('<ul')));
+      // Covers: the EPUB has one, the PDF falls back to a
+      // first-letter tile ('Pdf Book' -> 'P').
+      expect(
+        r.body,
+        contains('<img class="cover" src="https://covers.example/a.jpg"'),
+      );
+      expect(r.body, contains('src="https://covers.example/shelf.jpg"'));
+      expect(r.body, contains('class="cover-ph"'));
+      expect(r.body, contains('>P</div>'));
       expect(r.body, contains('href="/download/0"'));
       expect(r.body, contains('href="/read/0"'));
       expect(r.body, contains('href="/download/1"'));
-      expect(r.body, isNot(contains('href="/read/1"'))); // PDF: no read link
+      // PDF reads in the browser's own viewer via /book, not /read.
+      expect(r.body, contains('href="/book/1"'));
+      expect(r.body, isNot(contains('href="/read/1"')));
       expect(r.body, contains('href="/booklist/42"'));
       expect(r.body, contains('Epub &lt;Book&gt;')); // escaped
       expect(r.body.toLowerCase(), isNot(contains('<script')));
@@ -349,6 +399,7 @@ void main() {
       final r = await get('/booklist/42');
       expect(r.status, 200);
       expect(r.body, contains('In list'));
+      expect(r.body, contains('class="grid"'));
       expect(r.body, contains('href="/download/0"'));
       expect(r.body, contains('https://z-library.example/booklist/42/x'));
     });
@@ -398,9 +449,15 @@ void main() {
       expect(r.body, contains('"/book/0"'));
     });
 
-    test('PDF has no read page', () async {
+    test('PDF has no foliate read page, but /book serves it inline', () async {
       expect((await get('/read/1')).status, 404);
-      expect((await get('/book/1')).status, 404);
+      final r = await get('/book/1');
+      expect(r.status, 200);
+      expect(r.body, 'PDF-BYTES');
+      expect(r.header('content-type'), 'application/pdf');
+      // No attachment: the browser's own PDF viewer opens it.
+      expect(r.header('content-disposition'), isNull);
+      expect(r.header('x-book-name'), 'book.pdf');
     });
 
     test('/book returns the raw bytes of an EPUB', () async {

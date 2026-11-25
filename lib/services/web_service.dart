@@ -67,8 +67,9 @@ const Set<String> kReaderAssetWhitelist = <String>{
   'vendor/fflate.js',
 };
 
-/// Formats the reader can open (PDF is download-only; DRM is not
-/// handled at all).
+/// Formats the reader can open. PDF is not opened by the reader —
+/// a desktop browser renders it with its own PDF viewer through
+/// /book instead (see [isPdfExtension]). DRM is not handled at all.
 const Set<String> kReadableExtensions = <String>{
   'epub',
   'mobi',
@@ -81,6 +82,13 @@ const Set<String> kReadableExtensions = <String>{
 bool isReadableExtension(String? extension) =>
     kReadableExtensions.contains((extension ?? '').toLowerCase());
 
+/// A PDF is viewable in the browser itself: /book serves it inline
+/// (no Content-Disposition: attachment), so Chrome / Edge / Firefox
+/// open it in their built-in PDF viewer. The foliate reader cannot
+/// open PDFs, so /read still refuses them.
+bool isPdfExtension(String? extension) =>
+    (extension ?? '').toLowerCase() == 'pdf';
+
 // ───────────────────────── Snapshot ─────────────────────────
 
 /// One downloaded file that can be served.
@@ -89,6 +97,10 @@ class WebFile {
   final String author;
   final String extension;
 
+  /// Remote cover URL (Z-Library), if the book has one. The browser
+  /// loads it directly; a missing cover gets a first-letter tile.
+  final String? coverUrl;
+
   /// Stored location: a plain path or a MediaStore content:// URI.
   final String location;
 
@@ -96,6 +108,7 @@ class WebFile {
     required this.title,
     required this.author,
     required this.extension,
+    this.coverUrl,
     required this.location,
   });
 }
@@ -107,12 +120,16 @@ class WebEntry {
   final String title;
   final String author;
   final String extension;
+
+  /// Remote cover URL (Z-Library), if the book has one.
+  final String? coverUrl;
   final int? fileIndex;
 
   const WebEntry({
     required this.title,
     required this.author,
     required this.extension,
+    this.coverUrl,
     this.fileIndex,
   });
 }
@@ -184,6 +201,7 @@ class WebSnapshot {
           title: task.book.title,
           author: task.book.author ?? '',
           extension: ext,
+          coverUrl: task.book.cover,
           location: location,
         ),
       );
@@ -197,6 +215,7 @@ class WebSnapshot {
         extension: index != null
             ? files[index].extension
             : (book.extension ?? '').toLowerCase(),
+        coverUrl: book.cover,
         fileIndex: index,
       );
     }
@@ -626,7 +645,10 @@ class WebService extends ChangeNotifier {
     final index = _fileIndex(s);
     if (index == null) return _notFound();
     final entry = _snapshot.files[index];
-    if (!isReadableExtension(entry.extension)) return _notFound();
+    if (!isReadableExtension(entry.extension) &&
+        !isPdfExtension(entry.extension)) {
+      return _notFound();
+    }
     final file = await _fileFor(index);
     if (file == null) return _notFound();
 
@@ -798,12 +820,38 @@ class WebService extends ChangeNotifier {
   }
 
   // ── Plain-HTML pages (NO JavaScript — e-readers must work) ───────
+  //
+  // Layout, after Legado's web bookshelf: a dark banner with the
+  // title and big section buttons, then each section as a grid of
+  // book cards (cover left, title / author / format badge / actions
+  // right). The grid degrades to a plain vertical stack on readers
+  // that do not understand CSS grid.
 
   static const String _css =
-      'body{font-family:sans-serif;margin:0 auto;max-width:46em;padding:0.8em;'
-      'line-height:1.5}h1{font-size:1.3em}h2{font-size:1.1em;margin-top:1.6em;'
-      'border-bottom:1px solid #999}li{margin:0.5em 0}.meta{color:#666;'
-      'font-size:0.9em}.dim{color:#888}';
+      'body{font-family:sans-serif;margin:0 auto;max-width:60em;padding:0 0.8em 1.5em;'
+      'line-height:1.5;color:#222}'
+      '.banner{background:#2b2f36;color:#fff;margin:0 -0.8em;padding:1.4em 1em 1.2em}'
+      '.banner h1{font-size:1.5em;margin:0 0 0.6em}'
+      '.banner .nav a{display:inline-block;color:#fff;border:1px solid #fff;'
+      'border-radius:4px;padding:0.35em 1em;margin:0 0.5em 0.4em 0;text-decoration:none}'
+      'h2{font-size:1.1em;margin:1.6em 0 0.6em;border-bottom:1px solid #999;padding-bottom:0.2em}'
+      '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:0.8em}'
+      '.card{display:flex;gap:0.8em;border:1px solid #ddd;border-radius:6px;padding:0.6em;background:#fff}'
+      '.cover{width:72px;height:104px;flex:0 0 72px;object-fit:cover;background:#eee;border-radius:3px}'
+      '.cover-ph{width:72px;height:104px;flex:0 0 72px;background:#7a8699;color:#fff;'
+      'display:flex;align-items:center;justify-content:center;font-size:2em;border-radius:3px}'
+      '.info{flex:1;min-width:0}'
+      '.name{font-weight:700}'
+      '.meta{color:#666;font-size:0.9em}'
+      '.badge{display:inline-block;background:#eef;border:1px solid #ccd;border-radius:3px;'
+      'padding:0 0.4em;font-size:0.8em;margin:0.2em 0}'
+      '.actions{margin-top:0.4em}'
+      '.actions a{display:inline-block;border:1px solid #888;border-radius:4px;'
+      'padding:0.15em 0.8em;margin-right:0.5em;text-decoration:none;color:#222}'
+      '.list-card{display:block;border:1px solid #ddd;border-radius:6px;padding:0.8em;'
+      'text-decoration:none;color:#222;background:#fff}'
+      '.dim{color:#888}'
+      'a{color:#0645ad}';
 
   String _page(String title, String body) =>
       '<!DOCTYPE html><html><head><meta charset="utf-8">'
@@ -817,63 +865,104 @@ class WebService extends ChangeNotifier {
     '<p><a href="/">${escapeHtml(_strings.backHome)}</a></p>',
   );
 
-  String _row(WebEntry e) {
-    final b = StringBuffer('<li>${escapeHtml(e.title)}');
-    final meta = [
-      if (e.author.isNotEmpty) e.author,
-      if (e.extension.isNotEmpty) e.extension.toUpperCase(),
-    ].join(' · ');
-    if (meta.isNotEmpty) {
-      b.write(' <span class="meta">${escapeHtml(meta)}</span>');
+  /// First character of [title], for the no-cover tile ('?' when empty).
+  static String _firstChar(String title) =>
+      title.isEmpty ? '?' : String.fromCharCode(title.runes.first);
+
+  /// One book card: cover on the left, title / author / format badge /
+  /// actions on the right. A downloaded book gets [Download] and,
+  /// when it can be opened, [Read] — foliate formats go to /read,
+  /// a PDF goes straight to /book so the browser's own PDF viewer
+  /// opens it. A book that is not on this phone shows only
+  /// "not downloaded", with no buttons.
+  String _bookCard(WebEntry e) {
+    final b = StringBuffer('<article class="card">');
+    final cover = e.coverUrl;
+    if (cover != null && cover.isNotEmpty) {
+      b.write(
+        '<img class="cover" src="${escapeHtml(cover)}" loading="lazy" '
+        'alt="${escapeHtml(e.title)}">',
+      );
+    } else {
+      b.write(
+        '<div class="cover-ph" aria-hidden="true">'
+        '${escapeHtml(_firstChar(e.title))}</div>',
+      );
+    }
+    b.write('<div class="info">');
+    b.write('<div class="name">${escapeHtml(e.title)}</div>');
+    if (e.author.isNotEmpty) {
+      b.write('<div class="meta">${escapeHtml(e.author)}</div>');
+    }
+    if (e.extension.isNotEmpty) {
+      b.write(
+        '<span class="badge">${escapeHtml(e.extension.toUpperCase())}</span>',
+      );
     }
     final index = e.fileIndex;
     if (index != null) {
+      b.write('<div class="actions">');
       b.write(
-        ' <a href="/download/$index">${escapeHtml(_strings.download)}</a>',
+        '<a href="/download/$index">${escapeHtml(_strings.download)}</a>',
       );
-      if (isReadableExtension(e.extension)) {
+      final ext = e.extension.toLowerCase();
+      if (isReadableExtension(ext)) {
         b.write(' <a href="/read/$index">${escapeHtml(_strings.read)}</a>');
+      } else if (isPdfExtension(ext)) {
+        b.write(' <a href="/book/$index">${escapeHtml(_strings.read)}</a>');
       }
+      b.write('</div>');
     } else {
-      b.write(' <span class="dim">(${escapeHtml(_strings.notDownloaded)})</span>');
+      b.write(
+        '<div class="actions"><span class="dim">'
+        '${escapeHtml(_strings.notDownloaded)}</span></div>',
+      );
     }
-    b.write('</li>');
+    b.write('</div></article>');
     return b.toString();
   }
 
-  String _list(Iterable<String> rows) => rows.isEmpty
+  /// One booklist card: its name and book count, linking to the
+  /// booklist page.
+  String _booklistCard(WebBooklist l) =>
+      '<a class="list-card" href="/booklist/${Uri.encodeComponent(l.id)}">'
+      '<div class="name">${escapeHtml(l.name)}</div>'
+      '${l.count != null ? '<div class="meta">(${l.count})</div>' : ''}'
+      '</a>';
+
+  String _grid(Iterable<String> cards) => cards.isEmpty
       ? '<p class="dim">${escapeHtml(_strings.empty)}</p>'
-      : '<ul>${rows.join()}</ul>';
+      : '<div class="grid">${cards.join()}</div>';
 
   String _homePage() {
     final downloaded = [
       for (var i = 0; i < _snapshot.files.length; i++)
-        _row(
+        _bookCard(
           WebEntry(
             title: _snapshot.files[i].title,
             author: _snapshot.files[i].author,
             extension: _snapshot.files[i].extension,
+            coverUrl: _snapshot.files[i].coverUrl,
             fileIndex: i,
           ),
         ),
     ];
-    final library = _snapshot.library.map(_row);
-    final lists = [
-      for (final l in _snapshot.booklists)
-        '<li><a href="/booklist/${Uri.encodeComponent(l.id)}">'
-            '${escapeHtml(l.name)}</a>'
-            '${l.count != null ? ' <span class="meta">(${l.count})</span>' : ''}'
-            '</li>',
-    ];
+    final library = _snapshot.library.map(_bookCard);
+    final lists = _snapshot.booklists.map(_booklistCard);
     return _page(
       _strings.homeTitle,
-      '<h1>${escapeHtml(_strings.homeTitle)}</h1>'
-      '<h2>${escapeHtml(_strings.downloadedSection)} (${downloaded.length})</h2>'
-      '${_list(downloaded)}'
-      '<h2>${escapeHtml(_strings.librarySection)} (${library.length})</h2>'
-      '${_list(library)}'
-      '<h2>${escapeHtml(_strings.booklistSection)} (${lists.length})</h2>'
-      '${_list(lists)}',
+      '<header class="banner"><h1>${escapeHtml(_strings.homeTitle)}</h1>'
+      '<nav class="nav">'
+      '<a href="#downloaded">${escapeHtml(_strings.downloadedSection)}</a>'
+      '<a href="#library">${escapeHtml(_strings.librarySection)}</a>'
+      '<a href="#booklists">${escapeHtml(_strings.booklistSection)}</a>'
+      '</nav></header>'
+      '<h2 id="downloaded">${escapeHtml(_strings.downloadedSection)} (${downloaded.length})</h2>'
+      '${_grid(downloaded)}'
+      '<h2 id="library">${escapeHtml(_strings.librarySection)} (${library.length})</h2>'
+      '${_grid(library)}'
+      '<h2 id="booklists">${escapeHtml(_strings.booklistSection)} (${lists.length})</h2>'
+      '${_grid(lists)}',
     );
   }
 
@@ -887,7 +976,7 @@ class WebService extends ChangeNotifier {
       '<p><a href="/">${escapeHtml(_strings.backHome)}</a></p>'
       '<h1>${escapeHtml(list.name)}</h1>'
       '<p class="meta">${escapeHtml(_strings.previewNote)}</p>'
-      '${_list(list.books.map(_row))}'
+      '${_grid(list.books.map(_bookCard))}'
       '$link',
     );
   }

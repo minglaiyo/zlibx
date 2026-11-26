@@ -737,7 +737,9 @@ mixin ZLibraryBooklists on ZLibraryApiBase {
     required int booklistId,
     required int readlistBookId,
   }) async {
-    final raw = await _getWithRedirects(
+    // Plan item 5: a destructive GET goes through the dedicated
+    // no-retry, no-redirect client — never the redirect-following one.
+    final raw = await _getDestructive(
       '/papi/booklist/$booklistId/remove-book/$readlistBookId',
     );
     final status = raw.status;
@@ -780,7 +782,12 @@ mixin ZLibraryBooklists on ZLibraryApiBase {
   /// success only when it is an empty body (same precedent as
   /// [createBooklist]) — an HTML final page fails instead.
   Future<ApiResponse<bool>> deleteBooklist(int booklistId) async {
-    final raw = await _getWithRedirects('/papi/booklist/$booklistId/delete');
+    // Plan item 5: a destructive GET goes through the dedicated
+    // no-retry, no-redirect client. The challenge hop it answers
+    // with (307 + `__diamwall`, same URL) is the one redirect the
+    // destructive client follows; anything else fails instead of
+    // re-issuing the delete elsewhere.
+    final raw = await _getDestructive('/papi/booklist/$booklistId/delete');
     final status = raw.status;
     final json = raw.json;
     if (json == null) {

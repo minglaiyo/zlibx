@@ -11,6 +11,7 @@ import '../../providers/article_search_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/books_provider.dart';
 import '../../providers/fulltext_search_provider.dart';
+import '../../providers/search_filter_options_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/update_provider.dart';
 import '../../routes/app_routes.dart';
@@ -18,6 +19,7 @@ import '../../services/hive_service.dart';
 import '../../theme/app_metrics.dart';
 import '../../utils/app_log.dart';
 import '../../utils/app_snack.dart';
+import '../../utils/isbn.dart';
 import '../../widgets/update_dialog.dart';
 import '../reader/reader_screen.dart';
 import 'barcode_scanner_screen.dart';
@@ -410,17 +412,24 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   /// their rows hide (the request carries none of those filters).
   /// The dialog stages edits and only returns them when 使用 is
   /// tapped; closing discards.
+  ///
+  /// Plan item 6: the name maps come from the server-merged options
+  /// when available; while loading (or when the fetch failed) the
+  /// hardcoded tables are the UI.
   void _openFilterDialogForCurrentLocale() {
     final locale = Localizations.localeOf(context).languageCode;
+    final filterOptions =
+        ref.read(searchFilterOptionsProvider).valueOrNull ??
+        SearchFilterOptions.local();
     // 文章模式（v2）与全文一样带语言/格式筛选：`/s/` 表单的筛选参数
     // 名已站点验证（languages[]/extensions[]），不再隐藏这两行。
     unawaited(
       _openFilterDialog(
-        getLanguageDisplayNames(locale),
+        languageDisplayNamesFor(filterOptions.languages, locale),
         _mode == SearchMode.fulltext
             ? getFulltextOrderDisplayNames(locale)
             : getOrderDisplayNames(locale),
-        getExtensionDisplayNames(locale),
+        extensionDisplayNamesFor(filterOptions.extensions, locale),
       ),
     );
   }
@@ -494,7 +503,19 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     _scrollAccum = 0;
     _headerVisible.value = true;
 
-    final query = _searchController.text.trim();
+    // Plan item 7: a whole query that is a bare ISBN (typed or pasted,
+    // with or without separators) searches its canonical ISBN-13
+    // digits; anything else goes out unchanged. The box keeps the
+    // user's text — only the request is normalised.
+    final query = normalizeIsbnQuery(_searchController.text.trim());
+    // Plan item 6: the API values come from the server-merged options
+    // when available; while loading (or when the fetch failed) the
+    // hardcoded tables are the request.
+    final filterOptions =
+        ref.read(searchFilterOptionsProvider).valueOrNull ??
+        SearchFilterOptions.local();
+    final languageApiValues = filterOptions.languageApiValues;
+    final extensionApiValues = filterOptions.extensions;
     if (_source != BookSource.zlibrary) {
       ref
           .read(externalSearchProvider.notifier)
@@ -512,11 +533,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               exact: _filters.fullTextExact,
               yearFrom: _filters.yearFrom,
               yearTo: _filters.yearTo,
-              languages: searchLanguages[_filters.language] != null
-                  ? [searchLanguages[_filters.language]!]
+              languages: languageApiValues[_filters.language] != null
+                  ? [languageApiValues[_filters.language]!]
                   : null,
-              extensions: searchExtensions[_filters.extension] != null
-                  ? [searchExtensions[_filters.extension]!]
+              extensions: extensionApiValues[_filters.extension] != null
+                  ? [extensionApiValues[_filters.extension]!]
                   : null,
               order: _filters.order,
             ),
@@ -534,11 +555,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               exact: _filters.generalExact,
               yearFrom: _filters.yearFrom,
               yearTo: _filters.yearTo,
-              languages: searchLanguages[_filters.language] != null
-                  ? [searchLanguages[_filters.language]!]
+              languages: languageApiValues[_filters.language] != null
+                  ? [languageApiValues[_filters.language]!]
                   : null,
-              extensions: searchExtensions[_filters.extension] != null
-                  ? [searchExtensions[_filters.extension]!]
+              extensions: extensionApiValues[_filters.extension] != null
+                  ? [extensionApiValues[_filters.extension]!]
                   : null,
             ),
           );
@@ -557,11 +578,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               query: query,
               yearFrom: _filters.yearFrom,
               yearTo: _filters.yearTo,
-              languages: searchLanguages[_filters.language] != null
-                  ? [searchLanguages[_filters.language]!]
+              languages: languageApiValues[_filters.language] != null
+                  ? [languageApiValues[_filters.language]!]
                   : null,
-              extensions: searchExtensions[_filters.extension] != null
-                  ? [searchExtensions[_filters.extension]!]
+              extensions: extensionApiValues[_filters.extension] != null
+                  ? [extensionApiValues[_filters.extension]!]
                   : null,
               order: searchOrders[_filters.order],
               exact: _filters.generalExact,
@@ -581,11 +602,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             query: query,
             yearFrom: _filters.yearFrom,
             yearTo: _filters.yearTo,
-            languages: searchLanguages[_filters.language] != null
-                ? [searchLanguages[_filters.language]!]
+            languages: languageApiValues[_filters.language] != null
+                ? [languageApiValues[_filters.language]!]
                 : null,
-            extensions: searchExtensions[_filters.extension] != null
-                ? [searchExtensions[_filters.extension]!]
+            extensions: extensionApiValues[_filters.extension] != null
+                ? [extensionApiValues[_filters.extension]!]
                 : null,
             order: searchOrders[_filters.order],
             exact: _filters.generalExact,
@@ -746,11 +767,23 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final locale = Localizations.localeOf(context).languageCode;
-    final languageNames = getLanguageDisplayNames(locale);
+    // Plan item 6: the chips mirror the server-merged options when
+    // available; while loading (or when the fetch failed) the
+    // hardcoded tables are the UI.
+    final filterOptions =
+        ref.watch(searchFilterOptionsProvider).valueOrNull ??
+        SearchFilterOptions.local();
+    final languageNames = languageDisplayNamesFor(
+      filterOptions.languages,
+      locale,
+    );
     final orderNames = _mode == SearchMode.fulltext
         ? getFulltextOrderDisplayNames(locale)
         : getOrderDisplayNames(locale);
-    final extensionNames = getExtensionDisplayNames(locale);
+    final extensionNames = extensionDisplayNamesFor(
+      filterOptions.extensions,
+      locale,
+    );
     final isExternal = _source != BookSource.zlibrary;
     // 外观设置里的"书籍网格自适应列数"（默认关）。结果网格和它的加载
     // 骨架共用同一个值。

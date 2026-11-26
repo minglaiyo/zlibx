@@ -27,6 +27,7 @@ part 'zlibrary_authors.dart';
 part 'zlibrary_dstats.dart';
 part 'zlibrary_fulltext.dart';
 part 'zlibrary_downloads.dart';
+part 'zlibrary_info.dart';
 
 /// App-facing byte sink for the pending-MediaStore download flow
 /// (Android 10+): the app streams bytes straight into an IS_PENDING
@@ -100,6 +101,12 @@ abstract class ZLibraryApiBase {
   String? _userId;
   String? _userKey;
 
+  /// Dedicated client for destructive GETs (plan item 5), injected in
+  /// tests; production code never passes it — [_destructiveClient]
+  /// builds it lazily. Kept separate from [_dio] so a destructive
+  /// call never shares state with the read client.
+  Dio? _destructiveDio;
+
   /// Wall-clearance cookies copied from the WebView's CookieManager
   /// after a challenge solve (`__diamwall`, `cf_clearance`, ...).
   /// They ride along in the same `Cookie` header as the session, so
@@ -129,7 +136,9 @@ abstract class ZLibraryApiBase {
 
   /// [dio] is a test seam: a caller-provided client (with a fake
   /// adapter) replaces the default one. Production code never passes it.
-  ZLibraryApiBase({String? domain, Dio? dio})
+  /// [destructiveDio] is the same seam for the plan-5 destructive
+  /// client ([_destructiveClient]).
+  ZLibraryApiBase({String? domain, Dio? dio, Dio? destructiveDio})
     : _domain = _cleanDomain(domain ?? _defaultDomain),
       _dio = dio ??
           Dio(
@@ -143,7 +152,8 @@ abstract class ZLibraryApiBase {
                 'Accept': 'application/json',
               },
             ),
-          );
+          ),
+      _destructiveDio = destructiveDio;
 
   static String _cleanDomain(String domain) {
     var d = domain.trim();
@@ -488,6 +498,105 @@ abstract class ZLibraryApiBase {
       contentType: 'text/plain;charset=UTF-8',
     );
   }
+
+  // ── Destructive GETs (plan item 5) ──────────────────────────────
+
+  /// The dedicated client for destructive GETs: same timeouts and
+  /// headers as the main client, but a separate instance, so a
+  /// destructive call never shares state with the read client.
+  ///
+  /// Dio 5 note: `retryOnConnectionFailure` (a Dio 4 option) does not
+  /// exist in Dio 5.11.1 — the adapter never retries a failed
+  /// connection — so the single-attempt guarantee below is structural:
+  /// [_getDestructive] issues one request and only loops for the
+  /// wall-challenge hop.
+  Dio _destructiveClient() => _destructiveDio ??= Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 15),
+          receiveTimeout: const Duration(seconds: 60),
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
+                'Chrome/120.0 Mobile Safari/537.36',
+            'Accept': 'application/json',
+          },
+        ),
+      );
+
+  /// GET for calls that change server state (booklist remove / delete),
+  /// through the dedicated client. Exactly ONE attempt, no redirect
+  /// following, no resend:
+  ///
+  ///  * a transport error, 4xx or 5xx returns an error [_Raw] — the
+  ///    write may already have landed while the answer was lost, so a
+  ///    retry could apply it twice. The caller keeps the record and
+  ///    never auto-resends (the booklist detail provider restores the
+  ///    removed row on failure);
+  ///  * the only redirect ever followed is the DDoS-Guard challenge
+  ///    hop: a 307 that carries DiamWall markers ([isDiamWallResponse])
+  ///    and points back at the SAME URL (the booklist write endpoints
+  ///    answer the first GET that way — 2026-11-09 packet capture — and
+  ///    the follow-up must carry the `__diamwall` cookie the 307 set).
+  ///    At most 3 such hops. Any other redirect (301/302/303, a 307
+  ///    without the markers, or any hop to another host) returns an
+  ///    error instead of re-issuing the write somewhere the caller
+  ///    never asked for.
+  Future<_Raw> _getDestructive(String path) async {
+    var url = '$_base$path';
+    var challengeHops = 0;
+    for (;;) {
+      final Response<String> res;
+      try {
+        res = await _destructiveClient().get<String>(
+          url,
+          options: Options(
+            headers: _headers,
+            responseType: ResponseType.plain,
+            followRedirects: false,
+            validateStatus: (status) => status != null && status < 400,
+          ),
+        );
+      } on DioException catch (e) {
+        return _fromError(e);
+      }
+      final code = res.statusCode ?? 0;
+      if (code != 301 &&
+          code != 302 &&
+          code != 303 &&
+          code != 307 &&
+          code != 308) {
+        return await _fromResponse(res);
+      }
+      final location = res.headers.value(HttpHeaders.locationHeader);
+      final sameUrl = location != null &&
+          location.isNotEmpty &&
+          _resolvesToSameUrl(url, location);
+      if (code == 307 &&
+          sameUrl &&
+          challengeHops < 3 &&
+          isDiamWallResponse(status: code, headers: res.headers)) {
+        // Learn the challenge cookie before the follow-up. Same URL
+        // by construction, so same-host only — nothing from another
+        // host ever enters the jar here.
+        _harvestRedirectCookies(
+          res.headers['set-cookie'] ?? const <String>[],
+        );
+        challengeHops++;
+        continue;
+      }
+      return _Raw(status: code, error: 'redirect not followed');
+    }
+  }
+
+  static bool _resolvesToSameUrl(String url, String location) {
+    try {
+      return Uri.parse(url).resolveUri(Uri.parse(location)).toString() ==
+          url;
+    } on FormatException {
+      return false;
+    }
+  }
+
   /// DELETE with no request body, following redirects by hand — same
   /// pattern as `_postText`: 307/308 are re-sent as DELETE, 301/302/303
   /// are followed as GET (browser behaviour). The session Cookie is
@@ -1019,8 +1128,8 @@ Future<List<Book>> Function(String json)? booksParseOverride;
 ///   send_code, verify_code. Those methods fall back or fail loudly rather
 ///   than silently returning wrong data; see their doc comments.
 
-class ZLibraryApi extends ZLibraryApiBase with ZLibraryAuth, ZLibrarySearch, ZLibraryArticles, ZLibraryBooklists, ZLibraryCategories, ZLibraryAuthors, ZLibraryFullText, ZLibraryDownloads, ZLibraryDownloadHistory {
-  ZLibraryApi({super.domain, super.dio});
+class ZLibraryApi extends ZLibraryApiBase with ZLibraryAuth, ZLibrarySearch, ZLibraryArticles, ZLibraryBooklists, ZLibraryCategories, ZLibraryAuthors, ZLibraryFullText, ZLibraryDownloads, ZLibraryDownloadHistory, ZLibraryInfo {
+  ZLibraryApi({super.domain, super.dio, super.destructiveDio});
 
   String get domain => _domain;
 

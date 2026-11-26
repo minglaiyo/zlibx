@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
+import '../services/domain_probe.dart';
 import '../services/hive_service.dart';
 import '../services/instance_manager.dart';
 import '../services/mirror_trust.dart';
@@ -77,7 +78,10 @@ final slumZlibrarySitesProvider = FutureProvider<List<SlumSite>>((ref) async {
 ///
 ///  * open-slum.org Z-Library mirrors FIRST, in SLUM order;
 ///  * then built-in domains not already present (deduped by host,
-///    case-insensitive).
+///    case-insensitive);
+///  * then redirect targets a past probe verified and adopted (plan
+///    item 4, `discovered_hosts` — re-verified at cold start, so a
+///    stored host is a trusted one).
 ///
 /// While SLUM data has never arrived (offline / cold start with no
 /// cache) this is just [kBuiltInDomains] — the previous behaviour.
@@ -86,16 +90,18 @@ final slumZlibrarySitesProvider = FutureProvider<List<SlumSite>>((ref) async {
 /// network section, speed test) follows it.
 final domainListProvider = Provider<List<String>>((ref) {
   final slumSites = ref.watch(slumZlibrarySitesProvider).valueOrNull;
-  if (slumSites == null || slumSites.isEmpty) {
-    return kBuiltInDomains;
-  }
   final seen = <String>{};
   final merged = <String>[];
-  for (final site in slumSites) {
-    if (seen.add(site.host.toLowerCase())) merged.add(site.host);
+  if (slumSites != null && slumSites.isNotEmpty) {
+    for (final site in slumSites) {
+      if (seen.add(site.host.toLowerCase())) merged.add(site.host);
+    }
   }
   for (final domain in kBuiltInDomains) {
     if (seen.add(domain.toLowerCase())) merged.add(domain);
+  }
+  for (final host in DomainProbe.discoveredHosts) {
+    if (seen.add(host.toLowerCase())) merged.add(host);
   }
   return merged;
 });

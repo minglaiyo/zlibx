@@ -352,9 +352,19 @@ final searchLanguages = <String, String?>{
 
 /// Localized language display names (key: api_value), derived from
 /// [searchLanguageOptions].
-Map<String, String> getLanguageDisplayNames(String locale) {
+Map<String, String> getLanguageDisplayNames(String locale) =>
+    languageDisplayNamesFor(searchLanguageOptions, locale);
+
+/// Display names for a MERGED language table (plan item 6): the
+/// hardcoded table plus server-only codes fetched from
+/// `/eapi/info/languages`. A server-only code shows the server's
+/// display name in every locale.
+Map<String, String> languageDisplayNamesFor(
+  Map<String, SearchLanguage> options,
+  String locale,
+) {
   return {
-    for (final entry in searchLanguageOptions.entries)
+    for (final entry in options.entries)
       entry.key: entry.value.displayName(locale),
   };
 }
@@ -522,5 +532,19 @@ Map<String, String> getExtensionDisplayNames(String locale) {
     'txt': 'TXT',
     'azw': 'AZW',
     'azw3': 'AZW3',
+  };
+}
+
+/// Display names for a MERGED extension table (plan item 6): the
+/// hardcoded table plus server-only codes fetched from
+/// `/eapi/info/extensions`. A server-only format shows its code
+/// uppercased in every locale.
+Map<String, String> extensionDisplayNamesFor(
+  Map<String, String?> options,
+  String locale,
+) {
+  final names = getExtensionDisplayNames(locale);
+  return {
+    for (final key in options.keys) key: names[key] ?? key.toUpperCase(),
   };
 }

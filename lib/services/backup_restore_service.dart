@@ -27,12 +27,12 @@ import 'secure_storage.dart';
 ///
 /// 格式（zip 内）：
 /// * `backup.json`：`{"format": "zlibx-backup", "version": 1,
-///   "exportedAt": "<ISO 8601 UTC>", "boxes": {"settings": {...},
+///   "exportedAt": "ISO 8601 UTC", "boxes": {"settings": {...},
 ///   "library": {...}, "auth": {...}, "view_history": {...},
 ///   "booklist_html": {...}}}`。
 /// * `secrets.json.enc`（仅当导出时存在敏感字段）：JSON 信封
-///   `{"kdf": "pbkdf2-sha256", "iterations": 100000, "salt": "<base64>",
-///   "nonce": "<base64>", "ciphertext": "<base64>", "mac": "<base64>"}`，
+///   `{"kdf": "pbkdf2-sha256", "iterations": 100000, "salt": "base64",
+///   "nonce": "base64", "ciphertext": "base64", "mac": "base64"}`，
 ///   明文是 `{"remix_userid": "...", ...}` 的 JSON。
 ///   密钥 = PBKDF2-HMAC-SHA256（100000 轮，256 位），密文 = AES-256-GCM。
 ///   100000 轮是纯 Dart 回退时的速度与离线文件威胁模型之间的折中
@@ -297,11 +297,7 @@ class BackupRestoreService {
   }
 
   List<int> _fileBytes(ArchiveFile file) {
-    final Object? content = file.content;
-    if (content is! List<int>) {
-      throw const BackupInvalidFileException();
-    }
-    return content;
+    return file.content;
   }
 
   Future<Map<String, String>> _readSecrets() async {

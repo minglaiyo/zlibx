@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -40,21 +41,24 @@ class _BackupRestoreSectionState extends ConsumerState<BackupRestoreSection> {
         const SizedBox(height: 20),
         SectionHeader(icon: Icons.backup_rounded, title: l.backupRestore),
         SettingsCard(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.file_upload_outlined),
-              title: Text(l.backupExport),
-              subtitle: Text(l.backupExportDesc),
-              onTap: _busy ? null : _exportBackup,
-            ),
-            const SettingsDivider(),
-            ListTile(
-              leading: const Icon(Icons.file_download_outlined),
-              title: Text(l.backupImport),
-              subtitle: Text(l.backupImportDesc),
-              onTap: _busy ? null : _importBackup,
-            ),
-          ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.file_upload_outlined),
+                title: Text(l.backupExport),
+                subtitle: Text(l.backupExportDesc),
+                onTap: _busy ? null : _exportBackup,
+              ),
+              const SettingsDivider(),
+              ListTile(
+                leading: const Icon(Icons.file_download_outlined),
+                title: Text(l.backupImport),
+                subtitle: Text(l.backupImportDesc),
+                onTap: _busy ? null : _importBackup,
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -70,12 +74,10 @@ class _BackupRestoreSectionState extends ConsumerState<BackupRestoreSection> {
       if (!mounted) {
         return;
       }
-      String? password;
-      if (hasSecrets) {
-        password = await _askPassword(setMode: true);
-        if (password == null) {
-          return;
-        }
+      final String? password =
+          hasSecrets ? await _askPassword(setMode: true) : null;
+      if (hasSecrets && password == null) {
+        return;
       }
       final Uint8List bytes =
           await _service.exportBackup(password: password);
@@ -121,16 +123,16 @@ class _BackupRestoreSectionState extends ConsumerState<BackupRestoreSection> {
     }
     setState(() => _busy = true);
     try {
-      final FilePickerResult? picked =
-          await FilePicker.platform.pickFiles(
+      final List<PlatformFile> picked = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: const <String>['zip'],
       );
-      if (picked == null || picked.files.isEmpty) {
+      if (picked.isEmpty) {
         return;
       }
-      final PlatformFile file = picked.files.first;
-      if (file.size > BackupRestoreService.kBackupMaxBytes) {
+      final PlatformFile file = picked.first;
+      final int? size = await file.length();
+      if (size != null && size > BackupRestoreService.kBackupMaxBytes) {
         throw const BackupTooLargeException();
       }
       final Uint8List bytes = await file.xFile.readAsBytes();
@@ -138,17 +140,14 @@ class _BackupRestoreSectionState extends ConsumerState<BackupRestoreSection> {
       if (!mounted) {
         return;
       }
-      String? password;
-      if (info.hasSecrets) {
-        password = await _askPassword(setMode: false);
-        if (password == null) {
-          return;
-        }
+      final String? password =
+          info.hasSecrets ? await _askPassword(setMode: false) : null;
+      if (info.hasSecrets && password == null) {
+        return;
       }
       if (!mounted) {
         return;
       }
-      final AppLocalizations l = AppLocalizations.of(context)!;
       final bool? confirmed = await showDialog<bool>(
         context: context,
         builder: (BuildContext dialogContext) {

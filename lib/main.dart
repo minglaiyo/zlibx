@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
 
-import 'package:cryptography_flutter/cryptography_flutter.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -41,12 +40,6 @@ final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Backup/restore crypto (plan item 17): use the platform implementation
-  // (javax.crypto on Android) instead of the pure-Dart fallback — PBKDF2
-  // is far too slow in pure Dart for a phone. Without this line the
-  // package still works, just slower.
-  FlutterCryptography.enable();
 
   // ── 120Hz 高刷新率适配 ────────────────────────────────────────────────
   // Flutter 引擎会自动检测设备能力并调整帧率。在支持 120Hz 的设备上，

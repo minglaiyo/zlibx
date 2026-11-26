@@ -104,10 +104,9 @@ void main() {
     final Archive archive = ZipDecoder().decodeBytes(bytes);
     final ArchiveFile? file = archive.findFile('backup.json');
     expect(file, isNotNull);
-    final Object? content = file!.content;
+    final Uint8List content = file!.content;
     expect(content, isA<List<int>>());
-    return jsonDecode(utf8.decode(content as List<int>))
-        as Map<String, dynamic>;
+    return jsonDecode(utf8.decode(content)) as Map<String, dynamic>;
   }
 
   test('export then import restores all boxes and secrets', () async {
@@ -231,18 +230,17 @@ void main() {
       if (!file.isFile) {
         continue;
       }
-      final Object? content = file.content;
+      final Uint8List content = file.content;
       expect(content, isA<List<int>>());
       if (file.name == 'backup.json') {
         final Map<String, dynamic> manifest =
-            jsonDecode(utf8.decode(content as List<int>))
-                as Map<String, dynamic>;
+            jsonDecode(utf8.decode(content)) as Map<String, dynamic>;
         manifest['version'] = 99;
         final List<int> modified =
             utf8.encode(jsonEncode(manifest));
         rebuilt.addFile(ArchiveFile(file.name, modified.length, modified));
       } else {
-        final List<int> original = content as List<int>;
+        final List<int> original = content;
         rebuilt.addFile(
           ArchiveFile(file.name, original.length, original),
         );

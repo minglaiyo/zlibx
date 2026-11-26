@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:zlibx/providers/download_provider.dart';
-import 'package:zlibx/providers/download_task.dart';
 import 'package:zlibx/services/hive_service.dart';
 import 'package:zlibx/services/storage_service.dart';
 

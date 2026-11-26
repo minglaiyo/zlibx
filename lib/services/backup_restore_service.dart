@@ -284,7 +284,7 @@ class BackupRestoreService {
       if (entry.value is! Map<String, dynamic>) {
         throw const BackupInvalidFileException();
       }
-      out[entry.key] = entry.value;
+      out[entry.key] = entry.value as Map<String, dynamic>;
     }
     return out;
   }

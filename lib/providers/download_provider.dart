@@ -24,6 +24,7 @@ import '../services/storage_service.dart';
 import '../utils/app_log.dart';
 import '../utils/diagnostics.dart';
 import '../utils/file_utils.dart';
+import '../utils/json_utils.dart';
 import 'download_slot_pool.dart';
 import 'download_task.dart';
 import 'settings_provider.dart';

@@ -17,6 +17,7 @@ import 'package:dio/dio.dart';
 import 'package:zlibx/services/external_logger.dart';
 import 'package:zlibx/services/http_client.dart';
 import 'package:zlibx/services/preference_store.dart';
+import 'package:zlibx/utils/json_utils.dart';
 
 import 'package:zlibx/core/slum.dart';
 export 'package:zlibx/core/slum.dart';
@@ -262,7 +263,9 @@ class SlumCatalogue {
     try {
       final raw = await store.read(_cacheKey);
       if (raw is! String || raw.isEmpty) return;
-      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      // 镜像目录缓存随收录的站增长，超阈值走后台 isolate（审查 P1-2）。
+      final decoded =
+          await decodeJsonMaybeIsolate(raw) as Map<String, dynamic>;
 
       final restored = <MirrorService, List<SlumSite>>{};
       for (final service in MirrorService.values) {

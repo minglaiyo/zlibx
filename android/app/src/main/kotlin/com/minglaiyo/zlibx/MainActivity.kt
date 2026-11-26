@@ -690,6 +690,28 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    /// Truncate [name] to at most [maxBytes] UTF-8 bytes, cutting only
+    /// on a character boundary: a multi-byte character is never split
+    /// and a surrogate pair stays together. Returns the input
+    /// unchanged when it already fits.
+    private fun truncateUtf8Bytes(name: String, maxBytes: Int): String {
+        if (name.toByteArray(Charsets.UTF_8).size <= maxBytes) return name
+        val out = StringBuilder()
+        var used = 0
+        var i = 0
+        while (i < name.length) {
+            val cp = name.codePointAt(i)
+            val charCount = Character.charCount(cp)
+            val cpBytes = String(Character.toChars(cp))
+                .toByteArray(Charsets.UTF_8).size
+            if (used + cpBytes > maxBytes) break
+            out.append(name, i, i + charCount)
+            used += cpBytes
+            i += charCount
+        }
+        return out.toString()
+    }
+
     /// Copy the file behind [uri] into the app cache dir so it can be
     /// handed to share_plus as a plain file path (share_plus cannot
     /// share a content:// URI directly). Returns the temp file's
@@ -715,11 +737,25 @@ class MainActivity : FlutterFragmentActivity() {
             }
             // Keep CJK and other name characters intact; only strip
             // path separators so the name stays a single segment.
-            val safeName = (displayName?.takeIf { it.isNotBlank() }
+            // Android caps a file name at 255 bytes and a CJK title
+            // costs 3 bytes per character, so a long title plus the
+            // "share_<millis>_" prefix (20 bytes) overflows the cap:
+            // outputStream() then throws and the share silently fails
+            // (review P1-4). Truncate the stem to 120 UTF-8 bytes and
+            // keep the extension, both cut on character boundaries.
+            val rawName = (displayName?.takeIf { it.isNotBlank() }
                 ?: uri.lastPathSegment?.takeIf { it.isNotBlank() }
                 ?: "shared_file")
                 .replace('/', '_')
                 .replace('\\', '_')
+            val dot = rawName.lastIndexOf('.')
+            val (stem, ext) = if (dot > 0 && dot < rawName.length - 1) {
+                rawName.substring(0, dot) to rawName.substring(dot)
+            } else {
+                rawName to ""
+            }
+            val safeName = truncateUtf8Bytes(stem, 120) +
+                truncateUtf8Bytes(ext, 16)
             val file = File(
                 cacheDir,
                 "share_${System.currentTimeMillis()}_$safeName",

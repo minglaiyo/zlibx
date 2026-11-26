@@ -509,7 +509,7 @@
   },
   "readerSessionWriteFailed": "Failed to write reader session. Please log in again and retry.",
   "recentAccount": "Recent account",
-  "adaptiveGridColumns": "Adaptive grid columns",
+  "adaptiveGridColumns": "Card columns",
   "adaptiveGridColumnsDesc": "Size the book grids on the home, latest, popular, similar and search pages to the window width. Off keeps the classic layout — 2 columns on phones.",
   "recommendationRandom": "Random recommendations",
   "recommendationRandomDesc": "Show 50 randomly picked books on the home page, refreshed every time; off shows your personalised recommendations.",
@@ -597,6 +597,7 @@
     }
   },
   "shelfImportFailed": "Import failed: invalid file",
+  "shelfImportTooLarge": "Import failed: file too large (max 5 MB)",
   "shelfAllCategories": "All categories",
   "shelfCategoryInvalid": "Enter a unique category name",
   "shelfCategoryName": "Category name",

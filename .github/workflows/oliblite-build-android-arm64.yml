@@ -116,9 +116,50 @@ jobs:
       # the FRB macro emits `unexpected_cfg` warnings we cannot fix, so
       # denying all warnings would pin CI red. Flip to `-D warnings` once
       # the lints inventory is clean or scoped with allow lists.
+      # (review 2026-11-25 P1-3): the old `| tail -40` swallowed clippy's
+      # exit code — a `run:` step without an explicit `shell:` runs as
+      # `bash -e` (no pipefail), so the pipeline's status was tail's and
+      # a failing clippy never went red. The output now goes to the Job
+      # Summary (last 40 lines) and the real exit code is recorded there
+      # too; the step itself still never fails (advisory, see above).
       - name: Rust clippy (advisory)
         working-directory: rust/zlibx_parsers
-        run: cargo clippy --release --locked 2>&1 | tail -40
+        run: |
+          set +e
+          cargo clippy --release --locked -- -W clippy::all > clippy.log 2>&1
+          code=$?
+          {
+            echo "## Rust clippy (advisory)"
+            echo ""
+            echo "exit code: \`$code\` (advisory — does not fail the check)"
+            echo ""
+            echo '```'
+            tail -40 clippy.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      # (review 2026-11-25 P1-3): formatting gate, advisory-only like
+      # clippy above — `cargo fmt --check` exits non-zero on unformatted
+      # files, but the step never fails the check; the diff goes to the
+      # Summary so it stays visible. Flip to a blocking step once the
+      # tree is formatted (run `cargo fmt` once, then drop the `exit 0`).
+      - name: Rust fmt (advisory)
+        working-directory: rust/zlibx_parsers
+        run: |
+          set +e
+          cargo fmt --check > rustfmt.log 2>&1
+          code=$?
+          {
+            echo "## Rust fmt --check (advisory)"
+            echo ""
+            echo "exit code: \`$code\` (advisory — does not fail the check)"
+            echo ""
+            echo '```'
+            tail -40 rustfmt.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
 
       # Strict-lint ratchet (M8 + O12): runs the stricter profile
       # (analysis_options_strict.yaml) and FAILS the check when the
@@ -389,6 +430,10 @@ jobs:
             exit 1
           fi
           "$apkanalyzer_bin" dex packages --defined-only "zlibx-v$v.apk" | grep -E "com\.minglaiyo\.zlibx\.(MainActivity|DownloadForegroundService)"
+          # P2-6: the Rust parsers' .so must also survive packaging —
+          # the Gradle hook that copies it in matches task names, so an
+          # AGP rename would silently drop it from the APK.
+          "$apkanalyzer_bin" files list "zlibx-v$v.apk" | grep -F "lib/arm64-v8a/libzlibx_parsers.so"
 
       - name: Cleanup signing material (defence in depth)
         if: always()

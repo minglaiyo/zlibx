@@ -315,8 +315,21 @@ class _HistoryCoverThumb extends ConsumerWidget {
     final resolved = ref.watch(
       historyCoverProvider.select((covers) => covers[book.id.toString()]),
     );
-    final cover = resolved ?? book.cover;
+    // 无效的列表封面直接当缺失：collections//<hash>.jpg（缺目录）和
+    // /img/cover-not-exists.png（占位图）都不值得发一次图片请求，
+    // 后者真去取还会取回一张占位图、看起来像有封面。
+    final listed = isInvalidHistoryCover(book.cover) ? null : book.cover;
+    final cover = resolved ?? listed;
     if (cover == null || cover.isEmpty) {
+      // 只有可见的行才会走到这里：详情端点只为上屏的行补封面，
+      // 补失败就留占位（resolveCover 内部每本每会话只试一次）。
+      if (resolved == null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) {
+            ref.read(historyCoverProvider.notifier).resolveCover(book);
+          }
+        });
+      }
       return const Icon(Icons.book, size: 50);
     }
     return ClipRRect(

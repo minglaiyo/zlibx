@@ -7,6 +7,7 @@ import 'package:zlibx/utils/diagnostics.dart';
 
 import '../services/auth_storage.dart';
 import '../services/challenge_html_cache.dart';
+import '../services/cookie_import.dart';
 import '../services/hive_service.dart';
 import '../services/random_feed_cache.dart';
 import '../services/wall_cookie_bridge.dart';
@@ -277,6 +278,31 @@ class AuthNotifier extends Notifier<AuthState> {
       state = AuthState(error: e.toString());
       return false;
     }
+  }
+
+  /// Log in with a Cookie the user pasted on the login page (plan
+  /// item 3): an account whose email/password login is refused can
+  /// often still call the API with its browser session.
+  ///
+  /// Throws [CookieImportException] when the pasted text has no usable
+  /// pair. Otherwise validates the pair exactly like a token login
+  /// ([loginWithToken] hits the live profile) and, on success, saves
+  /// it the normal way — encrypted store + saved-accounts list, no
+  /// password anywhere.
+  Future<bool> loginWithCookie(String rawCookie) async {
+    final parsed = parseImportedCookie(rawCookie);
+    final ok = await loginWithToken(parsed.userId, parsed.userKey);
+    if (!ok) return false;
+    final user = state.user;
+    if (user == null) return false;
+    await _storage.saveCredentials(
+      userId: user.id,
+      userKey: user.remixUserkey,
+      email: user.email,
+      name: user.name,
+    );
+    invalidateAccountScopedProviders(ref);
+    return true;
   }
 
   /// Adopt a session the user created on the site INSIDE the reader

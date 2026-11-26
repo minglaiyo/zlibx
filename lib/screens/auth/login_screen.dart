@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/domain_provider.dart';
 import '../../providers/update_provider.dart';
 import '../../routes/app_routes.dart';
+import '../../services/cookie_import.dart';
 import '../../utils/app_snack.dart';
 import '../../widgets/domain_selector.dart';
 import '../../widgets/loading_widget.dart';
@@ -245,6 +246,125 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  /// Cookie 导入（计划第 3 项）：邮箱密码登录被拒的账号，用浏览器
+  /// Cookie 还能正常调接口。粘贴三种格式都认（JSON、cookies.txt、
+  /// 原始 Cookie 头），只取 remix_userid / remix_userkey，不存密码。
+  /// 失败留在弹窗里显示原因，改好粘贴内容可直接重试，不用重开。
+  Future<void> _showCookieImportDialog() async {
+    final l10n = AppLocalizations.of(context)!;
+    final controller = TextEditingController();
+    String? error;
+    bool importing = false;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          Future<void> doImport() async {
+            if (controller.text.trim().isEmpty) {
+              setDialogState(() => error = l10n.cookieImportUnrecognized);
+              return;
+            }
+            // 社区线路同样会看到这份凭证：和密码登录一样的每 host
+            // 一次确认，内置线路直接过。
+            final currentDomain = ref.read(domainProvider);
+            final trusted = await confirmMirrorTrust(
+              dialogContext,
+              currentDomain,
+              builtIn: ref.read(domainListProvider).contains(currentDomain),
+            );
+            if (!trusted || !dialogContext.mounted) return;
+            setDialogState(() {
+              importing = true;
+              error = null;
+            });
+            try {
+              final ok = await ref
+                  .read(authProvider.notifier)
+                  .loginWithCookie(controller.text);
+              if (!dialogContext.mounted) return;
+              if (ok) {
+                Navigator.pop(dialogContext);
+                if (!mounted) return;
+                _navigateAfterAuthentication();
+                return;
+              }
+              setDialogState(() {
+                importing = false;
+                error = l10n.cookieImportExpired;
+              });
+            } on CookieImportException catch (e) {
+              if (!dialogContext.mounted) return;
+              setDialogState(() {
+                importing = false;
+                error = switch (e.kind) {
+                  CookieImportError.missingUserId =>
+                    l10n.cookieImportMissingUserId,
+                  CookieImportError.missingUserKey =>
+                    l10n.cookieImportMissingUserKey,
+                  CookieImportError.unrecognized =>
+                    l10n.cookieImportUnrecognized,
+                };
+              });
+            }
+          }
+
+          final cs = Theme.of(dialogContext).colorScheme;
+          return AlertDialog(
+            title: Text(l10n.cookieImport),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l10n.cookieImportHint,
+                    style: Theme.of(dialogContext).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: controller,
+                    minLines: 5,
+                    maxLines: 10,
+                    decoration: InputDecoration(
+                      hintText: l10n.cookieImportPasteHint,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      error!,
+                      style: TextStyle(color: cs.error),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: importing
+                    ? null
+                    : () => Navigator.pop(dialogContext),
+                child: Text(l10n.cancel),
+              ),
+              FilledButton(
+                onPressed: importing ? null : doImport,
+                child: importing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(l10n.cookieImport),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    controller.dispose();
+  }
+
   void _navigateAfterAuthentication() {
     if (widget.addAccountMode) {
       Navigator.of(context).pop(true);
@@ -456,6 +576,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ),
                             ),
                           ],
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            onPressed:
+                                _isLoading ? null : _showCookieImportDialog,
+                            icon: const Icon(Icons.paste_outlined),
+                            label: Text(
+                              AppLocalizations.of(context)!.cookieImport,
+                            ),
+                          ),
                         ],
                       ),
                     ),

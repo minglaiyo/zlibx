@@ -36,6 +36,78 @@ class DownloadRange {
         head.startsWith('<body');
   }
 
+  /// Lower-case extension of [path] without the dot, or `''` when the
+  /// file name has none. A trailing `.part` is stripped first, so a
+  /// staged download (`Book - 123.epub.part`) reports `epub`, not
+  /// `part`: the old vendor-local copy of this rule did not strip it,
+  /// so the finish-line signature check silently never ran in
+  /// production (the tests saved without `.part` and never caught it).
+  static String extensionOf(String path) {
+    final slash = path.replaceAll(r'\', '/').lastIndexOf('/');
+    var name = slash < 0 ? path : path.substring(slash + 1);
+    if (name.toLowerCase().endsWith('.part')) {
+      name = name.substring(0, name.length - 5);
+    }
+    final dot = name.lastIndexOf('.');
+    return dot < 1 ? '' : name.substring(dot + 1).toLowerCase();
+  }
+
+  /// True when [head] (the first bytes of a file) carries the magic of
+  /// [extension] — plan item 8: epub/docx/zip/cbz start with `PK`,
+  /// pdf with `%PDF`, fb2 with `<` (after one leading UTF-8 BOM),
+  /// mobi/azw/azw3 carry `BOOKMOBI` at offset 60, djvu/djv start with
+  /// `AT&TFORM`. An extension with no definite magic (txt, rtf, chm,
+  /// lit, htmlz, an extensionless save path) always passes: there is
+  /// nothing to check it against, and a false rejection costs a fully
+  /// transferred book.
+  ///
+  /// A head too short to prove a mismatch passes — a first chunk can be
+  /// a few bytes long, and a short resume prefix (a real MOBI's first
+  /// 30 bytes carry no `BOOKMOBI` yet) must not be rejected for what it
+  /// cannot show. Only content that is provably not the book is
+  /// rejected; the length check is the guard for a file that is simply
+  /// too short.
+  static bool magicMatchesExtension(List<int> head, String extension) {
+    bool startsWithAt(String text, int at) {
+      if (head.length < at + text.length) return true;
+      for (var i = 0; i < text.length; i++) {
+        if (head[at + i] != text.codeUnitAt(i)) return false;
+      }
+      return true;
+    }
+    // One leading UTF-8 BOM is not content: an FB2 file may carry one
+    // before its `<`. (Binary formats never carry one, so only the FB2
+    // check looks past it.)
+    final textStart =
+        head.length >= 3 &&
+            head[0] == 0xEF &&
+            head[1] == 0xBB &&
+            head[2] == 0xBF
+        ? 3
+        : 0;
+
+    switch (extension) {
+      case 'epub':
+      case 'docx':
+      case 'zip':
+      case 'cbz':
+        return startsWithAt('PK', 0);
+      case 'pdf':
+        return startsWithAt('%PDF', 0);
+      case 'fb2':
+        return startsWithAt('<', textStart);
+      case 'mobi':
+      case 'azw':
+      case 'azw3':
+        return startsWithAt('BOOKMOBI', 60);
+      case 'djvu':
+      case 'djv':
+        return startsWithAt('AT&TFORM', 0);
+      default:
+        return true;
+    }
+  }
+
   /// Parses the start offset from a
   /// `Content-Range: bytes start-end/total` header, or null when the
   /// header is absent or unparseable. Used by the 206 branch to verify

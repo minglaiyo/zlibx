@@ -79,7 +79,19 @@ mixin ZLibraryAuth on ZLibraryApiBase {
   }
 
   void _learnSession(Map<String, dynamic> json, List<String> setCookie) {
-    // From Set-Cookie headers first (the server's own session values).
+    // Plan item 9: three sources for the session pair, lowest priority
+    // first — each overwrites only when non-empty, so the net priority
+    // is user object (JSON) > Set-Cookie > root fields. A source that
+    // is missing simply does not contribute; the existing error flow
+    // for a missing pair is unchanged (nothing is invented here).
+    // 1. Root fields: some login answers carry the pair at the top
+    // level of the JSON.
+    final rootId = json['remix_userid']?.toString();
+    final rootKey =
+        (json['remix_userkey'] ?? json['remix_user_key'])?.toString();
+    if (rootId != null && rootId.isNotEmpty) _userId = rootId;
+    if (rootKey != null && rootKey.isNotEmpty) _userKey = rootKey;
+    // 2. From Set-Cookie headers (the server's own session values).
     for (final cookie in setCookie) {
       for (final part in cookie.split(';')) {
         final trimmed = part.trim();
@@ -93,14 +105,18 @@ mixin ZLibraryAuth on ZLibraryApiBase {
         final value = trimmed.substring(eq + 1);
         if (value.isEmpty) continue;
         if (name == 'remix_userid') _userId = value;
-        if (name == 'remix_userkey') _userKey = value;
+        if (name == 'remix_userkey' || name == 'remix_user_key') {
+          _userKey = value;
+        }
       }
     }
-    // Then from the user object, which carries the same pair.
+    // 3. Then from the user object, which carries the same pair.
     final userJson = ZLibraryApiBase._userJson(json);
     if (userJson != null) {
       final id = userJson['id']?.toString();
-      final key = (userJson['remixUserkey'] ?? userJson['remix_userkey'])
+      final key = (userJson['remixUserkey'] ??
+              userJson['remix_userkey'] ??
+              userJson['remix_user_key'])
           ?.toString();
       if (id != null && id.isNotEmpty) _userId = id;
       if (key != null && key.isNotEmpty) _userKey = key;

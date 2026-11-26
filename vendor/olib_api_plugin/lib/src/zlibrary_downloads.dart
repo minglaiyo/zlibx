@@ -11,6 +11,16 @@
 // the six test fakes implement).
 part of 'zlibrary_api.dart';
 
+/// What is wrong with a finished file's head, if anything (see
+/// [_bookFileHeadProblem]).
+enum _FileHeadProblem {
+  /// An HTML challenge/error page under a book's name.
+  html,
+
+  /// Bytes that do not carry the signature of the claimed extension.
+  wrongSignature,
+}
+
 /// Download methods for [ZLibraryApi].
 mixin ZLibraryDownloads on ZLibraryApiBase {
   // ── Download ───────────────────────────────────────────────────────
@@ -35,7 +45,7 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
   /// carries `BOOKMOBI` at offset 60. A file too short to check, or one
   /// in a format with another magic (fb2, djvu, txt, rtf), also answers
   /// true — this is the accept fast path of the finish-line check, not an
-  /// allow-list: see [_badBookFileHead] for why rejecting a book this
+  /// allow-list: see [_bookFileHeadProblem] for why rejecting a book this
   /// function does not recognise would cost a fully transferred file.
   static bool looksLikeBook(List<int> bytes) {
     if (bytes.length >= 2 && bytes[0] == 0x50 && bytes[1] == 0x4B) {
@@ -191,6 +201,35 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
         throw StateError('cannot restart the pending MediaStore entry');
       }
     }
+    // Plan item 8: a resume appends to bytes already on disk — verify
+    // the prefix is the book before asking the server for the rest. A
+    // partial whose head is not the format it claims (a PDF saved as an
+    // EPUB, an error page left by an older build) is garbage: delete it
+    // and prompt a retry from zero, never append to it. Only the file
+    // sink can be read back — a pending MediaStore entry has no read
+    // path here, and its prefix was validated by the first-chunk check
+    // when first written.
+    if (pendingWriter == null && start > 0) {
+      final prefix = await _readHead(file, 68);
+      if (prefix != null &&
+          !DownloadRange.magicMatchesExtension(
+            prefix,
+            DownloadRange.extensionOf(savePath),
+          )) {
+        if (await meta.exists()) await meta.delete();
+        try {
+          await file.delete();
+        } on FileSystemException {
+          // The engine deletes the partial again on this error; a file
+          // that cannot be deleted here is still reported, not hidden.
+        }
+        throw DownloadMagicException(
+          'resumed download prefix is not the book it claims to be '
+          '(wrong file header for its extension) — the partial file was '
+          'discarded, please retry',
+        );
+      }
+    }
     // Phase 5: the resume header build is shared with the twin engine
     // (Range / If-Range / Accept-Encoding identity, O13) so the three
     // rules land once.
@@ -233,8 +272,23 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
         // Same finished-file header check as a normal completion (the
         // earlier attempt may have been killed before it ran). The
         // pending-writer path has no file to check here.
-        if (pendingWriter == null && await _badBookFileHead(file)) {
+        final problem = pendingWriter == null
+            ? await _bookFileHeadProblem(file)
+            : null;
+        if (problem != null) {
           if (await meta.exists()) await meta.delete();
+          if (problem == _FileHeadProblem.wrongSignature) {
+            try {
+              await file.delete();
+            } on FileSystemException {
+              // The engine deletes the partial again on this error.
+            }
+            throw DownloadMagicException(
+              'download finished but the file is not the book it claims '
+              'to be (wrong signature for its extension) — the mirror '
+              'did not serve the file',
+            );
+          }
           throw DownloadHtmlException(
             'download finished but the file is not the book it claims to '
             'be — the mirror served a challenge or error page',
@@ -331,6 +385,22 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
               'download body is an HTML page, not a book file',
             );
           }
+          // Plan item 8: a fresh body that is not the format it claims
+          // (a PDF served for an EPUB, a text error page) must not
+          // touch the disk either. Fresh bodies only — a resumed chunk
+          // is a continuation at an offset, not the file head, so it
+          // carries no magic to check. This is the last line of
+          // defence, not a replacement for the HTML sniff above.
+          if (!resumed &&
+              !DownloadRange.magicMatchesExtension(
+                chunk,
+                DownloadRange.extensionOf(savePath),
+              )) {
+            throw DownloadMagicException(
+              'download body is not the book it claims to be '
+              '(wrong file header for its extension)',
+            );
+          }
           if (!resumed) {
             // New file: remember its validator for future resumes.
             if (newValidator != null) {
@@ -381,19 +451,36 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
     // download that never finishes, however fast the line is. The
     // negative form catches what this guard is for, plus the signature of
     // the format the file claims to be - and nothing else. A stitched
-    // resume is already caught by the Content-Range check above. The
-    // partial file
-    // is kept so a retry can resume; the validator is dropped so the
-    // retry restarts from zero instead of appending to the bad prefix.
-    // The pending writer path has no file to check here — its bytes are
-    // checked when the entry is published.
-    if (pendingWriter == null && await _badBookFileHead(file)) {
-      if (await meta.exists()) await meta.delete();
-      throw DownloadHtmlException(
-        'download finished but the file is not the book it claims to be '
-        '(HTML challenge/error page, or the wrong signature for its '
-        'extension) — the mirror did not serve the file',
-      );
+    // resume is already caught by the Content-Range check above. An HTML
+    // page keeps the old behaviour (the partial file is kept so a retry
+    // can resume; the validator is dropped so the retry restarts from
+    // zero instead of appending to the bad prefix); a wrong-signature
+    // file is a plan-8 magic mismatch — the partial is garbage, delete
+    // it and prompt a retry from zero. The pending writer path has no
+    // file to check here: its prefix was validated by the first-chunk
+    // check when first written, and a resumed pending entry's prefix was
+    // validated then too.
+    if (pendingWriter == null) {
+      final problem = await _bookFileHeadProblem(file);
+      if (problem != null) {
+        if (await meta.exists()) await meta.delete();
+        if (problem == _FileHeadProblem.wrongSignature) {
+          try {
+            await file.delete();
+          } on FileSystemException {
+            // The engine deletes the partial again on this error.
+          }
+          throw DownloadMagicException(
+            'download finished but the file is not the book it claims to '
+            'be (wrong signature for its extension) — the mirror did not '
+            'serve the file',
+          );
+        }
+        throw DownloadHtmlException(
+          'download finished but the file is not the book it claims to be '
+          '(HTML challenge/error page) — the mirror did not serve the file',
+        );
+      }
     }
     if (await meta.exists()) {
       // The download finished: the validator is no longer needed. The
@@ -406,9 +493,25 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
   }
 
 
-  /// True when the finished file at [file] must not be recorded as a
-  /// book: an HTML challenge/error page under any name, or bytes that do
-  /// not carry the signature of the extension the book was saved as.
+  /// First [count] bytes of [file], or null when it cannot be read.
+  /// An unreadable file passes every check that uses it: the length
+  /// check in [_downloadOnce] is the guard for that.
+  static Future<List<int>?> _readHead(File file, int count) async {
+    try {
+      final raf = await file.open();
+      try {
+        return await raf.read(count);
+      } finally {
+        await raf.close();
+      }
+    } on FileSystemException {
+      return null;
+    }
+  }
+
+  /// What is wrong with the finished file at [file]'s head, if anything:
+  /// an HTML challenge/error page under any name, or bytes that do not
+  /// carry the signature of the extension the book was saved as.
   ///
   /// The rule is deliberately negative. The old one was "the head must be
   /// one of three magics", which rejected fb2 (`<?xml`), djvu
@@ -417,77 +520,22 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
   /// zero, so the download never finished. A false rejection is therefore
   /// the expensive error here: an extension with no definite signature is
   /// never checked, and an unreadable file passes (the length check in
-  /// [_downloadOnce] is the guard for that).
-  static Future<bool> _badBookFileHead(File file) async {
-    List<int> head;
-    try {
-      final raf = await file.open();
-      try {
-        head = await raf.read(512);
-      } finally {
-        await raf.close();
-      }
-    } on FileSystemException {
-      return false;
+  /// [_downloadOnce] is the guard for that). The signature rule itself
+  /// lives in [DownloadRange.magicMatchesExtension], shared with the
+  /// first-chunk and resume-prefix checks, so the three checks cannot
+  /// drift.
+  static Future<_FileHeadProblem?> _bookFileHeadProblem(File file) async {
+    final head = await _readHead(file, 512);
+    if (head == null) return null;
+    if (looksLikeBook(head)) return null; // the fast path for known books
+    if (DownloadRange.looksLikeHtml(head)) return _FileHeadProblem.html;
+    if (!DownloadRange.magicMatchesExtension(
+      head,
+      DownloadRange.extensionOf(file.path),
+    )) {
+      return _FileHeadProblem.wrongSignature;
     }
-    if (looksLikeBook(head)) return false; // the fast path for known books
-    if (DownloadRange.looksLikeHtml(head)) return true;
-    return _signatureMismatch(file.path, head);
-  }
-
-  /// True when the file named [path] claims a format whose signature is
-  /// definite and [head] does not carry it. Formats with no fixed magic
-  /// (txt, rtf, chm, lit, htmlz, an extensionless save path) answer false:
-  /// there is nothing to check them against.
-  static bool _signatureMismatch(String path, List<int> head) {
-    switch (_extensionOf(path)) {
-      case 'epub':
-      case 'zip':
-      case 'cbz':
-        return !_startsWithAscii(head, 'PK');
-      case 'pdf':
-        return !_startsWithAscii(head, '%PDF');
-      case 'mobi':
-      case 'azw':
-      case 'azw3':
-        // looksLikeBook already tested the PK/%PDF magics, so reach for
-        // the container marker at offset 60.
-        return !_startsWithAsciiAt(head, 60, 'BOOKMOBI');
-      case 'fb2':
-        return !_startsWithAny(head, const ['<?xml', '<FictionBook']);
-      case 'djvu':
-      case 'djv':
-        return !_startsWithAscii(head, 'AT&TFORM');
-      default:
-        return false;
-    }
-  }
-
-  /// Lower-case extension of [path] without the dot, or '' when the file
-  /// name has none.
-  static String _extensionOf(String path) {
-    final slash = path.replaceAll(r'\', '/').lastIndexOf('/');
-    final name = slash < 0 ? path : path.substring(slash + 1);
-    final dot = name.lastIndexOf('.');
-    return dot < 1 ? '' : name.substring(dot + 1).toLowerCase();
-  }
-
-  static bool _startsWithAscii(List<int> head, String text) =>
-      _startsWithAsciiAt(head, 0, text);
-
-  static bool _startsWithAsciiAt(List<int> head, int at, String text) {
-    if (head.length < at + text.length) return false;
-    for (var i = 0; i < text.length; i++) {
-      if (head[at + i] != text.codeUnitAt(i)) return false;
-    }
-    return true;
-  }
-
-  static bool _startsWithAny(List<int> head, List<String> prefixes) {
-    for (final p in prefixes) {
-      if (_startsWithAscii(head, p)) return true;
-    }
-    return false;
+    return null;
   }
 
   Future<String> _resolveDownloadLink(

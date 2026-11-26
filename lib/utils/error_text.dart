@@ -1,3 +1,5 @@
+import 'package:olib_api_plugin/olib_api_plugin.dart';
+
 import '../l10n/generated/app_localizations.dart';
 
 /// 错误文案本地化目录（审查遗留项：此前 5 处界面直接显示
@@ -13,7 +15,18 @@ import '../l10n/generated/app_localizations.dart';
 ///
 /// 这里按模式匹配常见形态翻成本地化文案；匹配不上的（ novel 平台
 /// 错误）去掉前缀、截断后原样展示——保留可诊断性，但不泄漏长 HTML。
-String friendlyErrorText(Object? error, AppLocalizations l10n) {
+///
+/// 计划一第 10 项：Z-Library 的错误先过分类表
+/// ([classifyZlibError])。`isSearchError` 为真时（搜索页的错误），
+/// 一个被拒的请求（"Access denied"）显示"Z-library 拒绝搜索"；别的
+/// 界面不传它——一个打开文件的平台错误也可能说 "access denied"，
+/// 那不是搜索被拒。切域（513/517/DiamWall）与额度（daily limit）
+/// 在哪都是一回事，不用区分。
+String friendlyErrorText(
+  Object? error,
+  AppLocalizations l10n, {
+  bool isSearchError = false,
+}) {
   var text = error?.toString() ?? '';
   for (final prefix in const [
     'Bad state: ',
@@ -22,6 +35,7 @@ String friendlyErrorText(Object? error, AppLocalizations l10n) {
     'StateError: ',
     'DownloadContentException: ',
     'DownloadTruncatedException: ',
+    'DownloadMagicException: ',
   ]) {
     if (text.startsWith(prefix)) {
       text = text.substring(prefix.length);
@@ -30,6 +44,24 @@ String friendlyErrorText(Object? error, AppLocalizations l10n) {
   if (text.trim().isEmpty) return l10n.errorGeneric;
 
   final lower = text.toLowerCase();
+
+  // 计划一第 10 项：分类表先定性。搜索被拒不当作会话过期、不重试；
+  // 513/517/DiamWall 是线路不可用；daily limit 是额度。
+  switch (classifyZlibError(message: text)) {
+    case ZlibErrorKind.searchRefused:
+      if (isSearchError) return l10n.searchRefused;
+      break;
+    case ZlibErrorKind.switchDomain:
+      return l10n.errorSwitchLine;
+    case ZlibErrorKind.quotaExhausted:
+      return l10n.downloadQuotaExceeded;
+    case ZlibErrorKind.sessionExpired:
+    case ZlibErrorKind.credentialError:
+    case ZlibErrorKind.serverRetryable:
+    case ZlibErrorKind.clientError:
+    case ZlibErrorKind.unknown:
+      break;
+  }
 
   // 浏览器验证墙（cf_blocked / challenge page）。
   if (lower.contains('cf_blocked') || lower.contains('browser check')) {

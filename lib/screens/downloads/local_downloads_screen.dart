@@ -460,6 +460,8 @@ class _DownloadItem extends ConsumerWidget {
                     ? l.downloadFileMissing
                     : task.quotaExceeded
                     ? l.downloadQuotaExceeded
+                    : task.magicMismatch
+                    ? l.downloadMagicMismatch
                     : task.needsFreshLink
                     ? l.downloadFreshLinkRequired
                     : task.error ?? l.downloadFailed,

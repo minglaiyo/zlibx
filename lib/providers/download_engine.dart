@@ -9,13 +9,25 @@ part of 'download_provider.dart';
 bool isVerifiableMd5(String? hash) =>
     hash != null && RegExp(r'^[0-9a-fA-F]{32}$').hasMatch(hash);
 
+/// Plan item 10: the retry schedule — exponential backoff, at most 3
+/// retries (2s, 4s, 8s). A top-level const, not a local, so tests can pin
+/// it: the schedule is part of the error table's contract.
+const downloadRetryDelays = [
+  Duration(seconds: 2),
+  Duration(seconds: 4),
+  Duration(seconds: 8),
+];
+
 /// M4: whether a download failure is worth retrying with backoff.
 /// Only transient transport failures: a dropped connection, a 5xx
 /// answer, or a stream that ended early. A content error (the server
-/// answered HTML instead of a book), quota exhaustion, or a user
-/// cancel never retries. The vendor plugin reports a truncation as a
-/// StateError with a fixed message prefix (see _downloadOnce), so
-/// that is recognised too.
+/// answered HTML instead of a book), a magic mismatch (the bytes are
+/// not the book), quota exhaustion, or a user cancel never retries.
+/// The vendor plugin reports a truncation as a StateError with a fixed
+/// message prefix (see _downloadOnce), so that is recognised too.
+///
+/// Plan item 10: the 5xx branch asks the error table — a 5xx carrying
+/// a refusal text ("Access denied") is not transient.
 bool isRetryableDownloadError(Object e) {
   if (e is DownloadTruncatedException) return true;
   if (e is StateError &&
@@ -25,7 +37,10 @@ bool isRetryableDownloadError(Object e) {
   if (e is DioException) {
     if (e.type == DioExceptionType.connectionError) return true;
     final status = e.response?.statusCode;
-    if (status != null && status >= 500 && status < 600) return true;
+    if (status != null && status >= 500 && status < 600) {
+      return classifyZlibError(status: status, message: zlibErrorText(e)) ==
+          ZlibErrorKind.serverRetryable;
+    }
   }
   return false;
 }
@@ -334,7 +349,8 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         // partial (.part / pending entry) survives each attempt, so a
         // retry resumes instead of restarting. Only connection errors,
         // 5xx and truncations retry — a content error (HTML instead of
-        // a book), quota exhaustion, or a user cancel never does.
+        // a book), a magic mismatch (the bytes are not the book),
+        // quota exhaustion, or a user cancel never does.
         Future<void> downloadAttempt() async {
           if (presetUrl != null) {
             // presetUrl 路径（外部源解析链接）：直接 stream 到本地，
@@ -384,7 +400,6 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
           }
         }
 
-        const retryDelays = [Duration(seconds: 2), Duration(seconds: 6)];
         for (var attempt = 0; ; attempt++) {
           try {
             await downloadAttempt();
@@ -392,11 +407,11 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
           } on Object catch (e) {
             if (cancelToken.isCancelled ||
                 !isRetryableDownloadError(e) ||
-                attempt >= retryDelays.length) {
+                attempt >= downloadRetryDelays.length) {
               rethrow;
             }
             logIgnored('download_retry', e);
-            await Future.delayed(retryDelays[attempt]);
+            await Future.delayed(downloadRetryDelays[attempt]);
             if (cancelToken.isCancelled) return;
           }
         }
@@ -540,6 +555,30 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         ),
       );
       _clearProgressThrottle(id);
+    } on DownloadMagicException catch (e) {
+      // Plan item 8: the bytes are not the book — the destination is
+      // garbage, never resume it. Delete the partial and its sidecars
+      // (the engines already deleted the file itself; this also drops
+      // the .meta and the source sidecar), and flag the task so the
+      // downloads screen can say so. The retry is manual, from zero.
+      if (!cancelToken.isCancelled) {
+        if (pendingWriter != null) {
+          await pendingWriter.discard();
+          pendingWriter = null;
+        }
+        if (temporaryPath != null) {
+          await _deletePartial(temporaryPath);
+        }
+        _updateTask(
+          id,
+          (t) => t.copyWith(
+            status: DownloadStatus.error,
+            error: e.toString(),
+            magicMismatch: true,
+          ),
+        );
+        _clearProgressThrottle(id);
+      }
     } on DownloadLimitReachedException catch (e) {
       if (!cancelToken.isCancelled) {
         _updateTask(
@@ -572,6 +611,12 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
           (t) => t.copyWith(
             status: DownloadStatus.error,
             error: e.toString(),
+            // Plan item 10: a download failure that says the quota is
+            // gone ("daily limit") is a quota failure even when the
+            // server never raised DownloadLimitReachedException.
+            quotaExceeded:
+                classifyZlibError(message: zlibErrorText(e)) ==
+                ZlibErrorKind.quotaExhausted,
             // hash 缺失的书（启动恢复的反解任务）连不上 eapi 时，
             // 引导回详情页重新下载——恢复场景的失败不该只有一句
             // "下载失败"。
@@ -638,6 +683,14 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       );
     } on DownloadContentException {
       // Not a book: the partial (if any) is useless, never resume it.
+      if (pendingWriter != null) {
+        await pendingWriter.discard();
+      } else {
+        await _deletePartial(savePath);
+      }
+      rethrow;
+    } on DownloadMagicException {
+      // Plan item 8: not the book — same treatment as an HTML answer.
       if (pendingWriter != null) {
         await pendingWriter.discard();
       } else {

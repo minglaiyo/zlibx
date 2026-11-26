@@ -8,6 +8,12 @@
 //  * an HTML answer to a file request is rejected before anything is
 //    written (by Content-Type, and by sniffing the first bytes when the
 //    server mislabels it);
+//  * a body whose first bytes do not carry the magic of the format the
+//    file claims (plan item 8: PK for epub, %PDF for pdf, `<` for fb2)
+//    is rejected before anything is written, and a resumed partial
+//    whose prefix fails the same check is discarded instead of appended
+//    to — this is the last line of defence, not a replacement for the
+//    HTML sniff;
 //  * a stream that ends before Content-Length is reported as truncated
 //    (the partial file is kept so the next attempt resumes from it).
 //
@@ -60,6 +66,22 @@ class ResumableDownloader {
   static bool looksLikeHtml(List<int> bytes) =>
       DownloadRange.looksLikeHtml(bytes);
 
+  /// First [count] bytes of [file], or null when it cannot be read.
+  /// An unreadable file passes every check that uses it: the length
+  /// check below is the guard for that.
+  static Future<List<int>?> _readHead(File file, int count) async {
+    try {
+      final raf = await file.open();
+      try {
+        return await raf.read(count);
+      } finally {
+        await raf.close();
+      }
+    } on FileSystemException {
+      return null;
+    }
+  }
+
   /// Total size from a `Content-Range: bytes */N` header — the form a
   /// 416 answer carries — or null when the header is absent or does
   /// not parse. Shared with the twin engine (`_downloadOnce` in the
@@ -71,7 +93,8 @@ class ResumableDownloader {
   /// Downloads [url] into [savePath], resuming from bytes already on disk
   /// when the server honours Range. See the library comment for the
   /// integrity rules. Throws [DownloadContentException],
-  /// [DownloadTruncatedException] or a [DioException].
+  /// [DownloadMagicException], [DownloadTruncatedException] or a
+  /// [DioException].
   ///
   /// When [pendingWriter] is given, bytes stream into its pending
   /// MediaStore entry instead of [savePath]; [savePath] is then only the
@@ -133,6 +156,34 @@ class ResumableDownloader {
       if (!await pendingWriter.reset()) {
         throw const DownloadContentException(
           'cannot recreate the pending MediaStore entry',
+        );
+      }
+    }
+
+    // Plan item 8: a resume appends to bytes already on disk — verify
+    // the prefix is the book before asking the server for the rest. A
+    // partial whose head is not the format it claims is garbage: delete
+    // it (and its validator sidecar) and prompt a retry from zero,
+    // never append to it. Only the file sink can be read back — a
+    // pending MediaStore entry has no read path here, and its prefix
+    // was validated by the first-chunk check when first written.
+    if (pendingWriter == null && start > 0) {
+      final prefix = await _readHead(file, 68);
+      if (prefix != null &&
+          !DownloadRange.magicMatchesExtension(
+            prefix,
+            DownloadRange.extensionOf(savePath),
+          )) {
+        if (await meta.exists()) await meta.delete();
+        try {
+          await file.delete();
+        } on FileSystemException {
+          // The engine deletes the partial again on this error.
+        }
+        throw DownloadMagicException(
+          'resumed download prefix is not the book it claims to be '
+          '(wrong file header for its extension) — the partial file was '
+          'discarded, please retry',
         );
       }
     }
@@ -303,6 +354,24 @@ class ResumableDownloader {
             }
             if (await meta.exists()) await meta.delete();
             return true;
+          }
+          // Plan item 8: a fresh body that is not the format it claims
+          // (a PDF served for an EPUB, a text error page) must not
+          // touch the disk. Fresh bodies only — a resumed chunk is a
+          // continuation at an offset, not the file head, so it carries
+          // no magic to check. The pending-writer path is checked the
+          // same way: the chunk is the body's head either way. This is
+          // the last line of defence, not a replacement for the HTML
+          // sniff above.
+          if (!resumed &&
+              !DownloadRange.magicMatchesExtension(
+                chunk,
+                DownloadRange.extensionOf(savePath),
+              )) {
+            throw const DownloadMagicException(
+              'download body is not the book it claims to be '
+              '(wrong file header for its extension)',
+            );
           }
           if (!resumed) {
             // New file: remember its validator for future resumes.

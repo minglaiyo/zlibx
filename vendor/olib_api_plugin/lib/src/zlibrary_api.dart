@@ -16,6 +16,7 @@ import 'download_range.dart';
 import 'download_stats.dart';
 import 'fulltext.dart';
 import 'user.dart';
+import 'zlib_error.dart';
 
 part 'zlibrary_auth.dart';
 part 'zlibrary_search.dart';
@@ -61,6 +62,19 @@ abstract class PendingDownloadWriter {
 class DownloadHtmlException implements Exception {
   final String message;
   const DownloadHtmlException(this.message);
+  @override
+  String toString() => message;
+}
+
+/// The downloaded bytes do not carry the magic of the format the file
+/// claims to be (plan item 8): a PDF served for an EPUB, a resumed
+/// partial whose prefix is not the book, or a finished file whose head
+/// is not its format's signature. Never resumable and never
+/// auto-retried: the destination is discarded and the user retries
+/// from zero.
+class DownloadMagicException implements Exception {
+  final String message;
+  const DownloadMagicException(this.message);
   @override
   String toString() => message;
 }
@@ -802,43 +816,12 @@ abstract class ZLibraryApiBase {
         lower.contains('attention required');
   }
 
-  /// Words that mean "this session pair is not acceptable".
-  ///
-  /// Deliberately a narrow POSITIVE list, and the only place besides
-  /// `getProfile` where a server string may decide something about the
-  /// credentials: callers use it to choose a destructive action (drop the
-  /// stored pair, re-verify the session), so an unrecognised message costs a
-  /// retry while a false hit costs the user their password.
-  static const _sessionRejectionWords = <String>[
-    'invalid user',
-    'invalid key',
-    'invalid token',
-    'userkey',
-    'user key',
-    'unauthorized',
-    'unauthenticated',
-    'not authorized',
-    'not logged in',
-    'login required',
-    'wrong password',
-    'bad login',
-    'expired',
-    'permission denied',
-  ];
-
-  /// Rejections of the REQUEST, not of the session. They win over the list
-  /// above: a busy mirror answering "too many requests, try again" must not
-  /// read as a bad password.
-  static const _notASessionRejection = <String>[
-    'too many',
-    'frequent',
-    'rate limit',
-    'captcha',
-    'try again',
-    'temporarily',
-    'maintenance',
-    'slow down',
-  ];
+  /// True when a server-supplied error message rejects the stored session.
+  /// Delegates to the plan-10 error table ([classifyZlibError]): only the
+  /// `sessionExpired` kind counts, so a refused request ("Access denied")
+  /// or a wrong-password answer never reads as a bad session.
+  static bool rejectsSessionMessage(String? message) =>
+      classifyZlibError(message: message) == ZlibErrorKind.sessionExpired;
 
   /// The server's own words in a JSON error body: eapi uses `error`,
   /// papi-style payloads use `message`. Null when the object carries
@@ -846,14 +829,6 @@ abstract class ZLibraryApiBase {
   static String? _jsonErrorMessage(Map<String, dynamic> json) {
     final msg = (json['error'] ?? json['message'])?.toString().trim();
     return (msg == null || msg.isEmpty) ? null : msg;
-  }
-
-  /// True when a server-supplied error message rejects the stored session.
-  static bool rejectsSessionMessage(String? message) {
-    if (message == null) return false;
-    final m = message.toLowerCase();
-    if (_notASessionRejection.any(m.contains)) return false;
-    return _sessionRejectionWords.any(m.contains);
   }
 
   /// eapi success is `success: 1` (sometimes `true`); some list endpoints

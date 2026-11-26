@@ -54,10 +54,10 @@ const int kWebServicePort = 8080;
 
 /// Which page shell a list page (/ and /search) is served with.
 enum WebLayout {
-  /// Legado-style: left sidebar + right content area.
+  /// Full-width main area, poem on top.
   pc,
 
-  /// Single column: top bar + stacked card rows.
+  /// Single column: stacked card rows, same header arrangement.
   mobile,
 }
 
@@ -1094,31 +1094,27 @@ class WebService extends ChangeNotifier {
 
   // ── Plain-HTML pages (NO JavaScript — e-readers must work) ───────
   //
-  // Two shells, picked per request (see [detectWebLayout]): PC keeps
-  // Legado's web bookshelf — a light-grey sidebar on the left (title,
-  // poem, search box, settings section, GitHub link at the bottom)
-  // and the white main area on the right, where each section is a
-  // grid of borderless book cards (cover left, title / author ·
-  // format / actions right). Mobile is a single column: a top bar
-  // (title + search box) over stacked horizontal card rows. The grid
-  // degrades to a plain vertical stack on readers that do not
-  // understand CSS grid.
+  // One shell for both layouts (see [detectWebLayout]): no sidebar.
+  // The poem sits at the top-left of the main area, and each page
+  // puts its own search box on its first heading row ([_headingRow])
+  // — the "downloads" heading on the home page, the results heading
+  // on the search page. The main area is a grid of borderless book
+  // cards (cover left, title / author · format / actions right);
+  // on mobile the grid degrades to a plain vertical stack of
+  // horizontal card rows. The grid also degrades to a vertical stack
+  // on readers that do not understand CSS grid.
 
   static const String _css =
       'body{font-family:sans-serif;margin:0;line-height:1.5;color:#222}'
-      '.layout{display:flex;min-height:100vh}'
-      '.sidebar{flex:0 0 220px;background:#f5f5f5;padding:1.4em 1em;'
-      'display:flex;flex-direction:column}'
-      '.side-title{font-size:1.6em;font-weight:700}'
-      '.side-sub{color:#666;font-size:0.95em;margin:0.4em 0 1.2em}'
+      '.poem{color:#666;font-size:0.95em;margin:0.2em 0 1em}'
+      '.head-row{display:flex;align-items:center;justify-content:space-between;'
+      'gap:0.8em;flex-wrap:wrap;margin:0.4em 0 0.8em}'
+      '.head-row h1,.head-row h2{margin:0;border-bottom:none;'
+      'padding-bottom:0;flex:1 1 auto;min-width:0}'
+      '.head-row .search{flex:0 1 280px;min-width:180px}'
       '.search input{width:100%;box-sizing:border-box;border:1px solid #dcdfe6;'
       'border-radius:16px;padding:0.45em 0.9em;font-size:0.95em;background:#fff}'
-      '.side-sec{margin-top:1.6em}'
-      '.side-sec h3{font-size:1em;margin:0 0 0.6em;color:#333}'
-      '.tag{display:inline-block;border-radius:4px;padding:0.2em 0.7em;font-size:0.9em}'
-      '.tag-info{background:#ecf5ff;color:#409eff;border:1px solid #d9ecff}'
-      '.github{margin-top:auto;padding-top:2em;color:#666;text-decoration:none;font-size:0.9em}'
-      '.main{flex:1;min-width:0;padding:1em 1.4em 2em;background:#fff}'
+      '.main{padding:1em 1.4em 2em;background:#fff}'
       'h1{font-size:1.3em}'
       'h2{font-size:1.1em;margin:1.6em 0 0.6em;border-bottom:1px solid #e4e7ed;padding-bottom:0.2em}'
       '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.4em 1.2em}'
@@ -1138,23 +1134,15 @@ class WebService extends ChangeNotifier {
       '.zip-btn{display:inline-block;border:1px solid #888;border-radius:4px;'
       'padding:0.3em 1em;text-decoration:none;color:#222;margin:0.4em 0}'
       'a{color:#0645ad}'
-      '@media (max-width:640px){.layout{display:block}.sidebar{width:auto}}'
-      // Mobile shell overrides (body.layout-mobile): the sidebar is
-      // gone, the grid becomes one stacked column of horizontal card
-      // rows with a smaller cover and thumb-friendly buttons.
-      'body.layout-mobile .layout{display:block}'
-      'body.layout-mobile .sidebar{display:none}'
+      // Mobile shell overrides (body.layout-mobile): the grid becomes
+      // one stacked column of horizontal card rows with a smaller
+      // cover and thumb-friendly buttons.
       'body.layout-mobile .main{padding:0.8em 1em 2em}'
       'body.layout-mobile .grid{display:block}'
       'body.layout-mobile .card{margin-bottom:1.2em}'
       'body.layout-mobile .cover,body.layout-mobile .cover-ph{width:64px;height:84px;flex-basis:64px}'
       'body.layout-mobile .cover-ph{font-size:1.6em}'
       'body.layout-mobile .actions a{padding:0.5em 1em;font-size:1em}'
-      '.m-top{padding:1em 1em 0.8em;border-bottom:1px solid #e4e7ed}'
-      '.m-title{font-size:1.4em;font-weight:700}'
-      '.m-sub{color:#666;font-size:0.9em;margin:0.3em 0 0.8em}'
-      '.m-search input{width:100%;box-sizing:border-box;border:1px solid #dcdfe6;'
-      'border-radius:16px;padding:0.6em 0.9em;font-size:1em;background:#fff}'
       '.m-main{padding:0.8em 1em 2em}';
 
   /// Every page carries its layout on the `<body>` so tests (and CSS)
@@ -1170,48 +1158,28 @@ class WebService extends ChangeNotifier {
         '<body class="$cls">$body</body></html>';
   }
 
-  /// Every page shares this shell: the sidebar on the left, the
-  /// page's own content in the white main area on the right.
-  String _layout(String main, {String searchValue = ''}) =>
-      '<div class="layout">${_sidebar(searchValue: searchValue)}'
-      '<main class="main">$main</main></div>';
+  /// Every page shares this shell: no sidebar — the poem sits at the
+  /// top-left of the main area, and the page's own content follows.
+  String _layout(String main) =>
+      '<main class="main"><div class="poem">邂逅相遇，适我愿兮</div>$main</main>';
 
-  /// The mobile shell: a top bar (title + search box) over stacked
-  /// content. No sidebar, nothing hover-dependent.
-  String _mobileLayout(String main, {String searchValue = ''}) {
+  /// The mobile shell: the same arrangement as PC — poem on top,
+  /// content below. No sidebar, nothing hover-dependent.
+  String _mobileLayout(String main) =>
+      '<main class="m-main"><div class="poem">邂逅相遇，适我愿兮</div>$main</main>';
+
+  /// A section heading with the search box on the same row, right
+  /// end: the heading takes the free space, the form keeps a fixed-ish
+  /// width, and the row wraps on narrow screens so the box is never
+  /// squeezed away.
+  String _headingRow(String heading, {String searchValue = ''}) {
     final value = searchValue.isEmpty
         ? ''
         : ' value="${escapeHtml(searchValue)}"';
-    return '<header class="m-top">'
-        '<div class="m-title">${escapeHtml(_strings.homeTitle)}</div>'
-        '<div class="m-sub">邂逅相遇，适我愿兮</div>'
-        '<form class="m-search" method="get" action="/search">'
-        '<input name="q" type="search"$value>'
-        '</form>'
-        '</header>'
-        '<main class="m-main">$main</main>';
-  }
-
-  /// The sidebar, after Legado's bookshelf: title, poem, a working
-  /// search box (plain GET form, no JS), settings (a "connected" tag
-  /// — no URL, the browser's address bar already shows it), GitHub
-  /// at the bottom. The labels are Legado's fixed UI copy, so they
-  /// are literal here rather than localised strings.
-  String _sidebar({String searchValue = ''}) {
-    final value = searchValue.isEmpty
-        ? ''
-        : ' value="${escapeHtml(searchValue)}"';
-    return '<aside class="sidebar">'
-        '<div class="side-title">${escapeHtml(_strings.homeTitle)}</div>'
-        '<div class="side-sub">邂逅相遇，适我愿兮</div>'
+    return '<div class="head-row">$heading'
         '<form class="search" method="get" action="/search">'
         '<input name="q" type="search"$value>'
-        '</form>'
-        '<div class="side-sec"><h3>基本设定</h3>'
-        '<span class="tag tag-info">已连接</span></div>'
-        '<a class="github" href="https://github.com/minglaiyo/zlibx">'
-        'GitHub</a>'
-        '</aside>';
+        '</form></div>';
   }
 
   String _messagePage(String message) => _page(
@@ -1317,7 +1285,9 @@ class WebService extends ChangeNotifier {
         ? ''
         : ' <a class="zip-btn" href="/zip/all">全部打包</a>';
     final main =
-        '<h2 id="downloaded">${escapeHtml(_strings.downloadedSection)} (${downloaded.length})</h2>'
+        _headingRow(
+          '<h2 id="downloaded">${escapeHtml(_strings.downloadedSection)} (${downloaded.length})</h2>',
+        )
         '$packAll'
         '${_grid(downloaded)}'
         '<h2 id="library">${escapeHtml(_strings.librarySection)} (${library.length})</h2>'
@@ -1331,16 +1301,16 @@ class WebService extends ChangeNotifier {
 
   /// Search results, in the same shell: the search term at the top,
   /// a link back home, and the matching cards (or the empty state).
+  /// The search box stays on the results heading row, so the term
+  /// can be changed without going back home.
   String _searchPage(String q, List<String> cards, WebLayout layout) {
     final main =
         '<p><a href="/">${escapeHtml(_strings.backHome)}</a></p>'
-        '<h1>搜索“${escapeHtml(q)}”</h1>'
+        '${_headingRow('<h1>搜索“${escapeHtml(q)}”</h1>', searchValue: q)}'
         '${_grid(cards)}';
     return _page(
       '搜索“$q”',
-      layout == WebLayout.mobile
-          ? _mobileLayout(main, searchValue: q)
-          : _layout(main, searchValue: q),
+      layout == WebLayout.mobile ? _mobileLayout(main) : _layout(main),
       layout: layout,
     );
   }

@@ -323,19 +323,34 @@ void main() {
     test('two sections, links, escaping, and no JavaScript', () async {
       final r = await get('/');
       expect(r.status, 200);
-      // Sidebar, after Legado's bookshelf: title, poem, a working
-      // search form, settings section, GitHub.
-      expect(r.body, contains('class="sidebar"'));
+      // No sidebar any more: no title/poem/settings/GitHub column.
+      // The poem sits at the top of the main area, and the search
+      // box shares the downloads heading row, right end.
+      expect(r.body, isNot(contains('class="sidebar"')));
+      expect(r.body, isNot(contains('基本设定')));
+      expect(r.body, isNot(contains('已连接')));
+      expect(r.body, isNot(contains('github.com/minglaiyo/zlibx')));
+      expect(r.body, contains('class="poem"'));
       expect(r.body, contains('邂逅相遇，适我愿兮'));
+      expect(
+        r.body.indexOf('邂逅相遇，适我愿兮'),
+        lessThan(r.body.indexOf('id="downloaded"')),
+      );
+      expect(r.body, contains('class="head-row"'));
       expect(
         r.body,
         contains('<form class="search" method="get" action="/search">'),
       );
       expect(r.body, contains('name="q"'));
-      expect(r.body, contains('基本设定'));
-      expect(r.body, contains('已连接'));
-      expect(r.body, contains('https://github.com/minglaiyo/zlibx'));
-      // No User-Agent: the PC shell (sidebar layout, layout-pc class).
+      expect(
+        r.body.indexOf('class="head-row"'),
+        lessThan(r.body.indexOf('<form class="search"')),
+      );
+      expect(
+        r.body.indexOf('<form class="search"'),
+        lessThan(r.body.indexOf('class="grid"')),
+      );
+      // No User-Agent: the PC shell (layout-pc class, no mobile top bar).
       expect(r.body, contains('class="layout-pc"'));
       expect(r.body, isNot(contains('class="m-top"')));
       // No dark banner, no three-button section navigation.
@@ -405,12 +420,13 @@ void main() {
       expect(shelf.body, contains('On shelf'));
       expect(shelf.body, contains('href="/download/0"'));
       expect(shelf.body, contains('href="/read/0"'));
-      // The search page shows the term, a way home, and the sidebar
-      // with the query prefilled.
+      // The search page shows the term, a way home, and the search
+      // box — prefilled — on the results heading row. No sidebar.
       expect(byTitle.body, contains('搜索“EPUB”'));
       expect(byTitle.body, contains('Back to home'));
       expect(byTitle.body, contains('value="EPUB"'));
-      expect(byTitle.body, contains('class="sidebar"'));
+      expect(byTitle.body, contains('class="head-row"'));
+      expect(byTitle.body, isNot(contains('class="sidebar"')));
     });
 
     test('search with no match or no query shows the empty state', () async {
@@ -693,17 +709,18 @@ void main() {
       await service.start(snapshot: snapshot, preferredPort: 0);
     });
 
-    // Desktop browsers (and no User-Agent at all) get the Legado
-    // sidebar shell; phones get the single-column shell. The body
-    // class is what these tests assert on.
-    test('desktop UA gets the PC sidebar layout', () async {
+    // Desktop browsers (and no User-Agent at all) get the PC shell;
+    // phones get the single-column shell. The body class is what
+    // these tests assert on. Both shells share one arrangement: no
+    // sidebar, poem on top, search on the downloads heading row.
+    test('desktop UA gets the PC layout', () async {
       const desktopUa =
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
           '(KHTML, like Gecko) Chrome/120.0 Safari/537.36';
       final r = await get('/', headers: {'User-Agent': desktopUa});
       expect(r.status, 200);
       expect(r.body, contains('class="layout-pc"'));
-      expect(r.body, contains('class="sidebar"'));
+      expect(r.body, isNot(contains('class="sidebar"')));
       expect(r.body, isNot(contains('class="m-top"')));
     });
 
@@ -714,7 +731,7 @@ void main() {
       final r = await get('/', headers: {'User-Agent': androidUa});
       expect(r.status, 200);
       expect(r.body, contains('class="layout-mobile"'));
-      expect(r.body, contains('class="m-top"'));
+      expect(r.body, isNot(contains('class="m-top"')));
       expect(r.body, isNot(contains('class="sidebar"')));
       // Same cards, stacked; download/read links still there.
       expect(r.body, contains('href="/download/0"'));
@@ -764,8 +781,44 @@ void main() {
       );
       expect(r.status, 200);
       expect(r.body, contains('class="layout-mobile"'));
-      expect(r.body, contains('class="m-top"'));
+      expect(r.body, isNot(contains('class="m-top"')));
       expect(r.body, contains('value="book"'));
+      expect(r.body, contains('class="head-row"'));
+    });
+
+    test('both layouts: no sidebar, poem on top, search on the downloads row',
+        () async {
+      const desktopUa =
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+          '(KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+      const androidUa =
+          'Mozilla/5.0 (Linux; Android 14; Pixel 9) AppleWebKit/537.36 '
+          '(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36';
+      for (final ua in [desktopUa, androidUa]) {
+        final r = await get('/', headers: {'User-Agent': ua});
+        expect(r.status, 200);
+        expect(r.body, isNot(contains('class="sidebar"')));
+        expect(r.body, isNot(contains('class="m-top"')));
+        expect(r.body, isNot(contains('基本设定')));
+        expect(r.body, isNot(contains('已连接')));
+        expect(r.body, isNot(contains('github.com/minglaiyo/zlibx')));
+        // Poem is the first thing in the main area, above the sections.
+        expect(r.body, contains('class="poem"'));
+        expect(
+          r.body.indexOf('邂逅相遇，适我愿兮'),
+          lessThan(r.body.indexOf('id="downloaded"')),
+        );
+        // Search box shares the downloads heading row, right end.
+        expect(r.body, contains('class="head-row"'));
+        expect(
+          r.body.indexOf('class="head-row"'),
+          lessThan(r.body.indexOf('<form class="search"')),
+        );
+        expect(
+          r.body.indexOf('<form class="search"'),
+          lessThan(r.body.indexOf('class="grid"')),
+        );
+      }
     });
   });
   });

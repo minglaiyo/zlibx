@@ -11,6 +11,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../providers/domain_provider.dart';
 import '../../../providers/download_provider.dart';
 import '../../../providers/update_provider.dart';
+import '../../../providers/zlibrary_provider.dart';
 import '../../../routes/app_routes.dart';
 import '../../../services/media_store.dart';
 import '../../../theme/app_metrics.dart';
@@ -19,6 +20,7 @@ import '../../../utils/host_utils.dart';
 import '../../../widgets/motion/motion.dart';
 import '../../../widgets/update_dialog.dart';
 import '../../reader/reader_screen.dart';
+import 'download_format_dialog.dart';
 import 'download_location_dialog.dart';
 import 'file_exists_dialog.dart';
 import 'quota_fallback_action.dart';
@@ -323,23 +325,112 @@ class BookActionBar extends ConsumerWidget {
         );
         if (again != true) return;
         if (!context.mounted) return;
-        await _kickoffDownload(context, ref, customSubfolder: customSubfolder);
+        await _pickFormatAndDownload(
+          context,
+          ref,
+          customSubfolder: customSubfolder,
+        );
         return;
       }
 
       if (!context.mounted) return;
+      await _pickFormatAndDownload(
+        context,
+        ref,
+        customSubfolder: customSubfolder,
+      );
+    }
+  }
+
+  /// 计划一第 2 项（下载前选格式）：下载前先问服务端这本书还有
+  /// 哪些格式，菜单里点一个下那个引用（各带独立 id:hash）。空列表
+  /// 直接下当前格式；请求失败弹错 + 重试，绝不把失败当成“没有其他
+  /// 格式”。没 hash 时调不了格式端点，直接按当前格式下（引擎随后
+  /// 按标题解析真 hash）。
+  ///
+  /// 选中的格式当成一个变体 Book（同标题/作者，只换 id/hash/
+  /// extension）走现有下载流程：任务、历史、续传、重试都不用改，
+  /// 续传/重试用的就是这份引用。
+  Future<void> _pickFormatAndDownload(
+    BuildContext context,
+    WidgetRef ref, {
+    String? customSubfolder,
+  }) async {
+    final hash = book.hash;
+    if (hash == null || hash.isEmpty) {
+      if (!context.mounted) return;
       await _kickoffDownload(context, ref, customSubfolder: customSubfolder);
+      return;
+    }
+    // 失败弹框的“重试”回到这里重新拉取。
+    while (true) {
+      final result = await ref
+          .read(zlibraryApiProvider)
+          .getBookFormats(book.id.toString(), hash);
+      if (!context.mounted) return;
+      if (!result.success || result.data == null) {
+        final action = await showDownloadFormatErrorDialog(
+          context,
+          error: result.error ?? 'formats request failed',
+        );
+        if (action == DownloadFormatErrorAction.retry) continue;
+        if (action == DownloadFormatErrorAction.downloadCurrent) {
+          if (!context.mounted) return;
+          await _kickoffDownload(
+            context,
+            ref,
+            customSubfolder: customSubfolder,
+          );
+        }
+        return;
+      }
+      final formats = result.data!;
+      if (formats.isEmpty) {
+        await _kickoffDownload(context, ref, customSubfolder: customSubfolder);
+        return;
+      }
+      final choices = downloadFormatChoices(book: book, formats: formats);
+      final chosen = await showDownloadFormatDialog(
+        context,
+        formats: choices,
+        currentBookId: book.id,
+        currentHash: hash,
+      );
+      if (chosen == null) return;
+      if (!context.mounted) return;
+      final downloadBook =
+          chosen.id == book.id && chosen.hash == hash
+              ? book
+              : book.copyWith(
+                  id: chosen.id,
+                  hash: chosen.hash,
+                  extension: chosen.extension,
+                  filesize: chosen.filesize,
+                  filesizeString: chosen.filesizeString,
+                );
+      await _kickoffDownload(
+        context,
+        ref,
+        book: downloadBook,
+        customSubfolder: customSubfolder,
+      );
+      return;
     }
   }
 
   /// 真正触发下载的统一入口：只走用户自己的 z站 账号。
   /// [customSubfolder] 是 #95 用户给这本书指定的文件夹；额度换源
   /// （切账号/换源）也沿用它。
+  /// [book] 是实际要下的那本书：默认是详情页这本；计划一第 2 项
+  /// 选了其他格式时是那个格式的变体 Book（同标题，换 id/hash/
+  /// extension）。
   Future<void> _kickoffDownload(
     BuildContext context,
     WidgetRef ref, {
+    Book? book,
     String? customSubfolder,
   }) async {
+    final target = book ?? this.book;
     final downloadingMsg = AppLocalizations.of(context)!.downloading;
     final notifier = ref.read(downloadProvider.notifier);
 
@@ -351,7 +442,7 @@ class BookActionBar extends ConsumerWidget {
       await tryQuotaFallbackAndDownload(
         context,
         ref,
-        book,
+        target,
         customSubfolder: customSubfolder,
       );
       return;
@@ -361,7 +452,7 @@ class BookActionBar extends ConsumerWidget {
     final auth = ref.read(authProvider.notifier);
     unawaited(
       notifier
-          .startDownload(book, customSubfolder: customSubfolder)
+          .startDownload(target, customSubfolder: customSubfolder)
           .whenComplete(auth.refreshProfile),
     );
     _toast(context, downloadingMsg);

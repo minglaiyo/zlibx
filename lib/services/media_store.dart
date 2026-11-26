@@ -6,11 +6,14 @@
 // DownloadNotifier publishes the finished file and records the
 // content URI. Old history entries keep plain file paths and keep
 // working — every helper below routes on the `content://` prefix.
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:meta/meta.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../utils/app_log.dart';
 
@@ -268,23 +271,81 @@ class MediaStoreFiles {
     return false;
   }
 
+  /// Test seam: tests point the share-cache copy at a temp dir
+  /// instead of the real cache dir. Null in production, where
+  /// [getTemporaryDirectory] is used.
+  @visibleForTesting
+  static Directory? shareCacheDirForTesting;
+
   /// Resolve a location to a plain file path share_plus can hand to
-  /// the system share sheet. Plain paths pass through unchanged;
+  /// the system share sheet.
+  ///
   /// content:// URIs are copied to a temp file in the app cache dir
   /// first (share_plus cannot share a content URI directly).
-  /// Returns null when the temp copy fails.
+  ///
+  /// Plain paths (2026-11-26): a relinked orphan — or any old history
+  /// entry — lives at a real path under Download/zlibx, and sharing
+  /// that path fails on device ("无法分享文件"): the app's share flow
+  /// was built around handing share_plus a cache file, so a real path
+  /// outside the app cache is copied into the cache first (same shape
+  /// as the content-URI flow above); a path already in the cache is
+  /// handed over as-is. Returns null when the copy fails.
   static Future<String?> shareablePath(String location) async {
-    if (!isContentUri(location)) return location;
-    if (!_onAndroid) return null;
+    if (isContentUri(location)) {
+      if (!_onAndroid) return null;
+      try {
+        final path = await _channel.invokeMethod<String>(
+          'copyContentToCache',
+          <String, Object>{'uri': location},
+        );
+        return (path != null && path.isNotEmpty) ? path : null;
+      } on PlatformException {
+        return null;
+      }
+    }
+    if (!_onAndroid) return location;
     try {
-      final path = await _channel.invokeMethod<String>(
-        'copyContentToCache',
-        <String, Object>{'uri': location},
-      );
-      return (path != null && path.isNotEmpty) ? path : null;
-    } on PlatformException {
+      final cacheDir =
+          shareCacheDirForTesting ?? await getTemporaryDirectory();
+      if (location == cacheDir.path ||
+          p.isWithin(cacheDir.path, location)) {
+        return location;
+      }
+      final dest = File(p.join(cacheDir.path, _shareCacheName(location)));
+      await File(location).copy(dest.path);
+      return dest.path;
+    } on Object {
       return null;
     }
+  }
+
+  /// Cache file name for a plain path being shared: `share_` + the
+  /// source base name, with the stem cut to 120 UTF-8 bytes and the
+  /// extension to 16 (same caps as the Kotlin copyContentToCache —
+  /// a long CJK title would otherwise overflow Android's 255-byte
+  /// file-name cap and the copy would throw). The base name already
+  /// carries the book id, so no timestamp prefix is needed.
+  static String _shareCacheName(String location) {
+    final base = p.basename(location);
+    final dot = base.lastIndexOf('.');
+    final stem = dot > 0 ? base.substring(0, dot) : base;
+    final ext = dot > 0 && dot < base.length - 1 ? base.substring(dot) : '';
+    return 'share_${_truncateUtf8(stem, 120)}${_truncateUtf8(ext, 16)}';
+  }
+
+  /// [name] cut to at most [maxBytes] UTF-8 bytes, only on character
+  /// boundaries (a cut mid-character would leave an invalid name).
+  static String _truncateUtf8(String name, int maxBytes) {
+    var bytes = 0;
+    final out = StringBuffer();
+    for (final rune in name.runes) {
+      final char = String.fromCharCode(rune);
+      final charBytes = utf8.encode(char).length;
+      if (bytes + charBytes > maxBytes) break;
+      bytes += charBytes;
+      out.write(char);
+    }
+    return out.toString();
   }
 
   /// Resolve a location to the real filesystem path, for display and

@@ -66,12 +66,13 @@ void main() {
   late _FakeSaf fake;
 
   /// The granted folder's real path in these tests.
-  String get treeRoot => '${sourceRoot.path}/Download/zlibx';
+  late String treeRoot;
 
   setUp(() {
     TestWidgetsFlutterBinding.ensureInitialized();
     tempDir = Directory.systemTemp.createTempSync('saf_');
     sourceRoot = Directory.systemTemp.createTempSync('saf_root_');
+    treeRoot = '${sourceRoot.path}/Download/zlibx';
     fake = _FakeSaf()..cacheDir = tempDir;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, fake.handle);

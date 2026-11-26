@@ -1285,9 +1285,9 @@ class WebService extends ChangeNotifier {
         ? ''
         : ' <a class="zip-btn" href="/zip/all">全部打包</a>';
     final main =
-        _headingRow(
+        '${_headingRow(
           '<h2 id="downloaded">${escapeHtml(_strings.downloadedSection)} (${downloaded.length})</h2>',
-        )
+        )}'
         '$packAll'
         '${_grid(downloaded)}'
         '<h2 id="library">${escapeHtml(_strings.librarySection)} (${library.length})</h2>'

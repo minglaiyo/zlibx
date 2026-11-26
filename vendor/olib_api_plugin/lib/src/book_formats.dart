@@ -111,7 +111,7 @@ mixin ZLibraryBookFormats on ZLibraryApiBase {
     if (decoded is List) {
       rawList = decoded;
     } else if (decoded is Map<String, dynamic>) {
-      if (!_isSuccess(decoded)) return null;
+      if (!ZLibraryApiBase._isSuccess(decoded)) return null;
       final raw = decoded['formats'] ?? decoded['data'];
       if (raw is! List) return null;
       rawList = raw;

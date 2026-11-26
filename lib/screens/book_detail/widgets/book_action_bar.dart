@@ -11,6 +11,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../providers/domain_provider.dart';
 import '../../../providers/download_provider.dart';
 import '../../../providers/update_provider.dart';
+import '../../../providers/zlibrary_provider.dart';
 import '../../../routes/app_routes.dart';
 import '../../../services/media_store.dart';
 import '../../../theme/app_metrics.dart';

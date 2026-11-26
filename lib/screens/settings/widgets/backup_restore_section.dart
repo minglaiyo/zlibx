@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../services/app_restart.dart';
 import '../../../services/backup_restore_service.dart';
 import '../../../utils/app_snack.dart';
 import '../../../utils/diagnostics.dart';
@@ -18,8 +19,8 @@ import 'settings_card.dart';
 /// 导出：有敏感字段（登录会话 / Anna key）时先让用户设密码（输入 +
 /// 确认），再把 zip 写临时文件走系统分享；没有敏感字段时直接导出，
 /// 不问密码。导入：选 zip → 校验版本 → 带 secrets 信封时问密码 →
-/// 确认覆盖 → 写回各 box，完成后弹手动重启提示（本项目没有编程式
-/// 重启，内存里的 provider 状态要靠重启刷新）。
+/// 确认覆盖 → 写回各 box，完成后弹重启提示，可点立即重启（整进程
+/// 重启，内存里的 provider 状态随之刷新）或稍后手动重启。
 class BackupRestoreSection extends ConsumerStatefulWidget {
   const BackupRestoreSection({super.key});
 
@@ -186,7 +187,21 @@ class _BackupRestoreSectionState extends ConsumerState<BackupRestoreSection> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(),
-                child: Text(dl.gotIt),
+                child: Text(dl.later),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  final bool ok = await AppRestart.restart();
+                  if (!ok && mounted) {
+                    Navigator.of(dialogContext).pop();
+                    showAppSnack(
+                      context,
+                      AppLocalizations.of(context)!.appRestartFailed,
+                      error: true,
+                    );
+                  }
+                },
+                child: Text(dl.restartNow),
               ),
             ],
           );

@@ -2,13 +2,17 @@ package com.minglaiyo.zlibx
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Process
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.util.Log
@@ -505,6 +509,37 @@ class MainActivity : FlutterFragmentActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // Backup import: restart the whole process so the freshly
+        // imported Hive boxes and providers are re-read from scratch.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zlibx/app_restart")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "restart" -> {
+                        result.success(null)
+                        restartApp()
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    /// Restart the whole process: schedule the launcher activity via
+    /// AlarmManager, then kill this process. Used after a backup import
+    /// so the freshly imported Hive boxes and providers are re-read from
+    /// scratch. (A widget-tree-only restart would leave Hive boxes and
+    /// Riverpod state holding pre-import data.)
+    private fun restartApp() {
+        val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        } ?: return
+        val pending = PendingIntent.getActivity(
+            this, 0, launch,
+            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val alarm = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        alarm.set(AlarmManager.RTC, System.currentTimeMillis() + 100, pending)
+        Process.killProcess(Process.myPid())
     }
 
     /// O1: request POST_NOTIFICATIONS on Android 13+ so the download

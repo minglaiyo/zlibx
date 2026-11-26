@@ -107,7 +107,14 @@ void main() {
   late Directory dir;
   late String path;
   late String metaPath;
-  final book = List<int>.generate(4096, (i) => (i * 7) % 251);
+  // Plan item 8: the fixture is an EPUB, so it must start with the EPUB
+  // magic — the prefix / first-chunk check rejects anything else (same
+  // fix as resumable_downloader_test.dart).
+  final book = [
+    0x50,
+    0x4B,
+    ...List<int>.generate(4094, (i) => (i * 7) % 251),
+  ];
 
   late _LoopbackOrigin origin;
 
@@ -169,11 +176,16 @@ void main() {
 
   test('416 with N < start resets and restarts from zero', () async {
     // Partial LONGER than the server's file: stale prefix from a
-    // replaced remote file.
-    await File(path).writeAsBytes(List<int>.filled(100, 9));
+    // replaced remote file. It is a prefix of the old book, so it
+    // passes the item-8 prefix check — the 416, not the magic, is
+    // what must reset the download.
+    await File(path).writeAsBytes(book.sublist(0, 100));
     await File(metaPath).writeAsString('"v1"');
+    // The replacement remote file is a different book, so it too must
+    // carry the EPUB magic or the fresh download's first-chunk check
+    // would reject it.
     origin
-      ..body = List<int>.generate(50, (i) => i)
+      ..body = [0x50, 0x4B, ...List<int>.generate(48, (i) => i + 2)]
       ..force416Total = 50;
     await ResumableDownloader.download(Dio(), origin.url.toString(), path);
     expect(await File(path).readAsBytes(), origin.body);

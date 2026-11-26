@@ -65,6 +65,19 @@ final _htmlBytes = Uint8List.fromList(
 // primary guard there, so the magic check only rejects content that
 // is provably not a book).
 final _textBytes = Uint8List.fromList(List.filled(100, 0x78));
+// A minimal PDF: `%PDF` + payload bytes. The file-link test streams a
+// binary body to a `.pdf` path, so the fixture must carry the PDF
+// magic — the plan-8 first-chunk check rejects a body whose magic does
+// not match its extension.
+final _pdfBytes = Uint8List.fromList([
+  ...'%PDF-1.7'.codeUnits,
+  0x0A,
+  0x25,
+  0xE2,
+  0xE3,
+  0xCF,
+  0xD3,
+]);
 
 /// 4 KB with a real zip header: big enough that reading a couple of
 /// chunks and reading the whole thing are far apart (the lookup
@@ -145,6 +158,13 @@ class _FakeAdapter implements HttpClientAdapter {
   // [profilePayload] — a wall page or any other non-JSON answer.
   String? profileRawBody;
 
+  // Login endpoint (`POST /eapi/user/login`): the session-learning
+  // tests (plan item 9) drive the JSON and the Set-Cookie headers
+  // through these. Default: a successful login whose user object
+  // carries no session key and no cookies — no source at all.
+  Map<String, dynamic>? loginJson;
+  List<String> loginSetCookie = const [];
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
@@ -155,6 +175,27 @@ class _FakeAdapter implements HttpClientAdapter {
     requestedUris.add(options.uri);
     requestedHeaders.add(Map<String, dynamic>.from(options.headers));
     final uri = options.uri;
+    if (uri.path == '/eapi/user/login') {
+      final payload =
+          loginJson ??
+          const {
+            'success': 1,
+            'user': {
+              'id': _sessionUserId,
+              'email': 'reader@example.com',
+              'name': 'Reader',
+            },
+          };
+      return ResponseBody.fromString(
+        jsonEncode(payload),
+        200,
+        headers: {
+          Headers.contentTypeHeader: ['application/json'],
+          if (loginSetCookie.isNotEmpty)
+            HttpHeaders.setCookieHeader: loginSetCookie,
+        },
+      );
+    }
     if (uri.path == _profilePath) {
       final raw = profileRawBody;
       if (raw != null) {
@@ -475,7 +516,7 @@ void main() {
       expect(await File(path).exists(), isFalse);
     });
 
-    test('200 with a non-book body throws on the file-header check',
+    test('200 with a non-book body throws a magic mismatch and writes nothing',
         () async {
       final adapter = _FakeAdapter()
         ..linkBody = _textBytes
@@ -483,13 +524,15 @@ void main() {
       final api = await _loggedInApi(adapter);
       final path = savePath('book.epub');
 
+      // Plan item 8: the first chunk already proves the body is not an
+      // EPUB, so nothing is written and the error names the mismatch —
+      // the old finish-line DownloadHtmlException (with the partial
+      // kept) no longer applies to this case.
       await expectLater(
         api.downloadBook(_bookId, _bookHash, path),
-        throwsA(isA<DownloadHtmlException>()),
+        throwsA(isA<DownloadMagicException>()),
       );
-      // The partial file is kept so a retry can resume; the validator
-      // is dropped so the retry restarts from zero.
-      expect(await File(path).exists(), isTrue);
+      expect(await File(path).exists(), isFalse);
       expect(await File('$path.meta').exists(), isFalse);
     });
 
@@ -614,6 +657,198 @@ void main() {
 
       expect(await File(path).readAsBytes(), _epubBytes);
       expect(adapter.linkCalls, 2);
+    });
+
+    // Plan item 8: the production save path ends in `.part`, and the
+    // old extension rule read the extension off that suffix — the
+    // finish-line check silently never ran. These tests save through a
+    // `.part` path, the way the engine does.
+    test('a .part path still checks the real extension', () async {
+      final adapter = _FakeAdapter()
+        ..linkBody = _textBytes
+        ..linkContentType = 'application/octet-stream';
+      final api = await _loggedInApi(adapter);
+      final path = savePath('book.epub.part');
+
+      await expectLater(
+        api.downloadBook(_bookId, _bookHash, path),
+        throwsA(isA<DownloadMagicException>()),
+      );
+      expect(await File(path).exists(), isFalse);
+    });
+
+    test('a PDF served for an EPUB throws a magic mismatch', () async {
+      final adapter = _FakeAdapter()
+        ..linkBody = Uint8List.fromList('%PDF-1.7 fake pdf body'.codeUnits)
+        ..linkContentType = 'application/pdf';
+      final api = await _loggedInApi(adapter);
+      final path = savePath('book.epub');
+
+      await expectLater(
+        api.downloadBook(_bookId, _bookHash, path),
+        throwsA(isA<DownloadMagicException>()),
+      );
+      expect(await File(path).exists(), isFalse);
+    });
+
+    test('a resumed partial with a bad prefix is discarded', () async {
+      final adapter = _FakeAdapter()..linkResume = true;
+      final api = await _loggedInApi(adapter);
+      final path = savePath('book.epub.part');
+      await File(path).writeAsBytes(_textBytes.sublist(0, 100));
+      await File('$path.meta').writeAsString('"etag-1"');
+
+      await expectLater(
+        api.downloadBook(_bookId, _bookHash, path),
+        throwsA(isA<DownloadMagicException>()),
+      );
+      expect(await File(path).exists(), isFalse);
+      expect(await File('$path.meta').exists(), isFalse);
+    });
+
+    test('an FB2 with a BOM passes the magic check', () async {
+      final adapter = _FakeAdapter()
+        ..linkBody = Uint8List.fromList([
+          0xEF,
+          0xBB,
+          0xBF,
+          ...'<?xml version="1.0"?><FictionBook>'.codeUnits,
+        ])
+        ..linkContentType = 'application/xml';
+      final api = await _loggedInApi(adapter);
+      final path = savePath('book.fb2');
+
+      await api.downloadBook(_bookId, _bookHash, path);
+
+      expect(await File(path).exists(), isTrue);
+    });
+  });
+
+  // Plan item 9: the login session comes from three sources, in
+  // priority order — the user object (JSON), Set-Cookie, root fields —
+  // with the `remix_user_key` alias accepted everywhere. A source that
+  // is missing simply does not contribute.
+  group('login learns the session from Set-Cookie / root fields', () {
+    test('Set-Cookie fills the session when the JSON has no key', () async {
+      final adapter = _FakeAdapter()
+        ..loginSetCookie = [
+          'remix_userid=$_sessionUserId; Path=/',
+          'remix_userkey=$_sessionUserKey; Path=/; HttpOnly',
+        ];
+      final api = _apiWith(adapter);
+
+      final result = await api.login('reader@example.com', 'pw');
+
+      expect(result.success, isTrue);
+      expect(result.data?.remixUserkey, _sessionUserKey);
+      // The next request carries the learned pair.
+      await api.getProfile();
+      final cookie =
+          adapter.requestedHeaders.last['Cookie'] as String?;
+      expect(cookie, contains('remix_userid=$_sessionUserId'));
+      expect(cookie, contains('remix_userkey=$_sessionUserKey'));
+    });
+
+    test('the remix_user_key alias works in Set-Cookie', () async {
+      final adapter = _FakeAdapter()
+        ..loginSetCookie = ['remix_user_key=$_sessionUserKey; Path=/'];
+      final api = _apiWith(adapter);
+
+      final result = await api.login('reader@example.com', 'pw');
+
+      expect(result.success, isTrue);
+      expect(result.data?.remixUserkey, _sessionUserKey);
+    });
+
+    test('root fields fill the session when there is no Set-Cookie',
+        () async {
+      final adapter = _FakeAdapter()
+        ..loginJson = {
+          'success': 1,
+          'remix_userid': _sessionUserId,
+          'remix_userkey': _sessionUserKey,
+          'user': {
+            'id': _sessionUserId,
+            'email': 'reader@example.com',
+            'name': 'Reader',
+          },
+        };
+      final api = _apiWith(adapter);
+
+      final result = await api.login('reader@example.com', 'pw');
+
+      expect(result.success, isTrue);
+      expect(result.data?.remixUserkey, _sessionUserKey);
+    });
+
+    test('the root remix_user_key alias works', () async {
+      final adapter = _FakeAdapter()
+        ..loginJson = {
+          'success': 1,
+          'remix_userid': _sessionUserId,
+          'remix_user_key': _sessionUserKey,
+          'user': {
+            'id': _sessionUserId,
+            'email': 'reader@example.com',
+            'name': 'Reader',
+          },
+        };
+      final api = _apiWith(adapter);
+
+      final result = await api.login('reader@example.com', 'pw');
+
+      expect(result.success, isTrue);
+      expect(result.data?.remixUserkey, _sessionUserKey);
+    });
+
+    test('priority is user object, then Cookie, then root fields', () async {
+      final adapter = _FakeAdapter()
+        ..loginJson = {
+          'success': 1,
+          'remix_userid': _sessionUserId,
+          'remix_userkey': 'root-key',
+          'user': {
+            'id': _sessionUserId,
+            'email': 'reader@example.com',
+            'name': 'Reader',
+            'remixUserkey': 'json-key',
+          },
+        }
+        ..loginSetCookie = ['remix_userkey=cookie-key; Path=/'];
+      final api = _apiWith(adapter);
+
+      final result = await api.login('reader@example.com', 'pw');
+
+      expect(result.data?.remixUserkey, 'json-key');
+
+      // Without the user-object key, the Cookie beats the root field.
+      final adapter2 = _FakeAdapter()
+        ..loginJson = {
+          'success': 1,
+          'remix_userid': _sessionUserId,
+          'remix_userkey': 'root-key',
+          'user': {
+            'id': _sessionUserId,
+            'email': 'reader@example.com',
+            'name': 'Reader',
+          },
+        }
+        ..loginSetCookie = ['remix_userkey=cookie-key; Path=/'];
+      final api2 = _apiWith(adapter2);
+
+      final result2 = await api2.login('reader@example.com', 'pw');
+
+      expect(result2.data?.remixUserkey, 'cookie-key');
+    });
+
+    test('no source leaves the session empty (existing flow)', () async {
+      final adapter = _FakeAdapter();
+      final api = _apiWith(adapter);
+
+      final result = await api.login('reader@example.com', 'pw');
+
+      expect(result.success, isTrue);
+      expect(result.data?.remixUserkey, isEmpty);
     });
   });
 
@@ -755,7 +990,7 @@ void main() {
     test('non-JSON 200 with a binary Content-Type is the file itself',
         () async {
       final adapter = _FakeAdapter()
-        ..fileRawBody = _epubBytes
+        ..fileRawBody = _pdfBytes
         ..fileContentType = 'application/pdf';
       final api = await _loggedInApi(adapter);
       final path = '${tempDir.path}/b.pdf';
@@ -767,7 +1002,7 @@ void main() {
       // for the link lookup, once for the file).
       expect(adapter.fileCalls, 2);
       expect(adapter.linkCalls, 0);
-      expect(await File(path).readAsBytes(), _epubBytes);
+      expect(await File(path).readAsBytes(), _pdfBytes);
     });
 
     test('the link lookup does not transfer the book twice', () async {

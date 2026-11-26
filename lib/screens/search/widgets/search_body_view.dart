@@ -9,6 +9,7 @@ import '../../../models/display_book.dart';
 import '../../../providers/article_search_provider.dart';
 import '../../../providers/books_provider.dart';
 import '../../../providers/fulltext_search_provider.dart';
+import '../../../utils/error_text.dart';
 import '../../../widgets/empty_state.dart';
 import 'empty_query_view.dart';
 import 'search_mode_selector.dart';
@@ -271,7 +272,9 @@ class SearchBodyView extends StatelessWidget {
       return EmptyState(
         icon: Icons.error_outline_rounded,
         title: l10n.searchFailed,
-        message: error,
+        // 计划一第 10 项：搜索错误先过分类表再显示——"Access denied"
+        // 显示"Z-library 拒绝搜索"，不当作会话过期。
+        message: friendlyErrorText(error, l10n, isSearchError: true),
         action: FilledButton(
           onPressed: onRetrySearch,
           child: Text(l10n.searchRetry),

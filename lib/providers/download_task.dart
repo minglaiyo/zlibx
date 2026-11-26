@@ -27,6 +27,12 @@ class DownloadTask {
   /// 用户自己 Z 站账号当日下载次数已用尽导致的失败。
   final bool quotaExceeded;
 
+  /// 计划一第 8 项（下载魔数校验）：下到的字节不是这本书宣称的格式
+  ///（PDF 当 EPUB 下回来、续传前缀不对、完工文件头不对）。任务进
+  /// 错误态，.part 已删，用户手动重试从零开始；canRetry 不变
+  ///（needsFreshLink 仍为 false，同一条链接可重试）。
+  final bool magicMismatch;
+
   /// 仅 Wi-Fi 下载（方案 E1）：发起时网络是计费连接（移动数据/无网），
   /// 任务被拒绝启动。到 Wi-Fi 后重试即可。
   final bool wifiOnlyBlocked;
@@ -70,6 +76,7 @@ class DownloadTask {
     this.needsFreshLink = false,
     this.missingFile = false,
     this.quotaExceeded = false,
+    this.magicMismatch = false,
     this.wifiOnlyBlocked = false,
     this.pinned = false,
     this.presetUrl,
@@ -89,6 +96,7 @@ class DownloadTask {
     bool? needsFreshLink,
     bool? missingFile,
     bool? quotaExceeded,
+    bool? magicMismatch,
     bool? wifiOnlyBlocked,
     bool? pinned,
     String? presetUrl,
@@ -107,6 +115,7 @@ class DownloadTask {
       needsFreshLink: needsFreshLink ?? this.needsFreshLink,
       missingFile: missingFile ?? this.missingFile,
       quotaExceeded: quotaExceeded ?? this.quotaExceeded,
+      magicMismatch: magicMismatch ?? this.magicMismatch,
       wifiOnlyBlocked: wifiOnlyBlocked ?? this.wifiOnlyBlocked,
       pinned: pinned ?? this.pinned,
       presetUrl: presetUrl ?? this.presetUrl,

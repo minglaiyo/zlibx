@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/services/resumable_downloader.dart';
 
 /// Serves one fixed "remote file" and honours Range / If-Range the way a
@@ -60,7 +61,13 @@ class _Origin implements HttpClientAdapter {
 void main() {
   late Directory dir;
   late String path;
-  final book = List<int>.generate(4096, (i) => (i * 7) % 251);
+  // Plan item 8: the fixture is an EPUB, so it must start with the EPUB
+  // magic — the first-chunk check rejects anything else.
+  final book = [
+    0x50,
+    0x4B,
+    ...List<int>.generate(4094, (i) => (i * 7) % 251),
+  ];
 
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('resumable');
@@ -142,7 +149,7 @@ void main() {
     // Remote file replaced: new bytes, new ETag.
     o
       ..truncate = false
-      ..body = List<int>.generate(4096, (i) => (i * 3) % 241)
+      ..body = [0x50, 0x4B, ...List<int>.generate(4094, (i) => (i * 3) % 241)]
       ..etag = '"v2"';
     await ResumableDownloader.download(dioFor(o), 'https://x/f', path);
     expect(await File(path).readAsBytes(), o.body);
@@ -193,5 +200,43 @@ void main() {
     );
     expect(ResumableDownloader.looksLikeHtml([0x50, 0x4B, 3, 4]), isFalse);
     expect(ResumableDownloader.looksLikeHtml(const []), isFalse);
+  });
+
+  // Plan item 8: the first chunk already proves the body is not the
+  // format the file claims, so nothing is written.
+  test('rejects a PDF served for an EPUB and writes nothing', () async {
+    final o = _Origin(utf8.encode('%PDF-1.7 fake pdf body'));
+    await expectLater(
+      ResumableDownloader.download(dioFor(o), 'https://x/f', path),
+      throwsA(isA<DownloadMagicException>()),
+    );
+    expect(File(path).existsSync(), isFalse);
+  });
+
+  test('a resumed partial with a bad prefix is discarded', () async {
+    await File(path).writeAsBytes(List.filled(100, 0x78));
+    final o = _Origin(book);
+    await expectLater(
+      ResumableDownloader.download(dioFor(o), 'https://x/f', path),
+      throwsA(isA<DownloadMagicException>()),
+    );
+    expect(File(path).existsSync(), isFalse);
+    expect(
+      File(ResumableDownloader.metaPathFor(path)).existsSync(),
+      isFalse,
+    );
+  });
+
+  test('an FB2 with a BOM passes the magic check', () async {
+    final fb2 = [
+      0xEF,
+      0xBB,
+      0xBF,
+      ...'<?xml version="1.0"?><FictionBook>'.codeUnits,
+    ];
+    final fb2Path = '${dir.path}/book.fb2.part';
+    final o = _Origin(fb2);
+    await ResumableDownloader.download(dioFor(o), 'https://x/f', fb2Path);
+    expect(await File(fb2Path).readAsBytes(), fb2);
   });
 }

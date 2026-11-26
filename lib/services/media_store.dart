@@ -196,18 +196,31 @@ class MediaStoreFiles {
 
   /// Existence check that understands both plain paths and the
   /// content:// URIs publishToDownloads returns.
+  ///
+  /// Fallback: a stored content URI can stop opening (stale row) while
+  /// the file itself is still on disk — the Web service reads files by
+  /// real path (realPath + File), so when the ContentResolver check
+  /// fails, resolve the real path and stat the file before giving up.
+  /// Records recovered this way read as present again (and re-enter
+  /// the Web snapshot) instead of dropping to error/missing.
   static Future<bool> exists(String location) async {
     if (isContentUri(location)) {
       if (!_onAndroid) return false;
       try {
-        return await _channel.invokeMethod<bool>(
+        final found = await _channel.invokeMethod<bool>(
               'contentExists',
               <String, Object>{'uri': location},
             ) ??
             false;
+        if (found) return true;
       } on PlatformException {
         return false;
       }
+      final real = await realPath(location);
+      if (real != null && real.isNotEmpty) {
+        return File(real).exists();
+      }
+      return false;
     }
     return File(location).exists();
   }

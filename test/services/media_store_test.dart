@@ -15,6 +15,7 @@ import 'package:zlibx/services/media_store.dart';
 /// Minimal in-memory stand-in for the Kotlin MediaStore side.
 class _FakeMediaStore {
   final Map<String, List<int>> entries = <String, List<int>>{};
+  final Map<String, String> realPaths = <String, String>{};
   int _nextId = 0;
 
   Future<dynamic> handle(MethodCall call) async {
@@ -48,6 +49,8 @@ class _FakeMediaStore {
         return entries.remove(args['uri'] as String) != null;
       case 'copyContentToCache':
         return '/cache/copied.epub';
+      case 'realPathForContent':
+        return realPaths[args['uri'] as String];
       default:
         return null;
     }
@@ -216,6 +219,19 @@ void main() {
       expect(await MediaStoreFiles.delete(uri), isTrue);
       expect(await MediaStoreFiles.exists(uri), isFalse);
       expect(await MediaStoreFiles.delete(uri), isFalse);
+    });
+
+    test('exists falls back to the real path when the URI will not open',
+        () async {
+      const uri = 'content://media/external/downloads/999';
+      final file = File('${tempDir.path}/stale.epub')
+        ..writeAsBytesSync(<int>[1, 2, 3]);
+      fake.realPaths[uri] = file.path;
+      // The URI is not in entries, so contentExists says no — but the
+      // file is still on disk at the resolved real path.
+      expect(await MediaStoreFiles.exists(uri), isTrue);
+      await file.delete();
+      expect(await MediaStoreFiles.exists(uri), isFalse);
     });
 
     test('shareablePath copies a content URI to the cache', () async {

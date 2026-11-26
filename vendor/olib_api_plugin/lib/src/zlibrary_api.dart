@@ -20,6 +20,7 @@ import 'zlib_error.dart';
 
 part 'zlibrary_auth.dart';
 part 'zlibrary_search.dart';
+part 'book_formats.dart';
 part 'zlibrary_articles.dart';
 part 'zlibrary_booklists.dart';
 part 'zlibrary_categories.dart';
@@ -1128,7 +1129,7 @@ Future<List<Book>> Function(String json)? booksParseOverride;
 ///   send_code, verify_code. Those methods fall back or fail loudly rather
 ///   than silently returning wrong data; see their doc comments.
 
-class ZLibraryApi extends ZLibraryApiBase with ZLibraryAuth, ZLibrarySearch, ZLibraryArticles, ZLibraryBooklists, ZLibraryCategories, ZLibraryAuthors, ZLibraryFullText, ZLibraryDownloads, ZLibraryDownloadHistory, ZLibraryInfo {
+class ZLibraryApi extends ZLibraryApiBase with ZLibraryAuth, ZLibrarySearch, ZLibraryArticles, ZLibraryBooklists, ZLibraryCategories, ZLibraryAuthors, ZLibraryFullText, ZLibraryDownloads, ZLibraryDownloadHistory, ZLibraryInfo, ZLibraryBookFormats {
   ZLibraryApi({super.domain, super.dio, super.destructiveDio});
 
   String get domain => _domain;

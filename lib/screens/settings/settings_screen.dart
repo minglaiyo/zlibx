@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/update_dialog.dart';
+import '../../routes/app_routes.dart';
 import '../auth/login_screen.dart';
 import 'widgets/about_section.dart';
 import 'widgets/backup_restore_section.dart';
@@ -74,6 +75,19 @@ class SettingsScreen extends ConsumerWidget {
 
             // ── Network ─────────────────────────────────────────────
             const NetworkSection(),
+
+            const SizedBox(height: 20),
+
+            // ── Web service (LAN sharing / web reader) ───────────────
+            SettingsCard(
+              child: ListTile(
+                leading: const Icon(Icons.wifi_tethering_rounded),
+                title: Text(AppLocalizations.of(context)!.webService),
+                subtitle: Text(AppLocalizations.of(context)!.webServiceSubtitle),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => AppRoutes.openWebService<void>(context),
+              ),
+            ),
 
             const SizedBox(height: 20),
 

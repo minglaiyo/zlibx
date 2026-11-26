@@ -1,13 +1,17 @@
 package com.minglaiyo.zlibx
 
+import android.Manifest
 import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -25,6 +29,10 @@ class MainActivity : FlutterFragmentActivity() {
     companion object {
         private const val CHANNEL = "zlibx/media_store"
         private const val TAG = "ZlibxMediaStore"
+
+        /// Request code for the Android 17 local-network permission
+        /// (ACCESS_LOCAL_NETWORK), asked from the local-network channel.
+        private const val REQUEST_LOCAL_NETWORK = 1001
     }
 
     // File copies (publish to Downloads, copy to cache) can move hundreds
@@ -61,6 +69,11 @@ class MainActivity : FlutterFragmentActivity() {
     /// its action handler.
     private var _downloadActionChannel: MethodChannel? = null
 
+    /// Pending reply for an in-flight local-network permission
+    /// request. Only one may be outstanding; a second call while one
+    /// is in flight is answered false at once (the caller retries).
+    private var pendingLocalNetworkResult: MethodChannel.Result? = null
+
     override fun onDestroy() {
         // Close any held pending streams (entries stay IS_PENDING and
         // resumable), then let queued work drain.
@@ -74,6 +87,26 @@ class MainActivity : FlutterFragmentActivity() {
         ioExecutor.shutdown()
         lightExecutor.shutdown()
         super.onDestroy()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_LOCAL_NETWORK) return
+        // Answer the Dart call that asked for the local-network
+        // permission (see "ensureLocalNetworkPermission" above).
+        val granted = grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        try {
+            pendingLocalNetworkResult?.success(granted)
+        } catch (e: IllegalStateException) {
+            // Engine detached while the dialog was up.
+            Log.w(TAG, "local network reply after detach ignored", e)
+        }
+        pendingLocalNetworkResult = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -234,6 +267,55 @@ class MainActivity : FlutterFragmentActivity() {
                             runAsync(result, pendingExecutor) {
                                 pendingEntrySize(uri)
                             }
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // Web service: structured network state for the address picker.
+        // Dart does the selection; this only reports facts.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zlibx/network_state")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "lanAddressInfo" -> runAsync(result, lightExecutor) {
+                        lanAddressInfo()
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // Web service: the Android 17 local-network permission only.
+        // The HTTP server itself is a Dart HttpServer now (the native
+        // LanWebServer rewrite was reverted — the socket was never the
+        // problem, the missing permission was). Dart asks here before
+        // binding, so other devices can actually reach the server.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zlibx/local_network")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "ensureLocalNetworkPermission" -> {
+                        // Android 17+ (targetSdk 37) blocks local-network
+                        // sockets without ACCESS_LOCAL_NETWORK: without it,
+                        // inbound TCP from other devices times out in the
+                        // network stack, before the SYN reaches our socket.
+                        // Below API 37 the gate does not exist.
+                        if (Build.VERSION.SDK_INT < 37) {
+                            result.success(true)
+                        } else if (ContextCompat.checkSelfPermission(
+                                this,
+                                Manifest.permission.ACCESS_LOCAL_NETWORK,
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            result.success(true)
+                        } else if (pendingLocalNetworkResult != null) {
+                            result.success(false)
+                        } else {
+                            pendingLocalNetworkResult = result
+                            ActivityCompat.requestPermissions(
+                                this,
+                                arrayOf(Manifest.permission.ACCESS_LOCAL_NETWORK),
+                                REQUEST_LOCAL_NETWORK,
+                            )
                         }
                     }
                     else -> result.notImplemented()
@@ -774,5 +856,149 @@ class MainActivity : FlutterFragmentActivity() {
             Log.w(TAG, "MediaStore copy to cache failed", e)
             null
         }
+    }
+
+    // ── Web service: network state (zlibx/network_state) ───────────────
+
+    /// Facts for the Dart address picker (see lan_share.dart):
+    /// `hotspotOn`, `wifiConnected` and one entry per IPv4 interface with
+    /// a `kind` of hotspot / wifi / cellular / other. Hotspot interface
+    /// names come from, in order: TetheringManager (API 30+) →
+    /// ConnectivityManager.tetheredInterfaces (API 24+) → DhcpInfo's
+    /// server address, which only counts when it is non-zero AND Wi-Fi
+    /// is not enabled (otherwise it is the upstream router, not us).
+    private fun lanAddressInfo(): Map<String, Any?> {
+        val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+            as? android.net.ConnectivityManager
+
+        val wifiNames = HashSet<String>()
+        val cellularNames = HashSet<String>()
+        try {
+            @Suppress("DEPRECATION")
+            val networks = cm?.allNetworks ?: emptyArray()
+            for (network in networks) {
+                val caps = cm?.getNetworkCapabilities(network) ?: continue
+                val name = cm?.getLinkProperties(network)?.interfaceName ?: continue
+                if (caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)) {
+                    wifiNames.add(name)
+                } else if (caps.hasTransport(
+                        android.net.NetworkCapabilities.TRANSPORT_CELLULAR,
+                    )
+                ) {
+                    cellularNames.add(name)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "network classification failed", e)
+        }
+
+        val hotspotNames = tetheredInterfaceNames(cm)
+
+        // DhcpInfo fallback: usable as the hotspot address only when
+        // Wi-Fi is NOT enabled and the server address is non-zero.
+        var dhcpHotspotAddress: String? = null
+        try {
+            @Suppress("DEPRECATION")
+            val wifi = applicationContext.getSystemService(
+                android.content.Context.WIFI_SERVICE,
+            ) as? android.net.wifi.WifiManager
+            @Suppress("DEPRECATION")
+            val server = wifi?.dhcpInfo?.serverAddress ?: 0
+            if (wifi != null && !wifi.isWifiEnabled && server != 0) {
+                dhcpHotspotAddress = String.format(
+                    java.util.Locale.US,
+                    "%d.%d.%d.%d",
+                    server and 0xff,
+                    (server shr 8) and 0xff,
+                    (server shr 16) and 0xff,
+                    (server shr 24) and 0xff,
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "dhcp info failed", e)
+        }
+
+        val interfaces = ArrayList<Map<String, Any?>>()
+        var hotspotSeen = false
+        try {
+            val all = java.net.NetworkInterface.getNetworkInterfaces()
+            while (all != null && all.hasMoreElements()) {
+                val iface = all.nextElement()
+                if (!iface.isUp || iface.isLoopback) continue
+                val kind = when {
+                    hotspotNames.contains(iface.name) -> "hotspot"
+                    wifiNames.contains(iface.name) -> "wifi"
+                    cellularNames.contains(iface.name) -> "cellular"
+                    else -> "other"
+                }
+                for (addr in iface.inetAddresses.toList()) {
+                    if (addr !is java.net.Inet4Address || addr.isLoopbackAddress) continue
+                    val text = addr.hostAddress ?: continue
+                    if (kind == "hotspot") hotspotSeen = true
+                    interfaces.add(
+                        mapOf("name" to iface.name, "address" to text, "kind" to kind),
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "interface listing failed", e)
+        }
+
+        // Neither tethering API named an interface: DhcpInfo's address
+        // is the hotspot address. Re-label the interface that owns it
+        // (or report it by itself if none does).
+        if (!hotspotSeen && dhcpHotspotAddress != null) {
+            val index = interfaces.indexOfFirst { it["address"] == dhcpHotspotAddress }
+            if (index >= 0) {
+                interfaces[index] = interfaces[index] + ("kind" to "hotspot")
+            } else {
+                interfaces.add(
+                    mapOf(
+                        "name" to "dhcp",
+                        "address" to dhcpHotspotAddress,
+                        "kind" to "hotspot",
+                    ),
+                )
+            }
+            hotspotSeen = true
+        }
+
+        return mapOf(
+            "hotspotOn" to hotspotSeen,
+            "wifiConnected" to wifiNames.isNotEmpty(),
+            "interfaces" to interfaces,
+        )
+    }
+
+    /// Tethered (hotspot / USB / BT) interface names. Both public-looking
+    /// APIs are hidden / permission-gated on many releases, so each is
+    /// called reflectively and any failure just falls through to the
+    /// next source — an empty set is a normal answer here.
+    private fun tetheredInterfaceNames(
+        cm: android.net.ConnectivityManager?,
+    ): Set<String> {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val tm = getSystemService("tethering")
+                if (tm != null) {
+                    val method = tm.javaClass.getMethod("getTetheredInterfaces")
+                    @Suppress("UNCHECKED_CAST")
+                    val names = method.invoke(tm) as? Collection<String>
+                    if (!names.isNullOrEmpty()) return names.toSet()
+                }
+            } catch (e: Exception) {
+                Log.i(TAG, "TetheringManager unavailable: ${e.javaClass.simpleName}")
+            }
+        }
+        try {
+            val method = android.net.ConnectivityManager::class.java
+                .getMethod("getTetheredIfaces")
+            @Suppress("UNCHECKED_CAST")
+            val names = method.invoke(cm) as? Array<String>
+            if (!names.isNullOrEmpty()) return names.toSet()
+        } catch (e: Exception) {
+            Log.i(TAG, "tetheredInterfaces unavailable: ${e.javaClass.simpleName}")
+        }
+        return emptySet()
     }
 }

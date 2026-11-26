@@ -30,6 +30,7 @@ import '../screens/search/barcode_scanner_screen.dart';
 import '../screens/search/search_screen.dart';
 import '../screens/settings/history_screen.dart';
 import '../screens/settings/settings_screen.dart';
+import '../screens/settings/web_service_screen.dart';
 import '../screens/similar/similar_books_screen.dart';
 import '../screens/splash/splash_screen.dart';
 import '../services/hive_service.dart';
@@ -62,6 +63,7 @@ class AppRoutes {
   static const String downloads = '/downloads';
   static const String categoriesDirectory = '/categories-directory';
   static const String author = '/author';
+  static const String webService = '/web-service';
 
   // ── Typed navigation helpers (routes that take arguments) ──────────
   //
@@ -233,6 +235,10 @@ class AppRoutes {
   static Future<T?> openBooklists<T extends Object?>(BuildContext context) =>
       Navigator.of(context).pushNamed<T>(booklists);
 
+  /// Settings → Web service (LAN sharing / web reader).
+  static Future<T?> openWebService<T extends Object?>(BuildContext context) =>
+      Navigator.of(context).pushNamed<T>(webService);
+
   /// The download-history page.
   static Future<T?> openHistory<T extends Object?>(BuildContext context) =>
       Navigator.of(context).pushNamed<T>(history);
@@ -355,6 +361,7 @@ Map<String, WidgetBuilder> buildAppRoutes() {
     AppRoutes.downloads: (context) =>
         const Scaffold(body: LocalDownloadsScreen()),
     AppRoutes.viewHistory: (context) => const ViewHistoryScreen(),
+    AppRoutes.webService: (context) => const WebServiceScreen(),
     AppRoutes.recentBooks: (context) => const RecentBooksScreen(),
     AppRoutes.popularBooks: (context) => const PopularBooksScreen(),
     AppRoutes.similarBooks: (context) {

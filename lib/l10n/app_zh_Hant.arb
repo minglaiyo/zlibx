@@ -778,5 +778,67 @@
   "downloadOrganizeAuthor": "按作者",
   "downloadOrganizeAuthorDesc": "每個作者一個子資料夾",
   "downloadOrganizeCategory": "按分類",
-  "downloadOrganizeCategoryDesc": "每個分類一個子資料夾"
+  "downloadOrganizeCategoryDesc": "每個分類一個子資料夾",
+  "webService": "Web 服務",
+  "webServiceSubtitle": "在區域網路內分享和閱讀書籍",
+  "webServiceStart": "開啟",
+  "webServiceStop": "停止",
+  "webServiceRunning": "運行中",
+  "webServiceStopped": "未運行",
+  "webServiceUrlHotspot": "手機熱點，用這個位址",
+  "webServiceUrlWifi": "同一 Wi-Fi，用這個位址",
+  "webServiceUrlLan": "區域網路，用這個位址",
+  "webServiceNoNetwork": "請先開啟熱點或連線 Wi-Fi，目前沒有可用的區域網路位址。",
+  "webServiceCopyUrl": "複製位址",
+  "webServiceCopied": "位址已複製",
+  "webServiceOpenLocal": "在本機瀏覽器開啟",
+  "webServiceOtherUrls": "其他位址",
+  "webServiceCellularWarn": "行動數據，電腦打不開，別用這個",
+  "webServiceSelfCheck": "自查：在電腦上執行 ipconfig，預設閘道位址就是手機位址。",
+  "webServiceClients": "已連線裝置：{clients}",
+  "@webServiceClients": {
+    "placeholders": {
+        "clients": {
+          "type": "String"
+        }
+    }
+  },
+  "webServiceCounts": "下載的書 {downloaded} 本 · 圖書館 {library} 本 · 書單 {booklists} 個",
+  "@webServiceCounts": {
+    "placeholders": {
+        "downloaded": {
+          "type": "int"
+        },
+        "library": {
+          "type": "int"
+        },
+        "booklists": {
+          "type": "int"
+        }
+    }
+  },
+  "webServiceSnapshotNote": "清單是開啟服務時的快照，運行期間的變化不會同步；停止後重新開啟即可更新。",
+  "webServiceStartFailed": "無法開啟服務：{error}",
+  "@webServiceStartFailed": {
+    "placeholders": {
+        "error": {
+          "type": "String"
+        }
+    }
+  },
+  "webServiceLocalNetworkDenied": "需要本地網絡權限，其他設備才能訪問。請在系統設置里允許「附近設備」後重試。",
+  "webServiceRefreshNetwork": "重新偵測網路",
+  "webPageHome": "zlibx 書架",
+  "webPageDownloaded": "下載的書",
+  "webPageLibrary": "圖書館",
+  "webPageBooklists": "書單",
+  "webPageDownload": "下載",
+  "webPageRead": "閱讀",
+  "webPageNotDownloaded": "未下載",
+  "webPageEmpty": "這裡還沒有內容",
+  "webPageBackHome": "返回首頁",
+  "webPageOfficialLink": "在 Z-Library 官網查看完整書單",
+  "webPagePreviewNote": "僅顯示預覽書目",
+  "webPageNotFound": "找不到",
+  "webPageConvertFailed": "這個文字檔無法轉換為可閱讀格式，但仍可下載。"
 }

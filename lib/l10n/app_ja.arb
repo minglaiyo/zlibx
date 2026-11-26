@@ -509,7 +509,7 @@
   },
   "readerSessionWriteFailed": "リーダーセッションの書き込みに失敗しました。再度ログインしてお試しください。",
   "recentAccount": "最近使用したアカウント",
-  "adaptiveGridColumns": "ブックグリッドの自動列数",
+  "adaptiveGridColumns": "カード列数",
   "adaptiveGridColumnsDesc": "ホーム・最新・人気・類似・検索結果のブックグリッドをウィンドウ幅に合わせて配置します。オフにすると従来のレイアウト（スマートフォンでは2列）を維持します。",
   "recommendationRandom": "ランダムなおすすめ",
   "recommendationRandomDesc": "ホームにランダムに選んだ50冊を表示し、更新のたびに入れ替えます。オフにするとパーソナライズされたおすすめを表示します。",

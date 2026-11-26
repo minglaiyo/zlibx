@@ -326,7 +326,7 @@ void main() {
       // Sidebar, after Legado's bookshelf: title, poem, a working
       // search form, settings section, GitHub.
       expect(r.body, contains('class="sidebar"'));
-      expect(r.body, contains('清风不识字，何故乱翻书'));
+      expect(r.body, contains('邂逅相遇，适我愿兮'));
       expect(
         r.body,
         contains('<form class="search" method="get" action="/search">'),
@@ -768,5 +768,63 @@ void main() {
       expect(r.body, contains('value="book"'));
     });
   });
+  });
+
+  group('description html stripping', () {
+    test('stripHtml removes tags, decodes entities, collapses space', () {
+      expect(
+        stripHtml('<p>天生一个仙人洞，无限风光在险峰</p>'),
+        '天生一个仙人洞，无限风光在险峰',
+      );
+      expect(
+        stripHtml('<p>&nbsp;("Raymond"校对)</p><p>第二段</p>'),
+        '("Raymond"校对) 第二段',
+      );
+      expect(
+        stripHtml('a &amp; b &lt;c&gt; &quot;q&quot; &#39;s&#39;'),
+        'a & b <c> "q" \'s\'',
+      );
+      expect(stripHtml('&#123; &#x7B;'), '{ {');
+      expect(stripHtml('a\n\n  b\tc'), 'a b c');
+      expect(stripHtml('<p></p>'), '');
+      expect(stripHtml('plain text'), 'plain text');
+    });
+
+    test('a card shows the cleaned description, not raw html', () async {
+      final htmlSnap = WebSnapshot(
+        files: [
+          WebFile(
+            bookId: 1,
+            title: 'Mao',
+            author: '毛泽东',
+            extension: 'epub',
+            description: '<p>天生一个仙人洞，无限风光在险峰</p>',
+            location: '${tmp.path}/a.epub',
+          ),
+          WebFile(
+            bookId: 2,
+            title: 'Solitude',
+            author: '加西亚 · 马尔克斯',
+            extension: 'epub',
+            description:
+                '<p>&nbsp;("Raymond"校对、批判版)</p><p>《百年孤独》是魔幻现实主义文学的代表作</p>',
+            location: '${tmp.path}/a.epub',
+          ),
+        ],
+        library: const [],
+      );
+      await service.start(snapshot: htmlSnap, preferredPort: 0);
+      final r = await get('/');
+      expect(r.status, 200);
+      // Tags are gone, entities decoded, the text itself kept.
+      expect(r.body, contains('天生一个仙人洞，无限风光在险峰'));
+      expect(r.body, contains('Raymond'));
+      expect(r.body, contains('校对、批判版'));
+      expect(r.body, contains('《百年孤独》是魔幻现实主义文学的代表作'));
+      // No raw tags or entities leak into the card.
+      expect(r.body, isNot(contains('&lt;p&gt;')));
+      expect(r.body, isNot(contains('&lt;/p&gt;')));
+      expect(r.body, isNot(contains('&nbsp;')));
+    });
   });
 }

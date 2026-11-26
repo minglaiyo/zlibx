@@ -106,6 +106,35 @@ String truncateDescription(String s, {int maxRunes = 120}) {
   return '${String.fromCharCodes(s.runes.take(maxRunes))}…';
 }
 
+/// Strip HTML tags and decode entities from a server-supplied
+/// description, so raw `<p>` markup never shows up on a card.
+/// Tags are replaced with a space first (a block boundary stays a
+/// word boundary), entities decoded after, so a literal `&lt;p&gt;`
+/// in the text is not mistaken for a tag; the result is collapsed
+/// to single spaces and trimmed. `&amp;` decodes last so `&amp;lt;`
+/// stays the literal text `&lt;` instead of `<`.
+String stripHtml(String s) {
+  var text = s.replaceAll(RegExp(r'<[^>]*>'), ' ');
+  text = text.replaceAllMapped(RegExp(r'&#(\d+);'), (m) {
+    final code = int.tryParse(m[1]!);
+    if (code == null || code < 0 || code > 0x10FFFF) return m[0]!;
+    return String.fromCharCode(code);
+  });
+  text = text.replaceAllMapped(RegExp(r'&#[xX]([0-9a-fA-F]+);'), (m) {
+    final code = int.tryParse(m[1]!, radix: 16);
+    if (code == null || code < 0 || code > 0x10FFFF) return m[0]!;
+    return String.fromCharCode(code);
+  });
+  text = text
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&apos;', "'")
+      .replaceAll('&amp;', '&');
+  return text.replaceAll(RegExp(r'\s+'), ' ').trim();
+}
+
 // ───────────────────────── Snapshot ─────────────────────────
 
 /// One downloaded file that can be served.
@@ -1155,10 +1184,9 @@ class WebService extends ChangeNotifier {
         : ' value="${escapeHtml(searchValue)}"';
     return '<header class="m-top">'
         '<div class="m-title">${escapeHtml(_strings.homeTitle)}</div>'
-        '<div class="m-sub">清风不识字，何故乱翻书</div>'
+        '<div class="m-sub">邂逅相遇，适我愿兮</div>'
         '<form class="m-search" method="get" action="/search">'
-        '<input name="q" type="search" '
-        'placeholder="搜索书籍，在线书籍自动加入书架"$value>'
+        '<input name="q" type="search"$value>'
         '</form>'
         '</header>'
         '<main class="m-main">$main</main>';
@@ -1175,10 +1203,9 @@ class WebService extends ChangeNotifier {
         : ' value="${escapeHtml(searchValue)}"';
     return '<aside class="sidebar">'
         '<div class="side-title">${escapeHtml(_strings.homeTitle)}</div>'
-        '<div class="side-sub">清风不识字，何故乱翻书</div>'
+        '<div class="side-sub">邂逅相遇，适我愿兮</div>'
         '<form class="search" method="get" action="/search">'
-        '<input name="q" type="search" '
-        'placeholder="搜索书籍，在线书籍自动加入书架"$value>'
+        '<input name="q" type="search"$value>'
         '</form>'
         '<div class="side-sec"><h3>基本设定</h3>'
         '<span class="tag tag-info">已连接</span></div>'
@@ -1236,10 +1263,13 @@ class WebService extends ChangeNotifier {
       b.write('<div class="meta">${escapeHtml(meta)}</div>');
     }
     final desc = e.description;
-    if (desc != null && desc.trim().isNotEmpty) {
-      b.write(
-        '<div class="desc">${escapeHtml(truncateDescription(desc.trim()))}</div>',
-      );
+    if (desc != null) {
+      final clean = stripHtml(desc).trim();
+      if (clean.isNotEmpty) {
+        b.write(
+          '<div class="desc">${escapeHtml(truncateDescription(clean))}</div>',
+        );
+      }
     }
     final index = e.fileIndex;
     if (index != null) {

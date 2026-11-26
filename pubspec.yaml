@@ -74,6 +74,14 @@ dependencies:
   flutter_rust_bridge: 2.14.0-beta.2
 
   # Storage
+  # Backup & restore (plan item 17): archive packs the boxes into one zip;
+  # cryptography (+ its Flutter companion, which delegates PBKDF2/AES-GCM
+  # to javax.crypto on Android) encrypts the secrets envelope.
+  # NOTE: pubspec.lock is NOT refreshed in this change (no local Flutter
+  # toolchain); CI runs plain `flutter pub get`, which resolves these.
+  archive: ^4.7.1
+  cryptography: ^2.9.0
+  cryptography_flutter: ^2.3.4
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   # Credentials (account session, backend token) live here, never in Hive:

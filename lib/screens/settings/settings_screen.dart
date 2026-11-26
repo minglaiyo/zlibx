@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../widgets/update_dialog.dart';
 import '../auth/login_screen.dart';
 import 'widgets/about_section.dart';
+import 'widgets/backup_restore_section.dart';
 import 'widgets/blocked_keywords_section.dart';
 import 'widgets/donation_key_section.dart';
 import 'widgets/download_path_section.dart';
@@ -87,6 +88,9 @@ class SettingsScreen extends ConsumerWidget {
 
             // ── Blocked keywords ────────────────────────────────────
             const BlockedKeywordsSection(),
+
+            // ── Backup & restore ────────────────────────────────────
+            const BackupRestoreSection(),
 
             const SizedBox(height: 20),
 

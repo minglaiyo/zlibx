@@ -24,6 +24,7 @@ import 'services/app_lock_service.dart';
 import 'services/app_shortcuts.dart';
 import 'services/booklist_html_cache.dart';
 import 'services/challenge_html_cache.dart';
+import 'services/domain_probe.dart';
 import 'services/download_foreground_service.dart';
 import 'services/hive_service.dart';
 import 'services/instance_manager.dart';
@@ -142,6 +143,13 @@ void main() async {
   // cached list first and never throws. Fire-and-forget on purpose —
   // startup must not block on the mirror list.
   unawaited(InstanceManager().refreshOnStartup());
+
+  // Plan item 4: cold-start re-verification of discovered redirect
+  // targets — a host a past probe adopted is only trusted again after
+  // it still answers `/eapi/info/domains` with a family domain in the
+  // list. Fire-and-forget and never throws; a host that fails is
+  // dropped from `discovered_hosts`, not retried.
+  unawaited(DomainProbe.reverifyDiscoveredHosts());
 
   // When the headless challenge solve fails (e.g. a human CAPTCHA shows),
   // show the solver as a visible page over the current screen. The user

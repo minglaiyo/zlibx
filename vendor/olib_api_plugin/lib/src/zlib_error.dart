@@ -84,6 +84,22 @@ String zlibErrorText(Object? error) {
   return error.toString();
 }
 
+/// Precise DiamWall identification (plan item 4): a 307 whose `Server`
+/// header names DiamWall, or whose `Set-Cookie` carries `__diamwall`.
+/// A bare 307 (or a 307 from another wall) is NOT a DiamWall verdict —
+/// the domain probe must not misread a plain redirect as a wall, and
+/// the destructive-GET client only follows the challenge hop when the
+/// markers are present.
+bool isDiamWallResponse({required int? status, Headers? headers}) {
+  if (status != 307) return false;
+  final server = headers?.value('server') ?? '';
+  if (server.toLowerCase().contains('diamwall')) return true;
+  final cookies = headers?['set-cookie'] ?? const <String>[];
+  return cookies.any(
+    (cookie) => cookie.trim().toLowerCase().startsWith('__diamwall='),
+  );
+}
+
 /// Map a Z-Library failure onto the plan-10 table. [status] is the HTTP
 /// status when the caller has it; when it is null, a status embedded in
 /// the message text (`HTTP 513: ...`) is parsed out, so the table works

@@ -2,9 +2,16 @@
 //
 // SLUM's latency is measured by open-slum.org's server, not from this
 // phone — through a VPN the ranking can be completely different. This
-// probes each enabled mirror from the device (a timed GET of the
-// mirror root) and ranks mirrors by the measured time, so downloads
-// try the fastest mirror for *this* network first.
+// probes each enabled mirror from the device and ranks mirrors by the
+// measured time, so downloads try the fastest mirror for *this*
+// network first.
+//
+// The probe itself is [DomainProbe] (plan item 4): it follows the
+// mirror's redirects by hand (max 3 hops) and tells a wall, a loop
+// and a hop to another domain apart, instead of the old auto-follow
+// GET that lumped all three into "failed". A mirror that ends at a
+// live page — or at a verified redirect target — counts with its time
+// to the terminal response; anything else is unranked.
 //
 // Only the LibGen download path uses the ranking ([rankedUrls]);
 // search keeps SLUM order. Results are cached for [cacheTtl]; the
@@ -15,6 +22,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 
 import '../utils/app_log.dart';
+import 'domain_probe.dart';
 import 'hive_service.dart';
 import 'http_client.dart';
 import 'instance_manager.dart';
@@ -32,7 +40,6 @@ class MirrorSpeedTest {
   final Dio _dio;
 
   static const Duration cacheTtl = Duration(hours: 1);
-  static const Duration probeTimeout = Duration(seconds: 8);
 
   String _cacheKey(MirrorService service) => 'mirror_speed_${service.name}';
 
@@ -119,30 +126,18 @@ class MirrorSpeedTest {
 
   Future<int?> _probeOne(String url) async {
     final stopwatch = Stopwatch()..start();
-    // Cancels the in-flight body download: once headers arrive the
-    // probe is done, and on timeout the underlying request must not
-    // keep downloading in the background either.
-    final cancelToken = CancelToken();
     try {
-      // ResponseType.stream resolves as soon as headers arrive — the
-      // ranking only needs time-to-first-byte, not the full mirror
-      // root page.
-      final res = await _dio
-          .get<ResponseBody>(
-            url,
-            options: Options(responseType: ResponseType.stream),
-            cancelToken: cancelToken,
-          )
-          .timeout(
-            probeTimeout,
-            onTimeout: () {
-              cancelToken.cancel();
-              throw TimeoutException('mirror probe timed out');
-            },
-          );
+      // Plan item 4: the probe follows redirects by hand and tells a
+      // wall, a loop and an off-family hop apart — the old auto-follow
+      // GET could not. A mirror that ends at a live page (or at a
+      // verified redirect target) counts with its time to the
+      // terminal response; anything else is unranked.
+      final result = await DomainProbe.probe(
+        Uri.parse(url).host,
+        dio: _dio,
+      );
       stopwatch.stop();
-      cancelToken.cancel();
-      if (res.statusCode != null && res.statusCode! < 400) {
+      if (result.outcome == DomainProbeOutcome.ok) {
         return stopwatch.elapsedMilliseconds;
       }
       return null;

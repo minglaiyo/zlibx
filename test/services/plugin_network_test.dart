@@ -11,16 +11,14 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 // redirect follower, the download engine and the file-link endpoint.
 // All served by a fake adapter — no network.
 //
-// The redirect tests pin the merged `_sendFollowing` (S4) behaviour:
-// a GET 301 to the slugged URL re-sends the query and keeps the
-// session Cookie on the same host; a 307 hop's set-cookie rides the
-// follow-up; a cross-host hop learns nothing and drops the Cookie; a
-// chain that never settles fails instead of looping; a redirect
-// without a Location, or to a non-https URL, fails instead of
-// following. The 301-then-307 chain pins the S4 latent fix: once a
-// 301 has turned the request into a GET, a later 307 keeps it a GET
-// (the old `_delete` / `_postText` recomputed the method from the
-// status code alone and wrongly switched it back).
+// The delete tests pin the destructive-GET client (plan item 5):
+// deleteBooklist no longer follows redirects the way the generic
+// follower does. A bare 307, a 301, a cross-host hop, a missing
+// Location or a non-https target all fail with 'redirect not
+// followed' instead of re-issuing the delete; only the DiamWall
+// challenge hop (307 + `__diamwall`, same URL, at most 3 hops) is
+// followed, and its set-cookie rides the follow-up request next to
+// the session pair.
 //
 // The download tests pin the S2/S3 engine: a 200 whose body is an
 // epub (`PK…`) is written; a 200 whose body is HTML (mislabelled
@@ -340,7 +338,13 @@ class _FakeAdapter implements HttpClientAdapter {
 }
 
 ZLibraryApi _apiWith(_FakeAdapter adapter) {
-  return ZLibraryApi(dio: Dio()..httpClientAdapter = adapter);
+  // Plan item 5: the destructive client is a separate Dio — the fake
+  // adapter has to be injected there too, or deleteBooklist would
+  // hit the real network instead of the fake.
+  return ZLibraryApi(
+    dio: Dio()..httpClientAdapter = adapter,
+    destructiveDio: Dio()..httpClientAdapter = adapter,
+  );
 }
 
 Future<ZLibraryApi> _loggedInApi(_FakeAdapter adapter) async {
@@ -359,18 +363,21 @@ List<int> _hopIndexes(List<Uri> uris, String path) => [
     ];
 
 void main() {
-  group('redirect follower (S4)', () {
-    test('GET 307 to the same URL re-sends the request and succeeds',
-        () async {
+  group('destructive GET redirects (plan item 5)', () {
+    test('bare 307 to the same URL is not followed', () async {
+      // Plan item 5: a destructive GET never re-issues the write —
+      // only the DiamWall challenge hop (307 + `__diamwall`) is
+      // followed, and this 307 carries no wall markers.
       final adapter = _FakeAdapter()..deleteRedirectFirst = true;
       final api = await _loggedInApi(adapter);
 
       final response = await api.deleteBooklist(_deleteListId);
 
-      expect(response.success, isTrue);
-      expect(adapter.deleteCalls, 2);
-      // loginWithToken's profile GET plus the two delete hops.
-      expect(adapter.requestedMethods.where((m) => m == 'GET').length, 3);
+      expect(response.success, isFalse);
+      expect(response.error, 'redirect not followed');
+      expect(adapter.deleteCalls, 1);
+      // loginWithToken's profile GET plus the single delete hop.
+      expect(adapter.requestedMethods.where((m) => m == 'GET').length, 2);
     });
 
     test('307 hop set-cookie rides the follow-up request', () async {
@@ -393,8 +400,10 @@ void main() {
       expect(secondHop['Cookie'], contains('remix_userid=$_sessionUserId'));
     });
 
-    test('cross-host redirect learns nothing and drops the Cookie',
-        () async {
+    test('cross-host redirect is not followed', () async {
+      // Plan item 5: a hop to another host is never followed, even
+      // when it carries DiamWall markers — the write is not re-issued
+      // somewhere the caller never asked for.
       final adapter = _FakeAdapter()
         ..deleteRedirectFirst = true
         ..deleteRedirectCrossHost = true
@@ -403,31 +412,30 @@ void main() {
 
       final response = await api.deleteBooklist(_deleteListId);
 
-      // The cross-host hop is followed (the fake answers 200 there),
-      // but the session Cookie must not travel to the other host and
-      // the other host's set-cookie must not enter the jar.
-      expect(response.success, isTrue);
-      expect(adapter.deleteCalls, 2);
+      expect(response.success, isFalse);
+      expect(response.error, 'redirect not followed');
+      expect(adapter.deleteCalls, 1);
       final hops = _hopIndexes(adapter.requestedUris, _deletePath);
-      expect(hops.length, 2);
-      final secondHop = adapter.requestedHeaders[hops[1]];
-      expect(secondHop['Cookie'], isNull);
+      expect(hops.length, 1);
     });
 
-    test('redirect that keeps redirecting fails instead of looping',
+    test('DiamWall redirect that keeps redirecting stops after the hop cap',
         () async {
-      final adapter = _FakeAdapter()..deleteRedirectAlways = true;
+      // The challenge hop is followed at most 3 times; the 4th 307
+      // fails instead of looping forever.
+      final adapter = _FakeAdapter()
+        ..deleteRedirectAlways = true
+        ..deleteWallCookie = 'ddg-token=';
       final api = await _loggedInApi(adapter);
 
       final response = await api.deleteBooklist(_deleteListId);
 
       expect(response.success, isFalse);
-      expect(response.error, contains('too many redirects'));
-      expect(adapter.deleteCalls, 5);
+      expect(response.error, 'redirect not followed');
+      expect(adapter.deleteCalls, 4);
     });
 
-    test('redirect without a Location fails instead of following',
-        () async {
+    test('redirect without a Location is not followed', () async {
       final adapter = _FakeAdapter()
         ..deleteRedirectFirst = true
         ..deleteRedirectNoLocation = true;
@@ -436,12 +444,11 @@ void main() {
       final response = await api.deleteBooklist(_deleteListId);
 
       expect(response.success, isFalse);
-      expect(response.error, contains('redirect without location'));
+      expect(response.error, 'redirect not followed');
       expect(adapter.deleteCalls, 1);
     });
 
-    test('redirect to a non-https URL fails instead of following',
-        () async {
+    test('redirect to a non-https URL is not followed', () async {
       final adapter = _FakeAdapter()
         ..deleteRedirectFirst = true
         ..deleteRedirectNonHttps = true;
@@ -450,30 +457,23 @@ void main() {
       final response = await api.deleteBooklist(_deleteListId);
 
       expect(response.success, isFalse);
-      expect(response.error, contains('redirect to non-https URL'));
+      expect(response.error, 'redirect not followed');
       expect(adapter.deleteCalls, 1);
     });
 
-    test('301-then-307 chain keeps the request a GET', () async {
-      // The S4 latent fix: a 301 turns the request into a GET, and a
-      // later 307 must keep it a GET — not switch it back to the
-      // original method. deleteBooklist is a GET throughout, so the
-      // chain is GET -> 301 -> GET -> 307 -> GET -> 200; the
-      // assertion is that all three hops are GET (the old code
-      // recomputed the method from the status alone, which for a
-      // DELETE/POST caller would have switched back).
+    test('301 is not followed', () async {
+      // Plan item 5: the destructive client follows no 301 at all —
+      // the chain never reaches the 307.
       final adapter = _FakeAdapter()..delete301Then307 = true;
       final api = await _loggedInApi(adapter);
 
       final response = await api.deleteBooklist(_deleteListId);
 
-      expect(response.success, isTrue);
-      expect(adapter.deleteCalls, 3);
+      expect(response.success, isFalse);
+      expect(response.error, 'redirect not followed');
+      expect(adapter.deleteCalls, 1);
       final hops = _hopIndexes(adapter.requestedUris, _deletePath);
-      expect(hops.length, 3);
-      for (final hop in hops) {
-        expect(adapter.requestedMethods[hop], 'GET');
-      }
+      expect(hops.length, 1);
     });
   });
 

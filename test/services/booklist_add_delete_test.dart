@@ -314,7 +314,13 @@ class _FakeAdapter implements HttpClientAdapter {
 }
 
 ZLibraryApi _apiWith(_FakeAdapter adapter) {
-  return ZLibraryApi(dio: Dio()..httpClientAdapter = adapter);
+  // Plan item 5: the destructive client is a separate Dio — the fake
+  // adapter has to be injected there too, or delete/remove would hit
+  // the real network instead of the fake.
+  return ZLibraryApi(
+    dio: Dio()..httpClientAdapter = adapter,
+    destructiveDio: Dio()..httpClientAdapter = adapter,
+  );
 }
 
 /// Indexes (into the recorded requests) of every call to [path], in
@@ -385,17 +391,20 @@ void main() {
     expect(response.error, 'not found');
   });
 
-  test('delete follows the 307 to the same URL, then succeeds', () async {
+  test('delete does not follow a bare 307', () async {
+    // Plan item 5: only the DiamWall challenge hop (307 +
+    // `__diamwall`) is followed; this 307 carries no wall markers,
+    // so the delete is issued exactly once and fails instead.
     final adapter = _FakeAdapter()..deleteRedirectFirst = true;
     final api = _apiWith(adapter);
 
     final response = await api.deleteBooklist(_deleteListId);
 
-    expect(response.success, isTrue);
-    expect(response.data, isTrue);
-    expect(adapter.deleteCalls, 2);
-    expect(adapter.requestedMethods, ['GET', 'GET']);
-    expect(adapter.requestedPaths, [_deletePath, _deletePath]);
+    expect(response.success, isFalse);
+    expect(response.error, 'redirect not followed');
+    expect(adapter.deleteCalls, 1);
+    expect(adapter.requestedMethods, ['GET']);
+    expect(adapter.requestedPaths, [_deletePath]);
   });
 
   test('delete final 2xx with an empty body counts as deleted', () async {
@@ -420,15 +429,20 @@ void main() {
     expect(response.error, 'booklist not found');
   });
 
-  test('delete that keeps redirecting fails instead of looping', () async {
-    final adapter = _FakeAdapter()..deleteRedirectAlways = true;
+  test('delete DiamWall redirect that keeps redirecting stops after the '
+      'hop cap', () async {
+    // The challenge hop is followed at most 3 times; the 4th 307
+    // fails instead of looping forever.
+    final adapter = _FakeAdapter()
+      ..deleteRedirectAlways = true
+      ..deleteWallCookie = 'ddg-token=';
     final api = _apiWith(adapter);
 
     final response = await api.deleteBooklist(_deleteListId);
 
     expect(response.success, isFalse);
-    expect(response.error, 'too many redirects');
-    expect(adapter.deleteCalls, 5);
+    expect(response.error, 'redirect not followed');
+    expect(adapter.deleteCalls, 4);
   });
 
   test('delete 307 hop set-cookie rides the follow-up request', () async {
@@ -459,8 +473,11 @@ void main() {
     expect(secondHop['Cookie'], contains('remix_userkey=$_sessionUserKey'));
   });
 
-  test('delete cross-host redirect learns nothing, drops the Cookie',
-      () async {
+  test('delete cross-host redirect is not followed', () async {
+    // Plan item 5: a hop to another host is never followed, even when
+    // it carries DiamWall markers — and its set-cookie is not
+    // harvested, so the next same-host request carries the session
+    // pair only, without the hop's cookie.
     final adapter = _FakeAdapter()
       ..deleteRedirectFirst = true
       ..deleteRedirectCrossHost = true
@@ -471,16 +488,12 @@ void main() {
 
     final response = await api.deleteBooklist(_deleteListId);
 
-    expect(response.success, isTrue);
+    expect(response.success, isFalse);
+    expect(response.error, 'redirect not followed');
+    expect(adapter.deleteCalls, 1);
     final hops = _hopIndexes(adapter.requestedPaths, _deletePath);
-    expect(hops.length, 2);
-    // The first hop went out with the session; the redirect target is
-    // on another host, so its set-cookie is not harvested and the
-    // follow-up request to that host carries no Cookie header at all.
+    expect(hops.length, 1);
     expect(adapter.requestedHeaders[hops[0]].containsKey('Cookie'), isTrue);
-    expect(adapter.requestedHeaders[hops[1]].containsKey('Cookie'), isFalse);
-    // Nothing entered the jar: the next same-host request carries the
-    // session pair only, without the hop's cookie.
     await api.addBookToBooklist(booklistId: _booklistId, bookId: _bookId);
     final addHeaders = adapter.requestedHeaders.last;
     expect(addHeaders['Cookie'], contains('remix_userid=$_sessionUserId'));
@@ -612,7 +625,10 @@ void main() {
     expect(adapter.removeCalls, 1);
   });
 
-  test('remove follows the 307 to the same URL, then succeeds', () async {
+  test('remove does not follow a bare 307', () async {
+    // Plan item 5: same rule as delete — a 307 without DiamWall
+    // markers is not followed, so the remove is issued exactly once
+    // and fails instead.
     final adapter = _FakeAdapter()..removeRedirectFirst = true;
     final api = _apiWith(adapter);
 
@@ -621,10 +637,11 @@ void main() {
       readlistBookId: _removeEntryId,
     );
 
-    expect(response.success, isTrue);
-    expect(adapter.removeCalls, 2);
-    expect(adapter.requestedMethods, ['GET', 'GET']);
-    expect(adapter.requestedPaths, [_removePath, _removePath]);
+    expect(response.success, isFalse);
+    expect(response.error, 'redirect not followed');
+    expect(adapter.removeCalls, 1);
+    expect(adapter.requestedMethods, ['GET']);
+    expect(adapter.requestedPaths, [_removePath]);
   });
 
   test('current-user returns the entry id for the target list', () async {

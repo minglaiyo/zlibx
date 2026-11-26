@@ -90,6 +90,32 @@ void main() {
     if (sourceRoot.existsSync()) sourceRoot.deleteSync(recursive: true);
   });
 
+  group('treeRootFrom', () {
+    test('maps the app external dir to <external>/Download/zlibx', () {
+      expect(
+        SafFolderAccess.treeRootFrom(
+          '/storage/emulated/0/Android/data/com.minglaiyo.zlibx/files',
+        ),
+        '/storage/emulated/0/Download/zlibx',
+      );
+    });
+
+    test('is a prefix of a real orphan path (separator regression)', () {
+      final root = SafFolderAccess.treeRootFrom(
+        '/storage/emulated/0/Android/data/com.minglaiyo.zlibx/files',
+      )!;
+      expect(
+        '/storage/emulated/0/Download/zlibx/Bird (DK Eyewitness Books) - 1114478.pdf'
+            .startsWith('$root/'),
+        isTrue,
+      );
+    });
+
+    test('returns null without an Android/data segment', () {
+      expect(SafFolderAccess.treeRootFrom('/some/other/path'), isNull);
+    });
+  });
+
   group('pickFolder', () {
     test('stores the picked URI and returns it', () async {
       final uri = await SafFolderAccess().pickFolder();

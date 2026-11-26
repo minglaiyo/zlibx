@@ -199,13 +199,24 @@ class SafFolderAccess {
     try {
       final appExternal = await getExternalStorageDirectory();
       if (appExternal == null) return null;
-      const marker = '/Android/data/';
-      final index = appExternal.path.indexOf(marker);
-      if (index <= 0) return null;
-      return '${appExternal.path.substring(0, index)}Download/zlibx';
+      return treeRootFrom(appExternal.path);
     } on Object {
       return null;
     }
+  }
+
+  /// Pure path math behind [_treeRoot]: the app's external dir
+  /// (`/storage/emulated/0/Android/data/<pkg>/files`) maps to
+  /// `/storage/emulated/0/Download/zlibx`. Null when the path has no
+  /// `/Android/data/` segment. (Regression: the separator before
+  /// `Download` was once missing, so every relative-path lookup
+  /// failed and orphaned books 404'd without reaching the native copy.)
+  @visibleForTesting
+  static String? treeRootFrom(String appExternalPath) {
+    const marker = '/Android/data/';
+    final index = appExternalPath.indexOf(marker);
+    if (index <= 0) return null;
+    return '${appExternalPath.substring(0, index)}/Download/zlibx';
   }
 
   /// [realPath] relative to the granted folder ('sub/Book.epub'), or

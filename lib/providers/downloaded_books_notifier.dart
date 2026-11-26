@@ -410,9 +410,3 @@ final downloadedBooksProvider =
     NotifierProvider<DownloadedBooksNotifier, AsyncValue<List<Book>>>(
       DownloadedBooksNotifier.new,
     );
-
-/// Resolved detail covers for cloud history rows, keyed by book id.
-///
-/// The downloaded endpoint's cover value never loads, so a row whose
-/// listed cover fails falls back to the detail endpoint's cover — the
-/// same cover the detail page shows once its fetch completes.

@@ -583,7 +583,7 @@ void main() {
     expect(api.dstatsCalls, greaterThan(callsAfterFirstLoad));
   });
 
-  test('封面兜底并发上限：一次最多 4 个详情请求在途', () async {
+  test('封面兜底并发上限：一次最多 3 个详情请求在途', () async {
     var inFlight = 0;
     var maxInFlight = 0;
     final gates = <String, Completer<void>>{};
@@ -612,8 +612,8 @@ void main() {
       );
     }
     await _settle();
-    // 10 行全来要封面：只有 4 个在途，其余排队。
-    expect(maxInFlight, 4);
+    // 10 行全来要封面：只有 3 个在途，其余排队。
+    expect(maxInFlight, 3);
 
     // 放行一批，下一批排队顶上并建新 gate：循环放行直到队列消化完。
     while (gates.isNotEmpty) {

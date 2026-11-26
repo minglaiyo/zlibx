@@ -5,7 +5,6 @@
 //
 // Harness 照 test/providers/booklists_state_test.dart：假 API
 // （implements + noSuchMethod）+ 假 AuthNotifier + 临时 Hive 目录。
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -41,7 +40,7 @@ class _FakeApi implements ZLibraryApi {
 class _FakeAuthNotifier extends AuthNotifier {
   _FakeAuthNotifier(this._state);
 
-  AuthState _state;
+  final AuthState _state;
 
   int reverifyCalls = 0;
   int flagLineUnavailableCalls = 0;
@@ -106,7 +105,7 @@ void main() {
 
   test('未确认的内置镜像：不发会话，只标记线路不可用', () async {
     final api = _FakeApi();
-    final auth = _FakeAuthNotifier(const AuthState());
+    final auth = _FakeAuthNotifier(AuthState());
     final container = _container(api, auth);
     // 触发 DomainNotifier.build()：初始线路是默认域名。
     expect(container.read(domainProvider), defaultDomain);
@@ -128,7 +127,7 @@ void main() {
   test('已确认的内置镜像：重新验证会话', () async {
     await MirrorTrust.confirm('bibliotheca.world');
     final api = _FakeApi();
-    final auth = _FakeAuthNotifier(const AuthState());
+    final auth = _FakeAuthNotifier(AuthState());
     final container = _container(api, auth);
     expect(container.read(domainProvider), defaultDomain);
 
@@ -144,7 +143,7 @@ void main() {
 
   test('未确认的非内置域名（如下架/ SLUM 来的镜像）：不发会话', () async {
     final api = _FakeApi();
-    final auth = _FakeAuthNotifier(const AuthState());
+    final auth = _FakeAuthNotifier(AuthState());
     final container = _container(api, auth);
     expect(container.read(domainProvider), defaultDomain);
 

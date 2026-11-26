@@ -192,7 +192,7 @@ class _BackupRestoreSectionState extends ConsumerState<BackupRestoreSection> {
               FilledButton(
                 onPressed: () async {
                   final bool ok = await AppRestart.restart();
-                  if (!ok && mounted) {
+                  if (!ok && dialogContext.mounted && context.mounted) {
                     Navigator.of(dialogContext).pop();
                     showAppSnack(
                       context,

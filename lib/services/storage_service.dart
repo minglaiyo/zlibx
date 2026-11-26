@@ -340,11 +340,14 @@ class StorageService {
   }
 
   /// Add book to download history
-  /// Stores: {bookId: {title, author, filePath, cover, extension, downloadTime, source, customSubfolder}}
+  /// Stores: {bookId: {title, author, filePath, cover, extension, downloadTime, source, customSubfolder, realPath}}
   /// [source] 是下载来源的枚举名（BookSource.name，#143）：zlibrary /
   /// annasArchive / libgen；旧条目没有这个键，读回来是 null。
   /// [customSubfolder] 是 #95 用户给这本书指定的子文件夹名；没指定
   /// 不存，读回来是 null。
+  /// [realPath] 是发布时解析的真实文件路径（2026-11-26 孤儿行重链）：
+  /// 清数据后 MediaStore 行失归属、存的 content:// URI 打不开时，
+  /// 历史检查按它直接查文件。旧条目没有这个键，读回来是 null。
   Future<void> addToDownloadHistory(
     String bookId,
     String title,
@@ -354,6 +357,7 @@ class StorageService {
     String? extension,
     String? source,
     String? customSubfolder,
+    String? realPath,
   }) async {
     await _runSerialized(_keyDownloadHistory, () async {
       final box = await HiveService.libraryBoxAsync();
@@ -366,12 +370,36 @@ class StorageService {
         'downloadTime': DateTime.now().toIso8601String(),
         if (source != null) 'source': source,
         if (customSubfolder != null) 'customSubfolder': customSubfolder,
+        if (realPath != null) 'realPath': realPath,
       });
       final order = _readDlOrder(box);
       if (!order.contains(bookId)) {
         order.add(bookId);
         await box.put(_dlOrderKey, order);
       }
+    });
+  }
+
+  /// Relink a history entry to a new location after its stored
+  /// content:// URI stopped opening (orphaned MediaStore row,
+  /// 2026-11-26: clearing the app's data disowns the row,
+  /// owner_package_name NULL, although the file itself is still on
+  /// disk). Patches filePath + realPath in place, keeping every
+  /// other field; no-op when the entry is gone. Serialized on the
+  /// history key like the other history writes.
+  Future<void> updateDownloadHistoryLocation(
+    String bookId,
+    String filePath, {
+    String? realPath,
+  }) async {
+    await _runSerialized(_keyDownloadHistory, () async {
+      final box = await HiveService.libraryBoxAsync();
+      final value = box.get('$_dlPrefix$bookId');
+      if (value is! Map) return;
+      final entry = Map<String, dynamic>.from(value);
+      entry['filePath'] = filePath;
+      if (realPath != null) entry['realPath'] = realPath;
+      await box.put('$_dlPrefix$bookId', entry);
     });
   }
 

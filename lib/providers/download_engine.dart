@@ -501,6 +501,16 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         }
       }
 
+      // Orphaned-row recovery (2026-11-26): clearing the app's data
+      // can disown the MediaStore row (owner_package_name NULL), after
+      // which the stored content:// URI no longer opens although the
+      // file is still on disk. Record the real path now, while the row
+      // is still owned and the query works, so the history check can
+      // fall back to the file itself. A plain staging path resolves
+      // to itself; a failed resolution stores nothing (no behavior
+      // change).
+      final realPath = await MediaStoreFiles.realPath(recordedPath);
+
       // Save to download history (with cover and extension for persistence)
       await _storage.addToDownloadHistory(
         book.id.toString(),
@@ -512,6 +522,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         source: source?.name,
         // #95：记用户指定的那个（原始值）；读回后重新算生效文件夹。
         customSubfolder: customSubfolder,
+        realPath: realPath,
       );
       // 书已落地：来源 sidecar 使命结束。
       await _deleteSidecarQuietly(temporaryPath);

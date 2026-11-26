@@ -77,8 +77,6 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
   ) async {
     final filePath = data['filePath'] as String?;
     if (filePath == null) return null;
-    final file = File(filePath);
-    final fileExists = await MediaStoreFiles.exists(filePath);
 
     // Create a minimal Book object from stored data
     final book = Book(
@@ -89,17 +87,65 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
       extension: data['extension'] as String?,
     );
 
+    var resolvedPath = filePath;
+    var fileExists = await MediaStoreFiles.exists(filePath);
+    if (!fileExists) {
+      // Orphaned MediaStore row (2026-11-26): clearing the app's
+      // data disowns the row (owner_package_name NULL), so the stored
+      // content:// URI no longer opens although the file is still on
+      // disk — both ContentResolver checks fail (open throws
+      // SecurityException, the realPath query sees no rows). Relink
+      // by real path instead of dropping the record: the stored real
+      // path first, then the filename rebuilt under Download/zlibx.
+      // Clear-data never changes the app UID, so the file itself
+      // still opens; only a reinstall (new UID) cannot be saved this
+      // way, and it stays error/missing as before.
+      // 分类模式下历史 Book 无 categories 字段，重建退到“未分类”；
+      // 新下载靠发布时记的真实路径，不走重建。
+      final candidates = orphanRelinkCandidates(
+        storedRealPath: data['realPath'] as String?,
+        externalRoot: await _externalStorageRoot(),
+        displayName: _buildSafeFileName(book),
+        effectiveSubfolder: effectiveSubfolder(
+          book,
+          data['customSubfolder']?.toString(),
+        ),
+      );
+      for (final candidate in candidates) {
+        if (await File(candidate).exists()) {
+          resolvedPath = candidate;
+          fileExists = true;
+          break;
+        }
+      }
+      if (fileExists) {
+        // Persist the recovery: the next load reads the real path
+        // directly instead of relinking again. Best-effort — a
+        // storage failure must not un-complete the task in memory.
+        try {
+          await _storage.updateDownloadHistoryLocation(
+            bookId,
+            resolvedPath,
+            realPath: resolvedPath,
+          );
+        } on Object catch (error) {
+          logIgnored('download_relink_persist', error);
+        }
+      }
+    }
+
+    final file = File(resolvedPath);
     return DownloadTask(
       id: bookId,
       book: book,
       progress: 1.0,
       status: fileExists ? DownloadStatus.completed : DownloadStatus.error,
-      filePath: filePath,
+      filePath: resolvedPath,
       error: fileExists ? null : 'File not found',
       downloadedAt: DateTime.tryParse(data['downloadTime']?.toString() ?? ''),
       // MediaStore content URIs have no local File to measure,
       // so the size stays unknown for history-loaded entries.
-      fileSize: fileExists && !MediaStoreFiles.isContentUri(filePath)
+      fileSize: fileExists && !MediaStoreFiles.isContentUri(resolvedPath)
           ? await file.length()
           : null,
       missingFile: !fileExists,
@@ -108,6 +154,24 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
       // #95：旧条目没存指定文件夹，读回来是 null，走分类模式默认。
       customSubfolder: data['customSubfolder']?.toString(),
     );
+  }
+
+  /// 外部存储根（`/storage/emulated/<user>`）：从应用专属外部目录
+  /// 剥离 `/Android/data/<pkg>/files`。孤儿行按文件名重建真实路径
+  /// 时用。拿不到（非 Android / 通道异常）返回 null，调用方只用已
+  /// 存的真实路径重链。
+  Future<String?> _externalStorageRoot() async {
+    try {
+      final appExternal = await getExternalStorageDirectory();
+      if (appExternal == null) return null;
+      const marker = '/Android/data/';
+      final index = appExternal.path.indexOf(marker);
+      if (index <= 0) return null;
+      return appExternal.path.substring(0, index);
+    } on Object catch (error) {
+      logIgnored('download_external_root', error);
+      return null;
+    }
   }
 
   // ── 断点恢复：盘上残片 → paused 任务（2026-11-21 下载中断修复）──
@@ -299,4 +363,39 @@ String? stripPartialSuffixes(String name) {
   final id = int.tryParse(match.group(2)!);
   if (id == null || id <= 0) return null;
   return (id, match.group(1)!, match.group(3)!.toLowerCase());
+}
+
+/// 库级纯函数（测试直接 import download_provider.dart 调用）：
+/// 孤儿行重链候选真实路径。存的 content:// URI 打不开时（清数据
+/// 后 MediaStore 行失归属，owner_package_name NULL），按以下顺序
+/// 在盘上找文件：
+/// 1. 发布时记下的真实路径（[storedRealPath]）；
+/// 2. `<externalRoot>/Download/zlibx/<effectiveSubfolder>/<displayName>`
+///    ——用下载时的生效文件夹重建；
+/// 3. `<externalRoot>/Download/zlibx/<displayName>`（平铺）——分类
+///    模式自下载后改过时兜底。
+/// [externalRoot] 是外部存储根（`/storage/emulated/<user>`），由
+/// 调用方从 getExternalStorageDirectory() 剥离
+/// `/Android/data/<pkg>/files` 得到；纯函数本身不碰平台通道。
+/// [displayName] 是 `_buildSafeFileName` 的产物
+/// （`<安全标题> - <id>.<扩展名>`）。
+List<String> orphanRelinkCandidates({
+  String? storedRealPath,
+  String? externalRoot,
+  required String displayName,
+  String? effectiveSubfolder,
+}) {
+  final candidates = <String>[];
+  if (storedRealPath != null && storedRealPath.isNotEmpty) {
+    candidates.add(storedRealPath);
+  }
+  if (externalRoot != null && externalRoot.isNotEmpty) {
+    final base = '$externalRoot/Download/zlibx';
+    final subfolder = (effectiveSubfolder ?? '').trim();
+    if (subfolder.isNotEmpty) {
+      candidates.add('$base/$subfolder/$displayName');
+    }
+    candidates.add('$base/$displayName');
+  }
+  return candidates;
 }

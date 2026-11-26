@@ -127,7 +127,6 @@ dependencies:
   # LAN web service (设置 → Web 服务): QR code for the address, EPUB
   # packing for the TXT reader, GBK / GB18030 decoding for Chinese TXT.
   qr_flutter: ^4.1.0
-  archive: ^4.7.1
   chinese_codec: ^0.1.3
 
 dev_dependencies:

@@ -1104,36 +1104,40 @@ class WebService extends ChangeNotifier {
   // horizontal card rows. The grid also degrades to a vertical stack
   // on readers that do not understand CSS grid.
 
+  // Theme: 方案一「墨夜书房」— ink-black with gold (dark night-reading
+  // theme). Only the visual layer changes; the layout (poem on top,
+  // search on the heading row, horizontal book cards) is unchanged.
   static const String _css =
-      'body{font-family:sans-serif;margin:0;line-height:1.5;color:#222}'
-      '.poem{color:#666;font-size:0.95em;margin:0.2em 0 1em}'
+      'body{font-family:sans-serif;margin:0;line-height:1.5;color:#e9e2d5;background:#14110e;color-scheme:dark}'
+      '.poem{color:#c9a227;font-family:Georgia,serif;font-size:1.05em;letter-spacing:0.1em;margin:0.2em 0 1em}'
       '.head-row{display:flex;align-items:center;justify-content:space-between;'
       'gap:0.8em;flex-wrap:wrap;margin:0.4em 0 0.8em}'
       '.head-row h1,.head-row h2{margin:0;border-bottom:none;'
       'padding-bottom:0;flex:1 1 auto;min-width:0}'
       '.head-row .search{flex:0 1 280px;min-width:180px}'
-      '.search input{width:100%;box-sizing:border-box;border:1px solid #dcdfe6;'
-      'border-radius:16px;padding:0.45em 0.9em;font-size:0.95em;background:#fff}'
-      '.main{padding:1em 1.4em 2em;background:#fff}'
-      'h1{font-size:1.3em}'
-      'h2{font-size:1.1em;margin:1.6em 0 0.6em;border-bottom:1px solid #e4e7ed;padding-bottom:0.2em}'
+      '.search input{width:100%;box-sizing:border-box;border:1px solid #6b5a2e;'
+      'border-radius:16px;padding:0.45em 0.9em;font-size:0.95em;background:#1e1913;color:#e9e2d5}'
+      '.search input:focus{outline:none;border-color:#c9a227}'
+      '.main{padding:1em 1.4em 2em;background:#14110e;border-top:2px solid #7a6420}'
+      'h1{font-size:1.3em;font-family:Georgia,serif;color:#f2ead8}'
+      'h2{font-size:1.1em;font-family:Georgia,serif;color:#f2ead8;margin:1.6em 0 0.6em;border-bottom:1px solid #6b5a2e;padding-bottom:0.2em}'
       '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.4em 1.2em}'
-      '.card{display:flex;gap:0.8em}'
-      '.cover{width:90px;height:120px;flex:0 0 90px;object-fit:cover;background:#eee}'
-      '.cover-ph{width:90px;height:120px;flex:0 0 90px;background:#7a8699;color:#fff;'
+      '.card{display:flex;gap:0.8em;background:#1e1913;border:1px solid #3a3126;border-radius:8px;padding:0.8em}'
+      '.cover{width:90px;height:120px;flex:0 0 90px;object-fit:cover;background:#2a241c}'
+      '.cover-ph{width:90px;height:120px;flex:0 0 90px;background:#6b5a2e;color:#f2ead8;'
       'display:flex;align-items:center;justify-content:center;font-size:2em}'
       '.info{flex:1;min-width:0}'
-      '.name{font-weight:700}'
-      '.meta{color:#666;font-size:0.9em}'
-      '.desc{color:#555;font-size:0.9em;margin-top:0.3em;display:-webkit-box;'
+      '.name{font-weight:700;font-family:Georgia,serif;color:#f2ead8}'
+      '.meta{color:#a89a80;font-size:0.9em}'
+      '.desc{color:#b8ab93;font-size:0.9em;margin-top:0.3em;display:-webkit-box;'
       '-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'
       '.actions{margin-top:0.4em}'
-      '.actions a{display:inline-block;border:1px solid #888;border-radius:4px;'
-      'padding:0.15em 0.8em;margin-right:0.5em;text-decoration:none;color:#222}'
-      '.dim{color:#888}'
-      '.zip-btn{display:inline-block;border:1px solid #888;border-radius:4px;'
-      'padding:0.3em 1em;text-decoration:none;color:#222;margin:0.4em 0}'
-      'a{color:#0645ad}'
+      '.actions a{display:inline-block;border:1px solid #c9a227;border-radius:4px;'
+      'padding:0.15em 0.8em;margin-right:0.5em;text-decoration:none;color:#d4af37;background:#c9a22714}'
+      '.dim{color:#8a7d68}'
+      '.zip-btn{display:inline-block;border:1px solid #c9a227;border-radius:4px;'
+      'padding:0.3em 1em;text-decoration:none;color:#d4af37;background:#c9a22714;margin:0.4em 0}'
+      'a{color:#d4af37}'
       // Mobile shell overrides (body.layout-mobile): the grid becomes
       // one stacked column of horizontal card rows with a smaller
       // cover and thumb-friendly buttons.
@@ -1143,7 +1147,7 @@ class WebService extends ChangeNotifier {
       'body.layout-mobile .cover,body.layout-mobile .cover-ph{width:64px;height:84px;flex-basis:64px}'
       'body.layout-mobile .cover-ph{font-size:1.6em}'
       'body.layout-mobile .actions a{padding:0.5em 1em;font-size:1em}'
-      '.m-main{padding:0.8em 1em 2em}';
+      '.m-main{padding:0.8em 1em 2em;background:#14110e;border-top:2px solid #7a6420}';
 
   /// Every page carries its layout on the `<body>` so tests (and CSS)
   /// can tell the shells apart: `layout-pc` or `layout-mobile`.

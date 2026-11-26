@@ -46,6 +46,7 @@ import '../utils/diagnostics.dart';
 import 'app_icon.dart';
 import 'media_store.dart';
 import 'reader_formats.dart';
+import 'saf_folder_access.dart';
 import 'txt_to_epub.dart';
 import 'web_reader_page.dart';
 
@@ -464,8 +465,20 @@ class WebService extends ChangeNotifier {
     PathResolver? pathResolver,
     TxtToEpub? txtConverter,
   }) : _loadAsset = assetLoader ?? _bundleAsset,
-       _resolvePath = pathResolver ?? MediaStoreFiles.realPath,
+       _resolvePath = pathResolver ?? _defaultResolvePath,
        _txt = txtConverter ?? TxtToEpub();
+
+  /// Default path resolution: content:// URIs resolve through
+  /// MediaStore to a real path; plain paths go through the SAF folder
+  /// grant, so an orphaned file (stat-able but not openable) is
+  /// materialized into the cache first. A file that opens directly
+  /// passes through unchanged.
+  static Future<String?> _defaultResolvePath(String location) async {
+    if (MediaStoreFiles.isContentUri(location)) {
+      return MediaStoreFiles.realPath(location);
+    }
+    return SafFolderAccess().readablePath(location);
+  }
 
   HttpServer? _server;
   WebSnapshot _snapshot = const WebSnapshot();

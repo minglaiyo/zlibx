@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../services/saf_folder_access.dart';
 import '../../../utils/app_snack.dart';
 import '../../../utils/file_utils.dart';
 import 'section_header.dart';
@@ -68,6 +69,13 @@ class DownloadPathSection extends ConsumerWidget {
                 ref.read(wifiOnlyDownloadsProvider.notifier).setEnabled(value),
           ),
         ),
+        // SAF 文件夹授权：清数据前下载的书会变孤儿（app 能看见文件但
+        // 打不开），授权 Download/zlibx 文件夹后才能重新打开它们。
+        // 只在 Android 上出现（其他平台没有这套存储模型）。
+        if (Platform.isAndroid) ...[
+          const SizedBox(height: 12),
+          const _SafFolderTile(),
+        ],
       ],
     );
   }
@@ -181,8 +189,7 @@ class DownloadPathSection extends ConsumerWidget {
     );
   }
 
-  void _showDownloadPathDialog(BuildContext context, WidgetRef ref) {
-    unawaited(
+  void _showDownloadPathDialog(BuildContext context, WidgetRef ref) {    unawaited(
       showModalBottomSheet(
         context: context,
         shape: const RoundedRectangleBorder(
@@ -373,6 +380,67 @@ class DownloadPathSection extends ConsumerWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// SAF 文件夹授权行：显示 Download/zlibx 文件夹有没有授权；点了打开
+/// 系统文件夹选择器（已授权时点了可改选）。授权状态在进入页面和从
+/// 系统设置/选择器回来时重查（WidgetsBindingObserver）。
+class _SafFolderTile extends StatefulWidget {
+  const _SafFolderTile();
+
+  @override
+  State<_SafFolderTile> createState() => _SafFolderTileState();
+}
+
+class _SafFolderTileState extends State<_SafFolderTile>
+    with WidgetsBindingObserver {
+  final _saf = SafFolderAccess();
+  bool? _granted;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final granted = await _saf.hasGrant;
+    if (mounted) setState(() => _granted = granted);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final granted = _granted ?? false;
+    return SettingsCard(
+      child: ListTile(
+        leading: const Icon(Icons.folder_shared_outlined),
+        title: Text(l10n.safDownloadFolder),
+        subtitle: Text(
+          granted
+              ? l10n.safDownloadFolderGrantedDesc
+              : l10n.safDownloadFolderDesc,
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () async {
+          await _saf.pickFolder();
+          await _refresh();
+        },
       ),
     );
   }

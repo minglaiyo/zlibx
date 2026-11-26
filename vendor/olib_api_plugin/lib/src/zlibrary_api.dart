@@ -542,7 +542,7 @@ abstract class ZLibraryApiBase {
   ///    error instead of re-issuing the write somewhere the caller
   ///    never asked for.
   Future<_Raw> _getDestructive(String path) async {
-    var url = '$_base$path';
+    final url = '$_base$path';
     var challengeHops = 0;
     for (;;) {
       final Response<String> res;

@@ -90,7 +90,7 @@ void main() {
   });
 
   group('searchFilterOptionsProvider', () {
-    ProviderContainer _container(_FakeApi api) {
+    ProviderContainer makeContainer(_FakeApi api) {
       final container = ProviderContainer(
         overrides: [zlibraryApiProvider.overrideWithValue(api)],
       );
@@ -99,11 +99,11 @@ void main() {
     }
 
     test('fetches once, merges, and caches the answers', () async {
-      final api = _FakeApi()
-        ..languagesAnswer = () async =>
-            ApiResponse.ok({'klingon': 'Klingon'})
-        ..extensionsAnswer = () async => ApiResponse.ok(['cbz']);
-      final container = _container(api);
+      final api = _FakeApi();
+      api.languagesAnswer = () async =>
+          ApiResponse.ok({'klingon': 'Klingon'});
+      api.extensionsAnswer = () async => ApiResponse.ok(['cbz']);
+      final container = makeContainer(api);
       final options = await container.read(
         searchFilterOptionsProvider.future,
       );
@@ -117,17 +117,16 @@ void main() {
       // And the answers are in the settings box for the next run.
       final cached =
           Hive.box(HiveService.settingsBoxName).get('search_filter_options');
-      expect(cached, isA<Map>());
+      expect(cached, isA<Map<dynamic, dynamic>>());
       expect(cached['languages']['klingon'], 'Klingon');
       expect(cached['extensions'], contains('cbz'));
     });
 
     test('fetch failure falls back to the hardcoded tables', () async {
-      final api = _FakeApi()
-        ..languagesAnswer = () async =>
-            ApiResponse.fail('Access denied')
-        ..extensionsAnswer = () async => ApiResponse.fail('Access denied');
-      final container = _container(api);
+      final api = _FakeApi();
+      api.languagesAnswer = () async => ApiResponse.fail('Access denied');
+      api.extensionsAnswer = () async => ApiResponse.fail('Access denied');
+      final container = makeContainer(api);
       final options = await container.read(
         searchFilterOptionsProvider.future,
       );
@@ -146,10 +145,10 @@ void main() {
         'languages': {'klingon': 'Klingon'},
         'extensions': ['cbz'],
       });
-      final api = _FakeApi()
-        ..languagesAnswer = () async => throw StateError('must not fetch')
-        ..extensionsAnswer = () async => throw StateError('must not fetch');
-      final container = _container(api);
+      final api = _FakeApi();
+      api.languagesAnswer = () async => throw StateError('must not fetch');
+      api.extensionsAnswer = () async => throw StateError('must not fetch');
+      final container = makeContainer(api);
       final options = await container.read(
         searchFilterOptionsProvider.future,
       );
@@ -167,10 +166,10 @@ void main() {
         'languages': {'klingon': 'Klingon'},
         'extensions': ['cbz'],
       });
-      final api = _FakeApi()
-        ..languagesAnswer = () async => ApiResponse.fail('offline')
-        ..extensionsAnswer = () async => ApiResponse.fail('offline');
-      final container = _container(api);
+      final api = _FakeApi();
+      api.languagesAnswer = () async => ApiResponse.fail('offline');
+      api.extensionsAnswer = () async => ApiResponse.fail('offline');
+      final container = makeContainer(api);
       final options = await container.read(
         searchFilterOptionsProvider.future,
       );

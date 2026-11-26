@@ -87,6 +87,20 @@ WebLayout detectWebLayout({
   return WebLayout.pc;
 }
 
+/// Colour scheme of a list page. [auto] follows the system
+/// (`prefers-color-scheme`); [light] / [dark] are forced by `?theme=`.
+enum WebTheme { auto, light, dark }
+
+/// `?theme=light|dark` forces one scheme (the page then carries a
+/// `theme-light` / `theme-dark` class on `<body>`); any other value
+/// falls back to [WebTheme.auto], i.e. the system setting.
+WebTheme detectWebTheme(Map<String, String> query) {
+  final forced = (query['theme'] ?? '').toLowerCase();
+  if (forced == 'light') return WebTheme.light;
+  if (forced == 'dark') return WebTheme.dark;
+  return WebTheme.auto;
+}
+
 /// Format a byte count as "12.3 MB" (one decimal; B/KB/MB/GB).
 String formatFileSize(int bytes) {
   if (bytes < 1024) return '$bytes B';
@@ -660,8 +674,9 @@ class WebService extends ChangeNotifier {
       // List pages (/ and /search) get a PC or mobile shell: the
       // layout is forced by ?layout=, else the User-Agent decides.
       final layout = detectWebLayout(query: query, headers: lowerHeaders);
+      final theme = detectWebTheme(query);
       if (segments.isEmpty) {
-        return _html(HttpStatus.ok, _homePage(layout));
+        return _html(HttpStatus.ok, _homePage(layout, theme));
       }
       switch (segments.first) {
         case 'zip':
@@ -680,7 +695,7 @@ class WebService extends ChangeNotifier {
         case 'reader-assets':
           return _assetRoute(segments);
         case 'search':
-          return _searchRoute(query, layout);
+          return _searchRoute(query, layout, theme);
         default:
           return _notFound();
       }
@@ -850,7 +865,11 @@ class WebService extends ChangeNotifier {
   /// downloaded file already in the results is not listed twice.
   /// Renders the same book cards as the home page; an empty query
   /// shows the empty state.
-  WebResponse _searchRoute(Map<String, String> query, WebLayout layout) {
+  WebResponse _searchRoute(
+    Map<String, String> query,
+    WebLayout layout,
+    WebTheme theme,
+  ) {
     final q = (query['q'] ?? '').trim();
     final needle = q.toLowerCase();
     bool hit(String s) => s.toLowerCase().contains(needle);
@@ -871,7 +890,7 @@ class WebService extends ChangeNotifier {
         }
       }
     }
-    return _html(HttpStatus.ok, _searchPage(q, cards, layout));
+    return _html(HttpStatus.ok, _searchPage(q, cards, layout, theme));
   }
 
   Future<File?> _fileFor(int index) async {
@@ -1117,56 +1136,130 @@ class WebService extends ChangeNotifier {
   // horizontal card rows. The grid also degrades to a vertical stack
   // on readers that do not understand CSS grid.
 
-  // Theme: 方案一「墨夜书房」— ink-black with gold (dark night-reading
-  // theme). Only the visual layer changes; the layout (poem on top,
-  // search on the heading row, horizontal book cards) is unchanged.
-  static const String _css =
-      'body{font-family:sans-serif;margin:0;line-height:1.5;color:#e9e2d5;background:#14110e;color-scheme:dark}'
-      '.poem{color:#c9a227;font-family:Georgia,serif;font-size:1.05em;letter-spacing:0.1em;margin:0.2em 0 1em}'
+  // Theme: the zlibx app's own look — forest green primary, rose-gold
+  // accent, warm-paper background (values from the app's
+  // app_colors.dart / app_theme.dart). Light is the default; dark
+  // follows the system (`prefers-color-scheme`) or `?theme=dark|light`
+  // (body class `theme-dark` / `theme-light`). Only the visual layer
+  // changes; the layout (poem on top, search on the heading row,
+  // horizontal book cards) is unchanged.
+  //
+  // E-reader browsers are old: no CSS variables, no min()/clamp(),
+  // no flex `gap` for the card internals, no JS. Colours are written
+  // out per rule, and the dark scheme is the same rule set emitted
+  // twice by [_darkRules] (once under the media query, once under the
+  // forced `body.theme-dark`), so nothing depends on newer CSS.
+  static const String _font =
+      '-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",'
+      '"Hiragino Sans GB","Microsoft YaHei",Roboto,sans-serif';
+  // easeOutCubic; app press feedback = scale 0.96 over 150ms.
+  static const String _ease = 'cubic-bezier(0.215,0.61,0.355,1)';
+  static const String _shadow = '0 6px 16px rgba(0,0,0,0.06)';
+
+  static const String _lightCss =
+      'body{margin:0;font-family:$_font;font-size:16px;line-height:1.5;'
+      'color:#1A2421;background:#F8F7F5;color-scheme:light}'
+      '.poem{color:#2D6A4F;letter-spacing:0.1em;margin:4px 0 24px}'
       '.head-row{display:flex;align-items:center;justify-content:space-between;'
-      'gap:0.8em;flex-wrap:wrap;margin:0.4em 0 0.8em}'
-      '.head-row h1,.head-row h2{margin:0;border-bottom:none;'
-      'padding-bottom:0;flex:1 1 auto;min-width:0}'
-      '.head-row .search{flex:0 1 280px;min-width:180px}'
-      '.search input{width:100%;box-sizing:border-box;border:1px solid #6b5a2e;'
-      'border-radius:16px;padding:0.45em 0.9em;font-size:0.95em;background:#1e1913;color:#e9e2d5}'
-      '.search input:focus{outline:none;border-color:#c9a227}'
-      '.main{padding:1em 1.4em 2em;background:#14110e;border-top:2px solid #7a6420}'
-      'h1{font-size:1.3em;font-family:Georgia,serif;color:#f2ead8}'
-      'h2{font-size:1.1em;font-family:Georgia,serif;color:#f2ead8;margin:1.6em 0 0.6em;border-bottom:1px solid #6b5a2e;padding-bottom:0.2em}'
-      '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.4em 1.2em}'
-      '.card{display:flex;gap:0.8em;background:#1e1913;border:1px solid #3a3126;border-radius:8px;padding:0.8em}'
-      '.cover{width:90px;height:120px;flex:0 0 90px;object-fit:cover;background:#2a241c}'
-      '.cover-ph{width:90px;height:120px;flex:0 0 90px;background:#6b5a2e;color:#f2ead8;'
-      'display:flex;align-items:center;justify-content:center;font-size:2em}'
+      'gap:16px;flex-wrap:wrap;margin:8px 0 16px}'
+      '.head-row h1,.head-row h2{margin:0;border-top:none;padding-top:0;'
+      'flex:1 1 auto;min-width:0}'
+      '.head-row .search{flex:0 1 320px;min-width:200px;margin:0}'
+      '.search input{width:100%;box-sizing:border-box;border:1.5px solid transparent;'
+      'border-radius:30px;padding:16px 24px;font-size:16px;line-height:1.5;'
+      '-webkit-appearance:none;appearance:none;background:#FFFFFF;color:#1A2421;'
+      'box-shadow:$_shadow;transition:border-color 200ms $_ease}'
+      '.search input:focus{outline:none;border-color:#2D6A4F}'
+      '.main{padding:24px 20px 32px}'
+      '.m-main{padding:24px 20px 32px}'
+      'h1,h2{font-size:24px;font-weight:700;line-height:1.3;color:#1A2421}'
+      'h2{margin:32px 0 16px;padding-top:24px;border-top:1px solid #E3E8E5}'
+      // grid with a vertical-stack fallback: readers without CSS grid
+      // see plain block-level cards, which already carry their own
+      // bottom margin.
+      '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));'
+      'grid-column-gap:16px;column-gap:16px}'
+      '.card{display:flex;align-items:flex-start;min-width:0;background:#FFFFFF;'
+      'border:1px solid transparent;border-radius:20px;padding:16px;margin-bottom:16px;'
+      'box-shadow:$_shadow}'
+      '.cover{width:90px;height:120px;flex:0 0 90px;margin-right:16px;'
+      'object-fit:cover;border-radius:8px;background:#EEF2EF}'
+      '.cover-ph{width:90px;height:120px;flex:0 0 90px;margin-right:16px;'
+      'border-radius:8px;background:#E8F5EE;color:#2D6A4F;'
+      'display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700}'
       '.info{flex:1;min-width:0}'
-      '.name{font-weight:700;font-family:Georgia,serif;color:#f2ead8}'
-      '.meta{color:#a89a80;font-size:0.9em}'
-      '.desc{color:#b8ab93;font-size:0.9em;margin-top:0.3em;display:-webkit-box;'
-      '-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'
-      '.actions{margin-top:0.4em}'
-      '.actions a{display:inline-block;border:1px solid #c9a227;border-radius:4px;'
-      'padding:0.15em 0.8em;margin-right:0.5em;text-decoration:none;color:#d4af37;background:#c9a22714}'
-      '.dim{color:#8a7d68}'
-      '.zip-btn{display:inline-block;border:1px solid #c9a227;border-radius:4px;'
-      'padding:0.3em 1em;text-decoration:none;color:#d4af37;background:#c9a22714;margin:0.4em 0}'
-      'a{color:#d4af37}'
+      '.name{font-weight:700;color:#1A2421;word-wrap:break-word}'
+      '.meta{color:#5C6B64;font-size:12px;margin-top:2px}'
+      '.desc{color:#5C6B64;font-size:12px;margin-top:4px;max-height:3em;'
+      'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'
+      '.actions{margin-top:12px}'
+      '.actions a{display:inline-block;border-radius:30px;padding:8px 20px;'
+      'margin:0 8px 4px 0;font-size:14px;font-weight:600;line-height:1.4;'
+      'text-decoration:none;color:#FFFFFF;background:#2D6A4F;'
+      'transition:transform 150ms $_ease,background-color 150ms $_ease}'
+      '.actions a+a{background:#E8F5EE;color:#2D6A4F}'
+      '.actions a:hover{background:#245A42}'
+      '.actions a+a:hover{background:#D3EBDD}'
+      '.dim{color:#5C6B64}'
+      '.zip-btn{display:inline-block;margin:0 0 16px;padding:16px 24px;border-radius:30px;'
+      'font-size:16px;font-weight:600;text-decoration:none;color:#FFFFFF;background:#2D6A4F;'
+      'transition:transform 150ms $_ease,background-color 150ms $_ease}'
+      '.zip-btn:hover{background:#245A42}'
+      '.actions a:active,.zip-btn:active{transform:scale(0.96)}'
+      'a{color:#2D6A4F}'
+      // Page margins follow the app: 20 on phones, 32 from 600, 48 from 1240.
+      '@media (min-width:600px){.main{padding:24px 32px 32px}}'
+      '@media (min-width:1240px){.main{padding:24px 48px 32px}}'
       // Mobile shell overrides (body.layout-mobile): the grid becomes
       // one stacked column of horizontal card rows with a smaller
       // cover and thumb-friendly buttons.
-      'body.layout-mobile .main{padding:0.8em 1em 2em}'
       'body.layout-mobile .grid{display:block}'
-      'body.layout-mobile .card{margin-bottom:1.2em}'
       'body.layout-mobile .cover,body.layout-mobile .cover-ph{width:64px;height:84px;flex-basis:64px}'
-      'body.layout-mobile .cover-ph{font-size:1.6em}'
-      'body.layout-mobile .actions a{padding:0.5em 1em;font-size:1em}'
-      '.m-main{padding:0.8em 1em 2em;background:#14110e;border-top:2px solid #7a6420}';
+      'body.layout-mobile .cover-ph{font-size:26px}'
+      'body.layout-mobile .actions a{padding:12px 20px;font-size:16px}';
+
+  /// The dark scheme (app dark palette), scoped under [b] — the body
+  /// selector that switches it on.
+  static String _darkRules(String b) =>
+      '$b{color:#E6ECE7;background:#121712;color-scheme:dark}'
+      '$b .poem{color:#52B788}'
+      '$b h1,$b h2,$b .name{color:#E6ECE7}'
+      '$b h2{border-top-color:#2A2F2A}'
+      '$b .search input{background:#252D26;color:#E6ECE7;box-shadow:none}'
+      '$b .search input:focus{border-color:#52B788}'
+      '$b .card{background:#1B221C;border-color:#2A2F2A;box-shadow:none}'
+      '$b .cover{background:#252D26}'
+      '$b .cover-ph{background:#1F3F2F;color:#52B788}'
+      '$b .meta,$b .desc,$b .dim{color:#B2BDB4}'
+      '$b a{color:#52B788}'
+      '$b .actions a,$b .zip-btn{background:#52B788;color:#0F2418}'
+      '$b .actions a+a{background:#1F3F2F;color:#52B788}'
+      '$b .actions a:hover,$b .zip-btn:hover{background:#6BC79B}'
+      '$b .actions a+a:hover{background:#2A5340}';
+
+  static final String _css =
+      '$_lightCss'
+      '@media (prefers-color-scheme:dark){${_darkRules('body:not(.theme-light)')}}'
+      '${_darkRules('body.theme-dark')}';
 
   /// Every page carries its layout on the `<body>` so tests (and CSS)
-  /// can tell the shells apart: `layout-pc` or `layout-mobile`.
+  /// can tell the shells apart: `layout-pc` or `layout-mobile`, plus
+  /// `theme-light` / `theme-dark` when `?theme=` forces a scheme.
   /// Message pages ([_messagePage]) keep the PC shell.
-  String _page(String title, String body, {WebLayout layout = WebLayout.pc}) {
-    final cls = layout == WebLayout.mobile ? 'layout-mobile' : 'layout-pc';
+  String _page(
+    String title,
+    String body, {
+    WebLayout layout = WebLayout.pc,
+    WebTheme theme = WebTheme.auto,
+  }) {
+    final layoutCls = layout == WebLayout.mobile
+        ? 'layout-mobile'
+        : 'layout-pc';
+    final cls = theme == WebTheme.light
+        ? '$layoutCls theme-light'
+        : theme == WebTheme.dark
+        ? '$layoutCls theme-dark'
+        : layoutCls;
     return '<!DOCTYPE html><html><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         '<link rel="icon" type="image/png" href="/icon.png">'
@@ -1293,7 +1386,7 @@ class WebService extends ChangeNotifier {
       ? '<p class="dim">${escapeHtml(_strings.empty)}</p>'
       : '<div class="grid">${cards.join()}</div>';
 
-  String _homePage(WebLayout layout) {
+  String _homePage(WebLayout layout, [WebTheme theme = WebTheme.auto]) {
     final downloaded = [
       for (var i = 0; i < _snapshot.files.length; i++) _bookCard(_entryFromFile(i)),
     ];
@@ -1313,6 +1406,7 @@ class WebService extends ChangeNotifier {
       _strings.homeTitle,
       layout == WebLayout.mobile ? _mobileLayout(main) : _layout(main),
       layout: layout,
+      theme: theme,
     );
   }
 
@@ -1320,7 +1414,12 @@ class WebService extends ChangeNotifier {
   /// a link back home, and the matching cards (or the empty state).
   /// The search box stays on the results heading row, so the term
   /// can be changed without going back home.
-  String _searchPage(String q, List<String> cards, WebLayout layout) {
+  String _searchPage(
+    String q,
+    List<String> cards,
+    WebLayout layout, [
+    WebTheme theme = WebTheme.auto,
+  ]) {
     final main =
         '<p><a href="/">${escapeHtml(_strings.backHome)}</a></p>'
         '${_headingRow('<h1>搜索“${escapeHtml(q)}”</h1>', searchValue: q)}'
@@ -1329,6 +1428,7 @@ class WebService extends ChangeNotifier {
       '搜索“$q”',
       layout == WebLayout.mobile ? _mobileLayout(main) : _layout(main),
       layout: layout,
+      theme: theme,
     );
   }
 

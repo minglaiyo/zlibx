@@ -1,6 +1,7 @@
 package com.minglaiyo.zlibx
 
 import android.Manifest
+import android.app.Activity
 import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -8,8 +9,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.util.Log
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -73,6 +76,85 @@ class MainActivity : FlutterFragmentActivity() {
     /// request. Only one may be outstanding; a second call while one
     /// is in flight is answered false at once (the caller retries).
     private var pendingLocalNetworkResult: MethodChannel.Result? = null
+
+    /// Pending reply for an in-flight SAF folder pick. Only one may
+    /// be outstanding; a second call while one is in flight is
+    /// answered null at once (the caller retries).
+    private var pendingTreePickResult: MethodChannel.Result? = null
+
+    /// SAF folder picker (ACTION_OPEN_DOCUMENT_TREE). Registered as a
+    /// property so it exists before onStart; StartActivityForResult
+    /// (not OpenDocumentTree) so the intent can carry EXTRA_INITIAL_URI
+    /// pointing at Download/zlibx. The picked tree URI is persisted
+    /// (takePersistableUriPermission) and returned to Dart, which
+    /// stores it; a cancel answers null.
+    private val treePicker = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { outcome ->
+        val pending = pendingTreePickResult
+        pendingTreePickResult = null
+        if (pending == null) return@registerForActivityResult
+        val uri = if (outcome.resultCode == Activity.RESULT_OK) {
+            outcome.data?.data
+        } else {
+            null
+        }
+        if (uri == null) {
+            replyTreePick(pending, null)
+            return@registerForActivityResult
+        }
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+            replyTreePick(pending, uri.toString())
+        } catch (e: Exception) {
+            // The picker did not grant a persistable permission: the
+            // tree could not be re-adopted after a restart, so treat
+            // the pick as failed.
+            Log.w(TAG, "takePersistableUriPermission failed", e)
+            replyTreePick(pending, null)
+        }
+    }
+
+    /// Answer the pending tree-pick reply, tolerating an engine that
+    /// detached while the picker was up (same pattern as the
+    /// local-network reply).
+    private fun replyTreePick(result: MethodChannel.Result, uri: String?) {
+        try {
+            result.success(uri)
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "tree pick reply after detach ignored", e)
+        }
+    }
+
+    /// The ACTION_OPEN_DOCUMENT_TREE intent for the download folder,
+    /// pre-positioned at Download/zlibx. EXTRA_INITIAL_URI is only a
+    /// hint (ignored below API 26); the user can still navigate.
+    private fun treePickIntent(): Intent {
+        val initial = try {
+            DocumentsContract.buildDocumentUri(
+                "com.android.externalstorage.documents",
+                "primary:Download/zlibx",
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "tree initial URI failed", e)
+            null
+        }
+        return Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PREFIX_URI_PERMISSION,
+            )
+            if (initial != null) {
+                putExtra(DocumentsContract.EXTRA_INITIAL_URI, initial)
+            }
+        }
+    }
 
     override fun onDestroy() {
         // Close any held pending streams (entries stay IS_PENDING and
@@ -200,6 +282,43 @@ class MainActivity : FlutterFragmentActivity() {
                         } else {
                             runAsync(result) { copyContentToCache(uri) }
                         }
+                    }
+                    "pickDownloadTree" -> {
+                        // SAF folder pick: the folder picker is a
+                        // system UI, so this runs on the platform
+                        // thread (never runAsync). The answer arrives
+                        // later, through the launcher callback.
+                        if (pendingTreePickResult != null) {
+                            result.success(null)
+                        } else {
+                            pendingTreePickResult = result
+                            treePicker.launch(treePickIntent())
+                        }
+                    }
+                    "copyTreeFileToCache" -> {
+                        val treeUri = call.argument<String>("treeUri")?.let(Uri::parse)
+                        val relativePath = call.argument<String>("relativePath")
+                        if (treeUri == null || relativePath.isNullOrEmpty()) {
+                            result.success(null)
+                        } else {
+                            runAsync(result) {
+                                copyTreeFileToCache(treeUri, relativePath)
+                            }
+                        }
+                    }
+                    "deleteTreeFile" -> {
+                        val treeUri = call.argument<String>("treeUri")?.let(Uri::parse)
+                        val relativePath = call.argument<String>("relativePath")
+                        if (treeUri == null || relativePath.isNullOrEmpty()) {
+                            result.success(false)
+                        } else {
+                            runAsync(result, lightExecutor) {
+                                deleteTreeFile(treeUri, relativePath)
+                            }
+                        }
+                    }
+                    "persistedTreeUris" -> {
+                        runAsync(result, lightExecutor) { persistedTreeUris() }
                     }
                     "realPathForContent" -> {
                         // #123：content:// URI 不是文件管理器能搜的路径，
@@ -855,6 +974,171 @@ class MainActivity : FlutterFragmentActivity() {
         } catch (e: Exception) {
             Log.w(TAG, "MediaStore copy to cache failed", e)
             null
+        }
+    }
+
+    // ── SAF folder access (Download/zlibx) ──────────────────────────
+    //
+    // A clear-data orphans the MediaStore rows of already-downloaded
+    // books (owner_package_name NULL): the app can still stat the files
+    // but open() throws EACCES, so open / share / web streaming all
+    // fail for them while fresh downloads work. MANAGE_EXTERNAL_STORAGE
+    // was rejected by the user in favour of folder-scoped SAF: the
+    // user picks Download/zlibx once in the system picker and the
+    // grant is persisted, so only that folder is ever accessed.
+    // Files are read through the DocumentsContract APIs (no
+    // androidx.documentfile dependency): a tree file is materialized
+    // into the cache first (same share_<millis>_<name> shape as
+    // copyContentToCache), then the existing File-based paths use it.
+
+    /// Walk [relativePath] ('sub/Book.epub' segments) under the SAF
+    /// tree [treeUri] and return the leaf document ID, or null when
+    /// any segment is missing or is not a file. Only framework
+    /// DocumentsContract queries — no extra dependency.
+    private fun findTreeDocumentId(treeUri: Uri, relativePath: String): String? {
+        var parentId = try {
+            DocumentsContract.getTreeDocumentId(treeUri)
+        } catch (e: Exception) {
+            Log.w(TAG, "SAF tree document ID failed", e)
+            return null
+        }
+        for (segment in relativePath.split('/')) {
+            if (segment.isEmpty() || segment == "." || segment == "..") {
+                return null
+            }
+            parentId = findTreeChildId(treeUri, parentId, segment) ?: return null
+        }
+        // The leaf must be a file, not a directory.
+        return try {
+            val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, parentId)
+            val mime = contentResolver.query(
+                docUri,
+                arrayOf(DocumentsContract.Document.COLUMN_MIME_TYPE),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+            if (mime == DocumentsContract.Document.MIME_TYPE_DIR) null else parentId
+        } catch (e: Exception) {
+            Log.w(TAG, "SAF leaf mime check failed", e)
+            null
+        }
+    }
+
+    /// The child of [parentId] named [name], or null. The provider is
+    /// not trusted to honour a selection, so all children are listed
+    /// and matched in Kotlin (a download folder holds tens of files).
+    private fun findTreeChildId(treeUri: Uri, parentId: String, name: String): String? {
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
+            treeUri,
+            parentId,
+        )
+        return try {
+            contentResolver.query(
+                childrenUri,
+                arrayOf(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                ),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                )
+                val nameIndex = cursor.getColumnIndex(
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                )
+                if (idIndex < 0 || nameIndex < 0) return null
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(nameIndex) == name) {
+                        return cursor.getString(idIndex)
+                    }
+                }
+                null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "SAF child lookup failed", e)
+            null
+        }
+    }
+
+    /// Copy the tree file at [relativePath] into the app cache dir
+    /// (same share_<millis>_<name> shape as copyContentToCache) and
+    /// return the temp file's absolute path, or null on any failure.
+    private fun copyTreeFileToCache(treeUri: Uri, relativePath: String): String? {
+        cleanupStaleShareFiles()
+        return try {
+            val docId = findTreeDocumentId(treeUri, relativePath) ?: return null
+            val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+            val displayName = contentResolver.query(
+                docUri,
+                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+            val rawName = (displayName?.takeIf { it.isNotBlank() }
+                ?: relativePath.substringAfterLast('/').takeIf { it.isNotBlank() }
+                ?: "shared_file")
+                .replace('/', '_')
+                .replace('\\', '_')
+            val dot = rawName.lastIndexOf('.')
+            val (stem, ext) = if (dot > 0 && dot < rawName.length - 1) {
+                rawName.substring(0, dot) to rawName.substring(dot)
+            } else {
+                rawName to ""
+            }
+            val safeName = truncateUtf8Bytes(stem, 120) +
+                truncateUtf8Bytes(ext, 16)
+            val file = File(
+                cacheDir,
+                "share_${System.currentTimeMillis()}_$safeName",
+            )
+            contentResolver.openInputStream(docUri)?.use { inputStream ->
+                file.outputStream().use { output ->
+                    inputStream.copyTo(output)
+                }
+            } ?: return null
+            file.absolutePath
+        } catch (e: Exception) {
+            Log.w(TAG, "SAF copy to cache failed", e)
+            null
+        }
+    }
+
+    /// Delete the tree file at [relativePath]. False when missing or
+    /// when the delete fails.
+    private fun deleteTreeFile(treeUri: Uri, relativePath: String): Boolean {
+        return try {
+            val docId = findTreeDocumentId(treeUri, relativePath) ?: return false
+            val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+            DocumentsContract.deleteDocument(contentResolver, docUri)
+        } catch (e: Exception) {
+            Log.w(TAG, "SAF delete failed", e)
+            false
+        }
+    }
+
+    /// Tree URIs this app still holds a persisted read grant for, from
+    /// the external-storage documents provider (used to re-adopt a
+    /// grant after a clear-data wiped the stored URI string).
+    private fun persistedTreeUris(): List<String> {
+        return try {
+            contentResolver.persistedUriPermissions
+                .filter {
+                    it.isReadPermission &&
+                        it.uri.authority == "com.android.externalstorage.documents"
+                }
+                .map { it.uri.toString() }
+        } catch (e: Exception) {
+            Log.w(TAG, "persisted tree URIs failed", e)
+            emptyList()
         }
     }
 

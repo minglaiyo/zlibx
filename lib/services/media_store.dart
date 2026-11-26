@@ -16,6 +16,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../utils/app_log.dart';
+import 'saf_folder_access.dart';
 
 
 class MediaStoreFiles {
@@ -230,7 +231,9 @@ class MediaStoreFiles {
 
   /// Open with the system default app. Content URIs go through the
   /// platform channel (ACTION_VIEW with a read grant); plain paths
-  /// keep using OpenFilex as before.
+  /// keep using OpenFilex as before — except an orphaned file the app
+  /// cannot open by path is materialized through the SAF folder grant
+  /// first (see [SafFolderAccess.readablePath]).
   static Future<bool> open(String location) async {
     if (isContentUri(location)) {
       if (!_onAndroid) return false;
@@ -244,12 +247,16 @@ class MediaStoreFiles {
         return false;
       }
     }
-    final result = await OpenFilex.open(location);
+    final readable = await SafFolderAccess().readablePath(location);
+    if (readable == null) return false;
+    final result = await OpenFilex.open(readable);
     return result.type == ResultType.done;
   }
 
   /// Delete. Content URIs go through ContentResolver; plain paths
-  /// are deleted as files, as before.
+  /// are deleted as files, as before — except an orphaned file, which
+  /// cannot be deleted by path either (same EACCES as open): it is
+  /// deleted through the SAF folder grant instead.
   static Future<bool> delete(String location) async {
     if (isContentUri(location)) {
       if (!_onAndroid) return false;
@@ -265,8 +272,12 @@ class MediaStoreFiles {
     }
     final file = File(location);
     if (await file.exists()) {
-      await file.delete();
-      return true;
+      try {
+        await file.delete();
+        return true;
+      } on Object {
+        return SafFolderAccess().deleteTreeFile(location);
+      }
     }
     return false;
   }
@@ -311,8 +322,19 @@ class MediaStoreFiles {
           p.isWithin(cacheDir.path, location)) {
         return location;
       }
+      // An orphaned file cannot be opened by path, so the copy below
+      // would throw: resolve it through the SAF folder grant first
+      // (materialized into the cache). A file that opens directly is
+      // returned unchanged, so this is a no-op for normal files; a
+      // materialized path is already in the cache and is handed over
+      // as-is.
+      final source = await SafFolderAccess().readablePath(location);
+      if (source == null) return null;
+      if (source == cacheDir.path || p.isWithin(cacheDir.path, source)) {
+        return source;
+      }
       final dest = File(p.join(cacheDir.path, _shareCacheName(location)));
-      await File(location).copy(dest.path);
+      await File(source).copy(dest.path);
       return dest.path;
     } on Object {
       return null;

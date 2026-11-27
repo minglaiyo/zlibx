@@ -991,10 +991,13 @@ class WebService extends ChangeNotifier {
         }
         encoder.endEncode();
         await outputStream.close();
-      } catch (_) {
+      } catch (e) {
         try {
           await outputStream.close();
-        } catch (_) {}
+        } catch (closeError) {
+          logIgnored('web_service_zip_output_close', closeError);
+        }
+        logIgnored('web_service_zip_output', e);
         rethrow;
       } finally {
         for (final input in inputs) {

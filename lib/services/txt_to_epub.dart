@@ -521,7 +521,9 @@ class TxtToEpub {
       logIgnored('txt_to_epub', e);
       try {
         await staging.delete();
-      } catch (_) {}
+      } catch (e) {
+        logIgnored('txt_to_epub_staging_delete', e);
+      }
       final fallback = File(
         p.join(Directory.systemTemp.path, 'zlibx-txt-$key.epub'),
       );

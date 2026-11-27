@@ -62,19 +62,117 @@ class BooklistMasonryGrid extends StatelessWidget {
         for (var i = 0; i < items.length; i++)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: MotionEntrance(
-              index: items[i].globalIndex,
-              child: BooklistCoverCard(
-                list: items[i].list,
-                // 错落感来源:按格序在两档比例间轮换,右列错开半档。
-                aspectRatio: (i + (isRight ? 1 : 0)).isEven ? 1.28 : 1.52,
-                showFavoriteBadge: showFavoriteBadge,
-                onTap: () => onOpen(items[i].list),
-                onLongPress: () => onLongPress(items[i].list),
-              ),
+            child: _masonryCard(
+              list: items[i].list,
+              globalIndex: items[i].globalIndex,
+              // 错落感来源:按格序在两档比例间轮换,右列错开半档。
+              aspectRatio: (i + (isRight ? 1 : 0)).isEven ? 1.28 : 1.52,
+              showFavoriteBadge: showFavoriteBadge,
+              onOpen: onOpen,
+              onLongPress: onLongPress,
             ),
           ),
       ],
+    );
+  }
+}
+
+/// One masonry cover card: the aspect-ratio alternation, the entrance
+/// stagger ([MotionEntrance] by global index) and the tap/long-press
+/// wiring. Shared by the eager [BooklistMasonryGrid] and the lazy
+/// [BooklistMasonrySliverList] so the two render identically.
+Widget _masonryCard({
+  required Booklist list,
+  required int globalIndex,
+  required double aspectRatio,
+  required bool showFavoriteBadge,
+  required ValueChanged<Booklist> onOpen,
+  required ValueChanged<Booklist> onLongPress,
+}) {
+  return MotionEntrance(
+    index: globalIndex,
+    child: BooklistCoverCard(
+      list: list,
+      aspectRatio: aspectRatio,
+      showFavoriteBadge: showFavoriteBadge,
+      onTap: () => onOpen(list),
+      onLongPress: () => onLongPress(list),
+    ),
+  );
+}
+
+/// Lazy version of [BooklistMasonryGrid] for the booklists home list:
+/// the same two-column cover flow, but rows are built on demand by a
+/// [SliverList] instead of all up front in two [Column]s.
+///
+/// Each sliver row holds the pair the eager grid would put at the same
+/// column depth (left = lists[2k], right = lists[2k+1]), so the
+/// aspect-ratio alternation and the [MotionEntrance] global indices
+/// match the eager grid exactly.
+///
+/// The trade-off: the two columns no longer flow independently — a
+/// row's height is its taller card, so the stagger resets every row
+/// instead of accumulating down the columns. For a paginated home
+/// list that is the price of lazy build; the related-booklists page
+/// (few items, single fetch) keeps the eager grid.
+class BooklistMasonrySliverList extends StatelessWidget {
+  final List<Booklist> lists;
+  final ValueChanged<Booklist> onOpen;
+  final ValueChanged<Booklist> onLongPress;
+  final bool showFavoriteBadge;
+
+  const BooklistMasonrySliverList({
+    super.key,
+    required this.lists,
+    required this.onOpen,
+    required this.onLongPress,
+    this.showFavoriteBadge = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final rowCount = (lists.length + 1) ~/ 2;
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (context, row) {
+          final left = lists[row * 2];
+          final rightIndex = row * 2 + 1;
+          final right =
+              rightIndex < lists.length ? lists[rightIndex] : null;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _masonryCard(
+                    list: left,
+                    globalIndex: row * 2,
+                    aspectRatio: row.isEven ? 1.28 : 1.52,
+                    showFavoriteBadge: showFavoriteBadge,
+                    onOpen: onOpen,
+                    onLongPress: onLongPress,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: right == null
+                      ? const SizedBox.shrink()
+                      : _masonryCard(
+                          list: right,
+                          globalIndex: rightIndex,
+                          aspectRatio: row.isEven ? 1.52 : 1.28,
+                          showFavoriteBadge: showFavoriteBadge,
+                          onOpen: onOpen,
+                          onLongPress: onLongPress,
+                        ),
+                ),
+              ],
+            ),
+          );
+        },
+        childCount: rowCount,
+      ),
     );
   }
 }

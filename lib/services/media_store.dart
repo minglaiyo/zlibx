@@ -35,7 +35,14 @@ class MediaStoreFiles {
   static bool isContentUri(String location) =>
       location.startsWith('content://');
 
-  /// MIME type for a book extension (used for the MediaStore insert).
+  /// MIME type for a book extension.
+  ///
+  /// Used for the MediaStore insert, and for the explicit `type:`
+  /// passed to OpenFilex — the manifest `<queries>` VIEW intent lists
+  /// exactly these MIME types, so the three must stay in sync: a
+  /// format added here also needs a `<data android:mimeType="..."/>`
+  /// line in AndroidManifest.xml, or no external app will resolve
+  /// for it.
   static String mimeTypeForExtension(String? extension) {
     switch ((extension ?? '').toLowerCase()) {
       case 'epub':
@@ -56,10 +63,31 @@ class MediaStoreFiles {
         return 'application/x-cbr';
       case 'txt':
         return 'text/plain';
+      case 'djvu':
+      case 'djv':
+        return 'image/vnd.djvu';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'doc':
+        return 'application/msword';
+      case 'rtf':
+        return 'application/rtf';
+      case 'zip':
+        return 'application/zip';
+      case 'chm':
+        return 'application/vnd.ms-htmlhelp';
+      case 'lit':
+        return 'application/x-ms-reader';
       default:
         return 'application/octet-stream';
     }
   }
+
+  /// MIME type for a file path, from its extension. Unknown or
+  /// extensionless paths fall back to `application/octet-stream`
+  /// (same as [mimeTypeForExtension]'s default).
+  static String mimeTypeForPath(String path) =>
+      mimeTypeForExtension(p.extension(path).replaceFirst('.', ''));
 
   /// Copy [sourcePath] into the public Downloads/zlibx folder via
   /// MediaStore (Android 10+ only). Returns the content URI string,
@@ -249,7 +277,13 @@ class MediaStoreFiles {
     }
     final readable = await SafFolderAccess().readablePath(location);
     if (readable == null) return false;
-    final result = await OpenFilex.open(readable);
+    // Pass the MIME explicitly: the manifest <queries> VIEW intent
+    // lists ebook MIME types only, so an intent without a type (or
+    // with */*) would not resolve to any viewer.
+    final result = await OpenFilex.open(
+      readable,
+      type: mimeTypeForPath(readable),
+    );
     return result.type == ResultType.done;
   }
 

@@ -94,6 +94,29 @@ void main() {
       expect(MediaStoreFiles.mimeTypeForExtension('cbz'), 'application/x-cbz');
       expect(MediaStoreFiles.mimeTypeForExtension('cbr'), 'application/x-cbr');
       expect(MediaStoreFiles.mimeTypeForExtension('txt'), 'text/plain');
+      // P3-3: formats the app also opens (magic table / LibGen):
+      // djvu/djv share one MIME, the office formats keep their own.
+      expect(MediaStoreFiles.mimeTypeForExtension('djvu'), 'image/vnd.djvu');
+      expect(MediaStoreFiles.mimeTypeForExtension('djv'), 'image/vnd.djvu');
+      expect(MediaStoreFiles.mimeTypeForExtension('docx'),
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      expect(
+          MediaStoreFiles.mimeTypeForExtension('doc'), 'application/msword');
+      expect(MediaStoreFiles.mimeTypeForExtension('rtf'), 'application/rtf');
+      expect(MediaStoreFiles.mimeTypeForExtension('zip'), 'application/zip');
+      expect(MediaStoreFiles.mimeTypeForExtension('chm'),
+          'application/vnd.ms-htmlhelp');
+      expect(MediaStoreFiles.mimeTypeForExtension('lit'),
+          'application/x-ms-reader');
+    });
+
+    test('mimeTypeForPath takes the extension from the path', () {
+      expect(MediaStoreFiles.mimeTypeForPath('/sdcard/Book - 123.epub'),
+          'application/epub+zip');
+      expect(MediaStoreFiles.mimeTypeForPath('/sdcard/Book.FB2'),
+          'application/x-fictionbook+xml');
+      expect(MediaStoreFiles.mimeTypeForPath('/sdcard/noext'),
+          'application/octet-stream');
     });
 
     test('is case-insensitive and defaults unknown / null', () {

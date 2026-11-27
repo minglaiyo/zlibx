@@ -264,7 +264,10 @@ class _ExternalBookActionBarState extends ConsumerState<ExternalBookActionBar> {
         }
         return;
       }
-      final result = await OpenFilex.open(path);
+      final result = await OpenFilex.open(
+        path,
+        type: MediaStoreFiles.mimeTypeForPath(path),
+      );
       if (result.type != ResultType.done && context.mounted) {
         _toast(context, AppLocalizations.of(context)!.openFileFailed);
       }

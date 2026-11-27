@@ -104,35 +104,54 @@ class BooklistsTabPage extends StatelessWidget {
         ],
       );
     } else {
-      content = ListView(
+      // P3-2: the ready list is a CustomScrollView — the recommended
+      // section is its own sliver and the masonry grid builds rows
+      // lazily ([BooklistMasonrySliverList]) instead of all cards up
+      // front in two Columns. Loading / logged-out / error states
+      // stay ListViews: they render a single screen, nothing to lazy-load.
+      // The same [scrollController] drives pagination, and
+      // RefreshIndicator works over a CustomScrollView as before.
+      content = CustomScrollView(
         controller: scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.only(top: topPadding),
-        children: [
+        slivers: [
+          SliverToBoxAdapter(child: SizedBox(height: topPadding)),
           if (tab == BooklistTab.discover && recommendedLists.isNotEmpty)
-            RecommendedBooklistsSection(l10n: l10n, lists: recommendedLists),
+            SliverToBoxAdapter(
+              child: RecommendedBooklistsSection(
+                l10n: l10n,
+                lists: recommendedLists,
+              ),
+            ),
           if (state.lists.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 80),
-              child: EmptyState(
-                icon: Icons.collections_bookmark_outlined,
-                title: l10n.noBooklists,
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 80),
+                child: EmptyState(
+                  icon: Icons.collections_bookmark_outlined,
+                  title: l10n.noBooklists,
+                ),
               ),
             )
           else
-            BooklistMasonryGrid(
-              lists: state.lists,
-              showFavoriteBadge: tab != BooklistTab.mine,
-              onOpen: onOpen,
-              onLongPress: onLongPress,
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              sliver: BooklistMasonrySliverList(
+                lists: state.lists,
+                showFavoriteBadge: tab != BooklistTab.mine,
+                onOpen: onOpen,
+                onLongPress: onLongPress,
+              ),
             ),
           if (state.isLoadingMore)
-            const Padding(
-              padding: EdgeInsets.all(12),
-              child: LoadingWidget.more(),
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(12),
+                child: LoadingWidget.more(),
+              ),
             ),
           // Room for the floating action button.
-          const SizedBox(height: 96),
+          const SliverToBoxAdapter(child: SizedBox(height: 96)),
         ],
       );
     }

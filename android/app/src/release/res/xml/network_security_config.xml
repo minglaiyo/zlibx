@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Release-only (P3-3): trust system CAs only — a user-installed CA
+     (e.g. a packet-capture MITM) is not trusted in release builds.
+     Debug builds do not apply this config, so the developer can still
+     capture traffic while debugging.
+     Note: on targetSdk 37 the platform already ignores user CAs by
+     default; this makes it explicit and guards against an accidental
+     opt-in later. Cleartext stays off (usesCleartextTraffic="false"
+     in the main manifest); this file does not change that. -->
+<network-security-config>
+  <base-config>
+    <trust-anchors>
+      <certificates src="system" />
+    </trust-anchors>
+  </base-config>
+</network-security-config>

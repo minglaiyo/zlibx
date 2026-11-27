@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- P3-3: release-only network security config (system CAs only).
+         Debug builds merge src/debug/AndroidManifest.xml instead and
+         keep the platform default, so packet capture still works
+         while debugging. -->
+    <application android:networkSecurityConfig="@xml/network_security_config" />
+</manifest>

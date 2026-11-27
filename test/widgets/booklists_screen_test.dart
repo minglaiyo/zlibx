@@ -16,6 +16,7 @@ import 'package:zlibx/providers/recommended_booklists_provider.dart';
 import 'package:zlibx/screens/account/booklists_screen.dart';
 import 'package:zlibx/services/hive_service.dart';
 import 'package:zlibx/widgets/booklist_card.dart';
+import 'package:zlibx/widgets/booklist_tile.dart';
 import 'package:zlibx/widgets/empty_state.dart';
 
 class _FakeBooklistsController extends BooklistsController {
@@ -149,6 +150,26 @@ void main() {
     );
 
     expect(find.text('Synthetic List 90001'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('就绪态长列表只构建可见卡片(懒加载)', (tester) async {
+    await pumpScreen(
+      tester,
+      state: BooklistsState(
+        phase: BooklistsPhase.ready,
+        lists: List.generate(40, (i) => _list('9${1000 + i}')),
+      ),
+    );
+
+    // First row is built; the tail is not — the sliver list only
+    // builds rows in (and just past) the viewport.
+    expect(find.text('Synthetic List 91000'), findsOneWidget);
+    expect(find.text('Synthetic List 91039'), findsNothing);
+    expect(
+      find.byType(BooklistCoverCard).evaluate().length,
+      lessThan(40),
+    );
     expect(tester.takeException(), isNull);
   });
 }

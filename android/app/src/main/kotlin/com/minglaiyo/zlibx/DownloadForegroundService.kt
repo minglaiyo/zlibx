@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 
 /**
@@ -38,6 +39,13 @@ class DownloadForegroundService : Service() {
         private const val CHANNEL_ID = "zlibx_download"
         private const val NOTIFICATION_ID = 1
         private const val DONE_CHANNEL_ID = "zlibx_done"
+        private const val WAKE_LOCK_TIMEOUT_MS = 10 * 60 * 1000L
+
+        // Count transitions and wake-lock operations share one lock so an
+        // end/start race cannot leave a lock held after the count reaches 0.
+        private val stateLock = Any()
+        private var activeDownloads = 0
+        private var wakeLock: PowerManager.WakeLock? = null
 
         private const val ACTION_START = "start"
         private const val ACTION_PROGRESS = "progress"
@@ -50,9 +58,8 @@ class DownloadForegroundService : Service() {
             private set
 
         /** Active download count. 0 → the service stops itself. */
-        @Volatile
-        var activeCount: Int = 0
-            private set
+        val activeCount: Int
+            get() = synchronized(stateLock) { activeDownloads }
 
         /** Callback Dart registers to receive pause / cancel actions. */
         @Volatile
@@ -66,32 +73,45 @@ class DownloadForegroundService : Service() {
 
         /** Start (or keep) the foreground service for a new download. */
         fun startDownload(context: Context) {
-            activeCount++
-            val intent = Intent(context, DownloadForegroundService::class.java)
-                .setAction(ACTION_START)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            synchronized(stateLock) {
+                activeDownloads++
+                renewWakeLockLocked(context)
+                val intent = Intent(context, DownloadForegroundService::class.java)
+                    .setAction(ACTION_START)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
             }
         }
 
         /** A download finished: drop the count, stop when it reaches 0. */
         fun endDownload(context: Context) {
-            if (activeCount > 0) activeCount--
-            if (activeCount <= 0) {
-                activeCount = 0
-                progressText = null
-                context.stopService(
-                    Intent(context, DownloadForegroundService::class.java),
-                )
+            synchronized(stateLock) {
+                if (activeDownloads > 0) activeDownloads--
+                if (activeDownloads <= 0) {
+                    activeDownloads = 0
+                    progressText = null
+                    releaseWakeLockLocked()
+                    context.stopService(
+                        Intent(context, DownloadForegroundService::class.java),
+                    )
+                }
             }
         }
 
     /** Push a progress text from Dart (via the MainActivity channel). */
     fun updateProgress(text: String?) {
         progressText = text
-        if (activeCount > 0) service?.notifyProgress()
+        synchronized(stateLock) {
+            if (activeDownloads > 0) {
+                service?.let {
+                    renewWakeLockLocked(it)
+                    it.notifyProgress()
+                }
+            }
+        }
     }
 
     /** 新引擎启动时的陈旧清理（2026-11-21 下载中断修复）：上一个
@@ -101,14 +121,17 @@ class DownloadForegroundService : Service() {
         时是无害 no-op。下载本身的恢复走 Dart 侧对盘上 .part 残片的
         扫描（DownloadNotifier 启动恢复）。 */
     fun cancelStale(context: Context) {
-        activeCount = 0
-        progressText = null
-        try {
-            context.stopService(
-                Intent(context, DownloadForegroundService::class.java),
-            )
-        } catch (e: Exception) {
-            android.util.Log.w("ZlibxDownload", "stale stop failed", e)
+        synchronized(stateLock) {
+            activeDownloads = 0
+            progressText = null
+            releaseWakeLockLocked()
+            try {
+                context.stopService(
+                    Intent(context, DownloadForegroundService::class.java),
+                )
+            } catch (e: Exception) {
+                android.util.Log.w("ZlibxDownload", "stale stop failed", e)
+            }
         }
         try {
             val nm = context.getSystemService(NotificationManager::class.java)
@@ -116,6 +139,22 @@ class DownloadForegroundService : Service() {
         } catch (e: Exception) {
             android.util.Log.w("ZlibxDownload", "stale cancel failed", e)
         }
+    }
+
+    // Caller holds stateLock. A timeout bounds battery use if a stop path
+    // is ever missed; each progress update renews it.
+    private fun renewWakeLockLocked(context: Context) {
+        if (activeDownloads == 0) return
+        val lock = wakeLock ?: context.getSystemService(PowerManager::class.java)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "zlibx:download")
+            .apply { setReferenceCounted(false) }
+            .also { wakeLock = it }
+        lock.acquire(WAKE_LOCK_TIMEOUT_MS)
+    }
+
+    private fun releaseWakeLockLocked() {
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
     }
 
         /** E3: post a completion notification tapping straight into the
@@ -186,6 +225,11 @@ class DownloadForegroundService : Service() {
      * 死则调用落进 dead messenger，失败只记日志。
      */
     override fun onTaskRemoved(rootIntent: Intent?) {
+        synchronized(stateLock) {
+            activeDownloads = 0
+            progressText = null
+            releaseWakeLockLocked()
+        }
         try {
             onAction?.invoke(ACTION_PAUSE)
         } catch (e: Exception) {
@@ -212,10 +256,24 @@ class DownloadForegroundService : Service() {
             return START_NOT_STICKY
         }
         when (intent.action) {
-            ACTION_START -> startForegroundCompat()
+            ACTION_START -> {
+                startForegroundCompat()
+                synchronized(stateLock) {
+                    if (activeDownloads > 0) {
+                        renewWakeLockLocked(this)
+                    } else {
+                        stopSelf(startId)
+                    }
+                }
+            }
             ACTION_PROGRESS -> {
                 progressText = intent.getStringExtra("text")
-                if (activeCount > 0) notifyProgress()
+                synchronized(stateLock) {
+                    if (activeDownloads > 0) {
+                        renewWakeLockLocked(this)
+                        notifyProgress()
+                    }
+                }
             }
             ACTION_PAUSE -> onAction?.invoke(ACTION_PAUSE)
             ACTION_CANCEL -> onAction?.invoke(ACTION_CANCEL)
@@ -232,8 +290,11 @@ class DownloadForegroundService : Service() {
      * notification explaining why and where to continue.
      */
     override fun onTimeout(startId: Int, fgsType: Int) {
-        activeCount = 0
-        progressText = null
+        synchronized(stateLock) {
+            activeDownloads = 0
+            progressText = null
+            releaseWakeLockLocked()
+        }
         try {
             onAction?.invoke(ACTION_PAUSE)
         } catch (e: Exception) {
@@ -279,13 +340,20 @@ class DownloadForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        service = this
+        synchronized(stateLock) {
+            service = this
+            if (activeDownloads > 0) renewWakeLockLocked(this)
+        }
         createChannel()
     }
 
     override fun onDestroy() {
-        onAction = null
-        service = null
+        synchronized(stateLock) {
+            activeDownloads = 0
+            releaseWakeLockLocked()
+            onAction = null
+            service = null
+        }
         super.onDestroy()
     }
 

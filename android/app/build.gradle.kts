@@ -28,6 +28,25 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    androidResources {
+        localeFilters += listOf(
+            "en",
+            "zh",
+            "b+zh+Hant",
+            "ja",
+            "ko",
+            "zh-rTW",
+            "zh-rHK",
+            "b+zh+MO",
+        )
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     defaultConfig {
         applicationId = "com.minglaiyo.zlibx"
         minSdk = 29

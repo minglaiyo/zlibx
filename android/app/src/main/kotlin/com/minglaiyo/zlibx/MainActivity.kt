@@ -12,7 +12,9 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.StandardMethodCodec
 
 // FlutterFragmentActivity instead of FlutterActivity: the privacy
 // lock's local_auth (BiometricPrompt) requires a FragmentActivity —
@@ -45,6 +47,10 @@ class MainActivity : FlutterFragmentActivity() {
 
     private val runner = ChannelRunner { runOnUiThread(it) }
 
+    // Keep the queue alive for as long as this channel handler is registered.
+    private var mediaStoreTaskQueue: BinaryMessenger.TaskQueue? = null
+    private val treePickLock = Any()
+
     private val mediaStoreHandler = MediaStoreHandler(this, runner)
     private val pendingDownloadHandler = PendingDownloadHandler(this, runner)
     private val shareHandler = ShareHandler(this, runner)
@@ -75,8 +81,11 @@ class MainActivity : FlutterFragmentActivity() {
     private val treePicker = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { outcome ->
-        val pending = pendingTreePickResult
-        pendingTreePickResult = null
+        val pending = synchronized(treePickLock) {
+            val pending = pendingTreePickResult
+            pendingTreePickResult = null
+            pending
+        }
         if (pending == null) return@registerForActivityResult
         val uri = if (outcome.resultCode == Activity.RESULT_OK) {
             outcome.data?.data
@@ -161,23 +170,33 @@ class MainActivity : FlutterFragmentActivity() {
         val messenger = flutterEngine.dartExecutor.binaryMessenger
         downloadServiceHandler.messenger = messenger
 
-        MethodChannel(messenger, CHANNEL)
+        val taskQueue = messenger.makeBackgroundTaskQueue()
+        mediaStoreTaskQueue = taskQueue
+        MethodChannel(messenger, CHANNEL, StandardMethodCodec.INSTANCE, taskQueue)
             .setMethodCallHandler { call, result ->
                 when {
+                    // Opening a file launches another activity; keep that
+                    // UI operation on the main thread after moving the
+                    // channel's message decoding to the background queue.
+                    call.method == "openContent" -> runOnUiThread {
+                        mediaStoreHandler.handleMethod(call, result)
+                    }
                     mediaStoreHandler.handleMethod(call, result) -> Unit
                     pendingDownloadHandler.handleMethod(call, result) -> Unit
                     shareHandler.handleMethod(call, result) -> Unit
                     safHandler.handleMethod(call, result) -> Unit
                     call.method == "pickDownloadTree" -> {
-                        // SAF folder pick: the folder picker is a
-                        // system UI, so this runs on the platform
-                        // thread (never runAsync). The answer arrives
-                        // later, through the launcher callback.
-                        if (pendingTreePickResult != null) {
-                            result.success(null)
-                        } else {
-                            pendingTreePickResult = result
-                            treePicker.launch(safHandler.treePickIntent())
+                        // The channel runs on a background queue, but the
+                        // picker and its pending result belong to the UI thread.
+                        runOnUiThread {
+                            synchronized(treePickLock) {
+                                if (pendingTreePickResult != null) {
+                                    result.success(null)
+                                } else {
+                                    pendingTreePickResult = result
+                                    treePicker.launch(safHandler.treePickIntent())
+                                }
+                            }
                         }
                     }
                     else -> result.notImplemented()

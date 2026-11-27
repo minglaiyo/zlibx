@@ -15,6 +15,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/display_book.dart';
 import '../services/download_foreground_service.dart';
+import '../services/download_target.dart';
 import '../services/hive_service.dart';
 import '../services/http_client.dart';
 import '../services/media_store.dart';
@@ -36,6 +37,30 @@ export 'download_list_structure.dart';
 part 'download_paths.dart';
 part 'download_engine.dart';
 part 'download_history.dart';
+
+({int count, int percent, String text}) downloadNotificationSummary(
+  Iterable<DownloadTask> tasks,
+) {
+  final active = tasks
+      .where(
+        (task) =>
+            task.status == DownloadStatus.downloading ||
+            task.status == DownloadStatus.pending,
+      )
+      .toList();
+  if (active.isEmpty) return (count: 0, percent: 0, text: '下载中…');
+  final percent =
+      (active.fold<double>(0, (sum, task) => sum + task.progress) /
+              active.length *
+              100)
+          .round();
+  final prefix = active.length == 1 ? '' : '${active.length} 个任务 · ';
+  return (
+    count: active.length,
+    percent: percent,
+    text: '$prefix下载中 $percent%',
+  );
+}
 
 /// Shared state and small helpers for the DownloadNotifier mixins below.
 /// `ref` is deliberately not cached in a `late final` field: ref.invalidate
@@ -78,9 +103,11 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
   /// download_engine.dart 的 mixin 里（要调 startDownload）。
   final Set<CancelToken> _pauseRequested = {};
 
-  /// O1: last percent pushed to the foreground-service notification,
-  /// to throttle the channel calls (only push on a 5% change).
-  int _lastNotifiedPercent = -1;
+  /// O1: last aggregate progress pushed to the foreground service.
+  /// The count is tracked separately so adding/removing a task refreshes
+  /// the text even when the rounded percent is unchanged.
+  int _lastAggregateNotificationPercent = -1;
+  int _lastNotificationCount = 0;
 
   void markMissingFile(String id) {
     _updateTask(
@@ -180,16 +207,26 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
   void _clearProgressThrottle(String id) {
     _lastPublishedProgress.remove(id);
     _lastPublishedAt.remove(id);
+    _notifyDownloadProgress();
   }
 
-  /// Push the download progress to the foreground-service notification
-  /// (O1), throttled to a 5% change so the method channel is not
-  /// spammed per chunk.
-  void _notifyDownloadProgress(double progress) {
-    final percent = (progress * 100).round();
-    if ((percent - _lastNotifiedPercent).abs() < 5) return;
-    _lastNotifiedPercent = percent;
-    unawaited(DownloadForegroundService.updateProgress('下载中 $percent%'));
+  /// Push aggregate progress to the foreground-service notification.
+  /// A single shared percent avoids concurrent tasks overwriting each
+  /// other's throttle state or making the title jump between books.
+  void _notifyDownloadProgress() {
+    final summary = downloadNotificationSummary(state);
+    if (summary.count == 0) {
+      _lastAggregateNotificationPercent = -1;
+      _lastNotificationCount = 0;
+      return;
+    }
+    if ((summary.percent - _lastAggregateNotificationPercent).abs() < 5 &&
+        summary.count == _lastNotificationCount) {
+      return;
+    }
+    _lastAggregateNotificationPercent = summary.percent;
+    _lastNotificationCount = summary.count;
+    unawaited(DownloadForegroundService.updateProgress(summary.text));
   }
 
   /// 按标题搜索并按 id 认领（续传回填与历史封面回填共用）：命中返回

@@ -61,6 +61,7 @@ class _DownloadRoundState {
   _DownloadRoundState({
     required this.book,
     required this.presetUrl,
+    required this.fallbackUrls,
     required this.source,
     required this.customSubfolder,
   }) : id = book.id.toString(),
@@ -68,6 +69,7 @@ class _DownloadRoundState {
 
   final Book book;
   final String? presetUrl;
+  final List<String> fallbackUrls;
   final BookSource? source;
   final String? customSubfolder;
   final String id;
@@ -135,6 +137,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       startDownload(
         task.book,
         presetUrl: task.presetUrl,
+        fallbackUrls: task.fallbackUrls,
         source: task.source,
         customSubfolder: task.customSubfolder,
       ),
@@ -172,6 +175,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
   Future<void> startDownload(
     Book book, {
     String? presetUrl,
+    List<String> fallbackUrls = const [],
     BookSource? source,
     String? customSubfolder,
   }) {
@@ -180,6 +184,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     final round = _runDownloadRound(
       book,
       presetUrl: presetUrl,
+      fallbackUrls: fallbackUrls,
       source: source ?? _defaultSource(presetUrl),
       customSubfolder: customSubfolder,
       previous: previous,
@@ -236,13 +241,16 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
   Future<void> _runDownloadRound(
     Book book, {
     String? presetUrl,
+    List<String> fallbackUrls = const [],
     BookSource? source,
     String? customSubfolder,
     Future<void>? previous,
   }) async {
+    final candidates = uniqueDownloadUrls(presetUrl, fallbackUrls);
     final ctx = _DownloadRoundState(
       book: book,
-      presetUrl: presetUrl,
+      presetUrl: candidates.firstOrNull,
+      fallbackUrls: candidates.skip(1).toList(),
       source: source,
       customSubfolder: customSubfolder,
     );
@@ -412,6 +420,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
           wifiOnlyBlocked: true,
           needsFreshLink: ctx.presetUrl != null,
           presetUrl: ctx.presetUrl,
+          fallbackUrls: ctx.fallbackUrls,
           source: ctx.source,
           customSubfolder: ctx.customSubfolder,
         ),
@@ -430,6 +439,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         status: DownloadStatus.pending,
         needsFreshLink: ctx.presetUrl != null,
         presetUrl: ctx.presetUrl,
+        fallbackUrls: ctx.fallbackUrls,
         source: ctx.source,
         customSubfolder: ctx.customSubfolder,
       ),
@@ -482,6 +492,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       ctx.temporaryPath!,
       ctx.book,
       ctx.presetUrl,
+      ctx.fallbackUrls,
       ctx.source,
       ctx.customSubfolder,
     );
@@ -563,18 +574,18 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       if (total > 0) {
         final progress = received / total;
         _updateProgress(ctx.id, progress);
-        _notifyDownloadProgress(progress);
+        _notifyDownloadProgress();
       }
     }
 
-    // M4: retry transient failures with exponential backoff. The
-    // partial (.part / pending entry) survives each attempt, so a
-    // retry resumes instead of restarting. Only connection errors,
-    // 5xx and truncations retry — a content error (HTML instead of
-    // a book), a magic mismatch (the bytes are not the book),
-    // quota exhaustion, or a user cancel never does.
-    Future<void> downloadAttempt() async {
-      if (ctx.presetUrl != null) {
+    final candidates = <String?>[
+      if (ctx.presetUrl != null) ctx.presetUrl,
+      ...ctx.fallbackUrls,
+      if (ctx.presetUrl == null) null,
+    ];
+
+    Future<void> downloadAttempt(String? url) async {
+      if (url != null) {
         // presetUrl 路径（外部源解析链接）：直接 stream 到本地，
         // 用独立 Dio，不带 z站 cookie / auth，也不带任何自定义头 —
         // followRedirects 必须为 true：LibGen get.php 307 跳到 CDN
@@ -588,7 +599,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         try {
           await _downloadResumable(
             dio,
-            ctx.presetUrl!,
+            url,
             savePath,
             onProgress: onProgress,
             cancelToken: cancelToken,
@@ -621,19 +632,28 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       }
     }
 
-    for (var attempt = 0; ; attempt++) {
-      try {
-        await downloadAttempt();
-        break;
-      } on Object catch (e) {
-        if (cancelToken.isCancelled ||
-            !isRetryableDownloadError(e) ||
-            attempt >= downloadRetryDelays.length) {
-          rethrow;
+    for (
+      var candidateIndex = 0;
+      candidateIndex < candidates.length;
+      candidateIndex++
+    ) {
+      for (var attempt = 0; ; attempt++) {
+        try {
+          await downloadAttempt(candidates[candidateIndex]);
+          return;
+        } on Object catch (e) {
+          if (cancelToken.isCancelled || !isRetryableDownloadError(e)) {
+            rethrow;
+          }
+          if (candidateIndex + 1 < candidates.length) {
+            logIgnored('download_mirror_fallback', e);
+            break;
+          }
+          if (attempt >= downloadRetryDelays.length) rethrow;
+          logIgnored('download_retry', e);
+          await Future.delayed(downloadRetryDelays[attempt]);
+          if (cancelToken.isCancelled) return;
         }
-        logIgnored('download_retry', e);
-        await Future.delayed(downloadRetryDelays[attempt]);
-        if (cancelToken.isCancelled) return;
       }
     }
   }
@@ -949,6 +969,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     String temporaryPath,
     Book book,
     String? presetUrl,
+    List<String> fallbackUrls,
     BookSource? source,
     String? customSubfolder,
   ) async {
@@ -962,6 +983,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
           'extension': book.extension,
           'hash': book.hash,
           if (presetUrl != null) 'presetUrl': presetUrl,
+          if (fallbackUrls.isNotEmpty) 'fallbackUrls': fallbackUrls,
           if (source != null) 'source': source.name,
           if (customSubfolder != null) 'customSubfolder': customSubfolder,
         }),

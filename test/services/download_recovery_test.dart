@@ -83,7 +83,9 @@ void main() {
     ).writeAsStringSync(
       '{"id":77712345,"title":"后现代主义","author":"某人",'
       '"cover":"https://c/1.jpg","extension":"pdf","hash":null,'
-      '"presetUrl":"https://libgen.li/get.php?md5=abc"}',
+      '"presetUrl":"https://libgen.li/get.php?md5=abc",'
+      '"fallbackUrls":["https://mirror.example/book.pdf",'
+      '"https://mirror.example/book.pdf",""]}',
     );
 
     final container = makeContainer();
@@ -96,6 +98,7 @@ void main() {
     expect(task.book.author, '某人');
     expect(task.book.extension, 'pdf');
     expect(task.presetUrl, 'https://libgen.li/get.php?md5=abc');
+    expect(task.fallbackUrls, ['https://mirror.example/book.pdf']);
   });
 
   test('恢复每进程一次：invalidate 重跑 build 不再重复恢复', () async {

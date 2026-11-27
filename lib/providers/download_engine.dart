@@ -29,13 +29,19 @@ const downloadRetryDelays = [
 /// Plan item 10: the 5xx branch asks the error table — a 5xx carrying
 /// a refusal text ("Access denied") is not transient.
 bool isRetryableDownloadError(Object e) {
+  if (e is DownloadNoProgressException) return true;
   if (e is DownloadTruncatedException) return true;
   if (e is StateError &&
       e.message.toString().startsWith('download truncated:')) {
     return true;
   }
   if (e is DioException) {
-    if (e.type == DioExceptionType.connectionError) return true;
+    if (e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.sendTimeout) {
+      return true;
+    }
     final status = e.response?.statusCode;
     if (status != null && status >= 500 && status < 600) {
       return classifyZlibError(status: status, message: zlibErrorText(e)) ==
@@ -585,51 +591,61 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     ];
 
     Future<void> downloadAttempt(String? url) async {
-      if (url != null) {
-        // presetUrl 路径（外部源解析链接）：直接 stream 到本地，
-        // 用独立 Dio，不带 z站 cookie / auth，也不带任何自定义头 —
-        // followRedirects 必须为 true：LibGen get.php 307 跳到 CDN
-        // 文件，不跟随会把重定向响应本身存成文件；跟随时不带上层
-        // 自定义头，所以跨主机跳转没有凭据外泄面（S5）。
-        // receiveTimeout: null = 不限接收超时：大文件慢速网络不能被打断。
-        // The Dio is a single-use instance for this one download:
-        // close it in a finally so a failed or cancelled download
-        // does not leak its HttpClient (O13).
-        final dio = createDio(receiveTimeout: null);
-        try {
-          await _downloadResumable(
-            dio,
-            url,
-            savePath,
-            onProgress: onProgress,
-            cancelToken: cancelToken,
-            pendingWriter: ctx.pendingWriter,
-          );
-        } finally {
-          dio.close();
-        }
-      } else {
-        // 默认路径：用户自己 z站 账号查 URL + 下载
-        try {
-          await _api.downloadBook(
-            ctx.effectiveBook.id.toString(),
-            ctx.effectiveBook.hash ?? '',
-            savePath,
-            onProgress: onProgress,
-            cancelToken: cancelToken,
-            title: ctx.book.title,
-            pendingWriter: ctx.pendingWriter,
-          );
-        } on DownloadLimitReachedException {
-          rethrow;
-        } catch (e) {
-          // Z 站额度用尽的返回形态不稳定，失败后再查一次资料兜底识别
-          if (!cancelToken.isCancelled && await _isOwnQuotaExhausted()) {
-            throw DownloadLimitReachedException();
+      await DownloadStallGuard.run<void>(
+        parentToken: cancelToken,
+        body: (attemptToken, onBytes) async {
+          void attemptProgress(int received, int total) {
+            onBytes(received);
+            onProgress(received, total);
           }
-          rethrow;
-        }
-      }
+
+          if (url != null) {
+            // presetUrl 路径（外部源解析链接）：直接 stream 到本地，
+            // 用独立 Dio，不带 z站 cookie / auth，也不带任何自定义头 —
+            // followRedirects 必须为 true：LibGen get.php 307 跳到 CDN
+            // 文件，不跟随会把重定向响应本身存成文件；跟随时不带上层
+            // 自定义头，所以跨主机跳转没有凭据外泄面（S5）。
+            // receiveTimeout: null = 不限接收超时：大文件慢速网络不能被打断。
+            // The Dio is a single-use instance for this one download:
+            // close it in a finally so a failed or cancelled download
+            // does not leak its HttpClient (O13).
+            final dio = createDio(receiveTimeout: null);
+            try {
+              await _downloadResumable(
+                dio,
+                url,
+                savePath,
+                onProgress: attemptProgress,
+                cancelToken: attemptToken,
+                pendingWriter: ctx.pendingWriter,
+              );
+            } finally {
+              dio.close();
+            }
+          } else {
+            // 默认路径：用户自己 z站 账号查 URL + 下载
+            try {
+              await _api.downloadBook(
+                ctx.effectiveBook.id.toString(),
+                ctx.effectiveBook.hash ?? '',
+                savePath,
+                onProgress: attemptProgress,
+                cancelToken: attemptToken,
+                title: ctx.book.title,
+                pendingWriter: ctx.pendingWriter,
+              );
+            } on DownloadLimitReachedException {
+              rethrow;
+            } catch (e) {
+              // Z 站额度用尽的返回形态不稳定，失败后再查一次资料兜底识别
+              if (!attemptToken.isCancelled && await _isOwnQuotaExhausted()) {
+                throw DownloadLimitReachedException();
+              }
+              rethrow;
+            }
+          }
+        },
+      );
     }
 
     for (

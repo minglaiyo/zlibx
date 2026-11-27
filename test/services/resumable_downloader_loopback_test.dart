@@ -1,8 +1,32 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zlibx/services/download_stall_guard.dart';
 import 'package:zlibx/services/resumable_downloader.dart';
+
+class _ManualTimer implements Timer {
+  _ManualTimer(this.callback);
+
+  final void Function() callback;
+  bool _active = true;
+
+  @override
+  bool get isActive => _active;
+
+  @override
+  int get tick => 0;
+
+  @override
+  void cancel() => _active = false;
+
+  void fire() {
+    if (!_active) return;
+    _active = false;
+    callback();
+  }
+}
 
 /// Real-loopback tests for [ResumableDownloader]: a real dart:io
 /// [HttpServer] on localhost and a real Dio (default adapter) — no
@@ -37,6 +61,8 @@ class _LoopbackOrigin {
   int? contentRangeStart; // lie about where a 206 body starts
   int? force416Total; // answer 416 with Content-Range: bytes */N
   bool gzipBody = false; // gzip the body unless the client asked identity
+  int? gatedPrefixLength;
+  final Completer<void> gateRelease = Completer<void>();
   final List<Map<String, String>> seen = [];
 
   late HttpServer _server;
@@ -48,7 +74,10 @@ class _LoopbackOrigin {
     _server.listen(_handle);
   }
 
-  Future<void> stop() => _server.close(force: true);
+  Future<void> stop() async {
+    if (!gateRelease.isCompleted) gateRelease.complete();
+    await _server.close(force: true);
+  }
 
   Future<void> _handle(HttpRequest req) async {
     try {
@@ -93,8 +122,21 @@ class _LoopbackOrigin {
       final doGzip = gzipBody && !acceptEncoding.contains('identity');
       final payload = doGzip ? gzip.encode(out) : out;
       if (doGzip) res.headers.set(HttpHeaders.contentEncodingHeader, 'gzip');
-      res.contentLength = payload.length;
-      res.add(payload);
+      final gatedPrefix = gatedPrefixLength;
+      if (gatedPrefix != null) {
+        gatedPrefixLength = null;
+        res
+          ..bufferOutput = false
+          ..headers.chunkedTransferEncoding = true
+          ..contentLength = -1;
+        res.add(payload.sublist(0, gatedPrefix));
+        await res.flush();
+        await gateRelease.future;
+        res.add(payload.sublist(gatedPrefix));
+      } else {
+        res.contentLength = payload.length;
+        res.add(payload);
+      }
       await res.close();
     } catch (_) {
       // A dropped response can surface here on the server side
@@ -210,6 +252,49 @@ void main() {
     expect(origin.seen.first['range'], 'bytes=2048-');
     expect(origin.seen.last.containsKey('range'), isFalse);
   });
+
+  test(
+    'stalled response keeps its prefix and retry resumes over real HTTP',
+    () async {
+      const prefixLength = 1024;
+      origin.gatedPrefixLength = prefixLength;
+      final timers = <_ManualTimer>[];
+      final firstChunk = Completer<void>();
+      final dio = Dio();
+      final first = DownloadStallGuard.run<void>(
+        parentToken: null,
+        timerFactory: (_, callback) {
+          final timer = _ManualTimer(callback);
+          timers.add(timer);
+          return timer;
+        },
+        body: (token, onBytes) => ResumableDownloader.download(
+          dio,
+          origin.url.toString(),
+          path,
+          cancelToken: token,
+          onProgress: (received, _) {
+            if (!firstChunk.isCompleted) firstChunk.complete();
+            onBytes(received);
+          },
+        ),
+      );
+
+      await firstChunk.future.timeout(const Duration(seconds: 5));
+      timers.last.fire();
+      await expectLater(first, throwsA(isA<DownloadNoProgressException>()));
+      dio.close();
+      expect(await File(path).length(), prefixLength);
+      expect(await File(metaPath).exists(), isTrue);
+
+      origin.gateRelease.complete();
+      await ResumableDownloader.download(Dio(), origin.url.toString(), path);
+      expect(await File(path).readAsBytes(), book);
+      expect(origin.seen, hasLength(2));
+      expect(origin.seen.last['range'], 'bytes=$prefixLength-');
+      expect(origin.seen.last['if-range'], '"v1"');
+    },
+  );
 
   test('gzip answer: the downloader asks for identity and gets raw bytes',
       () async {

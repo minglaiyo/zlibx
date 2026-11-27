@@ -32,12 +32,41 @@
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
+import '../utils/app_log.dart';
 import 'media_store.dart';
 
+class PendingUriPersistenceStats {
+  PendingUriPersistenceStats({
+    required this.calls,
+    required this.successes,
+    required this.failures,
+    required this.directRenames,
+    required this.renameFallbacks,
+    required this.fallbackSuccesses,
+    required this.fallbackFailures,
+    required this.totalMicroseconds,
+    required this.maxMicroseconds,
+    required List<int> latencyBuckets,
+  }) : latencyBuckets = List<int>.unmodifiable(latencyBuckets);
+
+  final int calls;
+  final int successes;
+  final int failures;
+  final int directRenames;
+  final int renameFallbacks;
+  final int fallbackSuccesses;
+  final int fallbackFailures;
+  final int totalMicroseconds;
+  final int maxMicroseconds;
+  /// Counts for <=1, <=5, <=20, <=100 and >100 ms.
+  final List<int> latencyBuckets;
+
+  int get averageMicroseconds => calls == 0 ? 0 : totalMicroseconds ~/ calls;
+}
 
 /// Streams download bytes into a pending MediaStore entry.
 ///
@@ -64,6 +93,77 @@ class PendingUriWriter implements PendingDownloadWriter {
   /// the new writer has picked its resume offset.
   static final Map<String, PendingUriWriter> _live =
       <String, PendingUriWriter>{};
+
+  static const _latencyBucketMicroseconds = <int>[1000, 5000, 20000, 100000];
+  static final List<int> _latencyBuckets = List<int>.filled(
+    _latencyBucketMicroseconds.length + 1,
+    0,
+  );
+  static var _persistenceCalls = 0;
+  static var _persistenceSuccesses = 0;
+  static var _persistenceFailures = 0;
+  static var _directRenames = 0;
+  static var _renameFallbacks = 0;
+  static var _fallbackSuccesses = 0;
+  static var _fallbackFailures = 0;
+  static var _persistenceMicroseconds = 0;
+  static var _maxPersistenceMicroseconds = 0;
+
+  @visibleForTesting
+  static PendingUriPersistenceStats get persistenceStats =>
+      PendingUriPersistenceStats(
+        calls: _persistenceCalls,
+        successes: _persistenceSuccesses,
+        failures: _persistenceFailures,
+        directRenames: _directRenames,
+        renameFallbacks: _renameFallbacks,
+        fallbackSuccesses: _fallbackSuccesses,
+        fallbackFailures: _fallbackFailures,
+        totalMicroseconds: _persistenceMicroseconds,
+        maxMicroseconds: _maxPersistenceMicroseconds,
+        latencyBuckets: _latencyBuckets,
+      );
+
+  @visibleForTesting
+  static void resetPersistenceStats() {
+    _latencyBuckets.fillRange(0, _latencyBuckets.length, 0);
+    _persistenceCalls = 0;
+    _persistenceSuccesses = 0;
+    _persistenceFailures = 0;
+    _directRenames = 0;
+    _renameFallbacks = 0;
+    _fallbackSuccesses = 0;
+    _fallbackFailures = 0;
+    _persistenceMicroseconds = 0;
+    _maxPersistenceMicroseconds = 0;
+  }
+
+  static void _recordPersistence(int elapsedMicroseconds) {
+    _persistenceCalls++;
+    _persistenceMicroseconds += elapsedMicroseconds;
+    if (elapsedMicroseconds > _maxPersistenceMicroseconds) {
+      _maxPersistenceMicroseconds = elapsedMicroseconds;
+    }
+    var bucket = _latencyBucketMicroseconds.length;
+    for (var i = 0; i < _latencyBucketMicroseconds.length; i++) {
+      if (elapsedMicroseconds <= _latencyBucketMicroseconds[i]) {
+        bucket = i;
+        break;
+      }
+    }
+    _latencyBuckets[bucket]++;
+    if (_persistenceCalls % 32 == 0) {
+      AppLog.report(
+        'pending sidecar writes=$_persistenceCalls '
+        'failures=$_persistenceFailures direct=$_directRenames '
+        'fallback=$_renameFallbacks '
+        'avg=${_persistenceMicroseconds ~/ _persistenceCalls}us '
+        'max=${_maxPersistenceMicroseconds}us '
+        'buckets<=1/5/20/100/gt100ms=$_latencyBuckets',
+        tag: 'PendingUriWriter',
+      );
+    }
+  }
 
   /// JSON sidecar next to the `.part` path. Holds the pending URI and
   /// the committed byte count; written after every successful batch.
@@ -371,6 +471,8 @@ class PendingUriWriter implements PendingDownloadWriter {
   Future<void> _persistState() async {
     final stateFile = File(_statePath);
     final tempFile = File('$_statePath.tmp');
+    final stopwatch = Stopwatch()..start();
+    var succeeded = false;
     try {
       // Write and flush a complete replacement before publishing it.
       // This avoids leaving a truncated JSON sidecar if the process is
@@ -387,18 +489,29 @@ class PendingUriWriter implements PendingDownloadWriter {
       );
       try {
         await tempFile.rename(_statePath);
+        _directRenames++;
+        succeeded = true;
       } on FileSystemException {
-        // Some platforms do not replace an existing destination on
-        // rename. Fall back to deleting the destination first; if the
-        // replacement rename also fails, the outer handler cleans up
-        // the temp file (losing the sidecar only costs a fresh
-        // download on retry).
-        if (await stateFile.exists()) {
-          await stateFile.delete();
+        _renameFallbacks++;
+        try {
+          // Some platforms do not replace an existing destination on
+          // rename. Fall back to deleting the destination first; if the
+          // replacement rename also fails, the outer handler cleans up
+          // the temp file (losing the sidecar only costs a fresh
+          // download on retry).
+          if (await stateFile.exists()) {
+            await stateFile.delete();
+          }
+          await tempFile.rename(_statePath);
+          _fallbackSuccesses++;
+          succeeded = true;
+        } on FileSystemException {
+          _fallbackFailures++;
+          rethrow;
         }
-        await tempFile.rename(_statePath);
       }
     } on FileSystemException {
+      _persistenceFailures++;
       // Losing the sidecar only costs a fresh download on retry.
       // Best-effort cleanup prevents stale temporary files accumulating.
       try {
@@ -406,6 +519,10 @@ class PendingUriWriter implements PendingDownloadWriter {
       } on FileSystemException {
         // Best effort.
       }
+    } finally {
+      stopwatch.stop();
+      if (succeeded) _persistenceSuccesses++;
+      _recordPersistence(stopwatch.elapsedMicroseconds);
     }
   }
 }

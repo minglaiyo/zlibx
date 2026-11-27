@@ -84,6 +84,7 @@ void main() {
     tempDir = Directory.systemTemp.createTempSync('pending_uri_writer_');
     fake = _FakeMediaStore();
     MediaStoreFiles.forceAndroidForTesting = true;
+    PendingUriWriter.resetPersistenceStats();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, fake.handle);
   });
@@ -102,6 +103,57 @@ void main() {
     final raw = await File(statePath(path)).readAsString();
     return jsonDecode(raw) as Map<String, dynamic>;
   }
+
+  group('persistence metrics', () {
+    test('counts successful sidecar writes and latency buckets', () async {
+      final path = savePath('Metrics - 1.epub.part');
+      final writer = (await PendingUriWriter.create(
+        displayName: 'Metrics - 1.epub',
+        mimeType: 'application/epub+zip',
+        savePath: path,
+      ))!;
+      await writer.add(Uint8List.fromList(<int>[1, 2, 3]));
+      await writer.flush();
+
+      final stats = PendingUriWriter.persistenceStats;
+      expect(stats.calls, 2);
+      expect(stats.successes, 2);
+      expect(stats.failures, 0);
+      expect(stats.directRenames + stats.fallbackSuccesses, 2);
+      expect(
+        stats.renameFallbacks,
+        stats.fallbackSuccesses + stats.fallbackFailures,
+      );
+      expect(stats.latencyBuckets.fold<int>(0, (sum, n) => sum + n), 2);
+      expect(
+        stats.totalMicroseconds,
+        greaterThanOrEqualTo(stats.maxMicroseconds),
+      );
+    });
+
+    test(
+      'counts a sidecar persistence failure without failing the writer',
+      () async {
+        final path = savePath('Metrics - 2.epub.part');
+        await Directory(statePath(path)).create();
+        final writer = await PendingUriWriter.create(
+          displayName: 'Metrics - 2.epub',
+          mimeType: 'application/epub+zip',
+          savePath: path,
+        );
+
+        expect(writer, isNotNull);
+        final stats = PendingUriWriter.persistenceStats;
+        expect(stats.calls, 1);
+        expect(stats.successes, 0);
+        expect(stats.failures, 1);
+        expect(stats.renameFallbacks, 1);
+        expect(stats.fallbackFailures, 1);
+        expect(stats.latencyBuckets.fold<int>(0, (sum, n) => sum + n), 1);
+        await writer!.discard();
+      },
+    );
+  });
 
   group('create', () {
     test('writes a sidecar with the new URI and zero bytes', () async {

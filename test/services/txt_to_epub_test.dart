@@ -36,8 +36,7 @@ void main() {
 
   group('splitChapters', () {
     test('splits on headings and keeps titles', () {
-      const text =
-          '第一章 开始\n这是第一段。\n\n这是第二段。\n\n第二章 继续\n另一章的内容。\n';
+      const text = '第一章 开始\n这是第一段。\n\n这是第二段。\n\n第二章 继续\n另一章的内容。\n';
       final chapters = splitChapters(text, fallbackTitle: 'Book');
       expect(chapters.map((c) => c.title), ['第一章 开始', '第二章 继续']);
       expect(chapters[0].paragraphs, ['这是第一段。', '这是第二段。']);
@@ -62,10 +61,7 @@ void main() {
     test('a long chapter is cut at the 200 KB cap', () {
       final para = 'a' * 1000;
       final body = List.filled(300, para).join('\n\n'); // ~300 KB
-      final chapters = splitChapters(
-        '第一章 长\n$body\n',
-        fallbackTitle: 'Book',
-      );
+      final chapters = splitChapters('第一章 长\n$body\n', fallbackTitle: 'Book');
       expect(chapters.length, greaterThanOrEqualTo(2));
       for (final c in chapters) {
         expect(bytesOf(c), lessThanOrEqualTo(kTxtChapterByteLimit));
@@ -95,7 +91,12 @@ void main() {
     });
 
     test('UTF-8 with BOM', () {
-      final bytes = Uint8List.fromList([0xEF, 0xBB, 0xBF, ...utf8.encode('你好')]);
+      final bytes = Uint8List.fromList([
+        0xEF,
+        0xBB,
+        0xBF,
+        ...utf8.encode('你好'),
+      ]);
       expect(decodeTxtBytes(bytes), '你好');
     });
 
@@ -147,13 +148,16 @@ void main() {
       final archive = ZipDecoder().decodeBytes(bytes);
       expect(archive.files.first.name, 'mimetype');
       final names = archive.files.map((f) => f.name).toSet();
-      expect(names, containsAll(<String>[
-        'META-INF/container.xml',
-        'OEBPS/content.opf',
-        'OEBPS/toc.ncx',
-        'OEBPS/ch0001.xhtml',
-        'OEBPS/ch0002.xhtml',
-      ]));
+      expect(
+        names,
+        containsAll(<String>[
+          'META-INF/container.xml',
+          'OEBPS/content.opf',
+          'OEBPS/toc.ncx',
+          'OEBPS/ch0001.xhtml',
+          'OEBPS/ch0002.xhtml',
+        ]),
+      );
       final ch2 = utf8.decode(
         archive.files.firstWhere((f) => f.name == 'OEBPS/ch0002.xhtml').content
             as List<int>,
@@ -178,12 +182,104 @@ void main() {
       expect(converter.conversions, 2);
     });
 
+    test('concurrent opens share one conversion', () async {
+      final cache = Directory('${tmp.path}/cache');
+      final converter = TxtToEpub(cacheDir: () async => cache);
+      final file = File('${tmp.path}/book.txt')
+        ..writeAsStringSync('第一章 开始\n内容\n');
+
+      final files = await Future.wait([
+        converter.epubFileFor(file.path),
+        converter.epubFileFor(file.path),
+        converter.epubFileFor(file.path),
+      ]);
+      expect(converter.conversions, 1);
+      expect(files.map((file) => file.path).toSet(), hasLength(1));
+    });
+
+    test('an invalid cache entry is rebuilt', () async {
+      final cache = Directory('${tmp.path}/cache');
+      final converter = TxtToEpub(cacheDir: () async => cache);
+      final file = File('${tmp.path}/book.txt')
+        ..writeAsStringSync('第一章 开始\n内容\n');
+
+      final first = await converter.epubFileFor(file.path);
+      first.writeAsStringSync('broken cache entry');
+      final second = await converter.epubFileFor(file.path);
+      expect(converter.conversions, 2);
+      expect(second.path, first.path);
+      expect(second.readAsBytesSync().take(2), [0x50, 0x4b]);
+    });
+
+    test(
+      'cache pruning keeps the newest file and at most 128 entries',
+      () async {
+        final cache = Directory('${tmp.path}/cache');
+        cache.createSync();
+        final staging = File('${cache.path}/0123456789abcdef.epub.part')
+          ..writeAsStringSync('still being written');
+        final converter = TxtToEpub(cacheDir: () async => cache);
+        late File newest;
+        for (var i = 0; i < 130; i++) {
+          final file = File('${tmp.path}/book$i.txt')
+            ..writeAsStringSync('第$i章 内容\n');
+          newest = await converter.epubFileFor(file.path);
+        }
+
+        final entries = cache.listSync().whereType<File>().where(
+          (file) => file.path.endsWith('.epub'),
+        );
+        expect(entries, hasLength(128));
+        expect(staging.existsSync(), isFalse);
+        expect(newest.existsSync(), isTrue);
+        expect(converter.conversions, 130);
+      },
+    );
+
+    test(
+      'a cache write failure falls back to a readable temporary EPUB',
+      () async {
+        File(
+          '${tmp.path}/not-a-directory',
+        ).writeAsStringSync('not a directory');
+        final converter = TxtToEpub(
+          cacheDir: () async => Directory('${tmp.path}/not-a-directory'),
+        );
+        final file = File('${tmp.path}/book.txt')
+          ..writeAsStringSync('第一章 开始\n内容\n');
+
+        final fallback = await converter.epubFileFor(file.path);
+        addTearDown(() async {
+          if (await fallback.exists()) await fallback.delete();
+        });
+        expect(fallback.parent.path, Directory.systemTemp.path);
+        expect(fallback.path, contains('zlibx-txt-'));
+        expect(fallback.readAsBytesSync().take(2), [0x50, 0x4b]);
+      },
+    );
+
     test('GBK file converts end to end', () async {
-      final converter = TxtToEpub(cacheDir: () async => Directory('${tmp.path}/c'));
+      final converter = TxtToEpub(
+        cacheDir: () async => Directory('${tmp.path}/c'),
+      );
       final file = File('${tmp.path}/gbk.txt')
         ..writeAsBytesSync([
-          0xB5, 0xDA, 0xD2, 0xBB, 0xD5, 0xC2, 0x0A,
-          0xC4, 0xE3, 0xBA, 0xC3, 0xCA, 0xC0, 0xBD, 0xE7, 0x0A,
+          0xB5,
+          0xDA,
+          0xD2,
+          0xBB,
+          0xD5,
+          0xC2,
+          0x0A,
+          0xC4,
+          0xE3,
+          0xBA,
+          0xC3,
+          0xCA,
+          0xC0,
+          0xBD,
+          0xE7,
+          0x0A,
         ]);
       final epub = await converter.epubFor(file.path);
       final archive = ZipDecoder().decodeBytes(epub);
@@ -195,7 +291,9 @@ void main() {
     });
 
     test('empty or missing files fail with a readable exception', () async {
-      final converter = TxtToEpub(cacheDir: () async => Directory('${tmp.path}/c'));
+      final converter = TxtToEpub(
+        cacheDir: () async => Directory('${tmp.path}/c'),
+      );
       final empty = File('${tmp.path}/empty.txt')..writeAsStringSync('  \n ');
       await expectLater(
         converter.epubFor(empty.path),

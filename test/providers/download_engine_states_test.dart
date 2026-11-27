@@ -27,8 +27,12 @@ import 'package:zlibx/services/storage_service.dart';
 class _FakeZLibraryApi implements ZLibraryApi {
   int downloadBookCalls = 0;
   bool writeFile = false;
+  final List<List<int>> progressUpdates = [];
+  int? progressReceived;
+  int? progressTotal;
 
   final List<Completer<Object?>> attemptGates = [];
+  final Map<String, Completer<Object?>> bookGates = {};
 
   @override
   Future<void> downloadBook(
@@ -41,9 +45,17 @@ class _FakeZLibraryApi implements ZLibraryApi {
     PendingDownloadWriter? pendingWriter,
   }) async {
     downloadBookCalls++;
-    final gate = attemptGates.isNotEmpty
-        ? attemptGates.removeAt(0)
-        : (Completer<Object?>()..complete(null));
+    if (progressReceived != null) {
+      onProgress?.call(progressReceived!, progressTotal ?? 0);
+    }
+    for (final update in progressUpdates) {
+      onProgress?.call(update[0], update[1]);
+    }
+    final gate =
+        bookGates.remove(bookId) ??
+        (attemptGates.isNotEmpty
+            ? attemptGates.removeAt(0)
+            : (Completer<Object?>()..complete(null)));
     final outcome = await gate.future;
     if (outcome != null) throw outcome;
     if (writeFile) {
@@ -216,13 +228,101 @@ void main() {
     expect(api.downloadBookCalls, 0);
   });
 
+  test('取消预热中的下载不会在之后突然启动', () async {
+    final api = _FakeZLibraryApi();
+    final c = container(api);
+    final engine = await readyEngine(c);
+    await HiveService.settingsBox.put('wifiOnlyDownloads', true);
+    final connectivity = MethodChannel(
+      'dev.fluttercommunity.plus/connectivity',
+    );
+    final checking = Completer<void>();
+    final release = Completer<void>();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(connectivity, (call) async {
+          if (call.method == 'check') {
+            checking.complete();
+            await release.future;
+            return <String>['mobile'];
+          }
+          return null;
+        });
+    addTearDown(() async {
+      await HiveService.settingsBox.put('wifiOnlyDownloads', false);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(connectivity, null);
+    });
+
+    final round = engine.startDownload(
+      book,
+      presetUrl: 'https://example.com/book',
+      source: BookSource.annasArchive,
+    );
+    await checking.future;
+    engine.cancelDownloadRequest(book.id);
+    final duplicate = engine.startDownload(
+      book,
+      presetUrl: 'https://example.com/book',
+      source: BookSource.annasArchive,
+    );
+    release.complete();
+    await round;
+    await duplicate;
+
+    final task = c.read(downloadProvider).single;
+    expect(task.status, DownloadStatus.cancelled);
+    expect(task.wifiOnlyBlocked, isFalse);
+    expect(api.downloadBookCalls, 0);
+    expect(engine.liveCancelTokenCount, 0);
+  });
+
+  test('未知总长度仍发布已接收字节', () async {
+    final api = _FakeZLibraryApi()
+      ..progressReceived = 123
+      ..progressTotal = 0;
+    final gate = Completer<Object?>();
+    api.bookGates['7'] = gate;
+    final c = container(api);
+    final engine = await readyEngine(c);
+    final round = engine.startDownload(book);
+    for (var i = 0; i < 200; i++) {
+      final task = c.read(downloadProvider).where((t) => t.id == '7');
+      if (task.isNotEmpty && task.first.receivedBytes == 123) break;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    final task = c.read(downloadProvider).singleWhere((t) => t.id == '7');
+    expect(task.receivedBytes, 123);
+    expect(task.progress, 0.0);
+    engine.cancelDownload('7');
+    gate.complete(_connectionError());
+    await round;
+  });
+
+  test('未知长度下载末包不会被节流丢弃', () async {
+    final api = _FakeZLibraryApi()
+      ..progressUpdates.addAll([
+        [100, 0],
+        [150, 0],
+      ]);
+    final gate = Completer<Object?>();
+    api.bookGates['7'] = gate;
+    final c = container(api);
+    final engine = await readyEngine(c);
+    final round = engine.startDownload(book);
+    await waitForCalls(api, 1);
+    gate.complete(_connectionError());
+    await round;
+    final task = c.read(downloadProvider).singleWhere((t) => t.id == '7');
+    expect(task.receivedBytes, 150);
+    expect(task.progress, 0.0);
+  });
+
   test('排队取消后不残留 cancel token', () async {
     final api = _FakeZLibraryApi();
-    final activeGates = List<Completer<Object?>>.generate(
-      3,
-      (_) => Completer<Object?>(),
-    );
-    api.attemptGates.addAll(activeGates);
+    final activeGates = <String, Completer<Object?>>{
+      for (var id = 7; id <= 9; id++) id.toString(): Completer<Object?>(),
+    };
+    api.bookGates.addAll(activeGates);
     final c = container(api);
     final engine = await readyEngine(c);
 
@@ -246,14 +346,14 @@ void main() {
     // 取消排队任务只会摘掉它的 token；startDownload 仍要等一个槽位
     // 才能返回。取消并放行一个占用槽位的任务，让排队轮次走到取消分支。
     engine.cancelDownload('7');
-    activeGates[0].complete(_connectionError());
+    activeGates['7']!.complete(_connectionError());
     await queued;
     expect(engine.liveCancelTokenCount, 2);
 
     for (final id in <String>['8', '9']) {
       engine.cancelDownload(id);
     }
-    for (final gate in activeGates.skip(1)) {
+    for (final gate in activeGates.values.skip(1)) {
       gate.complete(_connectionError());
     }
     await Future.wait(rounds);
@@ -350,19 +450,13 @@ void main() {
     await waitForStatus(c, DownloadStatus.downloading);
 
     engine.cancelDownload('7');
-    expect(
-      c.read(downloadProvider).single.status,
-      DownloadStatus.cancelled,
-    );
+    expect(c.read(downloadProvider).single.status, DownloadStatus.cancelled);
     // 取消后在途轮次才失败(可重试的断网错):引擎不得再发起第二轮。
     gate.complete(_connectionError());
     await round;
 
     expect(api.downloadBookCalls, 1);
-    expect(
-      c.read(downloadProvider).single.status,
-      DownloadStatus.cancelled,
-    );
+    expect(c.read(downloadProvider).single.status, DownloadStatus.cancelled);
   });
 
   test('断网失败重试一次,第二次失败后记为错误态', () async {
@@ -420,10 +514,7 @@ void main() {
     await engine.startDownload(book);
     await Future<void>.delayed(const Duration(milliseconds: 300));
     expect(api.downloadBookCalls, 1);
-    expect(
-      c.read(downloadProvider).where((t) => t.id == '7'),
-      hasLength(1),
-    );
+    expect(c.read(downloadProvider).where((t) => t.id == '7'), hasLength(1));
 
     gate.complete(_notFound());
     await first;

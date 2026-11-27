@@ -156,6 +156,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
   /// bytesWritten before the old sink flushed, and appends at a stale
   /// offset, duplicating bytes into the book.
   final Map<String, Future<void>> _runningRounds = {};
+  int _nextTaskGeneration = 0;
 
   /// Rows removed while their round was still running. The marker is set
   /// before removeTask's first await so finalization can stop between any
@@ -199,7 +200,13 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
   }) {
     final id = book.id.toString();
     final previous = _runningRounds[id];
-    if (previous == null) _removedRounds.remove(id);
+    if (previous != null && _cancelBeforeStart.contains(id)) {
+      return Future<void>.value();
+    }
+    if (previous == null) {
+      _cancelBeforeStart.remove(id);
+      _removedRounds.remove(id);
+    }
     final round = _runDownloadRound(
       book,
       presetUrl: presetUrl,
@@ -226,6 +233,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     if (identical(_runningRounds[id], round)) {
       _runningRounds.remove(id);
       _removedRounds.remove(id);
+      _cancelBeforeStart.remove(id);
     }
   }
 
@@ -397,6 +405,34 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     }
   }
 
+  int _generationFor(String id) {
+    for (final task in state) {
+      if (task.id == id) return task.generation;
+    }
+    return ++_nextTaskGeneration;
+  }
+
+  bool _cancelPendingStart(_DownloadRoundState ctx) {
+    if (!_cancelBeforeStart.remove(ctx.id)) return false;
+    cancelDownload(ctx.id);
+    _updateOrAddTask(
+      DownloadTask(
+        id: ctx.id,
+        generation: _generationFor(ctx.id),
+        book: ctx.book,
+        status: DownloadStatus.cancelled,
+        needsFreshLink:
+            ctx.presetUrl == null && (ctx.book.hash?.isEmpty ?? true),
+        presetUrl: ctx.presetUrl,
+        fallbackUrls: ctx.fallbackUrls,
+        source: ctx.source,
+        customSubfolder: ctx.customSubfolder,
+      ),
+    );
+    _clearProgressThrottle(ctx.id);
+    return true;
+  }
+
   /// Stage 1 — gates and enqueue: duplicate-round guard, wait for the
   /// previous round to settle, Wi-Fi-only gate, pending task, slot
   /// acquire. Returns false when the round must not start. No quota
@@ -426,6 +462,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     // Re-check: another round may have started while we waited.
     if (_isDownloadActive(ctx.id)) return false;
     if (_isRoundRemoved(ctx.id)) return false;
+    if (_cancelPendingStart(ctx)) return false;
 
     // #95：这轮实际用的子文件夹，算一次、三处共用（暂存路径、待发
     // 布条目、正式发布），保证同一本书三处落在同一个文件夹。
@@ -435,9 +472,11 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     // 任务记为带 wifiOnlyBlocked 旗标的错误态——下载页据此解释，到
     // Wi-Fi 后照常重试。放在加任务之前：不开任务就不占队列。
     if (await _wifiOnlyBlocked()) {
+      if (_cancelPendingStart(ctx)) return false;
       _updateOrAddTask(
         DownloadTask(
           id: ctx.id,
+          generation: _generationFor(ctx.id),
           book: ctx.book,
           status: DownloadStatus.error,
           error: 'wifi-only',
@@ -460,6 +499,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     _updateOrAddTask(
       DownloadTask(
         id: ctx.id,
+        generation: _generationFor(ctx.id),
         book: ctx.book,
         status: DownloadStatus.pending,
         needsFreshLink:
@@ -475,6 +515,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     // reorder). Callers fire this with `unawaited`, so the wait never
     // blocks the UI; the task shows as pending while queued.
     await _slotPool.acquire(key: ctx.id);
+    if (_cancelBeforeStart.remove(ctx.id)) cancelToken.cancel();
     // Cancelled while queued: give the slot back and stop without
     // downloading. (The round's `finally` never runs on this path, so
     // the release has to happen here.)
@@ -504,7 +545,10 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     // staged file live in the same subfolder as the published book.
     // #95：用户给这本书指定了文件夹就用它，否则走分类模式默认。
     final finalPath =
-        await _buildSavePath(ctx.book, subfolderOverride: ctx.customSubfolder) ??
+        await _buildSavePath(
+          ctx.book,
+          subfolderOverride: ctx.customSubfolder,
+        ) ??
         '${await _resolveSaveDir()}/${_buildSafeFileName(ctx.book)}';
 
     if (ctx.cancelToken.isCancelled) return;
@@ -596,15 +640,17 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     final savePath = ctx.temporaryPath!;
     final cancelToken = ctx.cancelToken;
 
+    int? latestReceived;
+    int? latestTotal;
     void onProgress(int received, int total) {
+      latestReceived = received;
+      latestTotal = total;
       // `total` can be 0 (empty body / CDN without length): only a
       // positive total yields a valid fraction — 0/0 would push a
       // NaN into the state and straight into the progress bar.
-      if (total > 0) {
-        final progress = received / total;
-        _updateProgress(ctx.id, progress);
-        _notifyDownloadProgress();
-      }
+      final progress = total > 0 ? received / total : null;
+      _updateProgress(ctx.id, progress, receivedBytes: received);
+      if (progress != null) _notifyDownloadProgress();
     }
 
     final candidates = <String?>[
@@ -671,28 +717,41 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       );
     }
 
-    for (
-      var candidateIndex = 0;
-      candidateIndex < candidates.length;
-      candidateIndex++
-    ) {
-      for (var attempt = 0; ; attempt++) {
-        try {
-          await downloadAttempt(candidates[candidateIndex]);
-          return;
-        } on Object catch (e) {
-          if (cancelToken.isCancelled || !isRetryableDownloadError(e)) {
-            rethrow;
+    try {
+      for (
+        var candidateIndex = 0;
+        candidateIndex < candidates.length;
+        candidateIndex++
+      ) {
+        for (var attempt = 0; ; attempt++) {
+          try {
+            await downloadAttempt(candidates[candidateIndex]);
+            return;
+          } on Object catch (e) {
+            if (cancelToken.isCancelled || !isRetryableDownloadError(e)) {
+              rethrow;
+            }
+            if (candidateIndex + 1 < candidates.length) {
+              logIgnored('download_mirror_fallback', e);
+              break;
+            }
+            if (attempt >= downloadRetryDelays.length) rethrow;
+            logIgnored('download_retry', e);
+            await Future.delayed(downloadRetryDelays[attempt]);
+            if (cancelToken.isCancelled) return;
           }
-          if (candidateIndex + 1 < candidates.length) {
-            logIgnored('download_mirror_fallback', e);
-            break;
-          }
-          if (attempt >= downloadRetryDelays.length) rethrow;
-          logIgnored('download_retry', e);
-          await Future.delayed(downloadRetryDelays[attempt]);
-          if (cancelToken.isCancelled) return;
         }
+      }
+    } finally {
+      final received = latestReceived;
+      if (received != null) {
+        final total = latestTotal ?? 0;
+        _updateProgress(
+          ctx.id,
+          total > 0 ? received / total : null,
+          receivedBytes: received,
+          force: true,
+        );
       }
     }
   }
@@ -735,9 +794,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         // never reached Downloads — fail, don't record a dead URI.
         await writer.discard();
         ctx.pendingWriter = null;
-        throw StateError(
-          'could not publish the download into Downloads/zlibx',
-        );
+        throw StateError('could not publish the download into Downloads/zlibx');
       }
       recordedPath = writer.uri;
       // After flush() the buffer is empty, so bytesWritten is the
@@ -800,9 +857,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     if (ctx.presetUrl != null &&
         expectedMd5 != null &&
         isVerifiableMd5(expectedMd5)) {
-      final actual = await DownloadForegroundService.md5OfContent(
-        recordedPath,
-      );
+      final actual = await DownloadForegroundService.md5OfContent(recordedPath);
       if (actual == null) {
         logIgnored('download_md5', StateError('hash unavailable'));
       } else if (actual.toLowerCase() != expectedMd5.toLowerCase()) {
@@ -960,7 +1015,9 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
   /// pinned 的 pending 排在其他 pending 之前）。已在下载 / 不在队列
   /// 的任务是无害 no-op。
   void pinToTop(String id) {
-    final matches = state.where((t) => t.id == id && t.status == DownloadStatus.pending).toList();
+    final matches = state
+        .where((t) => t.id == id && t.status == DownloadStatus.pending)
+        .toList();
     if (matches.isEmpty) return;
     _slotPool.prioritize(id);
     _updateTask(id, (t) => t.copyWith(pinned: true));

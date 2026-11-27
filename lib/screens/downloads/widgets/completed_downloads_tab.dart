@@ -1,12 +1,14 @@
 /// Completed tab of the downloads screen (P1-4 split of
 /// local_downloads_screen.dart): the category filter bar + the
 /// date-grouped list.
+library;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../l10n/generated/app_localizations.dart';
-import '../../providers/shelf_categories_provider.dart';
-import '../../screens/favorites/widgets/shelf_chip.dart';
+import '../../../l10n/generated/app_localizations.dart';
+import '../../../providers/shelf_categories_provider.dart';
+import '../../../screens/favorites/widgets/shelf_chip.dart';
 import 'download_list.dart';
 
 /// 已完成 Tab：分类筛选条 + 列表。任务 id 就是 bookId（历史条目按
@@ -14,6 +16,7 @@ import 'download_list.dart';
 /// assignments 表。
 class CompletedDownloadsTab extends ConsumerWidget {
   const CompletedDownloadsTab({
+    super.key,
     required this.taskIds,
     required this.completedDates,
     required this.filter,

@@ -2,15 +2,17 @@
 /// booklists_screen.dart): the floating frosted-glass header (same style
 /// as home) — back button + capsule search field + typo tabs, plus the
 /// sort row on discover/favorite. Content scrolls underneath it.
+library;
+
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../l10n/generated/app_localizations.dart';
-import '../../providers/booklists_provider.dart';
-import '../../providers/settings_provider.dart';
-import '../../theme/app_metrics.dart';
+import '../../../l10n/generated/app_localizations.dart';
+import '../../../providers/booklists_provider.dart';
+import '../../../providers/settings_provider.dart';
+import '../../../theme/app_metrics.dart';
 import 'booklists_typo_tabs.dart';
 
 class BooklistsGlassHeader extends ConsumerWidget {

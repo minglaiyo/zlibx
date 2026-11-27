@@ -1,5 +1,7 @@
 /// Scroll-driven header fold + load-more trigger for the search
 /// screen (P1-4 split of search_screen.dart).
+library;
+
 import 'package:flutter/material.dart';
 
 class SearchScrollHandler {

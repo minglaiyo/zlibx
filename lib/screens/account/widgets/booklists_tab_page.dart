@@ -7,15 +7,17 @@
 /// pages eat the screen's snapshots of old data, so swiping never
 /// whites out. [state] is null before the first snapshot exists
 /// (loading).
+library;
+
 import 'package:flutter/material.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
-import '../../l10n/generated/app_localizations.dart';
-import '../../providers/booklists_provider.dart';
-import '../../widgets/booklist_card.dart';
-import '../../widgets/booklist_tile.dart';
-import '../../widgets/empty_state.dart';
-import '../../widgets/loading_widget.dart';
+import '../../../l10n/generated/app_localizations.dart';
+import '../../../providers/booklists_provider.dart';
+import '../../../widgets/booklist_card.dart';
+import '../../../widgets/booklist_tile.dart';
+import '../../../widgets/empty_state.dart';
+import '../../../widgets/loading_widget.dart';
 import 'recommended_booklists_section.dart';
 
 class BooklistsTabPage extends StatelessWidget {

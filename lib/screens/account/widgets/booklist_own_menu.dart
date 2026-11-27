@@ -6,11 +6,13 @@
 /// menu (edit / color / public / favorite / share / delete). Returns
 /// the picked [BooklistMenuAction], or null when dismissed; executing
 /// the action stays with the screen (`_onMenuSelected`).
+library;
+
 import 'package:flutter/material.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
-import '../../l10n/generated/app_localizations.dart';
-import '../../widgets/booklist_card.dart';
+import '../../../l10n/generated/app_localizations.dart';
+import '../../../widgets/booklist_card.dart';
 
 Future<BooklistMenuAction?> showBooklistOwnMenuSheet(
   BuildContext context,

@@ -2,6 +2,8 @@
 /// search_screen.dart): moved out verbatim. Re-exported from
 /// search_screen.dart so existing call sites keep importing it
 /// unchanged.
+library;
+
 import '../../constants/search_filters.dart';
 
 /// Arguments for opening the search screen with a preset: either

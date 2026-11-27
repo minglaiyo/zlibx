@@ -1,15 +1,17 @@
 /// Recommended booklists above the discover list (P1-4 split of
 /// booklists_screen.dart): a section header and a horizontal row of
 /// grid tiles.
+library;
+
 import 'package:flutter/material.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
-import '../../l10n/generated/app_localizations.dart';
-import '../../providers/booklist_detail_provider.dart';
-import '../../routes/app_routes.dart';
-import '../../widgets/booklist_quick_actions_sheet.dart';
-import '../../widgets/booklist_tile.dart';
-import '../../widgets/motion/entrance.dart';
+import '../../../l10n/generated/app_localizations.dart';
+import '../../../providers/booklist_detail_provider.dart';
+import '../../../routes/app_routes.dart';
+import '../../../widgets/booklist_quick_actions_sheet.dart';
+import '../../../widgets/booklist_tile.dart';
+import '../../../widgets/motion/entrance.dart';
 
 /// Recommended booklists above the discover list: a section header and
 /// a horizontal row of grid tiles.
@@ -17,7 +19,7 @@ class RecommendedBooklistsSection extends StatelessWidget {
   final AppLocalizations l10n;
   final List<Booklist> lists;
 
-  const RecommendedBooklistsSection({required this.l10n, required this.lists});
+  const RecommendedBooklistsSection({super.key, required this.l10n, required this.lists});
 
   @override
   Widget build(BuildContext context) {

@@ -74,7 +74,7 @@ class _DownloadRoundState {
 
   /// Set by `_preflight`: the subfolder the .part file, the pending
   /// entry and the published book all share (#95).
-  late final String subfolder;
+  late final String? subfolder;
 
   /// Set by `_preflight`: this round's cancel token, also registered
   /// in the notifier's cancel-token map so pause/cancel can reach it.

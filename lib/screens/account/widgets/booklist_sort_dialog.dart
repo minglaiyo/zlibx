@@ -1,9 +1,11 @@
 /// Single-choice sort dialog for the booklists screen (P1-4 split of
 /// booklists_screen.dart). Pops the picked `order` value, or null when
 /// cancelled.
+library;
+
 import 'package:flutter/material.dart';
 
-import '../../l10n/generated/app_localizations.dart';
+import '../../../l10n/generated/app_localizations.dart';
 
 /// Single-choice sort dialog, same idiom as the domain selector:
 /// selected row = filled check in primary + bold primary title, tap
@@ -12,7 +14,7 @@ import '../../l10n/generated/app_localizations.dart';
 class BooklistSortDialog extends StatelessWidget {
   final String currentOrder;
 
-  const BooklistSortDialog({required this.currentOrder});
+  const BooklistSortDialog({super.key, required this.currentOrder});
 
   @override
   Widget build(BuildContext context) {

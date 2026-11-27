@@ -1,16 +1,19 @@
 /// The downloads list (P1-4 split of local_downloads_screen.dart):
 /// the empty state, the flat list (ongoing tab) and the date-grouped
 /// list (completed tab: today / yesterday / this week / earlier).
+library;
+
 import 'package:flutter/material.dart';
 
-import '../../l10n/generated/app_localizations.dart';
-import '../../utils/date_text.dart';
-import '../../widgets/empty_state.dart';
-import '../../widgets/motion/motion.dart';
+import '../../../l10n/generated/app_localizations.dart';
+import '../../../utils/date_text.dart';
+import '../../../widgets/empty_state.dart';
+import '../../../widgets/motion/motion.dart';
 import 'download_item.dart';
 
 class DownloadList extends StatelessWidget {
   const DownloadList({
+    super.key,
     required this.taskIds,
     required this.emptyIcon,
     required this.emptyTitle,

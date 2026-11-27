@@ -28,11 +28,11 @@ class _LocalDownloadsScreenState extends ConsumerState<LocalDownloadsScreen> {
     final l = AppLocalizations.of(context)!;
     try {
       final opened = await openDownloadFolder();
-      if (!opened && context.mounted) {
+      if (!opened && mounted) {
         showAppSnack(context, l.openFolderFailed);
       }
     } catch (error) {
-      if (context.mounted) {
+      if (mounted) {
         showAppSnack(context, l.openFolderFailed);
       }
     }

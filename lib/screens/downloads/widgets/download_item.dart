@@ -2,6 +2,8 @@
 /// cover, title, details, progress / error text and the bottom
 /// actions (open / retry / pause / resume / cancel + the "…" menu:
 /// pin, category, details, share, delete).
+library;
+
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -11,22 +13,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../l10n/generated/app_localizations.dart';
-import '../../models/display_book.dart';
-import '../../providers/download_provider.dart';
-import '../../providers/shelf_categories_provider.dart';
-import '../../screens/favorites/category_actions.dart';
-import '../../services/media_store.dart';
-import '../../theme/app_colors.dart';
-import '../../utils/app_snack.dart';
-import '../../utils/cover_cache.dart';
-import '../../utils/date_text.dart';
-import '../../utils/error_text.dart';
-import '../../utils/file_utils.dart';
-import '../../widgets/confirm_dialog.dart';
+import '../../../l10n/generated/app_localizations.dart';
+import '../../../models/display_book.dart';
+import '../../../providers/download_provider.dart';
+import '../../../providers/shelf_categories_provider.dart';
+import '../../../screens/favorites/category_actions.dart';
+import '../../../services/media_store.dart';
+import '../../../theme/app_colors.dart';
+import '../../../utils/app_snack.dart';
+import '../../../utils/cover_cache.dart';
+import '../../../utils/date_text.dart';
+import '../../../utils/error_text.dart';
+import '../../../utils/file_utils.dart';
+import '../../../widgets/confirm_dialog.dart';
 
 class DownloadItem extends ConsumerWidget {
-  const DownloadItem({required this.id});
+  const DownloadItem({super.key, required this.id});
 
   final String id;
 

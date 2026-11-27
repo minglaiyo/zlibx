@@ -3,6 +3,8 @@
 /// The state model lives in booklists_state.dart, cache invalidation in
 /// booklists_cache.dart; booklists_provider.dart re-exports all three so
 /// existing call sites keep importing it unchanged.
+library;
+
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';

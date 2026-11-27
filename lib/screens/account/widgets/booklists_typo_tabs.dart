@@ -2,10 +2,12 @@
 /// booklists_screen.dart): the selected tab is 22px bold with a short
 /// ink bar, unselected tabs are small and grey; replaces the system
 /// capsule segmented control (visual draft 1).
+library;
+
 import 'package:flutter/material.dart';
 
-import '../../providers/booklists_provider.dart';
-import '../../theme/app_metrics.dart';
+import '../../../providers/booklists_provider.dart';
+import '../../../theme/app_metrics.dart';
 
 /// 排字式 tab:选中项 22px 加粗 + 短墨条(AnimatedContainer 展开),
 /// 未选中回小字灰;取代系统胶囊分段器(视觉稿 ①)。
@@ -15,6 +17,7 @@ class BooklistsTypoTabs extends StatelessWidget {
   final ValueChanged<BooklistTab> onSelect;
 
   const BooklistsTypoTabs({
+    super.key,
     required this.active,
     required this.labels,
     required this.onSelect,

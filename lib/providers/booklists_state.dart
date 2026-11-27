@@ -3,6 +3,8 @@
 /// The controller lives in booklists_controller.dart, cache invalidation
 /// in booklists_cache.dart; booklists_provider.dart re-exports all three
 /// so existing call sites keep importing it unchanged.
+library;
+
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 /// 书单页三个 tab,与官方站的三个入口一一对应:

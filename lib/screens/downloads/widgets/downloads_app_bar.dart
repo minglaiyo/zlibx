@@ -2,6 +2,8 @@
 /// local_downloads_screen.dart): title + open-folder action + the
 /// ongoing/completed tab bar with counts. The screen sizes the header
 /// from [preferredSize], as before (default toolbar + tab bar heights).
+library;
+
 import 'package:flutter/material.dart';
 
 class LocalDownloadsAppBar extends StatelessWidget

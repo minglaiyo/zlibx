@@ -57,74 +57,87 @@ void main() {
           devicePixelRatio: 1.0,
         );
 
-    ScrollUpdateNotification notification({
+    ScrollUpdateNotification notification(
+      BuildContext context, {
       required double pixels,
       double? scrollDelta,
     }) => ScrollUpdateNotification(
       metrics: metrics(pixels: pixels),
-      context: null,
+      context: context,
       scrollDelta: scrollDelta,
     );
 
-    test('starts visible; folds after a sustained downward scroll', () {
+    testWidgets('starts visible; folds after a sustained downward scroll', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      final context = tester.element(find.byType(SizedBox));
       final handler = SearchScrollHandler(onLoadMore: () {});
       addTearDown(handler.dispose);
       expect(handler.headerVisible.value, isTrue);
       // A single pixel is noise: below the 12px threshold, no fold.
       handler.onScrollNotification(
-        notification(pixels: 100, scrollDelta: 5),
+        notification(context, pixels: 100, scrollDelta: 5),
       );
       expect(handler.headerVisible.value, isTrue);
       // Past the threshold in the same direction: folds away.
       handler.onScrollNotification(
-        notification(pixels: 120, scrollDelta: 20),
+        notification(context, pixels: 120, scrollDelta: 20),
       );
       expect(handler.headerVisible.value, isFalse);
     });
 
-    test('unfolds on a sustained upward scroll; top always shows it', () {
+    testWidgets('unfolds on a sustained upward scroll; top always shows it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      final context = tester.element(find.byType(SizedBox));
       var loads = 0;
       final handler = SearchScrollHandler(onLoadMore: () => loads++);
       addTearDown(handler.dispose);
       handler.onScrollNotification(
-        notification(pixels: 120, scrollDelta: 20),
+        notification(context, pixels: 120, scrollDelta: 20),
       );
       expect(handler.headerVisible.value, isFalse);
       handler.onScrollNotification(
-        notification(pixels: 100, scrollDelta: -20),
+        notification(context, pixels: 100, scrollDelta: -20),
       );
       expect(handler.headerVisible.value, isTrue);
       // Back at the top: always visible.
       handler.onScrollNotification(
-        notification(pixels: 120, scrollDelta: 20),
+        notification(context, pixels: 120, scrollDelta: 20),
       );
       expect(handler.headerVisible.value, isFalse);
       handler.onScrollNotification(
-        notification(pixels: 0, scrollDelta: -5),
+        notification(context, pixels: 0, scrollDelta: -5),
       );
       expect(handler.headerVisible.value, isTrue);
       expect(loads, 0);
     });
 
-    test('loads more within 200px of the bottom', () {
+    testWidgets('loads more within 200px of the bottom', (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      final context = tester.element(find.byType(SizedBox));
       var loads = 0;
       final handler = SearchScrollHandler(onLoadMore: () => loads++);
       addTearDown(handler.dispose);
       handler.onScrollNotification(
-        notification(pixels: 850, scrollDelta: 0),
+        notification(context, pixels: 850, scrollDelta: 0),
       );
       expect(loads, 1);
       handler.onScrollNotification(
-        notification(pixels: 500, scrollDelta: 0),
+        notification(context, pixels: 500, scrollDelta: 0),
       );
       expect(loads, 1);
     });
 
-    test('reset brings the header back', () {
+    testWidgets('reset brings the header back', (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      final context = tester.element(find.byType(SizedBox));
       final handler = SearchScrollHandler(onLoadMore: () {});
       addTearDown(handler.dispose);
       handler.onScrollNotification(
-        notification(pixels: 120, scrollDelta: 20),
+        notification(context, pixels: 120, scrollDelta: 20),
       );
       expect(handler.headerVisible.value, isFalse);
       handler.reset();

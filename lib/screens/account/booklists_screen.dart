@@ -12,6 +12,7 @@ import '../../providers/booklists_provider.dart';
 import '../../providers/recommended_booklists_provider.dart';
 import '../../providers/zlibrary_provider.dart';
 import '../../routes/app_routes.dart';
+import '../../theme/app_metrics.dart';
 import '../../theme/motion.dart';
 import '../../utils/app_snack.dart';
 import '../../utils/diagnostics.dart';
@@ -439,3 +440,4 @@ class _BooklistsScreenState extends ConsumerState<BooklistsScreen> {
         8;
     return tab == BooklistTab.mine ? base : base + 54; // 排序行
   }
+}

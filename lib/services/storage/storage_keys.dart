@@ -5,6 +5,8 @@
 /// migration all use the same strings. The values are unchanged from
 /// the original file — renaming a key would orphan existing on-device
 /// data, so treat every string here as frozen.
+library;
+
 
 // Legacy shared favorites key: every account read and wrote the
 // same list. Kept only so the one-time migration can find it — no

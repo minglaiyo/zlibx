@@ -25,6 +25,7 @@ import 'services/mirror_trust.dart';
 import 'services/storage_service.dart';
 import 'services/wall_cookie_bridge.dart';
 import 'services/webview_challenge_solver.dart';
+import 'utils/app_log.dart';
 import 'utils/diagnostics.dart';
 
 /// Global error hooks (M2): uncaught async errors (e.g. inside an
@@ -43,14 +44,23 @@ void installGlobalErrorHooks() {
   FlutterError.onError = (details) {
     if (kDebugMode) {
       FlutterError.presentError(details);
-      debugPrint(details.stack.toString());
+      AppLog.error(
+        'Flutter error',
+        tag: 'flutter',
+        error: details.exception,
+        stackTrace: details.stack,
+      );
     }
     logIgnored('flutter', details.exception, stack: details.stack);
   };
   PlatformDispatcher.instance.onError = (error, stack) {
     if (kDebugMode) {
-      debugPrint('Uncaught async error: $error');
-      debugPrint(stack.toString());
+      AppLog.error(
+        'Uncaught async error',
+        tag: 'platform',
+        error: error,
+        stackTrace: stack,
+      );
     }
     logIgnored('platform', error, stack: stack);
     return true;

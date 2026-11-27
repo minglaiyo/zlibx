@@ -27,6 +27,12 @@
          uses-feature required=false so camera-less devices can still
          install the app; the scanner simply cannot start there. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- In-app update install (plan 12–16): lets the app ask the system
+         to install the APK it downloaded. Normal permission on install;
+         the user still confirms each install in the system installer,
+         and on Android 8+ the per-app "install unknown apps" toggle is
+         checked at runtime (canInstallPackages) before firing. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />
@@ -69,6 +75,19 @@
             android:name=".DownloadForegroundService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
+        <!-- In-app update install (plan 12–16): the system installer
+             (running in another process) reads the downloaded APK through
+             this FileProvider URI. Not exported; grantUriPermissions
+             hands out one-shot read access per install intent. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/app_file_provider_paths" />
+        </provider>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

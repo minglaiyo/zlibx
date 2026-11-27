@@ -720,6 +720,17 @@
       }
     }
   },
+  "updateDownload": "下載更新",
+  "updateDownloadComplete": "下載完成",
+  "updateDownloadPaused": "下載已暫停",
+  "updateDownloading": "正在下載更新… {percent}%",
+  "@updateDownloading": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
   "updateDroppedLinks": "另有 {count} 個下載渠道因網域名稱不在白名單中被忽略",
   "@updateDroppedLinks": {
     "placeholders": {
@@ -736,8 +747,13 @@
       }
     }
   },
+  "updateInstall": "安裝更新",
+  "updateInstallNotAllowed": "未允許安裝未知應用，請在系統設定中允許後重新安裝",
+  "updateOpenSettings": "前往設定",
   "updateRequired": "需要更新後才能繼續使用",
+  "updateSignatureMismatch": "安裝包簽名與目前應用不一致，已拒絕安裝",
   "updateUnsupported": "目前版本已停止支援，搜尋和下載功能已停用，請下載新版本安裝後再使用。",
+  "updateVerifyFailed": "檔案驗證失敗，安裝已取消",
   "useAnotherAccount": "使用其他帳號",
   "useDefaultDocumentsDir": "使用應用預設文件目錄",
   "validEmail": "請輸入有效的電子郵件",

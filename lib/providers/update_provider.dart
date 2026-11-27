@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive/hive.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/hive_service.dart';
@@ -45,6 +46,13 @@ class UpdateState {
   final String? sha256;
   final String? signerFingerprint;
 
+  /// 应用内下载用的 APK 附件（计划一第 12 项）：Release 资产里
+  /// 第一个 `.apk` 文件的下载地址、文件名与大小。没有 APK 附件
+  /// 时全为 null，对话框退回原来的渠道按钮。
+  final String? apkUrl;
+  final String? apkName;
+  final int? apkSize;
+
   /// How many manifest link lines were dropped (host off the allow-list,
   /// non-https, …). The update dialog warns about the count.
   final int droppedLinkCount;
@@ -65,6 +73,9 @@ class UpdateState {
     this.links = const [],
     this.sha256,
     this.signerFingerprint,
+    this.apkUrl,
+    this.apkName,
+    this.apkSize,
     this.droppedLinkCount = 0,
     this.forceUpdate = false,
     this.hasUpdate = false,
@@ -80,6 +91,9 @@ class UpdateState {
     List<UpdateLink>? links,
     String? sha256,
     String? signerFingerprint,
+    String? apkUrl,
+    String? apkName,
+    int? apkSize,
     int? droppedLinkCount,
     bool? forceUpdate,
     bool? hasUpdate,
@@ -94,6 +108,9 @@ class UpdateState {
       links: links ?? this.links,
       sha256: sha256 ?? this.sha256,
       signerFingerprint: signerFingerprint ?? this.signerFingerprint,
+      apkUrl: apkUrl ?? this.apkUrl,
+      apkName: apkName ?? this.apkName,
+      apkSize: apkSize ?? this.apkSize,
       droppedLinkCount: droppedLinkCount ?? this.droppedLinkCount,
       forceUpdate: forceUpdate ?? this.forceUpdate,
       hasUpdate: hasUpdate ?? this.hasUpdate,
@@ -126,6 +143,9 @@ class UpdateNotifier extends Notifier<UpdateState> {
   static const String _cachedReleaseUrlKey = 'update_cached_release_url';
   static const String _cachedShaKey = 'update_cached_sha256';
   static const String _cachedFingerprintKey = 'update_cached_fingerprint';
+  static const String _cachedApkUrlKey = 'update_cached_apk_url';
+  static const String _cachedApkNameKey = 'update_cached_apk_name';
+  static const String _cachedApkSizeKey = 'update_cached_apk_size';
 
   /// Check interval: once per day
   static const Duration _checkInterval = Duration(hours: 24);
@@ -205,15 +225,47 @@ class UpdateNotifier extends Notifier<UpdateState> {
       final body = (data['body'] as String? ?? '').trim();
       final htmlUrl = data['html_url'] as String?;
 
+      // 草稿 / 预发布不走应用内更新：releases/latest 本来就不返回
+      // 它们，这里是防御——万一哪天接口变了，也不要把半成品推给
+      // 用户下载；沿用上次缓存的 Release 判定。
+      if (data['draft'] == true || data['prerelease'] == true) {
+        AppLog.report(
+          'UpdateService: latest release is draft/prerelease, skipping',
+          tag: 'update_provider',
+        );
+        return _applyCached();
+      }
+
+      // 应用内下载的目标（计划一第 12 项）：Release 资产里第一个
+      // `.apk` 文件。
+      final apkAsset = pickApkAsset(data['assets']);
+      final apkName = apkAsset == null
+          ? null
+          : apkAsset['name'] as String?;
+      final apkUrl = apkAsset == null
+          ? null
+          : apkAsset['browser_download_url'] as String?;
+      final apkSize = apkAsset == null
+          ? null
+          : apkAsset['size'] as int?;
+
       // 校验信息（审查 B4）：best-effort，任何失败都留 null，绝不影响
       // 更新判定本身。
       final assetDio = createDio();
       String? sha256;
       String? signerFingerprint;
       try {
-        sha256 = parseSha256Sums(
-          await _fetchAssetText(assetDio, data, 'sha256sums.txt'),
+        // SHA-256 按 APK 文件名取（sums 文件里可能有多行）；取不到
+        // 时退回首个合法 hash，保持旧的对话框校验块行为。
+        final sumsText = await _fetchAssetText(
+          assetDio,
+          data,
+          'sha256sums.txt',
         );
+        sha256 = apkName == null
+            ? parseSha256Sums(sumsText)
+            : parseSha256SumsFor(sumsText, apkName) ??
+                parseSha256Sums(sumsText);
         signerFingerprint = parseSignerFingerprint(
           await _fetchAssetText(assetDio, data, 'signing-fingerprint.txt'),
         );
@@ -230,6 +282,9 @@ class UpdateNotifier extends Notifier<UpdateState> {
       await box.put(_cachedReleaseUrlKey, htmlUrl);
       await box.put(_cachedShaKey, sha256);
       await box.put(_cachedFingerprintKey, signerFingerprint);
+      await _putOrDelete(box, _cachedApkUrlKey, apkUrl);
+      await _putOrDelete(box, _cachedApkNameKey, apkName);
+      await _putOrDelete(box, _cachedApkSizeKey, apkSize);
       await box.put(_lastCheckKey, DateTime.now().millisecondsSinceEpoch);
 
       return _apply(
@@ -238,6 +293,9 @@ class UpdateNotifier extends Notifier<UpdateState> {
         htmlUrl,
         sha256: sha256,
         signerFingerprint: signerFingerprint,
+        apkUrl: apkUrl,
+        apkName: apkName,
+        apkSize: apkSize,
       );
     } catch (e) {
       // Network-layer exception text can carry URLs or response
@@ -260,7 +318,23 @@ class UpdateNotifier extends Notifier<UpdateState> {
       box.get(_cachedReleaseUrlKey) as String?,
       sha256: box.get(_cachedShaKey) as String?,
       signerFingerprint: box.get(_cachedFingerprintKey) as String?,
+      apkUrl: box.get(_cachedApkUrlKey) as String?,
+      apkName: box.get(_cachedApkNameKey) as String?,
+      apkSize: box.get(_cachedApkSizeKey) as int?,
     );
+  }
+
+  /// 存值或清键：Hive 对 null 值的处理因版本而异，显式删键最稳妥。
+  static Future<void> _putOrDelete(
+    Box<dynamic> box,
+    String key,
+    Object? value,
+  ) async {
+    if (value == null) {
+      await box.delete(key);
+    } else {
+      await box.put(key, value);
+    }
   }
 
   bool _apply(
@@ -269,6 +343,9 @@ class UpdateNotifier extends Notifier<UpdateState> {
     String? htmlUrl, {
     String? sha256,
     String? signerFingerprint,
+    String? apkUrl,
+    String? apkName,
+    int? apkSize,
   }) {
     final current = state.currentVersion!;
     final latest = tagName.startsWith('v') ? tagName.substring(1) : tagName;
@@ -301,6 +378,9 @@ class UpdateNotifier extends Notifier<UpdateState> {
       links: manifest.links,
       sha256: sha256,
       signerFingerprint: signerFingerprint,
+      apkUrl: apkUrl,
+      apkName: apkName,
+      apkSize: apkSize,
       droppedLinkCount: manifest.droppedLinkCount,
       hasUpdate: hasUpdate,
       forceUpdate: forceUpdate,
@@ -361,6 +441,22 @@ class UpdateNotifier extends Notifier<UpdateState> {
     return response.data?.toString();
   }
 
+  /// Release 资产里找 APK：第一个 `.apk` 文件。找不到返回 null——
+  /// 对话框退回原来的渠道按钮。
+  @visibleForTesting
+  static Map<String, dynamic>? pickApkAsset(Object? assets) {
+    if (assets is! List) return null;
+    for (final asset in assets) {
+      if (asset is Map<String, dynamic>) {
+        final name = asset['name'] as String?;
+        if (name != null && name.toLowerCase().endsWith('.apk')) {
+          return asset;
+        }
+      }
+    }
+    return null;
+  }
+
   /// `<hash>  <filename>`（sha256sums 格式）：第一个非空行的首个
   /// 64-hex token，小写归一。
   @visibleForTesting
@@ -369,6 +465,30 @@ class UpdateNotifier extends Notifier<UpdateState> {
     for (final line in content.split('\n')) {
       final token = line.trim().split(RegExp(r'\s+')).first;
       if (RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(token)) {
+        return token.toLowerCase();
+      }
+    }
+    return null;
+  }
+
+  /// sha256sums.txt 里找 [fileName] 那一行的 hash。文件名按
+  /// basename 比对（sums 文件里只有文件名，没有路径）；` *name`
+  ///（二进制模式标记）同样认。找不到返回 null。
+  @visibleForTesting
+  static String? parseSha256SumsFor(String? content, String fileName) {
+    if (content == null) return null;
+    final wanted = fileName.split('/').last.toLowerCase();
+    for (final line in content.split('\n')) {
+      final parts = line.trim().split(RegExp(r'\s+'));
+      if (parts.length < 2) continue;
+      final token = parts.first;
+      final name = parts
+          .sublist(1)
+          .join(' ')
+          .replaceFirst(RegExp(r'^\*'), '')
+          .toLowerCase();
+      if (name == wanted &&
+          RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(token)) {
         return token.toLowerCase();
       }
     }

@@ -720,6 +720,17 @@
       }
     }
   },
+  "updateDownload": "下载更新",
+  "updateDownloadComplete": "下载完成",
+  "updateDownloadPaused": "下载已暂停",
+  "updateDownloading": "正在下载更新… {percent}%",
+  "@updateDownloading": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
   "updateDroppedLinks": "另有 {count} 个下载渠道因域名不在白名单中被忽略",
   "@updateDroppedLinks": {
     "placeholders": {
@@ -736,8 +747,13 @@
       }
     }
   },
+  "updateInstall": "安装更新",
+  "updateInstallNotAllowed": "未允许安装未知应用，请在系统设置中允许后重新安装",
+  "updateOpenSettings": "去设置",
   "updateRequired": "需要更新后才能继续使用",
+  "updateSignatureMismatch": "安装包签名与当前应用不一致，已拒绝安装",
   "updateUnsupported": "当前版本已停止支持，搜索和下载功能已禁用，请下载新版本安装后再使用。",
+  "updateVerifyFailed": "文件校验失败，安装已取消",
   "useAnotherAccount": "使用其他账号",
   "useDefaultDocumentsDir": "使用应用默认文档目录",
   "validEmail": "请输入有效的邮箱",

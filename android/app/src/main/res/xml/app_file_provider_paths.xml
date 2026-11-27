@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- In-app update install (plan 12–16): paths the FileProvider may
+     serve to the system installer. `updates/` under the external
+     app-specific dir is where AppUpdateDownloader saves the APK
+     (getPackageArchiveInfo runs in system_server and cannot read the
+     app-private files dir); the cache-path entry covers the fallback
+     location when external storage is unavailable. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <external-files-path name="updates" path="updates/" />
+    <cache-path name="updates-cache" path="updates/" />
+</paths>

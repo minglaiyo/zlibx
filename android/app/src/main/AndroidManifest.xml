@@ -109,24 +109,71 @@
              output set of MediaStoreFiles.mimeTypeForExtension (except the
              application/octet-stream default). The OpenFilex call sites pass the
              MIME explicitly, so a */* fallback is not needed — and keeping */*
-             would let the app enumerate every VIEW handler on the device. -->
+             would let the app enumerate every VIEW handler on the device.
+             One <intent> per MIME type: the package parser rejects an intent
+             tag with more than one data type (INSTALL_PARSE_FAILED_MANIFEST_MALFORMED). -->
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/epub+zip"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/pdf"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/x-mobipocket-ebook"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/vnd.amazon.ebook"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/vnd.amazon.mobi8-ebook"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/x-fictionbook+xml"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/x-cbz"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/x-cbr"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="image/vnd.djvu"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/msword"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/rtf"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/zip"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/vnd.ms-htmlhelp"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/x-ms-reader"/>
         </intent>
     </queries>

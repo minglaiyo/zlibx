@@ -28,57 +28,12 @@ part 'zlibrary_dstats.dart';
 part 'zlibrary_fulltext.dart';
 part 'zlibrary_downloads.dart';
 part 'zlibrary_info.dart';
-
-/// App-facing byte sink for the pending-MediaStore download flow
-/// (Android 10+): the app streams bytes straight into an IS_PENDING
-/// entry instead of staging a .part file. Implemented by the app's
-/// PendingUriWriter; the plugin only ever calls these members, so it
-/// has no dependency on app code. All engines keep their current
-/// behaviour when no writer is passed.
-abstract class PendingDownloadWriter {
-  /// The MediaStore entry being filled (changes after [reset]).
-  String get uri;
-
-  /// Resume offset: bytes already committed (plus any buffered bytes).
-  int get bytesWritten;
-
-  /// Buffer one network chunk; may flush internally.
-  Future<void> add(List<int> chunk);
-
-  /// Commit all buffered bytes. Throws when the platform write fails.
-  Future<void> flush();
-
-  /// Delete the pending entry and all sidecars (cancel / bad content).
-  Future<void> discard();
-
-  /// Recreate the pending entry empty (server restarted the body).
-  /// False when the new entry cannot be created.
-  Future<bool> reset();
-}
-
-/// The server answered a download request with an HTML page (a
-/// challenge / error page) instead of the file. Never resumable: the
-/// destination (partial file or pending entry) is useless and must be
-/// discarded, never resumed.
-class DownloadHtmlException implements Exception {
-  final String message;
-  const DownloadHtmlException(this.message);
-  @override
-  String toString() => message;
-}
-
-/// The downloaded bytes do not carry the magic of the format the file
-/// claims to be (plan item 8): a PDF served for an EPUB, a resumed
-/// partial whose prefix is not the book, or a finished file whose head
-/// is not its format's signature. Never resumable and never
-/// auto-retried: the destination is discarded and the user retries
-/// from zero.
-class DownloadMagicException implements Exception {
-  final String message;
-  const DownloadMagicException(this.message);
-  @override
-  String toString() => message;
-}
+part 'zlibrary_booklist_membership.dart';
+part 'zlibrary_booklist_writes.dart';
+part 'zlibrary_destructive.dart';
+part 'zlibrary_download_types.dart';
+part 'zlibrary_http.dart';
+part 'zlibrary_responses.dart';
 
 /// Shared session and HTTP infrastructure for [ZLibraryApi] and its
 /// domain mixins. Public — not library-private — on purpose:
@@ -87,7 +42,7 @@ class DownloadMagicException implements Exception {
 /// public API.
 ///
 /// The HTTP method a redirect-following request starts with
-/// ([ZLibraryApiBase._sendFollowing]). 301/302/303 turn the follow-up
+/// (`ZLibraryApiBase._sendFollowing`). 301/302/303 turn the follow-up
 /// into a GET; 307/308 keep the current method (browser behaviour).
 /// Top-level, not a class member: Dart does not allow an enum
 /// declaration inside a class.
@@ -102,7 +57,7 @@ abstract class ZLibraryApiBase {
   String? _userKey;
 
   /// Dedicated client for destructive GETs (plan item 5), injected in
-  /// tests; production code never passes it — [_destructiveClient]
+  /// tests; production code never passes it — `_destructiveClient`
   /// builds it lazily. Kept separate from [_dio] so a destructive
   /// call never shares state with the read client.
   Dio? _destructiveDio;
@@ -137,7 +92,7 @@ abstract class ZLibraryApiBase {
   /// [dio] is a test seam: a caller-provided client (with a fake
   /// adapter) replaces the default one. Production code never passes it.
   /// [destructiveDio] is the same seam for the plan-5 destructive
-  /// client ([_destructiveClient]).
+  /// client (`_destructiveClient`).
   ZLibraryApiBase({String? domain, Dio? dio, Dio? destructiveDio})
     : _domain = _cleanDomain(domain ?? _defaultDomain),
       _dio = dio ??
@@ -199,443 +154,12 @@ abstract class ZLibraryApiBase {
     return h;
   }
 
-  /// Learn the cookies a redirect hop re-issued while following
-  /// redirects by hand (`_getWithRedirects`, `_postText`, `_delete`). The
-  /// DDoS-Guard challenge answers the first hop with 307 plus
-  /// `set-cookie: __diamwall=...` and expects the follow-up request to
-  /// carry it (2026-11-09 packet capture) — dropping them sent the
-  /// follow-up out without the challenge cookie the wall had just set.
-  /// The calling helpers only harvest on a hop that stays on our own host:
-  /// another host's cookies never
-  /// enter the jar.
-  ///
-  /// Parsing matches what login learns from Set-Cookie
-  /// (`_learnSession`): each header is split on `;` and only the first
-  /// segment counts (the name=value pair — `Path` / `Expires` /
-  /// `HttpOnly` attributes are dropped), name and value split on the
-  /// FIRST `=` only (values may contain `=`, base64 padding), and an
-  /// empty value is skipped. The split follows login too:
-  /// `remix_userid` / `remix_userkey` refresh the session pair,
-  /// everything else merges into the wall-cookie jar by name (a newer
-  /// value replaces its own name, other names are kept).
-  void _harvestRedirectCookies(List<String> setCookies) {
-    for (final cookie in setCookies) {
-      final pair = cookie.split(';').first.trim();
-      final eq = pair.indexOf('=');
-      if (eq <= 0) continue;
-      final name = pair.substring(0, eq).trim();
-      final value = pair.substring(eq + 1).trim();
-      if (value.isEmpty) continue;
-      if (name == 'remix_userid') {
-        _userId = value;
-      } else if (name == 'remix_userkey') {
-        _userKey = value;
-      } else {
-        _wallCookies[name] = value;
-      }
-    }
-  }
-
-  // ── Low-level helpers ──────────────────────────────────────────────
-
-  Future<_Raw> _get(
-    String path, {
-    Map<String, dynamic>? query,
-    Map<String, String>? extraHeaders,
-  }) async {
-    try {
-      final res = await _dio.get<String>(
-        '$_base$path',
-        queryParameters: query,
-        options: Options(
-          headers: {..._headers, ...?extraHeaders},
-          responseType: ResponseType.plain,
-          followRedirects: false,
-          // Multi-value filters go out as `key[]=…`: Dio 5.9.2's
-          // default is ListFormat.multi (bare repeated keys), NOT
-          // multiCompatible — set it explicitly so bare list keys
-          // encode with brackets. Scalars are unaffected.
-          listFormat: ListFormat.multiCompatible,
-        ),
-      );
-      return await _fromResponse(res);
-    } on DioException catch (e) {
-      return _fromError(e);
-    }
-  }
-
-  /// GET, following redirects by hand — same pattern as `_postText`.
-  ///
-  /// Shared by the booklists and categories domains: the booklists
-  /// write endpoints 307 to the same URL, and a bare category URL
-  /// (`/category/{id}`) 301/302s to its slugged form.
-  ///
-  /// The site's `papi/booklist/*` write endpoints answer the first GET
-  /// with 307 to the same URL (the DDoS-Guard challenge sets a cookie
-  /// and redirects); 307/308 are re-sent as GET, 301/302/303 are
-  /// followed as GET (browser behaviour). The session Cookie is only
-  /// sent to our own host: a hop to another host drops it (Dio's
-  /// automatic following would re-send it to whatever host a 302
-  /// points at). A same-host hop may re-issue cookies (the challenge's
-  /// `__diamwall` on the first 307): they are learned into the session
-  /// / wall-cookie jar before following. Cross-host target hops learn
-  /// nothing.
-  ///
-  /// Redirect failures (no Location, non-https target, too many hops,
-  /// unparsable Location) return an error [_Raw] — never throw: the
-  /// callers only handle `ApiResponse.fail`, they do not catch
-  /// [StateError].
-  ///
-  /// [receiveTimeout] overrides the Dio default (60s) for this call
-  /// only; null keeps the default. Callers fetching a large HTML page
-  /// on a slow link pass a longer one.
-  /// One redirect-following request: GET, DELETE or POST-with-a-text-body,
-  /// following 301/302/303/307/308 by hand (max 5 hops).
-  ///
-  /// This is the single implementation behind [_getWithRedirects],
-  /// [_delete] and [_postText] (S4): the three used to be near-identical
-  /// ~70-line loops, so a security fix had to be applied in three places
-  /// and could silently miss one. The behaviour is the old three:
-  ///
-  /// * 307/308 keep the current method (and the POST body); 301/302/303
-  ///   turn the follow-up into a GET. (One latent fix: the old `_delete`
-  ///   / `_postText` recomputed the method from the status code alone, so
-  ///   a 307 seen after a 301 had already turned the request into a GET
-  ///   wrongly switched it back to DELETE / POST. Keeping the *current*
-  ///   method is the correct behaviour and is what this does.)
-  /// * The session Cookie is only sent to our own host: a hop to another
-  ///   host drops it, and it stays dropped even if a later hop comes back
-  ///   (the `cookieStripped` flag). A same-host hop may re-issue cookies
-  ///   (the DDoS-Guard challenge sets `__diamwall` on the first 307):
-  ///   they are learned into the session / wall-cookie jar before
-  ///   following, and the Cookie header is re-derived from the jar so the
-  ///   follow-up carries them. Cross-host target hops learn nothing.
-  /// * Redirect failures (no Location, non-https target, too many hops,
-  ///   unparsable Location) return an error [_Raw] — never throw: the
-  ///   callers only handle `ApiResponse.fail`, they do not catch
-  ///   [StateError].
-  ///
-  /// [queryParameters] and [receiveTimeout] only apply to GET (the
-  /// `_getWithRedirects` callers re-send the query on every hop, and one
-  /// passes a longer timeout for large HTML pages); DELETE and POST pass
-  /// neither. [body] / [contentType] only apply to POST.
-  Future<_Raw> _sendFollowing(
-    String path, {
-    required _RedirectMethod method,
-    String? body,
-    String? contentType,
-    Map<String, String>? extraHeaders,
-    Map<String, dynamic>? queryParameters,
-    Duration? receiveTimeout,
-    CancelToken? cancelToken,
-  }) async {
-    var url = '$_base$path';
-    var headers = Map<String, String>.from(_headers);
-    if (extraHeaders != null) headers.addAll(extraHeaders);
-    if (Uri.parse(url).host != Uri.parse(_base).host) {
-      headers.remove('Cookie');
-    }
-    // Set once the Cookie header has been stripped for a cross-host hop:
-    // it stays off for the rest of the chain even if a later hop comes
-    // back to our own host (pre-fix behaviour).
-    var cookieStripped = false;
-    var currentMethod = method;
-    var lastStatus = 0;
-    for (var hop = 0; hop < 5; hop++) {
-      try {
-        final Response<String> res;
-        switch (currentMethod) {
-          case _RedirectMethod.get:
-            res = await _dio.get<String>(
-              url,
-              // Re-sent on every hop: a redirect target (e.g. the
-              // slugged category URL) carries no query of its own, so
-              // the page/order/filter params belong on each request.
-              queryParameters: queryParameters,
-              options: Options(
-                headers: headers,
-                responseType: ResponseType.plain,
-                followRedirects: false,
-                validateStatus: (status) => status != null && status < 400,
-                // Per-request override of the Dio default (60s); null
-                // keeps it. Large HTML pages on a slow link need more
-                // time — see fetchBookDetailExtras.
-                receiveTimeout: receiveTimeout,
-                // Same as [_get]: Dio 5.9.2's default is ListFormat.multi
-                // (bare repeated keys) — set multiCompatible explicitly
-                // so bare list keys encode as `key[]=…`.
-                listFormat: ListFormat.multiCompatible,
-              ),
-              cancelToken: cancelToken,
-            );
-          case _RedirectMethod.delete:
-            res = await _dio.delete<String>(
-              url,
-              options: Options(
-                headers: headers,
-                responseType: ResponseType.plain,
-                followRedirects: false,
-                validateStatus: (status) => status != null && status < 400,
-              ),
-            );
-          case _RedirectMethod.post:
-            res = await _dio.post<String>(
-              url,
-              data: body,
-              options: Options(
-                headers: headers,
-                contentType: contentType,
-                responseType: ResponseType.plain,
-                followRedirects: false,
-                validateStatus: (status) => status != null && status < 400,
-              ),
-            );
-        }
-        final code = res.statusCode ?? 0;
-        lastStatus = code;
-        if (code != 301 &&
-            code != 302 &&
-            code != 303 &&
-            code != 307 &&
-            code != 308) {
-          return await _fromResponse(res);
-        }
-        final location = res.headers.value(HttpHeaders.locationHeader);
-        if (location == null || location.isEmpty) {
-          return _Raw(status: code, error: 'redirect without location');
-        }
-        final Uri next;
-        try {
-          next = Uri.parse(url).resolveUri(Uri.parse(location));
-        } on FormatException {
-          return _Raw(status: code, error: 'redirect to invalid URL');
-        }
-        if (next.scheme != 'https') {
-          return _Raw(status: code, error: 'redirect to non-https URL');
-        }
-        // Learn what this hop re-issued before following it. Only a hop
-        // that stays on our own host may teach the jar: a cross-host
-        // target's cookies must not enter it. The request host only
-        // differs from the base after a cross-host target — and cookies
-        // set by another host must not enter the jar even when that hop
-        // redirects back to us.
-        if (next.host == Uri.parse(_base).host &&
-            Uri.parse(url).host == Uri.parse(_base).host) {
-          _harvestRedirectCookies(
-            res.headers['set-cookie'] ?? const <String>[],
-          );
-        }
-        url = next.toString();
-        if (next.host != Uri.parse(_base).host) {
-          headers = Map<String, String>.from(headers)..remove('Cookie');
-          cookieStripped = true;
-        } else if (!cookieStripped) {
-          // Same-host hop: re-derive the Cookie header from the jar so
-          // the follow-up carries what this hop re-issued. Nothing was
-          // harvested — the rebuild is a no-op.
-          final cookie = _headers['Cookie'];
-          if (cookie != null) {
-            headers['Cookie'] = cookie;
-          } else {
-            headers.remove('Cookie');
-          }
-        }
-        // 301/302/303 turn the follow-up into a GET; 307/308 keep the
-        // current method (and the POST body).
-        if (code != 307 && code != 308) {
-          currentMethod = _RedirectMethod.get;
-        }
-      } on DioException catch (e) {
-        return _fromError(e);
-      }
-    }
-    return _Raw(status: lastStatus, error: 'too many redirects');
-  }
-
-  /// GET, following redirects by hand — see [_sendFollowing].
-  ///
-  /// Shared by the booklists and categories domains: the booklists
-  /// write endpoints 307 to the same URL, and a bare category URL
-  /// (`/category/{id}`) 301/302s to its slugged form.
-  ///
-  /// [receiveTimeout] overrides the Dio default (60s) for this call
-  /// only; null keeps the default. Callers fetching a large HTML page
-  /// on a slow link pass a longer one.
-  Future<_Raw> _getWithRedirects(
-    String path, {
-    Map<String, String>? extraHeaders,
-    Map<String, dynamic>? queryParameters,
-    Duration? receiveTimeout,
-    CancelToken? cancelToken,
-  }) {
-    return _sendFollowing(
-      path,
-      method: _RedirectMethod.get,
-      extraHeaders: extraHeaders,
-      queryParameters: queryParameters,
-      receiveTimeout: receiveTimeout,
-      cancelToken: cancelToken,
-    );
-  }
-
-  /// DELETE with no request body, following redirects by hand — see
-  /// [_sendFollowing].
-  Future<_Raw> _delete(String path) {
-    return _sendFollowing(path, method: _RedirectMethod.delete);
-  }
-
-  /// POST a raw string body as `text/plain`, following redirects by
-  /// hand — see [_sendFollowing].
-  ///
-  /// The site's `papi/comments/*` endpoints answer the first POST with
-  /// 307 to the same URL; 307/308 are re-POSTed with the same body,
-  /// 301/302/303 are followed as GET (browser behaviour).
-  Future<_Raw> _postText(String path, String body) {
-    return _sendFollowing(
-      path,
-      method: _RedirectMethod.post,
-      body: body,
-      contentType: 'text/plain;charset=UTF-8',
-    );
-  }
-
-  // ── Destructive GETs (plan item 5) ──────────────────────────────
-
-  /// The dedicated client for destructive GETs: same timeouts and
-  /// headers as the main client, but a separate instance, so a
-  /// destructive call never shares state with the read client.
-  ///
-  /// Dio 5 note: `retryOnConnectionFailure` (a Dio 4 option) does not
-  /// exist in Dio 5.11.1 — the adapter never retries a failed
-  /// connection — so the single-attempt guarantee below is structural:
-  /// [_getDestructive] issues one request and only loops for the
-  /// wall-challenge hop.
-  Dio _destructiveClient() => _destructiveDio ??= Dio(
-        BaseOptions(
-          connectTimeout: const Duration(seconds: 15),
-          receiveTimeout: const Duration(seconds: 60),
-          headers: {
-            'User-Agent':
-                'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
-                'Chrome/120.0 Mobile Safari/537.36',
-            'Accept': 'application/json',
-          },
-        ),
-      );
-
-  /// GET for calls that change server state (booklist remove / delete),
-  /// through the dedicated client. Exactly ONE attempt, no redirect
-  /// following, no resend:
-  ///
-  ///  * a transport error, 4xx or 5xx returns an error [_Raw] — the
-  ///    write may already have landed while the answer was lost, so a
-  ///    retry could apply it twice. The caller keeps the record and
-  ///    never auto-resends (the booklist detail provider restores the
-  ///    removed row on failure);
-  ///  * the only redirect ever followed is the DDoS-Guard challenge
-  ///    hop: a 307 that carries DiamWall markers ([isDiamWallResponse])
-  ///    and points back at the SAME URL (the booklist write endpoints
-  ///    answer the first GET that way — 2026-11-09 packet capture — and
-  ///    the follow-up must carry the `__diamwall` cookie the 307 set).
-  ///    At most 3 such hops. Any other redirect (301/302/303, a 307
-  ///    without the markers, or any hop to another host) returns an
-  ///    error instead of re-issuing the write somewhere the caller
-  ///    never asked for.
-  Future<_Raw> _getDestructive(String path) async {
-    final url = '$_base$path';
-    var challengeHops = 0;
-    for (;;) {
-      final Response<String> res;
-      try {
-        res = await _destructiveClient().get<String>(
-          url,
-          options: Options(
-            headers: _headers,
-            responseType: ResponseType.plain,
-            followRedirects: false,
-            validateStatus: (status) => status != null && status < 400,
-          ),
-        );
-      } on DioException catch (e) {
-        return _fromError(e);
-      }
-      final code = res.statusCode ?? 0;
-      if (code != 301 &&
-          code != 302 &&
-          code != 303 &&
-          code != 307 &&
-          code != 308) {
-        return await _fromResponse(res);
-      }
-      final location = res.headers.value(HttpHeaders.locationHeader);
-      final sameUrl = location != null &&
-          location.isNotEmpty &&
-          _resolvesToSameUrl(url, location);
-      if (code == 307 &&
-          sameUrl &&
-          challengeHops < 3 &&
-          isDiamWallResponse(status: code, headers: res.headers)) {
-        // Learn the challenge cookie before the follow-up. Same URL
-        // by construction, so same-host only — nothing from another
-        // host ever enters the jar here.
-        _harvestRedirectCookies(
-          res.headers['set-cookie'] ?? const <String>[],
-        );
-        challengeHops++;
-        continue;
-      }
-      return _Raw(status: code, error: 'redirect not followed');
-    }
-  }
-
   static bool _resolvesToSameUrl(String url, String location) {
     try {
       return Uri.parse(url).resolveUri(Uri.parse(location)).toString() ==
           url;
     } on FormatException {
       return false;
-    }
-  }
-
-  /// DELETE with no request body, following redirects by hand — same
-  /// pattern as `_postText`: 307/308 are re-sent as DELETE, 301/302/303
-  /// are followed as GET (browser behaviour). The session Cookie is
-  /// only sent to our own host: a hop to another host drops it. A
-  /// same-host hop may re-issue cookies (the DDoS-Guard challenge sets
-  /// `__diamwall` on the first 307 and expects the follow-up request to
-  /// carry it): they are learned into the session / wall-cookie jar
-  /// before following. Cross-host target hops learn nothing.
-  ///
-  /// Redirect failures (no Location, non-https target, too many hops,
-  /// unparsable Location) return an error [_Raw] — never throw: the
-  /// caller only handles `ApiResponse.fail`, it does not catch
-  /// [StateError].
-
-
-
-  Future<_Raw> _postForm(
-    String path,
-    Map<String, dynamic> fields, {
-    // Only `search` takes one today: the app layer cancels a superseded
-    // search instead of letting it finish. Optional, so the other
-    // callers (login / rpc / send_code / verify_code) are untouched.
-    CancelToken? cancelToken,
-  }) async {
-    try {
-      final res = await _dio.post<String>(
-        '$_base$path',
-        data: _encodeForm(fields),
-        options: Options(
-          headers: _headers,
-          contentType: Headers.formUrlEncodedContentType,
-          responseType: ResponseType.plain,
-          followRedirects: false,
-        ),
-        cancelToken: cancelToken,
-      );
-      return await _fromResponse(res);
-    } on DioException catch (e) {
-      return _fromError(e);
     }
   }
 
@@ -667,8 +191,8 @@ abstract class ZLibraryApiBase {
   /// format / language filter did nothing and other formats stayed in
   /// the results (device-reported 2026-11-12). The GET paths already
   /// emit the same bracket form via `ListFormat.multiCompatible` (see
-  /// [_get] and the category search's `_encodeQuery`). The other
-  /// [_postForm] callers (login / rpc / send_code / verify_code) send
+  /// `_get` and the category search's `_encodeQuery`). The other
+  /// `_postForm` callers (login / rpc / send_code / verify_code) send
   /// only scalar fields, so this changes nothing for them.
   static String _encodeForm(Map<String, dynamic> fields) {
     final parts = <String>[];
@@ -709,175 +233,6 @@ abstract class ZLibraryApiBase {
 
   bool _sessionRejectionReported = false;
 
-  /// Single funnel for every answer: [_rawFromResponse] and
-  /// [_rawFromError] are what all the request helpers return, so the
-  /// rejection bookkeeping lives in one place.
-  Future<_Raw> _fromResponse(Response<String> res) async {
-    final raw = await _rawFromResponse(res);
-    _noticeSessionRejection(raw);
-    return raw;
-  }
-
-  _Raw _fromError(DioException e) {
-    final raw = _rawFromError(e);
-    _noticeSessionRejection(raw);
-    return raw;
-  }
-
-  void _noticeSessionRejection(_Raw raw) {
-    // An anonymous request that 401s says nothing about a stored pair.
-    if (_userId == null || _userKey == null) return;
-    if (!raw.authRejected) {
-      // A usable answer with this pair: arm the notice again, so a
-      // later rejection counts as a new episode. A transport failure
-      // (no JSON at all) must not re-arm while we are mid-retry.
-      if (raw.json != null) _sessionRejectionReported = false;
-      return;
-    }
-    if (_sessionRejectionReported) return;
-    _sessionRejectionReported = true;
-    onSessionRejected?.call();
-  }
-
-  Future<_Raw> _rawFromResponse(Response<String> res) async {
-    final body = res.data ?? '';
-    final status = res.statusCode;
-    final cookies = res.headers['set-cookie'] ?? const <String>[];
-    if (_isCloudflareBlock(body: body, status: status, headers: res.headers)) {
-      return _Raw(status: status, error: 'cf_blocked', cookies: cookies);
-    }
-    if (body.isEmpty) {
-      return _Raw(
-        status: status,
-        error: 'empty response (HTTP $status)',
-        cookies: cookies,
-      );
-    }
-    try {
-      // P1-1 方案 A：大响应体（>64 KB，如 50 条书的搜索结果）在后台
-      // isolate 里解码，免得 jsonDecode 堵 UI 线程；小响应仍在原地解，
-      // 免得为几百字节多一次 isolate 往返。解码结果是纯数据，可跨
-      // isolate 传递。第二次解析（booksParseOverride 走 Rust）不动，
-      // 那次本就跑在 Rust 线程池上。
-      final decoded = body.length > 64 * 1024
-          ? await Isolate.run(() => jsonDecode(body))
-          : jsonDecode(body);
-      if (decoded is Map<String, dynamic>) {
-        // A JSON failure that answers HTTP 200 (eapi says `success: 0`
-        // with the reason in the body) is the same kind of verdict as a
-        // JSON failure that answers 400 — including about the session.
-        // Without this the 401-in-a-200 case would set `authRejected` in
-        // `getProfile` but never reach the rejection hook below, so the
-        // two paths would disagree about the same answer.
-        return _Raw(
-          status: status,
-          json: decoded,
-          cookies: cookies,
-          // Keep the raw text only when a Rust-backed `booksParseOverride`
-          // is injected — otherwise discard it to avoid doubling memory for
-          // every JSON response. The host app sets this hook in main().
-          body: booksParseOverride != null ? body : null,
-          rejectedByMessage: !_isSuccess(decoded) &&
-              rejectsSessionMessage(_jsonErrorMessage(decoded)),
-        );
-      }
-      return _Raw(status: status, error: 'unexpected response format');
-    } on FormatException {
-      if (_isCloudflareBlock(body: body, status: status, headers: res.headers)) {
-        return _Raw(status: status, error: 'cf_blocked');
-      }
-      // Not JSON — keep the raw body: the site's list pages (booklists)
-      // are HTML, fetched with `Accept: text/html`. Set-Cookie is
-      // forwarded too, so a session re-issued on an HTML page is not
-      // silently dropped.
-      return _Raw(
-        status: status,
-        error: 'non-JSON response (HTTP $status)',
-        body: body,
-        cookies: cookies,
-      );
-    }
-  }
-
-  _Raw _rawFromError(DioException e) {
-    final res = e.response;
-    final status = res?.statusCode;
-    // A stream-type response's data is a ResponseBody instance whose
-    // toString() is "Instance of 'ResponseBody'" — pure noise in error
-    // strings (2026-11-21: a download resuming with an empty hash hit
-    // the file endpoint's 400 and surfaced exactly that). Treat it as
-    // no body; the status code carries the message.
-    final rawData = res?.data;
-    final body = rawData is ResponseBody ? '' : rawData?.toString() ?? '';
-    if (_isCloudflareBlock(
-      body: body,
-      status: status,
-      headers: res?.headers,
-    )) {
-      return _Raw(status: status, error: 'cf_blocked');
-    }
-    switch (e.type) {
-      case DioExceptionType.connectionTimeout:
-      case DioExceptionType.sendTimeout:
-      case DioExceptionType.receiveTimeout:
-        return _Raw(status: status, error: 'timeout: ${e.message}');
-      case DioExceptionType.connectionError:
-        return _Raw(status: status, error: 'connection error: ${e.message}');
-      case DioExceptionType.badResponse:
-        // Do NOT flatten the body away: EAPI answers failures with
-        // HTTP 400 + {"success":0,"error":"..."} and the message is the
-        // only thing that tells a bad request apart from bad credentials.
-        // (The login dialog redacts emails/passwords before display.)
-        if (body.isNotEmpty) {
-          // A browser-check wall (DDoS-Guard / Cloudflare challenge
-          // page) must not leak its raw HTML into error strings: the
-          // booklists screen shows this text, and the full page is
-          // unreadable noise there. A JSON error body never contains
-          // these markers, so this runs before the JSON decode and
-          // cannot swallow a real API error.
-          if (_looksLikeChallengePage(body)) {
-            return _Raw(
-              status: status,
-              error: 'HTTP $status: browser check page',
-            );
-          }
-          try {
-            final decoded = jsonDecode(body);
-            if (decoded is Map<String, dynamic>) {
-              final msg = _jsonErrorMessage(decoded);
-              if (msg != null) {
-                // Server error texts carry HTML markup (e.g. the
-                // "Some errors occured" 500 wraps its identifier in
-                // <b>…</b><br>); strip it here, at the source, so no
-                // caller can show raw tags in a toast or dialog. This
-                // is the path the booklist remove/delete 500s take —
-                // the JSON success:0 branch already strips, this one
-                // did not.
-                return _Raw(
-                  status: status,
-                  error: _plainError(msg, msg),
-                  rejectedByMessage: rejectsSessionMessage(msg),
-                );
-              }
-            }
-          } on FormatException {
-            // Not JSON: fall through to the truncated body below.
-          }
-          final snippet =
-              body.length > 200 ? '${body.substring(0, 200)}…' : body;
-          return _Raw(
-            status: status,
-            error: _plainError('HTTP $status: $snippet', 'HTTP $status'),
-          );
-        }
-        return _Raw(status: status, error: 'HTTP $status');
-      case DioExceptionType.cancel:
-        return _Raw(status: status, error: 'cancelled');
-      default:
-        return _Raw(status: status, error: e.message ?? e.toString());
-    }
-  }
-
   /// Cloudflare block verdict for a response. The body markers alone
   /// are NOT enough: a 200 page (booklist, comments) whose text merely
   /// mentions the word used to be misread as a block and its content
@@ -914,7 +269,7 @@ abstract class ZLibraryApiBase {
 
   /// Markers of a DDoS-Guard / Cloudflare browser-check page (the
   /// mirror answers HTML page routes with HTTP 503 + this page when it
-  /// walls Dio). Checked against the raw error body in [_fromError] so
+  /// walls Dio). Checked against the raw error body in `_fromError` so
   /// the challenge HTML never reaches the UI as an error string.
   static bool _looksLikeChallengePage(String body) {
     final lower = body.toLowerCase();
@@ -1128,7 +483,7 @@ Future<List<Book>> Function(String json)? booksParseOverride;
 ///   send_code, verify_code. Those methods fall back or fail loudly rather
 ///   than silently returning wrong data; see their doc comments.
 
-class ZLibraryApi extends ZLibraryApiBase with ZLibraryAuth, ZLibrarySearch, ZLibraryArticles, ZLibraryBooklists, ZLibraryCategories, ZLibraryAuthors, ZLibraryFullText, ZLibraryDownloads, ZLibraryDownloadHistory, ZLibraryInfo {
+class ZLibraryApi extends ZLibraryApiBase with ZLibraryAuth, ZLibrarySearch, ZLibraryArticles, ZLibraryBooklists, ZLibraryBooklistWrites, ZLibraryBooklistMembership, ZLibraryCategories, ZLibraryAuthors, ZLibraryFullText, ZLibraryDownloads, ZLibraryDownloadHistory, ZLibraryInfo {
   ZLibraryApi({super.domain, super.dio, super.destructiveDio});
 
   String get domain => _domain;
@@ -1138,36 +493,3 @@ class ZLibraryApi extends ZLibraryApiBase with ZLibraryAuth, ZLibrarySearch, ZLi
     _domain = ZLibraryApiBase._cleanDomain(domain);
   }
 }
-
-class _Raw {
-  final int? status;
-  final Map<String, dynamic>? json;
-  final String? error;
-  final List<String> cookies;
-
-  /// Raw response body, only filled when the response was not JSON
-  /// (see [_fromResponse]) — the HTML list pages
-  /// (fetched with `Accept: text/html`).
-  final String? body;
-
-  /// HTTP 401, or a JSON error body whose own message rejects the session:
-  /// the line looked at the `remix_*` pair this call carried and refused it.
-  /// The only answers that say something about the credentials — a wall
-  /// page, a 5xx, a 429 or a non-JSON body say something about the LINE,
-  /// which is why they are not here. See `ApiResponse.authRejected`.
-  bool get authRejected => status == 401 || rejectedByMessage;
-
-  /// Set by [_fromError] when a JSON error body's message rejects the
-  /// session (see [rejectsSessionMessage]).
-  final bool rejectedByMessage;
-
-  const _Raw({
-    this.status,
-    this.json,
-    this.error,
-    this.cookies = const <String>[],
-    this.body,
-    this.rejectedByMessage = false,
-  });
-}
-

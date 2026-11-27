@@ -20,6 +20,9 @@ version: 1.7.3+10703
 
 environment:
   sdk: ^3.10.0
+  # 本地与 CI 同源：CI 用 Flutter 3.44.0（见 .github/workflows），本地也用它
+  #（.fvmrc 固定 3.44.0；没装 fvm 就按这个版本装）。
+  flutter: ">=3.44.0"
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -42,10 +45,10 @@ dependencies:
   cached_network_image: ^3.3.1
   # Material You dynamic color (Android 12+): ColorScheme from the wallpaper,
   # falls back to the built-in palette where dynamic color is unavailable.
-  # <1.9.0: v1.9.0's android/build.gradle.kts uses the `kotlin { compilerOptions {} }`
-  # DSL which fails to compile under the local Flutter 3.41.x Gradle/Kotlin setup
-  # (works under CI's Flutter 3.44). Pin below 1.9.0 for local builds.
-  dynamic_color: ">=1.7.0 <1.9.0"
+  # 曾 pin 在 <1.9.0：v1.9.0 的 android/build.gradle.kts 用 `kotlin { compilerOptions {} }`
+  # DSL，在本地旧 Flutter 3.41.x 的 Gradle/Kotlin 配置下编译失败；CI 的 Flutter 3.44
+  # 下可编译。工具链已对齐到 3.44.0，上限解除。
+  dynamic_color: ^1.7.0
   
   # State Management
   flutter_riverpod: ^2.5.1
@@ -54,10 +57,10 @@ dependencies:
   dio: ^5.4.3+1
   # Imported directly by lib/services/libgen_service.dart and
   # lib/services/annas_archieve.dart (used to be transitive-only).
-  # >=1.17.0 (not ^1.18.0): Flutter 3.41.x pins meta 1.17.0, so ^1.18.0
-  # made `pub get` impossible on the older local toolchain — the API
-  # used (@visibleForTesting etc.) is identical across both.
-  meta: ">=1.17.0 <2.0.0"
+  # 曾放宽到 >=1.17.0：Flutter 3.41.x 把 meta pin 在 1.17.0，^1.18.0 会让旧本地
+  # 工具链 pub get 失败。工具链已对齐到 3.44.0（SDK 自带 meta 1.18.0，lock 已是
+  # 1.18.0），恢复 ^1.18.0。API（@visibleForTesting 等）在两个版本间相同。
+  meta: ^1.18.0
 
   # Privacy lock (隐私锁): system BiometricPrompt — fingerprint / face,
   # falling back to the device credential. Requires MainActivity to be

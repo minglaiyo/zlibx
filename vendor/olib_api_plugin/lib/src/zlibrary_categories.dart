@@ -16,7 +16,7 @@ part of 'zlibrary_api.dart';
 /// the HTML of `/category/{id}` (browse) and
 /// `/category/{id}/{slug}/s/` (search, from the page's own search
 /// form). A bare `/category/{id}` URL 301/302s to its slugged form,
-/// so the fetch goes through [_getWithRedirects] and the slugged
+/// so the fetch goes through `_getWithRedirects` and the slugged
 /// form is never hand-built. The bare search URL does NOT redirect
 /// (device-proven 2026-11-12: the bare `/category/{id}/s/` answers
 /// an empty page), so a search MUST carry the slug from the page's

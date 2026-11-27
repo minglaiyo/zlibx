@@ -93,6 +93,12 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
     );
   }
 
+  /// Hook for the engine mixin: delete a removed task's staging traces.
+  /// The base has nothing to delete; the override lives in the engine
+  /// mixin, which owns the staging paths.
+  Future<void> _deleteStagingTracesForTask(DownloadTask task) =>
+      Future<void>.value();
+
   /// Remove task and delete file
   Future<void> removeTask(String id) async {
     cancelDownload(id);
@@ -107,6 +113,11 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
     if (task.filePath != null) {
       await MediaStoreFiles.delete(task.filePath!);
     }
+
+    // 进行中的任务没有已发布文件、也没有历史行，唯一的痕迹在暂存
+    // 目录（.part / .meta / pending / download.json）——不删干净，
+    // 下次启动 _recoverPartialDownloads 会把它当残片挂回 paused。
+    await _deleteStagingTracesForTask(task);
 
     // Remove from persistent storage
     await _storage.removeFromDownloadHistory(id);

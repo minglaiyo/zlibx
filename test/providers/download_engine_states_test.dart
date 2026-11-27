@@ -148,6 +148,38 @@ void main() {
     expect(c.read(downloadProvider), isEmpty);
   });
 
+  test('removeTask 删掉暂停任务的暂存残片，重启不再恢复', () async {
+    final api = _FakeZLibraryApi();
+    final c = container(api);
+    final engine = await readyEngine(c);
+
+    // 暂停任务在盘上留下的四种痕迹（引擎每轮写 sidecar，暂停保留 .part）。
+    final base = '${downloadDir.path}/T - 7.epub';
+    for (final suffix in <String>[
+      '.part',
+      '.part.meta',
+      '.part.pending.json',
+      '.part.download.json',
+    ]) {
+      await File('$base$suffix').writeAsString('x');
+    }
+    engine.state = <DownloadTask>[
+      const DownloadTask(id: '7', book: book, status: DownloadStatus.paused),
+    ];
+
+    await engine.removeTask('7');
+
+    expect(c.read(downloadProvider), isEmpty);
+    for (final suffix in <String>[
+      '.part',
+      '.part.meta',
+      '.part.pending.json',
+      '.part.download.json',
+    ]) {
+      expect(await File('$base$suffix').exists(), isFalse, reason: suffix);
+    }
+  });
+
   test('进行中取消后任务记为取消态,且不再重试', () async {
     final api = _FakeZLibraryApi();
     final gate = Completer<Object?>();

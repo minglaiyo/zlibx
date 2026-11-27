@@ -885,6 +885,48 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     }
   }
 
+  /// Staging traces of a removed task: the .part file, its .meta
+  /// validator, the pending sidecar and the source sidecar. In-progress
+  /// tasks have no published file and no history row, so these are the
+  /// only traces — leave them and the next launch's
+  /// _recoverPartialDownloads hangs the task back as paused.
+  /// The organize mode may have changed since the download started, so
+  /// both the recomputed path and the flat top-level path are cleaned.
+  @override
+  Future<void> _deleteStagingTracesForTask(DownloadTask task) async {
+    final partPaths = <String>{};
+    // _buildSavePath never throws (it returns null on error); the
+    // recomputed path is the one the engine used for this book.
+    final finalPath = await _buildSavePath(
+      task.book,
+      subfolderOverride: task.customSubfolder,
+    );
+    if (finalPath != null) partPaths.add('$finalPath.part');
+    // The organize mode may have changed since the download started;
+    // the flat top-level path is the other place a .part can sit.
+    // _resolveSaveDir can throw when storage is unavailable (e.g. a
+    // test without Hive) — the cleanup is best-effort, never fatal.
+    try {
+      partPaths.add(
+        '${await _resolveSaveDir()}/${_buildSafeFileName(task.book)}.part',
+      );
+    } on Object catch (error) {
+      logIgnored('download_partial', error);
+    }
+    for (final partPath in partPaths) {
+      await _deletePartial(partPath);
+      // _deletePartial drops .part / .meta / .download.json; the
+      // pending sidecar (<part>.pending.json) is only discarded
+      // through the writer, which is gone for a paused task.
+      try {
+        final pending = File('$partPath.pending.json');
+        if (await pending.exists()) await pending.delete();
+      } on Object catch (error) {
+        logIgnored('download_partial', error);
+      }
+    }
+  }
+
   Future<void> _deletePartial(String partPath) async {
     for (final path in [
       partPath,

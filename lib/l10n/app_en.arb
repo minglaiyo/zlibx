@@ -848,7 +848,8 @@
         }
     }
   },
-  "webServiceSnapshotNote": "These lists are a snapshot taken when the service started. Stop and start again to refresh them.",
+  "webServiceSnapshotNote": "The book list and download status update live; no restart is needed.",
+  "webServiceSecurityNote": "Use only on a trusted Wi-Fi or hotspot. The address contains an access token: do not share it. Anyone with the address can read the shared books on this phone.",
   "webServiceStartFailed": "Could not start the service: {error}",
   "@webServiceStartFailed": {
     "placeholders": {

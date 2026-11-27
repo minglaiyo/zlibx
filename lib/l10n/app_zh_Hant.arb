@@ -848,7 +848,8 @@
         }
     }
   },
-  "webServiceSnapshotNote": "清單是開啟服務時的快照，運行期間的變化不會同步；停止後重新開啟即可更新。",
+  "webServiceSnapshotNote": "書籍清單與下載狀態會即時更新，無需重新啟動服務。",
+  "webServiceSecurityNote": "僅在可信的 Wi-Fi 或熱點使用。存取網址含有存取權杖，請勿分享；取得網址的人可讀取手機上的共享書籍。",
   "webServiceStartFailed": "無法開啟服務：{error}",
   "@webServiceStartFailed": {
     "placeholders": {

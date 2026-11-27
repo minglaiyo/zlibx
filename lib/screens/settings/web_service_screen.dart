@@ -86,18 +86,25 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
       // Detect first: the hotspot address changes when the hotspot is
       // re-enabled, so the QR code must be regenerated.
       await _detectNetwork();
-      final built = await _buildSnapshot();
-      // Capture the long-lived object now, not the widget's ref:
-      // the callback below may run after this page is left, when
-      // the ref is dead. The notifier lives in the ProviderContainer,
-      // so holding it is safe.
+      final built = WebSnapshot.build(
+        tasks: ref.read(downloadProvider),
+        saved: await _loadSaved(),
+      );
+      // Capture the long-lived objects now, not the widget's ref:
+      // callbacks may run after this page is left, when ref is dead.
       final notifier = ref.read(downloadProvider.notifier);
-      final bookById = built.bookById;
+      final savedNotifier = ref.read(savedBooksProvider.notifier);
       await _service.start(
-        snapshot: built.snapshot,
+        snapshot: built,
         strings: _pageStrings(t),
+        snapshotProvider: () => WebSnapshot.build(
+          tasks: notifier.tasks,
+          saved: savedNotifier.books,
+        ),
+        tasksProvider: () => notifier.tasks,
         onRequestDownload: (bookId) =>
-            _requestDownload(notifier, bookById, bookId),
+            _requestDownload(notifier, savedNotifier, bookId),
+        onTaskAction: (taskId, action) => _taskAction(notifier, taskId, action),
       );
     } on LocalNetworkPermissionDenied {
       logIgnored('web_service_screen', 'local network permission denied');
@@ -141,35 +148,21 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     }
   }
 
-  /// Freeze the two lists at the moment the service starts, plus
-  /// the lookup the web callback needs (book id -> Book) so a web
-  /// request can find the real object.
-  Future<({WebSnapshot snapshot, Map<int, Book> bookById})>
-  _buildSnapshot() async {
-    final tasks = ref.read(downloadProvider);
-    final saved = await _loadSaved();
-    final bookById = <int, Book>{};
-    for (final book in saved) {
-      bookById[book.id] = book;
-    }
-    return (
-      snapshot: WebSnapshot.build(tasks: tasks, saved: saved),
-      bookById: bookById,
-    );
-  }
-
-  /// Web-triggered download (item 3): enqueue the book with the
-  /// app's own download logic. Never starts a second round for a
-  /// book that is already on this phone or already downloading —
-  /// the caller reports that instead. [notifier] and [bookById] are
-  /// captured at start time so this keeps working after the page
-  /// is left.
+  /// Web-triggered downloads use the app's own engine and a live shelf
+  /// lookup, so favourites added after service startup are available.
+  /// The captured notifiers remain valid after this page is left.
   Future<WebDownloadRequest> _requestDownload(
     DownloadNotifier notifier,
-    Map<int, Book> bookById,
+    SavedBooksNotifier savedNotifier,
     int bookId,
   ) async {
-    final book = bookById[bookId];
+    Book? book;
+    for (final candidate in savedNotifier.books) {
+      if (candidate.id == bookId) {
+        book = candidate;
+        break;
+      }
+    }
     if (book == null) return WebDownloadRequest.notFound;
     final tasks = notifier.tasks;
     for (final task in tasks) {
@@ -191,6 +184,52 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     // answers "started" at once.
     unawaited(notifier.startDownload(book));
     return WebDownloadRequest.started;
+  }
+
+  Future<bool> _taskAction(
+    DownloadNotifier notifier,
+    String taskId,
+    WebTaskAction action,
+  ) async {
+    DownloadTask? task;
+    for (final candidate in notifier.tasks) {
+      if (candidate.id == taskId) {
+        task = candidate;
+        break;
+      }
+    }
+    if (task == null) {
+      if (action != WebTaskAction.cancel) return false;
+      final bookId = int.tryParse(taskId);
+      if (bookId == null) return false;
+      notifier.cancelDownloadRequest(bookId);
+      return true;
+    }
+    if (action == WebTaskAction.cancel) {
+      if (task.status == DownloadStatus.paused ||
+          task.status == DownloadStatus.error ||
+          task.status == DownloadStatus.cancelled) {
+        await notifier.removeTask(taskId);
+      } else {
+        notifier.cancelDownloadRequest(task.book.id);
+      }
+      return true;
+    }
+    if (task.status == DownloadStatus.paused) {
+      notifier.resumeDownload(taskId);
+      return true;
+    }
+    if (!task.canRetry && !task.wifiOnlyBlocked) return false;
+    unawaited(
+      notifier.startDownload(
+        task.book,
+        presetUrl: task.presetUrl,
+        fallbackUrls: task.fallbackUrls,
+        source: task.source,
+        customSubfolder: task.customSubfolder,
+      ),
+    );
+    return true;
   }
 
   /// The shelf may still be loading on a cold start; wait briefly.
@@ -216,6 +255,11 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     convertFailed: t.webPageConvertFailed,
   );
 
+  String _withAccessToken(String url) {
+    final token = _service.accessToken;
+    return token == null ? url : '$url?t=${Uri.encodeQueryComponent(token)}';
+  }
+
   Future<void> _copy(String url) async {
     final t = AppLocalizations.of(context)!;
     await Clipboard.setData(ClipboardData(text: url));
@@ -238,6 +282,12 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(downloadProvider, (_, __) {
+      if (_service.isRunning) _service.refreshSnapshot();
+    });
+    ref.listen(savedBooksProvider, (_, __) {
+      if (_service.isRunning) _service.refreshSnapshot();
+    });
     final t = AppLocalizations.of(context)!;
     final cs = Theme.of(context).colorScheme;
     final running = _service.isRunning;
@@ -345,7 +395,7 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
         ),
       );
     }
-    final url = lanUrl(primary.address, port);
+    final url = _withAccessToken(lanUrl(primary.address, port));
     return SettingsCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -412,13 +462,8 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     );
   }
 
-  /// Snapshot counts (frozen at start) plus the snapshot note,
-  /// aligned with the rows above it.
-  Widget _statsCard(
-    AppLocalizations t,
-    ColorScheme cs,
-    WebSnapshot snapshot,
-  ) {
+  /// Live snapshot counts and the local-network security notice.
+  Widget _statsCard(AppLocalizations t, ColorScheme cs, WebSnapshot snapshot) {
     const countStyle = TextStyle(fontWeight: FontWeight.w600);
     return SettingsCard(
       child: Column(
@@ -440,6 +485,14 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
             child: Text(
               t.webServiceSnapshotNote,
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+            ),
+          ),
+          const SettingsDivider(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(56, 0, 16, 16),
+            child: Text(
+              t.webServiceSecurityNote,
+              style: TextStyle(color: cs.error, fontSize: 12),
             ),
           ),
         ],
@@ -467,16 +520,21 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
       title: Text(t.webServiceOtherUrls),
       children: [
         for (final c in others)
-          ListTile(
-            dense: true,
-            title: Text(lanUrl(c.address, port)),
-            // Every listed address is bound by the server, including
-            // the mobile-data one, so each gets a copy button.
-            trailing: IconButton(
-              icon: const Icon(Icons.copy, size: 18),
-              tooltip: t.webServiceCopyUrl,
-              onPressed: () => _copy(lanUrl(c.address, port)),
-            ),
+          Builder(
+            builder: (context) {
+              final url = _withAccessToken(lanUrl(c.address, port));
+              return ListTile(
+                dense: true,
+                title: Text(url),
+                // Every listed address is bound by the server, including
+                // the mobile-data one, so each gets a copy button.
+                trailing: IconButton(
+                  icon: const Icon(Icons.copy, size: 18),
+                  tooltip: t.webServiceCopyUrl,
+                  onPressed: () => _copy(url),
+                ),
+              );
+            },
           ),
       ],
     );
@@ -485,7 +543,7 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
   Future<void> _openLocal(int port) async {
     try {
       await launchUrl(
-        Uri.parse('http://127.0.0.1:$port/'),
+        Uri.parse(_withAccessToken('http://127.0.0.1:$port/')),
         mode: LaunchMode.externalApplication,
       );
     } catch (error) {

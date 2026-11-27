@@ -26,14 +26,17 @@
 //  * Port 8080 is fixed; only when it cannot be bound does the server
 //    fall back to a system-chosen port, and [port] is always the one
 //    actually in use.
-//  * The book lists are a snapshot taken at start; they do not follow
-//    later downloads / favourites. Restarting refreshes them.
-//  * Files are addressed ONLY by their index in the snapshot — a
-//    request path never names a file system path.
+//  * Book lists and task progress are read dynamically, so downloads and
+//    favourites appear without restarting the service.
+//  * Files are addressed by stable book id, never by a snapshot index or
+//    a file system path.
 //  * Every response is answered with `Connection: close`: one request
 //    per connection, no keep-alive.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
@@ -309,8 +312,7 @@ class WebSnapshot {
         fileIndex: index,
         sizeLabel: index != null ? files[index].sizeLabel : null,
         description: book.description,
-        downloadPending:
-            index == null && pendingBookIds.contains(book.id),
+        downloadPending: index == null && pendingBookIds.contains(book.id),
       );
     }
 
@@ -383,6 +385,9 @@ class WebPageStrings {
 
 // ───────────────────────── Response ─────────────────────────
 
+String _jsString(String s) =>
+    jsonEncode(s).replaceAll('<', r'\u003c').replaceAll('>', r'\u003e');
+
 /// One HTTP response, as decided by Dart and written by [_dispatch].
 ///
 /// One answered request: [status], [headers], and exactly one payload
@@ -405,6 +410,7 @@ class WebResponse {
   final String? filePath;
   final int? fileStart;
   final int? fileEnd;
+  final bool deleteFileAfterSend;
 
   const WebResponse({
     required this.status,
@@ -413,6 +419,7 @@ class WebResponse {
     this.filePath,
     this.fileStart,
     this.fileEnd,
+    this.deleteFileAfterSend = false,
   });
 }
 
@@ -460,6 +467,14 @@ enum WebDownloadRequest {
 typedef RequestDownloadHandler =
     Future<WebDownloadRequest> Function(int bookId);
 
+typedef WebSnapshotProvider = WebSnapshot Function();
+typedef WebTasksProvider = List<DownloadTask> Function();
+
+enum WebTaskAction { cancel, retry }
+
+typedef WebTaskActionHandler =
+    Future<bool> Function(String taskId, WebTaskAction action);
+
 class WebService extends ChangeNotifier {
   /// The one instance shared by the settings page and the server.
   static final WebService shared = WebService();
@@ -467,20 +482,24 @@ class WebService extends ChangeNotifier {
   /// The only native call the service needs: the Android 17
   /// local-network permission (MethodChannel "zlibx/local_network",
   /// `ensureLocalNetworkPermission`). Everything else is Dart.
-  static const MethodChannel _permissionChannel =
-      MethodChannel('zlibx/local_network');
+  static const MethodChannel _permissionChannel = MethodChannel(
+    'zlibx/local_network',
+  );
 
   final AssetLoader _loadAsset;
   final PathResolver _resolvePath;
   final TxtToEpub _txt;
+  final bool _requireAccessToken;
 
   WebService({
     AssetLoader? assetLoader,
     PathResolver? pathResolver,
     TxtToEpub? txtConverter,
+    bool requireAccessToken = true,
   }) : _loadAsset = assetLoader ?? _bundleAsset,
        _resolvePath = pathResolver ?? _defaultResolvePath,
-       _txt = txtConverter ?? TxtToEpub();
+       _txt = txtConverter ?? TxtToEpub(),
+       _requireAccessToken = requireAccessToken;
 
   /// Default path resolution: content:// URIs resolve through
   /// MediaStore to a real path; plain paths go through the SAF folder
@@ -495,23 +514,48 @@ class WebService extends ChangeNotifier {
   }
 
   HttpServer? _server;
-  WebSnapshot _snapshot = const WebSnapshot();
+  WebSnapshot _baseSnapshot = const WebSnapshot();
+  static final Object _snapshotZoneKey = Object();
+  WebSnapshot get _snapshot =>
+      Zone.current[_snapshotZoneKey] as WebSnapshot? ?? _baseSnapshot;
   WebPageStrings _strings = WebPageStrings.english;
+  WebSnapshotProvider? _snapshotProvider;
+  WebTasksProvider? _tasksProvider;
+  String? _accessToken;
+  final Map<String, ({int bookId, int? generation, bool observed})> _webTasks =
+      <String, ({int bookId, int? generation, bool observed})>{};
+  final Set<String> _temporaryFiles = <String>{};
+  bool _zipInProgress = false;
+  final Map<int, Future<WebDownloadRequest>> _downloadRequests =
+      <int, Future<WebDownloadRequest>>{};
 
   /// Set by [start]: the screen's download trigger (item 3). Null
   /// when the caller did not provide it — that route then degrades.
   RequestDownloadHandler? _onRequestDownload;
+  WebTaskActionHandler? _onTaskAction;
 
   bool get isRunning => _server != null;
 
   /// The port actually bound, or null when stopped.
   int? get port => _server?.port;
 
-  WebSnapshot get snapshot => _snapshot;
+  /// Random per-start capability token. Null only in tests that opt out.
+  String? get accessToken => _accessToken;
+
+  WebSnapshot get snapshot => _snapshotProvider?.call() ?? _snapshot;
+
+  String _url(String path) {
+    final token = _accessToken;
+    return token == null ? path : '$path?t=${Uri.encodeQueryComponent(token)}';
+  }
+
+  void refreshSnapshot() {
+    _baseSnapshot = _snapshotProvider?.call() ?? _baseSnapshot;
+    notifyListeners();
+  }
 
   /// Start serving [snapshot]. Idempotent: starting while running just
-  /// returns the current port (the snapshot is NOT replaced — stop and
-  /// start again to refresh it).
+  /// returns the current port. Dynamic providers keep the snapshot live.
   ///
   /// Binds one 0.0.0.0 socket on [preferredPort]; when that port is
   /// taken, a system-chosen port is used instead, and [port] is always
@@ -522,6 +566,9 @@ class WebService extends ChangeNotifier {
     WebPageStrings strings = WebPageStrings.english,
     int preferredPort = kWebServicePort,
     RequestDownloadHandler? onRequestDownload,
+    WebSnapshotProvider? snapshotProvider,
+    WebTasksProvider? tasksProvider,
+    WebTaskActionHandler? onTaskAction,
   }) async {
     final running = _server;
     if (running != null) return running.port;
@@ -535,15 +582,17 @@ class WebService extends ChangeNotifier {
       throw const LocalNetworkPermissionDenied();
     }
 
-    _snapshot = snapshot;
+    _baseSnapshot = snapshot;
+    _snapshotProvider = snapshotProvider;
+    _tasksProvider = tasksProvider;
+    _onTaskAction = onTaskAction;
     _strings = strings;
     _onRequestDownload = onRequestDownload;
+    _webTasks.clear();
+    _accessToken = _requireAccessToken ? _newAccessToken() : null;
     HttpServer server;
     try {
-      server = await HttpServer.bind(
-        InternetAddress.anyIPv4,
-        preferredPort,
-      );
+      server = await HttpServer.bind(InternetAddress.anyIPv4, preferredPort);
     } on SocketException {
       // Preferred port taken by another program: any free port.
       server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
@@ -573,12 +622,46 @@ class WebService extends ChangeNotifier {
     }
   }
 
+  static String _newAccessToken() {
+    final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    return base64UrlEncode(bytes).replaceAll('=', '');
+  }
+
+  bool _authorized(Map<String, String> query, Map<String, String> headers) {
+    final token = _accessToken;
+    if (token == null) return true;
+    final supplied =
+        query['t'] ??
+        headers['authorization']?.replaceFirst(RegExp(r'^Bearer\s+'), '');
+    return supplied != null && supplied == token;
+  }
+
+  bool _sameOrigin(Map<String, String> headers) {
+    final origin = headers['origin'];
+    if (origin == null) return true;
+    final host = headers['host'];
+    if (host == null) return false;
+    final uri = Uri.tryParse(origin);
+    return uri != null && uri.authority == host;
+  }
+
   /// Stop serving. Called ONLY from the Stop button.
   Future<void> stop() async {
     final server = _server;
     if (server == null) return;
     _server = null;
+    _accessToken = null;
+    _snapshotProvider = null;
+    _tasksProvider = null;
+    _onRequestDownload = null;
+    _onTaskAction = null;
+    _webTasks.clear();
+    _downloadRequests.clear();
     await server.close(force: true);
+    for (final path in _temporaryFiles.toList()) {
+      await _deleteTemporaryFile(path);
+    }
+    _temporaryFiles.clear();
     notifyListeners();
   }
 
@@ -588,16 +671,33 @@ class WebService extends ChangeNotifier {
   /// header names are lowered here so `range` is always found.
   /// [request.uri.queryParameters] is passed through for /search.
   Future<void> _dispatch(HttpRequest request) async {
+    WebResponse? response;
     try {
       final headers = <String, String>{};
       request.headers.forEach((name, values) {
         headers[name.toLowerCase()] = values.join(', ');
       });
-      final response = await handleRequest(
+      String? body;
+      if (request.method.toUpperCase() == 'POST') {
+        final bytes = BytesBuilder(copy: false);
+        await for (final chunk in request) {
+          bytes.add(chunk);
+          if (bytes.length > 64 * 1024) {
+            response = _plain(
+              HttpStatus.requestEntityTooLarge,
+              'Request too large',
+            );
+            break;
+          }
+        }
+        if (response == null) body = utf8.decode(bytes.takeBytes());
+      }
+      response ??= await handleRequest(
         method: request.method,
         path: request.uri.path,
         query: request.uri.queryParameters,
         headers: headers,
+        body: body,
       );
       final httpResponse = request.response;
       httpResponse.statusCode = response.status;
@@ -631,11 +731,22 @@ class WebService extends ChangeNotifier {
           HttpHeaders.contentTypeHeader,
           'text/plain; charset=utf-8',
         );
+        httpResponse.headers.set(
+          HttpHeaders.cacheControlHeader,
+          _privacyHeaders['Cache-Control']!,
+        );
+        httpResponse.headers.set('Referrer-Policy', 'no-referrer');
+        httpResponse.headers.set('X-Content-Type-Options', 'nosniff');
         httpResponse.write('Internal Server Error');
         await httpResponse.close();
       } catch (e) {
         // Response already started / closed: nothing more to do.
         logIgnored('web_service', e);
+      }
+    } finally {
+      final path = response?.filePath;
+      if (response?.deleteFileAfterSend == true && path != null) {
+        await _deleteTemporaryFile(path);
       }
     }
   }
@@ -654,68 +765,149 @@ class WebService extends ChangeNotifier {
     required String path,
     Map<String, String> query = const <String, String>{},
     Map<String, String> headers = const <String, String>{},
+    String? body,
   }) async {
-    try {
-      // Header names are case-insensitive: [_dispatch] already
-      // lowercases them, but a direct caller (tests, future
-      // transports) may pass 'Range'. Normalise once so `range` is
-      // always found.
-      final lowerHeaders = <String, String>{
-        for (final entry in headers.entries)
-          entry.key.toLowerCase(): entry.value,
-      };
-      final normalizedMethod = method.toUpperCase();
-      if (normalizedMethod != 'GET' && normalizedMethod != 'HEAD') {
-        return _plain(HttpStatus.methodNotAllowed, 'Method Not Allowed');
+    final requestSnapshot = snapshot;
+    return runZoned(() async {
+      try {
+        final lowerHeaders = <String, String>{
+          for (final entry in headers.entries)
+            entry.key.toLowerCase(): entry.value,
+        };
+        if (!_authorized(query, lowerHeaders)) {
+          return _plain(HttpStatus.unauthorized, 'Unauthorized');
+        }
+        final normalizedMethod = method.toUpperCase();
+        if (normalizedMethod != 'GET' &&
+            normalizedMethod != 'HEAD' &&
+            normalizedMethod != 'POST') {
+          return _plain(HttpStatus.methodNotAllowed, 'Method Not Allowed');
+        }
+        if (normalizedMethod == 'POST' && !_sameOrigin(lowerHeaders)) {
+          return _plain(HttpStatus.forbidden, 'Cross-origin request refused');
+        }
+        final segments = path
+            .split('/')
+            .where((s) => s.isNotEmpty)
+            .toList(growable: false);
+        final layout = detectWebLayout(query: query, headers: lowerHeaders);
+        final theme = detectWebTheme(query);
+        if (segments.isEmpty) {
+          if (normalizedMethod == 'POST') {
+            return _plain(HttpStatus.methodNotAllowed, 'Method Not Allowed');
+          }
+          return _html(HttpStatus.ok, _homePage(layout, theme));
+        }
+        switch (segments.first) {
+          case 'api':
+            return _apiRoute(segments, normalizedMethod, body);
+          case 'zip':
+            return _zipRoute(segments, normalizedMethod);
+          case 'request-download':
+            if (normalizedMethod != 'POST') {
+              return _plain(HttpStatus.methodNotAllowed, 'Use POST');
+            }
+            return _requestDownloadRoute(segments);
+          case 'icon.png':
+          case 'favicon.ico':
+            return _iconRoute();
+          case 'download':
+            return _downloadRoute(segments, lowerHeaders);
+          case 'read':
+            return _readRoute(segments);
+          case 'book':
+            return _bookRoute(segments, lowerHeaders);
+          case 'reader-assets':
+            return _assetRoute(segments);
+          case 'search':
+            return _searchRoute(query, layout, theme);
+          default:
+            return _notFound();
+        }
+      } catch (error) {
+        logIgnored('web_service', error);
+        return _plain(HttpStatus.internalServerError, 'Internal Server Error');
       }
-      final segments = path
-          .split('/')
-          .where((s) => s.isNotEmpty)
-          .toList(growable: false);
-      // List pages (/ and /search) get a PC or mobile shell: the
-      // layout is forced by ?layout=, else the User-Agent decides.
-      final layout = detectWebLayout(query: query, headers: lowerHeaders);
-      final theme = detectWebTheme(query);
-      if (segments.isEmpty) {
-        return _html(HttpStatus.ok, _homePage(layout, theme));
-      }
-      switch (segments.first) {
-        case 'zip':
-          return _zipRoute(segments);
-        case 'request-download':
-          return _requestDownloadRoute(segments);
-        case 'icon.png':
-        case 'favicon.ico':
-          return _iconRoute();
-        case 'download':
-          return _downloadRoute(segments, lowerHeaders['range']);
-        case 'read':
-          return _readRoute(segments);
-        case 'book':
-          return _bookRoute(segments, lowerHeaders['range']);
-        case 'reader-assets':
-          return _assetRoute(segments);
-        case 'search':
-          return _searchRoute(query, layout, theme);
-        default:
-          return _notFound();
-      }
-    } catch (error) {
-      logIgnored('web_service', error);
-      return _plain(
-        HttpStatus.internalServerError,
-        'Internal Server Error',
-      );
-    }
+    }, zoneValues: <Object, Object>{_snapshotZoneKey: requestSnapshot});
   }
 
-  /// Strict index parse: digits only, within the snapshot's files.
+  /// Strict book-id parse and lookup in the current snapshot.
   int? _fileIndex(List<String> segments) {
     if (segments.length != 2) return null;
     final raw = segments[1];
     if (!RegExp(r'^\d{1,9}$').hasMatch(raw)) return null;
-    final index = int.parse(raw);
-    return index < _snapshot.files.length ? index : null;
+    final bookId = int.parse(raw);
+    for (var i = 0; i < _snapshot.files.length; i++) {
+      if (_snapshot.files[i].bookId == bookId) return i;
+    }
+    return null;
+  }
+
+  Future<WebResponse> _apiRoute(
+    List<String> segments,
+    String method,
+    String? body,
+  ) async {
+    if (segments.length == 2 && segments[1] == 'library') {
+      if (method != 'GET' && method != 'HEAD') {
+        return _plain(HttpStatus.methodNotAllowed, 'Method Not Allowed');
+      }
+      return _json(HttpStatus.ok, _libraryJson());
+    }
+    if (segments.length == 2 && segments[1] == 'download') {
+      if (method != 'POST') {
+        return _plain(HttpStatus.methodNotAllowed, 'Use POST');
+      }
+      final int bookId;
+      try {
+        final data = jsonDecode(body ?? '') as Map<String, dynamic>;
+        final rawId = data['bookId'];
+        if (rawId is! int || rawId <= 0 || rawId > 999999999) {
+          return _json(HttpStatus.badRequest, {'message': 'Invalid bookId'});
+        }
+        bookId = rawId;
+      } catch (_) {
+        return _json(HttpStatus.badRequest, {'message': 'Invalid bookId'});
+      }
+      final result = await _startWebDownload(bookId);
+      return _json(result.status, result.json);
+    }
+    if (segments.length == 3 && segments[1] == 'tasks') {
+      if (method == 'GET' || method == 'HEAD') {
+        final task = _taskById(segments[2]);
+        if (!_ownsWebTask(segments[2], task)) {
+          return _json(HttpStatus.notFound, {'message': 'Task not found'});
+        }
+        return _json(HttpStatus.ok, _taskJsonById(segments[2]));
+      }
+    }
+    if (segments.length == 4 &&
+        segments[1] == 'tasks' &&
+        (segments[3] == 'cancel' || segments[3] == 'retry')) {
+      if (method != 'POST') {
+        return _plain(HttpStatus.methodNotAllowed, 'Use POST');
+      }
+      final currentTask = _taskById(segments[2]);
+      if (!_ownsWebTask(segments[2], currentTask)) {
+        return _json(HttpStatus.forbidden, {'message': 'Not a web task'});
+      }
+      final handler = _onTaskAction;
+      if (handler == null) {
+        return _json(HttpStatus.serviceUnavailable, {'message': 'Unavailable'});
+      }
+      final ok = await handler(
+        segments[2],
+        segments[3] == 'cancel' ? WebTaskAction.cancel : WebTaskAction.retry,
+      );
+      final task = _taskById(segments[2]);
+      return _json(
+        ok ? HttpStatus.accepted : HttpStatus.conflict,
+        task == null
+            ? {'message': ok ? 'Accepted' : 'Action refused'}
+            : _taskJson(task),
+      );
+    }
+    return _json(HttpStatus.notFound, {'message': 'Not found'});
   }
 
   WebResponse _notFound() =>
@@ -737,57 +929,111 @@ class WebService extends ChangeNotifier {
     );
   }
 
-  /// Zip download (item 2): /zip/all packs every downloaded book.
-  /// The zip is built in memory (archive's encoder is an in-memory
-  /// operation) and returned as an attachment.
-  Future<WebResponse> _zipRoute(List<String> s) async {
-    List<int> indices;
-    String zipName;
-    if (s.length == 2 && s[1] == 'all') {
-      indices = [for (var i = 0; i < _snapshot.files.length; i++) i];
-      zipName = 'downloaded-books.zip';
-    } else {
-      return _notFound();
+  /// GET asks for confirmation; POST builds the ZIP in a temporary file.
+  Future<WebResponse> _zipRoute(List<String> segments, String method) async {
+    if (segments.length != 2 || segments[1] != 'all') return _notFound();
+    if (_snapshot.files.isEmpty) {
+      return _html(HttpStatus.ok, _messagePage('这里还没有已下载的书，打包是空的。'));
     }
-    if (indices.isEmpty) {
+    if (method == 'GET' || method == 'HEAD') {
       return _html(
         HttpStatus.ok,
-        _messagePage('这里还没有已下载的书，打包是空的。'),
+        _page(
+          '全部打包',
+          _layout(
+            '<p>将打包 ${_snapshot.files.length} 本已下载的书。'
+            '大文件打包会占用手机临时存储空间。</p>'
+            '<form method="post" action="${_url('/zip/all')}">'
+            '<button class="zip-btn" type="submit">确认打包</button></form>'
+            '<p><a href="${_url('/')}">${escapeHtml(_strings.backHome)}</a></p>',
+          ),
+        ),
       );
     }
-    final archive = Archive();
-    final usedNames = <String>{};
-    for (final index in indices) {
-      final file = await _fileFor(index);
-      if (file == null) continue;
-      final entry = _snapshot.files[index];
-      final bytes = await file.readAsBytes();
-      var name = _zipEntryName(entry);
-      var n = 2;
-      while (usedNames.contains(name)) {
-        name = _zipEntryName(entry, suffix: n);
-        n++;
+
+    if (_zipInProgress) {
+      return _plain(
+        HttpStatus.tooManyRequests,
+        'ZIP build already in progress',
+      );
+    }
+    _zipInProgress = true;
+    Directory? tempDir;
+    try {
+      tempDir = await Directory.systemTemp.createTemp('zlibx_zip_');
+      final output = File(p.join(tempDir.path, 'downloaded-books.zip'));
+      final outputStream = OutputFileStream(output.path);
+      final encoder = ZipEncoder()..startEncode(outputStream);
+      final usedNames = <String>{};
+      final inputs = <InputFileStream>[];
+      var added = 0;
+      try {
+        for (var i = 0; i < _snapshot.files.length; i++) {
+          final file = await _fileFor(i);
+          if (file == null) continue;
+          final entry = _snapshot.files[i];
+          final stat = await file.stat();
+          var name = _zipEntryName(entry);
+          var n = 2;
+          while (usedNames.contains(name)) {
+            name = _zipEntryName(entry, suffix: n);
+            n++;
+          }
+          usedNames.add(name);
+          final input = InputFileStream(file.path, bufferSize: 64 * 1024);
+          inputs.add(input);
+          final archiveFile = ArchiveFile.stream(name, input)
+            ..compression = CompressionType.none;
+          archiveFile.lastModTime =
+              stat.modified.millisecondsSinceEpoch ~/ 1000;
+          encoder.add(archiveFile, autoClose: false);
+          added++;
+        }
+        encoder.endEncode();
+        await outputStream.close();
+      } catch (_) {
+        try {
+          await outputStream.close();
+        } catch (_) {}
+        rethrow;
+      } finally {
+        for (final input in inputs) {
+          try {
+            input.closeSync();
+          } catch (error) {
+            logIgnored('web_service_zip_input', error);
+          }
+        }
       }
-      usedNames.add(name);
-      archive.addFile(ArchiveFile(name, bytes.length, bytes));
-    }
-    if (archive.files.isEmpty) {
-      return _html(
-        HttpStatus.ok,
-        _messagePage('这里还没有已下载的书，打包是空的。'),
+      if (added == 0) {
+        await tempDir.delete(recursive: true);
+        return _html(HttpStatus.ok, _messagePage('可读取的文件不存在，打包是空的。'));
+      }
+      _temporaryFiles.add(output.path);
+      return _sendFile(
+        output,
+        contentType: 'application/zip',
+        downloadName: 'downloaded-books.zip',
+        deleteFileAfterSend: true,
       );
+    } catch (error) {
+      logIgnored('web_service_zip', error);
+      if (tempDir != null) {
+        try {
+          await tempDir.delete(recursive: true);
+        } catch (cleanupError) {
+          logIgnored('web_service_zip_cleanup', cleanupError);
+        }
+      }
+      return _plain(
+        error is FileSystemException
+            ? HttpStatus.insufficientStorage
+            : HttpStatus.internalServerError,
+        'Could not build ZIP',
+      );
+    } finally {
+      _zipInProgress = false;
     }
-    final encoded = ZipEncoder().encode(archive);
-    final body = Uint8List.fromList(encoded);
-    return WebResponse(
-      status: HttpStatus.ok,
-      headers: <String, String>{
-        'Content-Type': 'application/zip',
-        'Content-Length': body.length.toString(),
-        'Content-Disposition': _contentDisposition(zipName),
-      },
-      body: body,
-    );
   }
 
   /// A safe, unique file name inside the zip: "Title - Author.ext"
@@ -796,52 +1042,286 @@ class WebService extends ChangeNotifier {
     final base = [
       f.title,
       if (f.author.isNotEmpty) f.author,
-    ].join(' - ').replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
+    ].join(' - ').replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F\x7F]'), '_').trim();
     final ext = f.extension.isNotEmpty ? '.${f.extension}' : '';
     final stem = base.isEmpty ? 'book' : base;
     return suffix == null ? '$stem$ext' : '$stem ($suffix)$ext';
   }
 
-  /// Web-triggered download (item 3): `/request-download/<bookId>`.
-  /// Hands the book to the screen's downloader and answers with a
-  /// confirmation page. The snapshot is frozen at start, so a book
-  /// downloaded this way only shows up after the service restarts —
-  /// the confirmation says so.
-  Future<WebResponse> _requestDownloadRoute(List<String> s) async {
-    if (s.length != 2 || !RegExp(r'^\d{1,9}$').hasMatch(s[1])) {
-      return _notFound();
+  /// Web-triggered download. Concurrent clicks for one book share a
+  /// single handler call; the app download engine remains authoritative.
+  Future<({int status, Map<String, Object?> json})> _startWebDownload(
+    int bookId,
+  ) async {
+    final taskId = bookId.toString();
+    final existing = _taskById(taskId);
+    if (existing != null &&
+        existing.status == DownloadStatus.completed &&
+        !existing.missingFile) {
+      return (
+        status: HttpStatus.ok,
+        json: _taskJson(existing)..['message'] = 'already downloaded',
+      );
+    }
+    if (_ownsWebTask(taskId, existing) &&
+        (existing == null ||
+            existing.status == DownloadStatus.pending ||
+            existing.status == DownloadStatus.downloading ||
+            existing.status == DownloadStatus.paused)) {
+      return (
+        status: HttpStatus.ok,
+        json: _taskJsonById(taskId)..['message'] = 'already downloading',
+      );
+    }
+
+    final inFlight = _downloadRequests[bookId];
+    if (inFlight != null) {
+      final outcome = await inFlight;
+      return _downloadResult(bookId, outcome);
     }
     final handler = _onRequestDownload;
     if (handler == null) {
-      return _html(
-        HttpStatus.ok,
-        _messagePage('下载功能当前不可用，请在手机上直接下载。'),
+      return (
+        status: HttpStatus.serviceUnavailable,
+        json: {'message': 'Download unavailable'},
       );
     }
-    final bookId = int.parse(s[1]);
-    WebDownloadRequest outcome;
+    final future = handler(bookId);
+    _downloadRequests[bookId] = future;
     try {
-      outcome = await handler(bookId);
-    } catch (error) {
-      logIgnored('web_service', error);
-      return _plain(HttpStatus.internalServerError, 'Internal Server Error');
+      return _downloadResult(bookId, await future);
+    } finally {
+      if (identical(_downloadRequests[bookId], future)) {
+        unawaited(_downloadRequests.remove(bookId));
+      }
     }
+  }
+
+  ({int status, Map<String, Object?> json}) _downloadResult(
+    int bookId,
+    WebDownloadRequest outcome,
+  ) {
+    final taskId = bookId.toString();
     switch (outcome) {
       case WebDownloadRequest.started:
-        return _html(
-          HttpStatus.ok,
-          _messagePage(
-            '已开始下载，会占用下载额度。下载完成后重启 Web 服务，'
-            '才能在网页上看到这本书。',
-          ),
+        _webTasks[taskId] = (bookId: bookId, generation: null, observed: false);
+        return (
+          status: HttpStatus.accepted,
+          json: _taskJsonById(taskId)..['message'] = 'started',
         );
       case WebDownloadRequest.alreadyDownloaded:
-        return _html(HttpStatus.ok, _messagePage('这本书已经下载过了。'));
+        final task = _taskById(taskId);
+        return (
+          status: HttpStatus.ok,
+          json: task == null
+              ? {'taskId': taskId, 'bookId': bookId, 'status': 'completed'}
+              : _taskJson(task),
+        );
       case WebDownloadRequest.alreadyDownloading:
-        return _html(HttpStatus.ok, _messagePage('这本书正在下载中，请稍后再来。'));
+        return (
+          status: HttpStatus.ok,
+          json: _taskJsonById(taskId)..['message'] = 'already downloading',
+        );
       case WebDownloadRequest.notFound:
-        return _notFound();
+        return (
+          status: HttpStatus.notFound,
+          json: {'message': 'Book not found'},
+        );
     }
+  }
+
+  bool _ownsWebTask(String taskId, DownloadTask? task) {
+    final ownership = _webTasks[taskId];
+    if (ownership == null) return false;
+    if (task == null) {
+      if (ownership.observed) {
+        _webTasks.remove(taskId);
+        return false;
+      }
+      return true;
+    }
+    if (task.book.id != ownership.bookId ||
+        (ownership.generation != null &&
+            ownership.generation != task.generation)) {
+      _webTasks.remove(taskId);
+      return false;
+    }
+    if (ownership.generation == null) {
+      _webTasks[taskId] = (
+        bookId: ownership.bookId,
+        generation: task.generation,
+        observed: true,
+      );
+    }
+    return true;
+  }
+
+  DownloadTask? _taskById(String taskId) {
+    for (final task in _tasksProvider?.call() ?? const <DownloadTask>[]) {
+      if (task.id == taskId) return task;
+    }
+    return null;
+  }
+
+  Map<String, Object?> _taskJsonById(String taskId) {
+    final task = _taskById(taskId);
+    if (task != null) return _taskJson(task);
+    return <String, Object?>{
+      'taskId': taskId,
+      'bookId': int.tryParse(taskId),
+      'status': 'queued',
+      'progress': 0.0,
+      'receivedBytes': null,
+      'totalBytes': null,
+      'errorCode': null,
+      'retryable': false,
+    };
+  }
+
+  Map<String, Object?> _taskJson(DownloadTask task) {
+    final total = task.fileSize ?? task.book.filesize;
+    final status = switch (task.status) {
+      DownloadStatus.pending => 'queued',
+      DownloadStatus.downloading => 'downloading',
+      DownloadStatus.paused => 'paused',
+      DownloadStatus.completed => 'completed',
+      DownloadStatus.error => 'failed',
+      DownloadStatus.cancelled => 'cancelled',
+    };
+    final errorCode = task.quotaExceeded
+        ? 'quota_exceeded'
+        : task.wifiOnlyBlocked
+        ? 'wifi_only'
+        : task.magicMismatch
+        ? 'invalid_file'
+        : task.missingFile
+        ? 'missing_file'
+        : task.needsFreshLink
+        ? 'fresh_link_required'
+        : task.status == DownloadStatus.error
+        ? 'download_failed'
+        : null;
+    return <String, Object?>{
+      'taskId': task.id,
+      'bookId': task.book.id,
+      'title': task.book.title,
+      'status': status,
+      'progress': task.progress.clamp(0.0, 1.0),
+      'receivedBytes': task.status == DownloadStatus.completed
+          ? task.fileSize ?? task.receivedBytes
+          : task.receivedBytes,
+      'totalBytes': total,
+      'errorCode': errorCode,
+      'retryable':
+          task.canRetry ||
+          task.wifiOnlyBlocked ||
+          task.status == DownloadStatus.paused,
+    };
+  }
+
+  Map<String, Object?> _libraryJson() {
+    final tasks = _tasksProvider?.call() ?? const <DownloadTask>[];
+    final byId = <int, DownloadTask>{
+      for (final task in tasks) task.book.id: task,
+    };
+    final books = <Map<String, Object?>>[];
+    final seen = <int>{};
+    void addBook(WebEntry entry) {
+      final id = entry.bookId;
+      if (id == null || !seen.add(id)) return;
+      final task = byId[id];
+      final ext = entry.extension.toLowerCase();
+      books.add(<String, Object?>{
+        'bookId': id,
+        'title': entry.title,
+        'author': entry.author,
+        'extension': ext,
+        'downloaded': entry.fileIndex != null,
+        'task': task == null ? null : _taskJson(task),
+        'downloadUrl': entry.fileIndex == null ? null : _url('/download/$id'),
+        'readUrl': entry.fileIndex == null
+            ? null
+            : isReadableExtension(ext)
+            ? _url('/read/$id')
+            : isPdfExtension(ext)
+            ? _url('/book/$id')
+            : null,
+      });
+    }
+
+    for (var i = 0; i < _snapshot.files.length; i++) {
+      addBook(_entryFromFile(i));
+    }
+    for (final entry in _snapshot.library) {
+      addBook(entry);
+    }
+    return <String, Object?>{
+      'updatedAt': DateTime.now().toUtc().toIso8601String(),
+      'books': books,
+    };
+  }
+
+  /// HTML fallback for browsers without fetch; it polls the same task
+  /// API used by JavaScript clients and never exposes paths or URLs.
+  Future<WebResponse> _requestDownloadRoute(List<String> segments) async {
+    if (segments.length != 2 || !RegExp(r'^\d{1,9}$').hasMatch(segments[1])) {
+      return _notFound();
+    }
+    final bookId = int.parse(segments[1]);
+    final result = await _startWebDownload(bookId);
+    final task = result.json;
+    final taskId = task['taskId'] ?? bookId.toString();
+    final status = task['status'] ?? 'failed';
+    final message = switch (result.status) {
+      HttpStatus.accepted => '已请求下载到运行 Zlibx 的手机，会占用手机账号额度、流量与存储空间。',
+      HttpStatus.ok =>
+        status == 'completed' ? '这本书已经下载到手机。' : '手机已有这个下载任务，无需重复创建。',
+      HttpStatus.notFound => '收藏中没有找到这本书。',
+      _ => '下载功能当前不可用，请在手机上直接下载。',
+    };
+    final actions = status == 'completed'
+        ? '<p><a href="${_url('/')}">返回首页阅读或下载</a></p>'
+        : '<p id="actions"><button id="retry" type="button" hidden>重试</button> '
+              '<button id="cancel" type="button" hidden>取消任务</button></p>';
+    final html =
+        '''<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>下载到手机</title><style>
+body{font-family:system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;line-height:1.7}
+button{min-height:44px;padding:8px 16px;margin-right:8px}progress{width:100%;height:18px}#state{font-weight:600}
+</style></head><body><h1>下载到运行 Zlibx 的手机</h1><p>${escapeHtml(message)}</p>
+<p id="state">正在获取任务状态…</p><progress id="progress" max="1" value="0"></progress>
+<p id="detail"></p>$actions<p><a href="${_url('/')}">返回首页</a></p>
+<noscript><meta http-equiv="refresh" content="2"></noscript>
+<script>
+const taskUrl = ${_jsString('/api/tasks/$taskId')};
+const token = ${_jsString(_accessToken ?? '')};
+let timer;
+const labels = {queued:'排队中',downloading:'下载中',paused:'已暂停',completed:'已完成',failed:'失败',cancelled:'已取消'};
+async function poll() {
+  try {
+    const r = await fetch(taskUrl + '?t=' + encodeURIComponent(token), {cache:'no-store'});
+    if (!r.ok) throw new Error('status ' + r.status);
+    const t = await r.json();
+    \$('state').textContent = labels[t.status] || t.status;
+    \$('progress').value = t.progress || 0;
+    \$('detail').textContent = t.status === 'downloading' ? Math.round((t.progress || 0) * 100) + '%' : (t.errorCode || '');
+    \$('retry').hidden = !t.retryable;
+    \$('cancel').hidden = !(t.status === 'queued' || t.status === 'downloading' || t.status === 'paused');
+    if (t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled') clearInterval(timer);
+  } catch (e) {
+    \$('state').textContent = '暂时无法连接手机，请确认 Web 服务仍在运行。';
+  }
+}
+async function action(name) {
+  const r = await fetch('/api/tasks/$taskId/' + name + '?t=' + encodeURIComponent(token), {method:'POST'});
+  if (r.ok) poll();
+}
+\$('retry').onclick = () => action('retry');
+\$('cancel').onclick = () => action('cancel');
+poll(); timer = setInterval(poll, 1500);
+</script></body></html>''';
+    return _html(result.status, html);
   }
 
   /// The app icon (item 8): /icon.png and /favicon.ico serve the
@@ -856,6 +1336,7 @@ class WebService extends ChangeNotifier {
       headers: <String, String>{
         'Content-Type': 'image/png',
         'Content-Length': bytes.length.toString(),
+        ..._privacyHeaders,
       },
       body: Uint8List.fromList(bytes),
     );
@@ -902,10 +1383,10 @@ class WebService extends ChangeNotifier {
   }
 
   Future<WebResponse> _downloadRoute(
-    List<String> s,
-    String? rangeHeader,
+    List<String> segments,
+    Map<String, String> headers,
   ) async {
-    final index = _fileIndex(s);
+    final index = _fileIndex(segments);
     if (index == null) return _notFound();
     final file = await _fileFor(index);
     if (file == null) return _notFound();
@@ -913,7 +1394,8 @@ class WebService extends ChangeNotifier {
       file,
       contentType: _mimeFor(_snapshot.files[index].extension),
       downloadName: p.basename(file.path),
-      rangeHeader: rangeHeader,
+      rangeHeader: headers['range'],
+      ifRangeHeader: headers['if-range'],
     );
   }
 
@@ -929,7 +1411,7 @@ class WebService extends ChangeNotifier {
       // Convert up front so a failure becomes a readable page here
       // rather than a broken reader; /book then hits the cache.
       try {
-        await _txt.epubFor(file.path, title: entry.title);
+        await _txt.epubFileFor(file.path, title: entry.title);
       } on TxtConvertException {
         return _html(
           HttpStatus.unprocessableEntity,
@@ -940,15 +1422,19 @@ class WebService extends ChangeNotifier {
     return _html(
       HttpStatus.ok,
       buildReaderPage(
-        index: index,
+        bookId: entry.bookId,
         title: entry.title,
         bookKey: fnv1a64Hex(entry.location),
+        accessToken: _accessToken ?? '',
       ),
     );
   }
 
-  Future<WebResponse> _bookRoute(List<String> s, String? rangeHeader) async {
-    final index = _fileIndex(s);
+  Future<WebResponse> _bookRoute(
+    List<String> segments,
+    Map<String, String> headers,
+  ) async {
+    final index = _fileIndex(segments);
     if (index == null) return _notFound();
     final entry = _snapshot.files[index];
     if (!isReadableExtension(entry.extension) &&
@@ -960,27 +1446,26 @@ class WebService extends ChangeNotifier {
 
     final ext = entry.extension.toLowerCase();
     if (ext == 'txt') {
-      final Uint8List epub;
+      final File epub;
       try {
-        epub = await _txt.epubFor(file.path, title: entry.title);
+        epub = await _txt.epubFileFor(file.path, title: entry.title);
       } on TxtConvertException {
         return _plain(HttpStatus.unprocessableEntity, 'convert failed');
       }
-      return WebResponse(
-        status: HttpStatus.ok,
-        headers: <String, String>{
-          'Content-Type': 'application/epub+zip',
-          'X-Book-Name': 'book.epub',
-          'Content-Length': epub.length.toString(),
-        },
-        body: epub,
+      return _sendFile(
+        epub,
+        contentType: 'application/epub+zip',
+        rangeHeader: headers['range'],
+        ifRangeHeader: headers['if-range'],
+        extraHeaders: <String, String>{'X-Book-Name': 'book.epub'},
       );
     }
     return _sendFile(
       file,
       contentType: _mimeFor(ext),
       downloadName: null,
-      rangeHeader: rangeHeader,
+      rangeHeader: headers['range'],
+      ifRangeHeader: headers['if-range'],
       extraHeaders: <String, String>{'X-Book-Name': 'book.$ext'},
     );
   }
@@ -995,12 +1480,35 @@ class WebService extends ChangeNotifier {
       headers: <String, String>{
         'Content-Type': 'text/javascript; charset=utf-8',
         'Content-Length': bytes.length.toString(),
+        ..._privacyHeaders,
       },
       body: Uint8List.fromList(bytes),
     );
   }
 
   // ── Responses ────────────────────────────────────────────────────
+
+  static const Map<String, String> _privacyHeaders = <String, String>{
+    'Cache-Control': 'private, no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+  };
+
+  Future<void> _deleteTemporaryFile(String path) async {
+    _temporaryFiles.remove(path);
+    try {
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+      final parent = file.parent;
+      if (p.basename(parent.path).startsWith('zlibx_zip_') &&
+          await parent.exists() &&
+          await parent.list().isEmpty) {
+        await parent.delete();
+      }
+    } catch (error) {
+      logIgnored('web_service_cleanup', error);
+    }
+  }
 
   WebResponse _html(int status, String body) {
     final bytes = utf8.encode(body);
@@ -1009,6 +1517,7 @@ class WebService extends ChangeNotifier {
       headers: <String, String>{
         'Content-Type': 'text/html; charset=utf-8',
         'Content-Length': bytes.length.toString(),
+        ..._privacyHeaders,
       },
       body: Uint8List.fromList(bytes),
     );
@@ -1021,6 +1530,20 @@ class WebService extends ChangeNotifier {
       headers: <String, String>{
         'Content-Type': 'text/plain; charset=utf-8',
         'Content-Length': bytes.length.toString(),
+        ..._privacyHeaders,
+      },
+      body: Uint8List.fromList(bytes),
+    );
+  }
+
+  WebResponse _json(int status, Map<String, Object?> data) {
+    final bytes = utf8.encode(jsonEncode(data));
+    return WebResponse(
+      status: status,
+      headers: <String, String>{
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Length': bytes.length.toString(),
+        ..._privacyHeaders,
       },
       body: Uint8List.fromList(bytes),
     );
@@ -1036,17 +1559,31 @@ class WebService extends ChangeNotifier {
     required String contentType,
     String? downloadName,
     String? rangeHeader,
+    String? ifRangeHeader,
     Map<String, String> extraHeaders = const <String, String>{},
+    bool deleteFileAfterSend = false,
   }) async {
-    final length = await file.length();
+    final stat = await file.stat();
+    final length = stat.size;
+    final modified = stat.modified;
+    final etag =
+        '"${length.toRadixString(16)}-'
+        '${modified.millisecondsSinceEpoch.toRadixString(16)}"';
     var start = 0;
     var end = length - 1;
     var status = HttpStatus.ok;
+    var useRange = rangeHeader != null;
+    final validator = ifRangeHeader?.trim();
+    if (validator != null &&
+        validator != etag &&
+        validator != HttpDate.format(modified)) {
+      useRange = false;
+    }
 
-    if (rangeHeader != null) {
+    if (useRange) {
       final match = RegExp(
         r'^bytes=(\d*)-(\d*)$',
-      ).firstMatch(rangeHeader.trim());
+      ).firstMatch(rangeHeader!.trim());
       if (match != null && (match[1]!.isNotEmpty || match[2]!.isNotEmpty)) {
         if (match[1]!.isEmpty) {
           final suffix = int.tryParse(match[2]!) ?? 0;
@@ -1062,6 +1599,10 @@ class WebService extends ChangeNotifier {
             headers: <String, String>{
               'Content-Range': 'bytes */$length',
               'Content-Length': '0',
+              'Accept-Ranges': 'bytes',
+              'ETag': etag,
+              'Last-Modified': HttpDate.format(modified),
+              ..._privacyHeaders,
             },
           );
         }
@@ -1074,6 +1615,9 @@ class WebService extends ChangeNotifier {
       'Content-Type': contentType,
       'Accept-Ranges': 'bytes',
       'Content-Length': count.toString(),
+      'ETag': etag,
+      'Last-Modified': HttpDate.format(modified),
+      ..._privacyHeaders,
       ...extraHeaders,
     };
     if (status == HttpStatus.partialContent) {
@@ -1091,14 +1635,14 @@ class WebService extends ChangeNotifier {
       filePath: file.path,
       fileStart: start,
       fileEnd: end,
+      deleteFileAfterSend: deleteFileAfterSend,
     );
   }
 
   static String _contentDisposition(String name) {
-    final ascii = name.replaceAll(RegExp(r'[^\x20-\x7E]'), '_').replaceAll(
-      RegExp(r'["\\]'),
-      '_',
-    );
+    final ascii = name
+        .replaceAll(RegExp(r'[^\x20-\x7E]'), '_')
+        .replaceAll(RegExp(r'["\\]'), '_');
     return 'attachment; filename="$ascii"; '
         "filename*=UTF-8''${Uri.encodeComponent(name)}";
   }
@@ -1201,12 +1745,18 @@ class WebService extends ChangeNotifier {
       '.actions a+a{background:#E8F5EE;color:#2D6A4F}'
       '.actions a:hover{background:#245A42}'
       '.actions a+a:hover{background:#D3EBDD}'
+      '.actions form{display:inline-block;margin:0 8px 8px 0}'
+      '.actions button{min-height:44px;border:0;border-radius:30px;padding:8px 20px;'
+      'font-family:inherit;font-size:14px;font-weight:600;color:#FFFFFF;background:#2D6A4F;'
+      'cursor:pointer}'
+      '.actions button:hover{background:#245A42}'
+      '.download-hint{display:block;margin-top:6px;color:#5C6B64;font-size:12px}'
       '.dim{color:#5C6B64}'
       '.zip-btn{display:inline-block;margin:0 0 16px;padding:16px 24px;border-radius:30px;'
       'font-size:16px;font-weight:600;text-decoration:none;color:#FFFFFF;background:#2D6A4F;'
       'transition:transform 150ms $_ease,background-color 150ms $_ease}'
       '.zip-btn:hover{background:#245A42}'
-      '.actions a:active,.zip-btn:active{transform:scale(0.96)}'
+      '.actions a:active,.actions button:active,.zip-btn:active{transform:scale(0.96)}'
       'a{color:#2D6A4F}'
       // Page margins follow the app: 20 on phones, 32 from 600, 48 from 1240.
       '@media (min-width:600px){.main{padding:24px 32px 32px}}'
@@ -1217,7 +1767,7 @@ class WebService extends ChangeNotifier {
       'body.layout-mobile .grid{display:block}'
       'body.layout-mobile .cover,body.layout-mobile .cover-ph{width:64px;height:84px;flex-basis:64px}'
       'body.layout-mobile .cover-ph{font-size:26px}'
-      'body.layout-mobile .actions a{padding:12px 20px;font-size:16px}';
+      'body.layout-mobile .actions a,body.layout-mobile .actions button{padding:12px 20px;font-size:16px}';
 
   /// The dark scheme (app dark palette), scoped under [b] — the body
   /// selector that switches it on.
@@ -1231,11 +1781,11 @@ class WebService extends ChangeNotifier {
       '$b .card{background:#1B221C;border-color:#2A2F2A;box-shadow:none}'
       '$b .cover{background:#252D26}'
       '$b .cover-ph{background:#1F3F2F;color:#52B788}'
-      '$b .meta,$b .desc,$b .dim{color:#B2BDB4}'
+      '$b .meta,$b .desc,$b .dim,$b .download-hint{color:#B2BDB4}'
       '$b a{color:#52B788}'
-      '$b .actions a,$b .zip-btn{background:#52B788;color:#0F2418}'
+      '$b .actions a,$b .actions button,$b .zip-btn{background:#52B788;color:#0F2418}'
       '$b .actions a+a{background:#1F3F2F;color:#52B788}'
-      '$b .actions a:hover,$b .zip-btn:hover{background:#6BC79B}'
+      '$b .actions a:hover,$b .actions button:hover,$b .zip-btn:hover{background:#6BC79B}'
       '$b .actions a+a:hover{background:#2A5340}';
 
   static final String _css =
@@ -1263,8 +1813,8 @@ class WebService extends ChangeNotifier {
         : layoutCls;
     return '<!DOCTYPE html><html><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        '<link rel="icon" type="image/png" href="/icon.png">'
-        '<link rel="apple-touch-icon" href="/icon.png">'
+        '<link rel="icon" type="image/png" href="${escapeHtml(_url('/icon.png'))}">'
+        '<link rel="apple-touch-icon" href="${escapeHtml(_url('/icon.png'))}">'
         '<title>${escapeHtml(title)}</title><style>$_css</style></head>'
         '<body class="$cls">$body</body></html>';
   }
@@ -1288,7 +1838,8 @@ class WebService extends ChangeNotifier {
         ? ''
         : ' value="${escapeHtml(searchValue)}"';
     return '<div class="head-row">$heading'
-        '<form class="search" method="get" action="/search">'
+        '<form class="search" method="get" action="${escapeHtml(_url('/search'))}">'
+        '${_accessToken == null ? '' : '<input type="hidden" name="t" value="${escapeHtml(_accessToken!)}">'}'
         '<input name="q" type="search"$value>'
         '</form></div>';
   }
@@ -1297,7 +1848,7 @@ class WebService extends ChangeNotifier {
     message,
     _layout(
       '<p>${escapeHtml(message)}</p>'
-      '<p><a href="/">${escapeHtml(_strings.backHome)}</a></p>',
+      '<p><a href="${escapeHtml(_url('/'))}">${escapeHtml(_strings.backHome)}</a></p>',
     ),
   );
 
@@ -1354,24 +1905,28 @@ class WebService extends ChangeNotifier {
     if (index != null) {
       b.write('<div class="actions">');
       b.write(
-        '<a href="/download/$index">${escapeHtml(_strings.download)}</a>',
+        '<a href="${escapeHtml(_url('/download/${e.bookId}'))}">${escapeHtml(_strings.download)}</a>',
       );
       final ext = e.extension.toLowerCase();
       if (isReadableExtension(ext)) {
-        b.write(' <a href="/read/$index">${escapeHtml(_strings.read)}</a>');
+        b.write(
+          ' <a href="${escapeHtml(_url('/read/${e.bookId}'))}">${escapeHtml(_strings.read)}</a>',
+        );
       } else if (isPdfExtension(ext)) {
-        b.write(' <a href="/book/$index">${escapeHtml(_strings.read)}</a>');
+        b.write(
+          ' <a href="${escapeHtml(_url('/book/${e.bookId}'))}">${escapeHtml(_strings.read)}</a>',
+        );
       }
       b.write('</div>');
     } else if (e.downloadPending) {
-      b.write(
-        '<div class="actions"><span class="dim">正在下载…</span></div>',
-      );
+      b.write('<div class="actions"><span class="dim">正在下载…</span></div>');
     } else if (e.bookId != null) {
       b.write(
         '<div class="actions">'
-        '<a href="/request-download/${e.bookId}">下载到手机</a>'
-        '</div>',
+        '<form method="post" action="${escapeHtml(_url('/request-download/${e.bookId}'))}">'
+        '<button type="submit">下载到手机</button>'
+        '<span class="download-hint">占用手机账号额度、流量和存储</span>'
+        '</form></div>',
       );
     } else {
       b.write(
@@ -1389,16 +1944,15 @@ class WebService extends ChangeNotifier {
 
   String _homePage(WebLayout layout, [WebTheme theme = WebTheme.auto]) {
     final downloaded = [
-      for (var i = 0; i < _snapshot.files.length; i++) _bookCard(_entryFromFile(i)),
+      for (var i = 0; i < _snapshot.files.length; i++)
+        _bookCard(_entryFromFile(i)),
     ];
     final library = _snapshot.library.map(_bookCard);
     final packAll = downloaded.isEmpty
         ? ''
-        : ' <a class="zip-btn" href="/zip/all">全部打包</a>';
+        : ' <a class="zip-btn" href="${escapeHtml(_url('/zip/all'))}">全部打包</a>';
     final main =
-        '${_headingRow(
-          '<h2 id="downloaded">${escapeHtml(_strings.downloadedSection)} (${downloaded.length})</h2>',
-        )}'
+        '${_headingRow('<h2 id="downloaded">${escapeHtml(_strings.downloadedSection)} (${downloaded.length})</h2>')}'
         '$packAll'
         '${_grid(downloaded)}'
         '<h2 id="library">${escapeHtml(_strings.librarySection)} (${library.length})</h2>'
@@ -1422,7 +1976,7 @@ class WebService extends ChangeNotifier {
     WebTheme theme = WebTheme.auto,
   ]) {
     final main =
-        '<p><a href="/">${escapeHtml(_strings.backHome)}</a></p>'
+        '<p><a href="${escapeHtml(_url('/'))}">${escapeHtml(_strings.backHome)}</a></p>'
         '${_headingRow('<h1>搜索“${escapeHtml(q)}”</h1>', searchValue: q)}'
         '${_grid(cards)}';
     return _page(
@@ -1432,5 +1986,4 @@ class WebService extends ChangeNotifier {
       theme: theme,
     );
   }
-
 }

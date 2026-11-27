@@ -1061,10 +1061,148 @@ void main() {
 
       await expectLater(
         api.downloadBook(_bookId, _bookHash, '${tempDir.path}/b.epub'),
-        throwsA(isA<StateError>()),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message.toString(),
+            'message',
+            'file endpoint answered HTTP 200 (text/html) instead of '
+            'JSON or a file stream',
+          ),
+        ),
       );
       expect(adapter.fileCalls, 1);
       expect(adapter.linkCalls, 0);
+    });
+
+    test('text/html Content-Type with a JSON link body still yields the link',
+        () async {
+      // qgming 12cda64: mirrors may label the JSON link answer as
+      // text/html. The label is not trusted — the body is.
+      final adapter = _FakeAdapter()
+        ..fileRawBody = Uint8List.fromList(
+          jsonEncode({
+            'success': 1,
+            'file': {'downloadLink': _linkUrl, 'allowDownload': true},
+          }).codeUnits,
+        )
+        ..fileContentType = 'text/html';
+      final api = await _loggedInApi(adapter);
+
+      await api.downloadBook(_bookId, _bookHash, '${tempDir.path}/b.epub');
+
+      expect(adapter.fileCalls, 1);
+      expect(adapter.linkCalls, 1);
+      expect(
+        await File('${tempDir.path}/b.epub').readAsBytes(),
+        _epubBytes,
+      );
+    });
+
+    test('JSON link body mislabelled as octet-stream still yields the link',
+        () async {
+      final adapter = _FakeAdapter()
+        ..fileRawBody = Uint8List.fromList(
+          '{"success":1,"file":{"downloadLink":"$_linkUrl"}}'.codeUnits,
+        )
+        ..fileContentType = 'application/octet-stream';
+      final api = await _loggedInApi(adapter);
+
+      await api.downloadBook(_bookId, _bookHash, '${tempDir.path}/b.epub');
+
+      expect(adapter.fileCalls, 1);
+      expect(adapter.linkCalls, 1);
+      expect(
+        await File('${tempDir.path}/b.epub').readAsBytes(),
+        _epubBytes,
+      );
+    });
+
+    test('mislabeled success:0 envelope fails with the server message',
+        () async {
+      final adapter = _FakeAdapter()
+        ..fileRawBody = Uint8List.fromList(
+          '{"success":0,"error":"download limit reached"}'.codeUnits,
+        )
+        ..fileContentType = 'text/html';
+      final api = await _loggedInApi(adapter);
+
+      await expectLater(
+        api.downloadBook(
+          _bookId,
+          _bookHash,
+          '${tempDir.path}/b.epub',
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message.toString(),
+            'message',
+            contains('download limit reached'),
+          ),
+        ),
+      );
+      expect(adapter.fileCalls, 1);
+      expect(adapter.linkCalls, 0);
+    });
+
+    test('mislabeled envelope with allowDownload "0" fails as no link',
+        () async {
+      final adapter = _FakeAdapter()
+        ..fileRawBody = Uint8List.fromList(
+          jsonEncode({
+            'success': 1,
+            'file': {'downloadLink': _linkUrl, 'allowDownload': '0'},
+          }).codeUnits,
+        )
+        ..fileContentType = 'text/html';
+      final api = await _loggedInApi(adapter);
+
+      await expectLater(
+        api.downloadBook(
+          _bookId,
+          _bookHash,
+          '${tempDir.path}/b.epub',
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message.toString(),
+            'message',
+            contains('no download link in file response'),
+          ),
+        ),
+      );
+      expect(adapter.fileCalls, 1);
+      expect(adapter.linkCalls, 0);
+    });
+
+    test('non-JSON 200 with an octet-stream Content-Type is the file itself',
+        () async {
+      final adapter = _FakeAdapter()
+        ..fileRawBody = _pdfBytes
+        ..fileContentType = 'application/octet-stream';
+      final api = await _loggedInApi(adapter);
+      final path = '${tempDir.path}/b.pdf';
+
+      await api.downloadBook(_bookId, _bookHash, path);
+
+      expect(adapter.fileCalls, 2);
+      expect(adapter.linkCalls, 0);
+      expect(await File(path).readAsBytes(), _pdfBytes);
+    });
+
+    test('a 206 answer from the file endpoint is the file itself',
+        () async {
+      final adapter = _FakeAdapter()
+        ..fileRawBody = _pdfBytes
+        ..fileContentType = 'application/pdf'
+        ..fileStatusCode = 206;
+      final api = await _loggedInApi(adapter);
+      final path = '${tempDir.path}/b.pdf';
+
+      await api.downloadBook(_bookId, _bookHash, path);
+
+      expect(adapter.fileCalls, 2);
+      expect(adapter.linkCalls, 0);
+      expect(await File(path).readAsBytes(), _pdfBytes);
     });
   });
 }

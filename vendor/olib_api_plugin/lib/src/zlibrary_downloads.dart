@@ -570,6 +570,129 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
     }
   }
 
+  /// Bound on the body prefix read while deciding whether a
+  /// mislabelled file-endpoint answer is a JSON protocol envelope
+  /// (qgming/zlib-app 12cda64, MAX_PROTOCOL_BYTES). A real envelope
+  /// is a short JSON object; a book is tens of MB — the lookup must
+  /// never read the book to make this decision.
+  static const _maxLinkEnvelopeBytes = 64 * 1024;
+
+  /// Fields that mark a JSON object as a link-protocol envelope
+  /// rather than a file (qgming 12cda64, PROTOCOL_FIELDS).
+  static const _linkEnvelopeFields = <String>{
+    'success',
+    'file',
+    'url',
+    'link',
+    'download',
+  };
+
+  /// Resolve the download link out of a protocol envelope, or throw
+  /// when the envelope carries no usable link. Shared by the declared
+  /// JSON answer and the mislabelled-envelope answer (qgming 12cda64):
+  /// a `file` object whose `allowDownload` is "0"/"false" carries no
+  /// link, and the envelope's own error wins over the generic one.
+  String _linkFromEnvelope(Map<String, dynamic> decoded) {
+    final file = decoded['file'];
+    if (file is Map<String, dynamic>) {
+      final allowed = file['allowDownload']?.toString();
+      if (allowed == '0' || allowed == 'false') {
+        final err = (decoded['error'] ?? decoded['message'])?.toString();
+        throw StateError(err ?? 'no download link in file response');
+      }
+    }
+    final link = _findLink(decoded);
+    if (link != null && link.isNotEmpty) {
+      final uri = Uri.tryParse(link);
+      if (uri != null && uri.hasScheme && uri.scheme != 'https') {
+        throw StateError('download link is not https');
+      }
+      // Resolve relative links against the base instead of
+      // string-concatenating: a bare path without a leading `/`
+      // and a `//host/path` link were both handled wrong.
+      return Uri.parse(_base).resolve(link).toString();
+    }
+    final err = (decoded['error'] ?? decoded['message'])?.toString();
+    throw StateError(err ?? 'no download link in file response');
+  }
+
+  /// Read just enough of the file-endpoint body to decide whether it
+  /// is a JSON protocol envelope wearing the wrong Content-Type
+  /// (qgming 12cda64): the scan stops at the first chunk that rules
+  /// the envelope out, so a real file costs one chunk, not the whole
+  /// body — the lookup perf test pins this. Once the scan says the
+  /// body opens an object, reading continues until the body ends (or
+  /// the cap) so the whole object can be parsed.
+  static Future<List<int>> _readLinkEnvelopePrefix(
+    Stream<List<int>> stream,
+  ) async {
+    final out = <int>[];
+    await for (final chunk in stream) {
+      final remaining = _maxLinkEnvelopeBytes - out.length;
+      if (remaining <= 0) break;
+      out.addAll(
+        chunk.length <= remaining ? chunk : chunk.sublist(0, remaining),
+      );
+      if (_scanEnvelopeStart(out) == false) break;
+      if (out.length >= _maxLinkEnvelopeBytes) break;
+    }
+    return out;
+  }
+
+  /// The verdict of the envelope-start scan (qgming 12cda64
+  /// `startsWithObject`): true when the bytes open a JSON object —
+  /// an opening brace followed by a quote or a closing brace —
+  /// false when they cannot be one (a second opening brace, a
+  /// backslash as in RTF, plain text after the brace), null when
+  /// only a BOM/whitespace has been seen so far and more bytes are
+  /// needed to tell.
+  static bool? _scanEnvelopeStart(List<int> bytes) {
+    var i = 0;
+    // Skip a UTF-8 BOM.
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xEF &&
+        bytes[1] == 0xBB &&
+        bytes[2] == 0xBF) {
+      i = 3;
+    }
+    var opened = false;
+    for (; i < bytes.length; i++) {
+      final b = bytes[i];
+      if (b == 0x20 || b == 0x09 || b == 0x0A || b == 0x0D) continue;
+      if (b == 0x7B) {
+        if (!opened) {
+          opened = true;
+          continue;
+        }
+        return false;
+      }
+      if (b == 0x22 || b == 0x7D) return opened;
+      return false;
+    }
+    return null;
+  }
+
+  /// Parse [prefix] as a JSON protocol envelope, or null when it is
+  /// not one (qgming 12cda64): the root must be a JSON object
+  /// carrying one of the protocol fields. A truncated (over the
+  /// 64 KB cap) or malformed body is not an envelope.
+  static Map<String, dynamic>? _protocolEnvelope(List<int> prefix) {
+    if (_scanEnvelopeStart(prefix) != true) return null;
+    final text = utf8.decode(prefix, allowMalformed: true);
+    final stripped =
+        text.startsWith('\uFEFF') ? text.substring(1) : text;
+    try {
+      final decoded = jsonDecode(stripped);
+      if (decoded is Map<String, dynamic> &&
+          decoded.keys.any(_linkEnvelopeFields.contains)) {
+        return decoded;
+      }
+    } on FormatException {
+      // Not JSON, or cut off by the 64 KB cap: not an envelope.
+    }
+    return null;
+  }
+
   /// Resolve the file link for [bookId]/[hash].
   ///
   /// The `/eapi/book/{id}/{hash}/file` endpoint answers either JSON
@@ -581,6 +704,14 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
   /// parsed, anything else is cancelled after at most the first chunk
   /// of body (the probe only needs headers) and the endpoint is then
   /// treated as the file URL itself.
+  ///
+  /// Some mirrors mislabel the JSON link answer — `text/html`, an
+  /// octet-stream, or no type at all (qgming/zlib-app 12cda64). The
+  /// label is therefore not trusted: when the type does not say JSON,
+  /// a bounded prefix of the body is peeked at, and a JSON object
+  /// carrying a protocol field is parsed as the link answer anyway.
+  /// Anything else keeps the old behaviour (an HTML answer is still
+  /// a wall or error page, never a file stream).
   Future<String> _fetchDownloadLink(String bookId, String hash) async {
     final path = '/eapi/book/$bookId/$hash/file';
     // Header-only probe: when this endpoint turns out to stream the
@@ -595,31 +726,42 @@ mixin ZLibraryDownloads on ZLibraryApiBase {
           headers: _headers,
           responseType: ResponseType.stream,
           followRedirects: false,
+          // A 416 must reach the code below instead of throwing
+          // here: like a 206 it is a resumed segment, never a
+          // protocol envelope (qgming 12cda64).
+          validateStatus: (status) =>
+              status != null &&
+              ((status >= 200 && status < 300) || status == 416),
         ),
         cancelToken: probe,
       );
       final contentType =
           (res.headers.value(HttpHeaders.contentTypeHeader) ?? '')
               .toLowerCase();
+      // A 206/416 is a resumed segment, never a protocol envelope:
+      // the endpoint itself is the file.
+      final status = res.statusCode ?? 0;
+      if (status == 206 || status == 416) {
+        probe.cancel('download link lookup is header-only');
+        return '$_base$path';
+      }
       if (contentType.contains('json')) {
         final body = await utf8.decoder.bind(res.data!.stream).join();
         final decoded = jsonDecode(body);
         if (decoded is Map<String, dynamic>) {
-          final link = _findLink(decoded);
-          if (link != null && link.isNotEmpty) {
-            final uri = Uri.tryParse(link);
-            if (uri != null && uri.hasScheme && uri.scheme != 'https') {
-              throw StateError('download link is not https');
-            }
-            // Resolve relative links against the base instead of
-            // string-concatenating: a bare path without a leading `/`
-            // and a `//host/path` link were both handled wrong.
-            return Uri.parse(_base).resolve(link).toString();
-          }
-          final err = (decoded['error'] ?? decoded['message'])?.toString();
-          throw StateError(err ?? 'no download link in file response');
+          return _linkFromEnvelope(decoded);
         }
         throw StateError('no download link in file response');
+      }
+      // Not declared JSON: the mirror may have mislabelled a JSON
+      // link answer as text/html (or omitted the type). Peek at a
+      // bounded prefix of the body — a JSON object carrying a
+      // protocol field is the link answer; anything else falls
+      // through to the old behaviour below.
+      final prefix = await _readLinkEnvelopePrefix(res.data!.stream);
+      final envelope = _protocolEnvelope(prefix);
+      if (envelope != null) {
+        return _linkFromEnvelope(envelope);
       }
       // Not JSON: the endpoint itself streams the file — but only if
       // the payload really is a binary/ebook response. An HTML answer

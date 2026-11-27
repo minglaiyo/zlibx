@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../providers/shelf_categories_provider.dart';
+import '../../../screens/favorites/category_actions.dart';
 import '../../../screens/favorites/widgets/shelf_chip.dart';
 import 'download_list.dart';
 

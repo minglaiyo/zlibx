@@ -16,12 +16,13 @@ import 'package:zlibx/providers/recommended_booklists_provider.dart';
 import 'package:zlibx/screens/account/booklists_screen.dart';
 import 'package:zlibx/screens/account/widgets/booklists_tab_page.dart';
 import 'package:zlibx/services/hive_service.dart';
+import 'package:zlibx/widgets/booklist_card.dart';
 import 'package:zlibx/widgets/empty_state.dart';
 
 class _FakeBooklistsController extends BooklistsController {
   _FakeBooklistsController(this._state);
 
-  BooklistsState _state;
+  final BooklistsState _state;
 
   int loadFirstCalls = 0;
 

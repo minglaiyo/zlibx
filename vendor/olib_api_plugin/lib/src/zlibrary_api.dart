@@ -35,6 +35,20 @@ part 'zlibrary_download_types.dart';
 part 'zlibrary_http.dart';
 part 'zlibrary_responses.dart';
 
+/// The one User-Agent the Z-Library client sends (review-2 P2-1):
+/// a mobile Chrome UA — the eapi answers mobile clients. Single
+/// source: the read client's [BaseOptions], the destructive client's
+/// [BaseOptions], and [_headers]' default all read this const, so the
+/// three can never drift apart again. The WebView-solved UA
+/// ([ZLibraryApiBase._wallUserAgent]) overrides it per request when
+/// set — the wall clearance was minted against that UA. The app's
+/// non-Z-Library clients use their own constant instead
+/// ([kDefaultUserAgent], `lib/services/http_client.dart`); do not
+/// merge the two — the eapi expects a mobile client.
+const String kZLibraryUserAgent =
+    'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
+    'Chrome/120.0 Mobile Safari/537.36';
+
 /// Shared session and HTTP infrastructure for [ZLibraryApi] and its
 /// domain mixins. Public — not library-private — on purpose:
 /// [ZLibraryApi] extends this class and [ZLibraryAuth] constrains
@@ -101,9 +115,7 @@ abstract class ZLibraryApiBase {
               connectTimeout: const Duration(seconds: 15),
               receiveTimeout: const Duration(seconds: 60),
               headers: {
-                'User-Agent':
-                    'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
-                    'Chrome/120.0 Mobile Safari/537.36',
+                'User-Agent': kZLibraryUserAgent,
                 'Accept': 'application/json',
               },
             ),
@@ -137,9 +149,12 @@ abstract class ZLibraryApiBase {
     // (qgming/zlib-app ADR-076; heartleo/zlib v0.0.16). Sent on every
     // eapi request, value fixed lowercase `android`.
     h['source'] = 'android';
-    if (_wallUserAgent != null) {
-      h['User-Agent'] = _wallUserAgent!;
-    }
+    // The wall-solved UA wins when set (clearance minted against it);
+    // otherwise every request carries the single default UA — set
+    // here as well as in the Dio BaseOptions so the default is
+    // observable (and testable) on injected clients too. Same value
+    // either way, so production requests are unchanged.
+    h['User-Agent'] = _wallUserAgent ?? kZLibraryUserAgent;
     final parts = <String>[];
     if (_userId != null && _userKey != null) {
       parts.add('remix_userid=$_userId');

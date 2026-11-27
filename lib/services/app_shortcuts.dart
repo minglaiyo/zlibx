@@ -6,6 +6,7 @@ import 'package:quick_actions/quick_actions.dart';
 import '../routes/app_routes.dart';
 import '../screens/search/barcode_scanner_screen.dart';
 import '../screens/search/search_screen.dart';
+import '../utils/diagnostics.dart';
 
 /// App icon shortcuts (long-press the launcher icon): 扫码 / 搜索 /
 /// 书单 / 我的图书馆.
@@ -52,7 +53,7 @@ class AppShortcuts {
       // No Activity attached yet (cached engine / headless start):
       // the tap is lost for this launch; the handler is still
       // registered below for warm taps. Never crash startup over it.
-      debugPrint('AppShortcuts initialize failed: $e');
+      logIgnored('app_shortcuts', e);
     }
     await quickActions.setShortcutItems(const <ShortcutItem>[
       ShortcutItem(

@@ -60,11 +60,15 @@ pub(crate) fn format_from_info(info: Option<&str>) -> String {
     let matchers = MATCHERS.get_or_init(|| {
         KNOWN
             .iter()
-            .map(|f| {
-                (
-                    f.to_string(),
-                    regex::Regex::new(&format!(r"\b{}\b", f)).unwrap(),
-                )
+            .filter_map(|f| {
+                // `f` comes from the static table above (plain lowercase
+                // ASCII, no metacharacters), but escape it anyway so a
+                // future table edit can never turn this into a panic:
+                // a pattern that fails to compile is skipped instead of
+                // unwrapping (review-2 P2-3).
+                regex::Regex::new(&format!(r"\b{}\b", regex::escape(f)))
+                    .ok()
+                    .map(|re| (f.to_string(), re))
             })
             .collect()
     });

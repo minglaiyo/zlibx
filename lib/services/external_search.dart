@@ -15,7 +15,7 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 
 // Project imports:
-import 'package:zlibx/services/annas_archieve.dart';
+import 'package:zlibx/services/annas_archive_service.dart';
 import 'package:zlibx/services/external_logger.dart';
 import 'package:zlibx/services/http_client.dart';
 import 'package:zlibx/services/instance_manager.dart';

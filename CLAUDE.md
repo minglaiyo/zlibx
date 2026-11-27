@@ -23,7 +23,7 @@ Models are hand-written: `Book`/`User` and all other models use no freezed, no j
 
 **Layered organization** in `lib/`:
 
-- **`services/`** — API clients and storage. The Z-Library client is `ZLibraryApi` in `vendor/olib_api_plugin/lib/src/zlibrary_api.dart` (Dio with a hand-managed Cookie header; there is no cookie jar). External sources live in `lib/services/annas_archieve.dart` (Anna's Archive — yes, the filename typo is real, do not rename it casually) and `lib/services/libgen_service.dart` (LibGen). Mirror lists come from open-slum.org via `lib/services/slum_catalogue.dart`, `lib/core/slum.dart`, `lib/services/instance_manager.dart`. Cloudflare/DDoS-Guard-style challenge pages are solved in a WebView by `lib/services/webview_challenge_solver.dart` with `lib/services/challenge_html_cache.dart`. One shared Dio factory lives in `lib/services/http_client.dart` (`createDio`); do not create ad-hoc `Dio()` instances.
+- **`services/`** — API clients and storage. The Z-Library client is `ZLibraryApi` in `vendor/olib_api_plugin/lib/src/zlibrary_api.dart` (Dio with a hand-managed Cookie header; there is no cookie jar). External sources live in `lib/services/annas_archive_service.dart` (Anna's Archive; the old misspelled `annas_archieve.dart` is a forwarding export only) and `lib/services/libgen_service.dart` (LibGen). Mirror lists come from open-slum.org via `lib/services/slum_catalogue.dart`, `lib/core/slum.dart`, `lib/services/instance_manager.dart`. Cloudflare/DDoS-Guard-style challenge pages are solved in a WebView by `lib/services/webview_challenge_solver.dart` with `lib/services/challenge_html_cache.dart`. One shared Dio factory lives in `lib/services/http_client.dart` (`createDio`); do not create ad-hoc `Dio()` instances.
 - **`providers/`** — Riverpod state management. `NotifierProvider` (Riverpod 2 `Notifier`) for mutable state (auth, downloads, domain selection, settings). `FutureProvider` / `FutureProvider.family` for async data (search, book details, popular lists).
 - **`screens/`** — UI pages, each a `ConsumerWidget` or `ConsumerStatefulWidget`.
 - **`models/`** — Hand-written models (`Book`, `User` in the vendor plugin; `display_book.dart` etc. in `lib/models/`).
@@ -49,7 +49,7 @@ The HTML parsing layer lives in `rust/zlibx_parsers/` (Rust) and is bridged to D
 - **Hooks, not call-site rewrites**: the Dart parser stays as the fallback. The vendor plugin exposes `xxxParseOverride` hooks (fulltext / article / booklist×3 / category / book_detail / download_stats / annas ×2 / libgen ×2 / openlibrary); `lib/core/rust_*.dart` modules inject Rust-backed implementations lazily and un-register themselves on bridge failure, so a missing `.so` silently falls back to Dart. Route ALL call sites through the hook (`parseXxxH` wrappers where provided) — both the Dio path (vendor) and the WebView-solver path (app repositories) must be hooked, or one path silently keeps the Dart parse.
 - **One FRB init for everything**: `lib/core/rust_init.dart::ensureRustBridge()` is the ONLY place that calls `ZlibxParsers.init()`. FRB's `initImpl` throws on a second call, so per-module init guards made every parser after the first silently fall back to Dart (device-proven). New hook modules must use the shared guard, never call `ZlibxParsers.init()` directly.
 - **FRB upgrade policy** (audit 2026-11-19): the bridge sits on an exact-pinned `2.14.0-beta.2` on BOTH sides (pubspec + Cargo.toml). To bump it: first `cargo test --release` (97 differential tests) plus `flutter test`, then run `bash tool/frb_codegen.sh`, re-apply the known codegen workaround below, and diff the generated files — a silent generator-behaviour change in a beta is exactly what the differential tests exist to catch. Switch off the beta as soon as FRB 2.x stable ships.
-- **FRB codegen**: `bash tool/frb_codegen.sh` after changing `#[frb]` functions. It patches a known FRB codegen bug (`RustAutoOpaqueInner<str>` — `str` is not `Sized`) after generation. The generated files (`lib/frb_generated*`, `lib/lib.dart`, `lib/models.dart`, `rust/.../frb_generated.rs`) ARE committed — CI has no Rust toolchain and `flutter analyze` needs them at checkout. Commit them together with the `#[frb]` change that regenerated them; do not hand-edit.
+- **FRB codegen**: `bash tool/frb_codegen.sh` after changing `#[frb]` functions. It patches a known FRB codegen bug (`RustAutoOpaqueInner<str>` — `str` is not `Sized`) after generation. The generated files (`lib/frb_generated*`, `lib/lib.dart`, `lib/models.dart`, `rust/.../frb_generated.rs`) ARE committed — `flutter analyze` needs them at checkout: Analyze runs before the check job's `Set up Rust` step, so the bindings must already be in the tree. Both jobs DO have a Rust toolchain (dtolnay/rust-toolchain 1.100.0); the check job runs `cargo test --release --locked` (97 differential tests) after Analyze/Test. Commit them together with the `#[frb]` change that regenerated them; do not hand-edit.
 - **Crate conventions**: internal parser functions are `pub(crate)` (FRB with `rust_input: crate` scans every `pub` fn and generates bindings for it); `Option<String>` parameters don't work (FRB wraps them in RustOpaque) — entry signatures use `String` with an empty-string convention for "absent". Regexes are cached in `OnceLock` (re-compiling per call cost 13× on the hot path).
 - **The Android linker is env-driven**: `rust/zlibx_parsers/.cargo/config.toml` deliberately does NOT pin a per-OS linker path. Gradle's `cargoBuildRust`, `tool/cargo_build_android.sh` and the release CI job all set `CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER` / `CC_` / `AR_` / `RANLIB_aarch64_linux_android` from the NDK. If the release CI fails inside cargo, check those env vars first.
 - **Rust tests**: `cargo test --release` in `rust/zlibx_parsers/` (needs MinGW-w64 on Windows for the host C toolchain; the GNU toolchain's own gcc is a linker-only stub).
@@ -82,7 +82,16 @@ The release APK is signed with `android/app/olib-release-key.jks` (alias `olib-r
 - Hive 2.x is unmaintained but stabilized by the LazyBox / library-box
   work (A1/A2, 2026-11-20); revisit a replacement (drift/sqflite) only
   after the post-migration data-layer boundary proves stable for a few
-  releases.
+  releases. Migration triggers (review-2 P2-5 — any one starts the
+  evaluation): (1) one reported Hive data-corruption case (a box won't
+  open, or a corrupt value breaks startup); (2) a Flutter/Dart major
+  upgrade breaks the Hive build or Hive is declared incompatible;
+  (3) an unpatched Hive security issue. `settingsBox` still mixes
+  settings, update cache, trust list, diagnostics counters and
+  discovered hosts; splitting it into independent boxes is deferred —
+  it needs a startup migration of user-granted state (e.g. the SAF
+  folder grant) and the payoff (independent cleanup) does not justify
+  that risk yet (review-2 P2-5).
 - dynamic_color capped <1.9.0 for the local old Flutter; lift the cap
   once the local toolchain matches CI (3.44).
 - B1: the Dart parser fallbacks' trigger rate is measurable via the

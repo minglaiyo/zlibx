@@ -40,7 +40,7 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 // Project imports:
 import 'package:zlibx/core/annas_archive.dart';
-import 'package:zlibx/services/annas_archieve.dart';
+import 'package:zlibx/services/annas_archive_service.dart';
 import 'package:zlibx/services/download_target.dart';
 import 'package:zlibx/services/external_logger.dart';
 import 'package:zlibx/services/hive_service.dart';

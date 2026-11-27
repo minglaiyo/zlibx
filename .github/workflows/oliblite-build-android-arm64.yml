@@ -87,7 +87,19 @@ jobs:
         run: flutter analyze
 
       - name: Test
-        run: flutter test
+        run: flutter test --coverage
+
+      # Coverage report (review-2 P2-6): observe-only for now — the
+      # lcov file is uploaded as an artifact, no threshold is enforced.
+      # Revisit a minimum line (providers / services first) once the
+      # report is stable across a few runs.
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: flutter-coverage
+          path: coverage/lcov.info
+          retention-days: 30
 
       # ── Rust parsers (审查 C1): the differential tests are the core
       # safety net for the parse layer — until now they only ran on a
@@ -201,16 +213,16 @@ jobs:
               # Strip // line comments first: a "swallowed with a comment"
               # catch block is exactly as silent as a bare one (the blind
               # spot home_tab.dart had).
-          bare = re.sub(r'//[^\n]*', '', text)
-          # diagnostics.dart is the logging infrastructure itself: its
-          # own Hive guards must not recurse into logIgnored (which
-          # counts and would re-enter Hive), so it is exempt from the
-          # empty-catch count as well as the debugPrint count.
-          if f.as_posix() != 'lib/utils/diagnostics.dart':
-              empty += len(re.findall(r'catch\s*\([^)]*\)\s*\{\s*\}', bare))
-          # (logIgnored prints via debugPrint in debug mode).
-          if f.as_posix() not in ('lib/main.dart', 'lib/utils/app_log.dart', 'lib/utils/diagnostics.dart'):
-              dbg += sum('debugPrint(' in ln for ln in text.splitlines())
+              bare = re.sub(r'//[^\n]*', '', text)
+              # diagnostics.dart is the logging infrastructure itself: its
+              # own Hive guards must not recurse into logIgnored (which
+              # counts and would re-enter Hive), so it is exempt from the
+              # empty-catch count as well as the debugPrint count.
+              if f.as_posix() != 'lib/utils/diagnostics.dart':
+                  empty += len(re.findall(r'catch\s*\([^)]*\)\s*\{\s*\}', bare))
+              # (logIgnored prints via debugPrint in debug mode).
+              if f.as_posix() not in ('lib/main.dart', 'lib/utils/app_log.dart', 'lib/utils/diagnostics.dart'):
+                  dbg += sum('debugPrint(' in ln for ln in text.splitlines())
           print(f'empty_catch={empty} debugPrint={dbg}')
           sys.exit(1 if (empty or dbg) else 0)
           PY

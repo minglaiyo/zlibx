@@ -12,7 +12,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:meta/meta.dart';
 
 // Project imports:
-import 'package:zlibx/services/annas_archieve.dart';
+import 'package:zlibx/services/annas_archive_service.dart';
 import 'package:zlibx/services/external_logger.dart';
 import 'package:zlibx/utils/diagnostics.dart';
 import 'package:zlibx/services/http_client.dart';

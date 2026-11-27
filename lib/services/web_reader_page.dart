@@ -93,7 +93,7 @@ const THEME_KEY = 'zlibx:theme';
 // break reading.
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* noop */ } },
 };
 
 const \$ = (id) => document.getElementById(id);
@@ -125,7 +125,7 @@ function applyStyle() {
   const css = 'html{color:' + (dark ? '#d9d9d6' : '#1d1d1f') + '!important;background:' +
     (dark ? '#16181a' : '#fbfaf7') + '!important;font-size:' + fontPct + '%!important;}' +
     'a{color:' + (dark ? '#7fc29b' : '#2f6f4f') + '!important;}';
-  try { view.renderer.setStyles(css); } catch (e) {}
+  try { view.renderer.setStyles(css); } catch (e) { /* noop */ }
 }
 
 // ── Paging ──

@@ -1,4 +1,4 @@
-part of 'annas_archieve.dart';
+part of 'annas_archive_service.dart';
 
 /// Request pipeline shared by search and bookInfo: retry across the
 /// enabled mirrors, plain HTTP fetch, challenge/status checks, and

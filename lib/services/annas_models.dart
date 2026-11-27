@@ -1,5 +1,5 @@
-// Anna's Archive result models, split out of annas_archieve.dart so the
-// service file stays readable. Re-exported by annas_archieve.dart: the
+// Anna's Archive result models, split out of annas_archive_service.dart so the
+// service file stays readable. Re-exported by annas_archive_service.dart: the
 // seven importers keep seeing BookData / BookInfoData unchanged.
 
 class BookData {

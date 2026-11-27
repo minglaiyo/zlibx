@@ -17,6 +17,8 @@ import 'package:chinese_codec/chinese_codec.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../utils/diagnostics.dart';
+
 /// Upper bound for one chapter part (UTF-8 bytes of the source text).
 /// Longer chapters are cut so no single page in the reader is huge.
 const int kTxtChapterByteLimit = 200 * 1024;
@@ -441,8 +443,9 @@ class TxtToEpub {
     final cached = File(p.join(dir.path, '$key.epub'));
     try {
       if (await cached.exists()) return await cached.readAsBytes();
-    } catch (_) {
+    } catch (e) {
       // Unreadable cache entry: reconvert below.
+      logIgnored('txt_to_epub', e);
     }
 
     final Uint8List bytes;
@@ -468,8 +471,9 @@ class TxtToEpub {
     try {
       await dir.create(recursive: true);
       await cached.writeAsBytes(epub, flush: true);
-    } catch (_) {
+    } catch (e) {
       // A cache write failure must not fail the read.
+      logIgnored('txt_to_epub', e);
     }
     return epub;
   }

@@ -14,7 +14,6 @@ import 'package:zlibx/l10n/generated/app_localizations.dart';
 import 'package:zlibx/providers/booklists_provider.dart';
 import 'package:zlibx/providers/recommended_booklists_provider.dart';
 import 'package:zlibx/screens/account/booklists_screen.dart';
-import 'package:zlibx/screens/account/widgets/booklists_tab_page.dart';
 import 'package:zlibx/services/hive_service.dart';
 import 'package:zlibx/widgets/booklist_card.dart';
 import 'package:zlibx/widgets/empty_state.dart';

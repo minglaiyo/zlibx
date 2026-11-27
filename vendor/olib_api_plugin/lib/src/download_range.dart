@@ -53,7 +53,7 @@ class DownloadRange {
   }
 
   /// True when [head] (the first bytes of a file) carries the magic of
-  /// [extension] — plan item 8: epub/docx/zip/cbz start with `PK`,
+  /// [extension] — plan item 8: epub/docx/zip/cbz/apk start with `PK`,
   /// pdf with `%PDF`, fb2 with `<` (after one leading UTF-8 BOM),
   /// mobi/azw/azw3 carry `BOOKMOBI` at offset 60, djvu/djv start with
   /// `AT&TFORM`. An extension with no definite magic (txt, rtf, chm,
@@ -91,6 +91,9 @@ class DownloadRange {
       case 'docx':
       case 'zip':
       case 'cbz':
+      case 'apk':
+        // APK 本身就是 ZIP（PK 开头）：更新包下载走同一条校验，
+        // 传错的 HTML / 文本不会被当成安装包。
         return startsWithAt('PK', 0);
       case 'pdf':
         return startsWithAt('%PDF', 0);

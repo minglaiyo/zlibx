@@ -720,6 +720,17 @@
       }
     }
   },
+  "updateDownload": "Download update",
+  "updateDownloadComplete": "Download complete",
+  "updateDownloadPaused": "Download paused",
+  "updateDownloading": "Downloading update… {percent}%",
+  "@updateDownloading": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
   "updateDroppedLinks": "{count} download channel(s) were ignored: host not on the allow-list",
   "@updateDroppedLinks": {
     "placeholders": {
@@ -736,8 +747,13 @@
       }
     }
   },
+  "updateInstall": "Install update",
+  "updateInstallNotAllowed": "Installing unknown apps is not allowed. Enable it in system settings, then install again.",
+  "updateOpenSettings": "Open settings",
   "updateRequired": "Update Required",
+  "updateSignatureMismatch": "The update package signature does not match the current app; installation refused.",
   "updateUnsupported": "This version is no longer supported. Search and download are disabled until you update.",
+  "updateVerifyFailed": "File verification failed; installation cancelled.",
   "useAnotherAccount": "Use another account",
   "useDefaultDocumentsDir": "Use app default documents directory",
   "validEmail": "Please enter a valid email",

@@ -720,6 +720,17 @@
       }
     }
   },
+  "updateDownload": "アップデートをダウンロード",
+  "updateDownloadComplete": "ダウンロードが完了しました",
+  "updateDownloadPaused": "ダウンロードを一時停止しました",
+  "updateDownloading": "アップデートをダウンロード中… {percent}%",
+  "@updateDownloading": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
   "updateDroppedLinks": "{count} 件のダウンロード先が、ホストが許可リストにないため無視されました",
   "@updateDroppedLinks": {
     "placeholders": {
@@ -736,8 +747,13 @@
       }
     }
   },
+  "updateInstall": "アップデートをインストール",
+  "updateInstallNotAllowed": "不明なアプリのインストールが許可されていません。システム設定で許可してから再度インストールしてください",
+  "updateOpenSettings": "設定を開く",
   "updateRequired": "引き続き使用するにはアップデートが必要です",
+  "updateSignatureMismatch": "パッケージの署名が現在のアプリと一致しないため、インストールを拒否しました",
   "updateUnsupported": "このバージョンはサポートが終了しました。アップデートするまで検索とダウンロードは無効です。",
+  "updateVerifyFailed": "ファイルの検証に失敗したため、インストールを中止しました",
   "useAnotherAccount": "別のアカウントでログイン",
   "useDefaultDocumentsDir": "アプリのデフォルトのドキュメントフォルダを使用",
   "validEmail": "有効なメールアドレスを入力してください",

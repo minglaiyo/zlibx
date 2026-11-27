@@ -46,4 +46,54 @@ void main() {
       expect(UpdateNotifier.parseSignerFingerprint(null), isNull);
     });
   });
+
+  group('pickApkAsset', () {
+    test('取第一个 .apk 附件（大小写不敏感），跳过非 APK', () {
+      final assets = [
+        {'name': 'zlibx-v1.8.0.symbols.zip', 'size': 100},
+        {'name': 'zlibx-v1.8.0.APK', 'size': 36000000},
+        {'name': 'zlibx-v1.8.0.apk', 'size': 35000000},
+      ];
+      final picked = UpdateNotifier.pickApkAsset(assets);
+      expect(picked?['name'], 'zlibx-v1.8.0.APK');
+      expect(picked?['size'], 36000000);
+    });
+
+    test('没有 APK / 空 / 非列表：返 null', () {
+      expect(
+        UpdateNotifier.pickApkAsset([
+          {'name': 'sha256sums.txt'},
+        ]),
+        isNull,
+      );
+      expect(UpdateNotifier.pickApkAsset([]), isNull);
+      expect(UpdateNotifier.pickApkAsset(null), isNull);
+      expect(UpdateNotifier.pickApkAsset('not a list'), isNull);
+    });
+  });
+
+  group('parseSha256SumsFor', () {
+    test('按文件名取行，* 标记照认，hash 小写归一', () {
+      const sums =
+          '$_hashLower  zlibx-v1.7.3.apk\n'
+          '$_hash  *zlibx-v1.8.0.apk\n'
+          '$_hashLower  other.apk\n';
+      expect(
+        UpdateNotifier.parseSha256SumsFor(sums, 'zlibx-v1.8.0.apk'),
+        _hashLower,
+      );
+      expect(
+        UpdateNotifier.parseSha256SumsFor(sums, 'zlibx-v1.7.3.apk'),
+        _hashLower,
+      );
+    });
+
+    test('找不到 / null：返 null', () {
+      expect(
+        UpdateNotifier.parseSha256SumsFor('$_hash  a.apk\n', 'b.apk'),
+        isNull,
+      );
+      expect(UpdateNotifier.parseSha256SumsFor(null, 'a.apk'), isNull);
+    });
+  });
 }

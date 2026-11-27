@@ -35,6 +35,7 @@ import 'services/webview_challenge_solver.dart';
 import 'theme/app_theme.dart';
 import 'utils/diagnostics.dart';
 import 'widgets/app_lock_overlay.dart';
+import 'widgets/update_progress_bar.dart';
 
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -302,9 +303,16 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           initialRoute: AppRoutes.splash,
           routes: buildAppRoutes(),
           // 隐私锁覆盖层：盖在所有路由之上（builder 在 Navigator 外，
-          // 所以路由切换不影响门闩）。
-          builder: (context, child) =>
-              AppLockOverlay(child: child ?? const SizedBox.shrink()),
+          // 所以路由切换不影响门闩）。全局更新进度条同样盖在这里，
+          // 不依赖当前页面（计划一第 14 项）。
+          builder: (context, child) => AppLockOverlay(
+            child: Stack(
+              children: [
+                child ?? const SizedBox.shrink(),
+                const UpdateProgressBar(),
+              ],
+            ),
+          ),
         );
       },
     );

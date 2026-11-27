@@ -180,6 +180,34 @@ void main() {
       expect(failing.resetCalls, 1);
     });
   });
+
+  group('DownloadRange.magicMatchesExtension', () {
+    test('apk 是 ZIP：PK 头通过，HTML/文本头拒绝', () {
+      expect(
+        DownloadRange.magicMatchesExtension([0x50, 0x4B, 0x03, 0x04], 'apk'),
+        isTrue,
+      );
+      expect(
+        DownloadRange.magicMatchesExtension(
+          '<!DOCTYPE html>'.codeUnits,
+          'apk',
+        ),
+        isFalse,
+      );
+      expect(
+        DownloadRange.magicMatchesExtension(
+          '{"success":1}'.codeUnits,
+          'apk',
+        ),
+        isFalse,
+      );
+    });
+
+    test('太短、无法证伪的头放行（首包还没到不误杀）', () {
+      expect(DownloadRange.magicMatchesExtension([0x50], 'apk'), isTrue);
+      expect(DownloadRange.magicMatchesExtension([], 'apk'), isTrue);
+    });
+  });
 }
 
 /// Minimal stand-in for the app-side pending-MediaStore writer: counts

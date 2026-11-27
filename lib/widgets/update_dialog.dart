@@ -5,17 +5,27 @@ import 'package:url_launcher/url_launcher.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../providers/update_provider.dart';
 import '../routes/app_routes.dart';
+import '../services/app_update_downloader.dart';
 import '../utils/app_log.dart';
 import '../utils/app_snack.dart';
+import '../utils/release_notes.dart';
 import 'loading_widget.dart';
 
 /// 更新对话框：Release 清单里的下载渠道（网盘等）+ 官网 + GitHub，用户自选。
 ///
 /// 强制更新时不可关闭（返回键 / 点遮罩均无效）。
-Future<void> showUpdateDialog(BuildContext context) {
-  final forced = ProviderScope.containerOf(
-    context,
-  ).read(updateProvider).forceUpdate;
+Future<void> showUpdateDialog(BuildContext context) async {
+  final container = ProviderScope.containerOf(context);
+  final forced = container.read(updateProvider).forceUpdate;
+  // 第 13 项：之前下好的包还在就直接装——先恢复持久化状态，
+  // 对话框里直接给“安装更新”。
+  final latest = container.read(updateProvider).latestVersion;
+  if (latest != null) {
+    await container
+        .read(updateDownloadProvider.notifier)
+        .refreshPersisted(latest);
+  }
+  if (!context.mounted) return;
   return showDialog<void>(
     context: context,
     barrierDismissible: !forced,
@@ -88,22 +98,15 @@ class _UpdateDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final update = ref.watch(updateProvider);
+    final dl = ref.watch(updateDownloadProvider);
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final isZh = Localizations.localeOf(context).languageCode == 'zh';
     final forced = update.forceUpdate;
     final notes = update.getChangelog(isZh ? 'zh' : 'en');
-    // Release 正文是 markdown（GitHub 渲染）：弹窗按纯文本展示——
-    // 标题降为【】小节、列表符号改 ·，不让 # 和 - 记号露出来。
-    final prettyNotes = notes
-        .split('\n')
-        .map((line) {
-          final t = line.trim();
-          if (t.startsWith('## ')) return '【${t.substring(3).trim()}】';
-          if (t.startsWith('- ')) return '· ${t.substring(2)}';
-          return line;
-        })
-        .join('\n');
+    // 第 16 项：说明清洗——截掉「## 下载」段、去掉首行标题、
+    // Markdown 转纯文本（链接变文字、去加粗/代码标记）。
+    final prettyNotes = sanitizeReleaseNotes(notes);
 
     final channels = [
       for (final l in update.links)
@@ -202,6 +205,17 @@ class _UpdateDialog extends ConsumerWidget {
                   ),
                 ],
               ],
+              if (update.apkUrl != null && update.latestVersion != null) ...[
+                const SizedBox(height: 16),
+                ..._downloadSection(
+                  context,
+                  ref,
+                  update.apkUrl!,
+                  update.latestVersion!,
+                  update.sha256,
+                  dl,
+                ),
+              ],
               const SizedBox(height: 16),
               Text(
                 AppLocalizations.of(context)!.chooseDownloadSource,
@@ -254,6 +268,125 @@ class _UpdateDialog extends ConsumerWidget {
         ],
       ],
     );
+  }
+
+  /// 应用内下载区（计划一第 12、13、15 项）：Release 有 APK 附件时
+  /// 的主按钮。下载开始后关对话框，进度走全局悬浮条（第 14 项）。
+  List<Widget> _downloadSection(
+    BuildContext context,
+    WidgetRef ref,
+    String apkUrl,
+    String latestVersion,
+    String? expectedSha256,
+    AppUpdateDownloadState dl,
+  ) {
+    final l10n = AppLocalizations.of(context)!;
+    final notifier = ref.read(updateDownloadProvider.notifier);
+    switch (dl.status) {
+      case AppUpdateDownloadStatus.idle:
+        return [
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () {
+                unawaited(
+                  notifier.start(
+                    url: apkUrl,
+                    version: latestVersion,
+                    expectedSha256: expectedSha256,
+                  ),
+                );
+                Navigator.of(context).pop();
+              },
+              child: Text(l10n.updateDownload),
+            ),
+          ),
+        ];
+      case AppUpdateDownloadStatus.downloading:
+        final percent = dl.progress == null
+            ? null
+            : (dl.progress! * 100).round();
+        return [
+          Text(
+            percent == null
+                ? l10n.downloading
+                : l10n.updateDownloading(percent),
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(value: dl.progress),
+        ];
+      case AppUpdateDownloadStatus.paused:
+        return [
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: () {
+                    unawaited(notifier.resume());
+                    Navigator.of(context).pop();
+                  },
+                  child: Text(l10n.resumeDownload),
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: () => notifier.cancel(),
+                child: Text(l10n.cancel),
+              ),
+            ],
+          ),
+        ];
+      case AppUpdateDownloadStatus.failed:
+        final String errorText = switch (dl.error) {
+          AppUpdateDownloadError.verify => l10n.updateVerifyFailed,
+          AppUpdateDownloadError.signature => l10n.updateSignatureMismatch,
+          _ => l10n.downloadFailed,
+        };
+        return [
+          Text(errorText, style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () {
+                unawaited(notifier.retry());
+                Navigator.of(context).pop();
+              },
+              child: Text(l10n.retry),
+            ),
+          ),
+        ];
+      case AppUpdateDownloadStatus.completed:
+        if (dl.needsUnknownSources) {
+          return [
+            Text(
+              l10n.updateInstallNotAllowed,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => notifier.openInstallSettings(),
+                child: Text(l10n.updateOpenSettings),
+              ),
+            ),
+          ];
+        }
+        return [
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () async {
+                final ok = await notifier.install();
+                if (ok && context.mounted) Navigator.of(context).pop();
+              },
+              child: Text(l10n.updateInstall),
+            ),
+          ),
+        ];
+    }
   }
 }
 

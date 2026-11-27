@@ -34,6 +34,31 @@
          and on Android 8+ the per-app "install unknown apps" toggle is
          checked at runtime (canInstallPackages) before firing. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Permission trim: open_filex 4.7.0 injects four storage/media read
+         permissions through the manifest merger (READ_EXTERNAL_STORAGE
+         maxSdk 32, READ_MEDIA_IMAGES / VIDEO / AUDIO) so callers can open
+         arbitrary files from shared storage. zlibx only ever opens files
+         it produced itself — the app-specific download dir, MediaStore-
+         contributed Downloads/zlibx files (own contributions need no read
+         permission on API 29+), SAF trees the user picked, and the
+         downloaded APK handed to the system installer via the FileProvider —
+         and no code requests READ_MEDIA_* at runtime. minSdk 29 also makes
+         the legacy READ_EXTERNAL_STORAGE dead weight. They are runtime-
+         grant sensitive permissions that would surface in the store
+         permission report, so strip them at merge time (the tools
+         namespace is declared on the manifest root). -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_IMAGES"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_VIDEO"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_AUDIO"
+        tools:node="remove" />
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />

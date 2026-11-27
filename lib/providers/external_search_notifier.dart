@@ -8,7 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../constants/search_filters.dart';
 import '../models/display_book.dart';
-import '../services/annas_archieve.dart';
+import '../services/annas_archive_service.dart';
 import '../services/external_search.dart';
 import '../services/libgen_service.dart';
 import '../services/network_error.dart';

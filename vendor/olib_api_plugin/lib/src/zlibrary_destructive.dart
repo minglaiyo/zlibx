@@ -25,9 +25,7 @@ extension _ZLibraryApiDestructive on ZLibraryApiBase {
           connectTimeout: const Duration(seconds: 15),
           receiveTimeout: const Duration(seconds: 60),
           headers: {
-            'User-Agent':
-                'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
-                'Chrome/120.0 Mobile Safari/537.36',
+            'User-Agent': kZLibraryUserAgent,
             'Accept': 'application/json',
           },
         ),

@@ -21,7 +21,7 @@ import 'download_location_dialog.dart';
 import 'file_exists_dialog.dart';
 import '../../../models/display_book.dart';
 import '../../../providers/download_provider.dart';
-import '../../../services/annas_archieve.dart';
+import '../../../services/annas_archive_service.dart';
 import '../../../services/external_download.dart';
 import '../../../services/media_store.dart';
 import '../../../utils/app_snack.dart';

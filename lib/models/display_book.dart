@@ -2,7 +2,7 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 // Project imports:
 import '../core/annas_archive.dart';
-import '../services/annas_archieve.dart';
+import '../services/annas_archive_service.dart';
 
 /// 数据源标识
 enum BookSource { zlibrary, annasArchive, libgen }

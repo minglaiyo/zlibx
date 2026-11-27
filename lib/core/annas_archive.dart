@@ -4,8 +4,9 @@
 // shiyi-0x7f/olib-mobile is preserved in LICENSE.
 // Pure-Dart Anna's Archive parsing shared by the Flutter app and the CLI.
 //
-// Nothing in this file may import Flutter: `bin/ai_cli.dart` runs in a plain
-// `dart` process, and the app services import these helpers too.
+// Nothing in this file may import Flutter: the helpers are pure Dart
+// (the old `bin/ai_cli.dart` CLI is gone — there is no `bin/` in the
+// repo), and the app services import them too.
 
 // Package imports:
 import 'package:html/dom.dart' as dom;

@@ -1,4 +1,4 @@
-part of 'annas_archieve.dart';
+part of 'annas_archive_service.dart';
 
 /// Search-side cluster: URL building, the parser, the WebView solve
 /// fallback and the public searchBooks API.

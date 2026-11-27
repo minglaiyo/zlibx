@@ -24,7 +24,7 @@ import '../core/annas_archive.dart';
 import '../models/display_book.dart';
 import '../utils/app_log.dart';
 import '../utils/diagnostics.dart';
-import 'annas_archieve.dart';
+import 'annas_archive_service.dart';
 import 'external_download.dart';
 import 'external_search.dart';
 import 'libgen_service.dart';

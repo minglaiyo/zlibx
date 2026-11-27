@@ -16,6 +16,7 @@ import 'package:dio/dio.dart';
 // Project imports:
 import 'package:zlibx/core/annas_archive.dart';
 import 'package:zlibx/services/external_logger.dart';
+import 'package:zlibx/utils/diagnostics.dart';
 
 // Enum for categorized network error types
 enum NetworkErrorType {
@@ -526,8 +527,9 @@ class ConnectivityChecker {
           );
           return true;
         }
-      } catch (_) {
+      } catch (e) {
         // Try the next candidate.
+        logIgnored('network_error', e);
       }
     }
     _logger.debug("No internet connection detected", tag: "Connectivity");

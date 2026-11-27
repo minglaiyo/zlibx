@@ -5,7 +5,7 @@ import '../../../core/book_description.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/display_book.dart';
 import '../../../routes/app_routes.dart';
-import '../../../services/annas_archieve.dart';
+import '../../../services/annas_archive_service.dart';
 import 'book_detail_content.dart';
 
 

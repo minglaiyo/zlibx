@@ -633,8 +633,9 @@ class WebService extends ChangeNotifier {
         );
         httpResponse.write('Internal Server Error');
         await httpResponse.close();
-      } catch (_) {
+      } catch (e) {
         // Response already started / closed: nothing more to do.
+        logIgnored('web_service', e);
       }
     }
   }

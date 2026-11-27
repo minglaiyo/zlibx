@@ -5,6 +5,7 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/l10n/generated/app_localizations.dart';
 import 'package:zlibx/providers/booklist_detail_provider.dart';
 import 'package:zlibx/screens/account/booklist_detail_screen.dart';
+import 'package:zlibx/widgets/loading_widget.dart';
 
 /// 书单详情页(2026-11-19 整体重设计,视觉稿 ③)的渲染冒烟:视差
 /// 头图(模糊底/堆叠封面/白字书名)、玻璃胶囊行、作者 chip、搜索
@@ -15,14 +16,25 @@ class _FakeDetailController extends BooklistDetailController {
 
   final BooklistDetailState _state;
 
+  /// _pump 要的 state 与 fake 必须是同一份,测重试/加载更多时由
+  /// 调用方从 fake 身上取,避免两处各写一份漂移。
+  BooklistDetailState get currentState => _state;
+
+  int loadFirstCalls = 0;
+  int loadMoreCalls = 0;
+
   @override
   BooklistDetailState build(BooklistDetailArgs arg) => _state;
 
   @override
-  Future<void> loadFirst() async {}
+  Future<void> loadFirst() async {
+    loadFirstCalls++;
+  }
 
   @override
-  Future<void> loadMore() async {}
+  Future<void> loadMore() async {
+    loadMoreCalls++;
+  }
 }
 
 Booklist _booklist() => Booklist(
@@ -57,15 +69,17 @@ List<Book> _books() => [
 Future<void> _pump(
   WidgetTester tester, {
   required BooklistDetailState state,
+  _FakeDetailController? fake,
 }) async {
   await tester.binding.setSurfaceSize(const Size(900, 1800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  final controller = fake ?? _FakeDetailController(state);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         // Notifier family 的 override 是零参构造;build(arg) 自己收参。
         booklistDetailControllerProvider.overrideWith(
-          () => _FakeDetailController(state),
+          () => controller,
         ),
       ],
       child: MaterialApp(
@@ -147,6 +161,54 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('当下的力量'), findsOneWidget);
     expect(find.text('人是什么'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('加载态显示加载指示,不画书', (tester) async {
+    await _pump(
+      tester,
+      state: const BooklistDetailState(isLoading: true),
+    );
+
+    expect(find.byType(LoadingWidget), findsOneWidget);
+    expect(find.text('当下的力量'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('空书单显示空态', (tester) async {
+    await _pump(
+      tester,
+      state: const BooklistDetailState(isLoading: false, books: []),
+    );
+
+    expect(find.text('这个书单里还没有书'), findsOneWidget);
+    expect(find.text('当下的力量'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('错误态显示错误与重试,点重试重新加载', (tester) async {
+    final fake = _FakeDetailController(
+      const BooklistDetailState(isLoading: false, error: '网络断了'),
+    );
+    await _pump(tester, state: fake.currentState, fake: fake);
+
+    expect(find.text('错误'), findsOneWidget);
+    expect(find.text('网络断了'), findsOneWidget);
+    await tester.tap(find.text('重试'));
+    expect(fake.loadFirstCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('分页态显示加载更多行,点按触发 loadMore', (tester) async {
+    final fake = _FakeDetailController(
+      BooklistDetailState(isLoading: false, books: _books(), hasMore: true),
+    );
+    await _pump(tester, state: fake.currentState, fake: fake);
+
+    expect(find.text('心流+发现心流 (套装全2册)'), findsOneWidget);
+    expect(find.text('加载更多'), findsOneWidget);
+    await tester.tap(find.text('加载更多'));
+    expect(fake.loadMoreCalls, 1);
     expect(tester.takeException(), isNull);
   });
 }

@@ -88,6 +88,12 @@ Future<void> _waitFor(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // flutter_test 的绑定初始化时会把 HttpClient 换成永远返回 400 的
+  // 假实现（TestWidgetsFlutterBinding.setupHttpOverrides）；本文件
+  // 的测试用的是真实 loopback 服务器，必须恢复真正的 HttpClient，
+  // 否则 Dio 的请求全是 400，下载永远到不了 completed。
+  // 每个用例开始前再设一次，防止中间有东西把它装回去。
+  HttpOverrides.global = null;
 
   late Directory hiveDir;
   late Directory updatesDir;
@@ -131,6 +137,8 @@ void main() {
   });
 
   setUp(() async {
+    // 见 main() 顶部的注释：恢复真正的 HttpClient。
+    HttpOverrides.global = null;
     verifyResult = goodVerify();
     canInstall = true;
     installCalls = [];

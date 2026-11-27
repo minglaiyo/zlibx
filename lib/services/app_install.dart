@@ -50,14 +50,31 @@ class ApkVerification {
       signatureMatches;
 
   factory ApkVerification.fromMap(Map<Object?, Object?> map) {
+    final error = map['error'] as String?;
+    final sha256Checked = map['sha256Checked'] as bool? ?? false;
+    final sha256Matches = map['sha256Matches'] as bool? ?? false;
+    final signatureMatches = map['signatureMatches'] as bool? ?? false;
     return ApkVerification(
       sha256: map['sha256'] as String?,
-      sha256Checked: map['sha256Checked'] as bool? ?? false,
-      sha256Matches: map['sha256Matches'] as bool? ?? false,
-      signatureMatches: map['signatureMatches'] as bool? ?? false,
+      sha256Checked: sha256Checked,
+      sha256Matches: sha256Matches,
+      signatureMatches: signatureMatches,
       apkFingerprint: map['apkFingerprint'] as String?,
       currentFingerprint: map['currentFingerprint'] as String?,
-      error: map['error'] as String?,
+      // 原生只在读不到文件 / 签名时才填 error（'file not found'、
+      // 'signing certificate unavailable' 等）；校验不通过（SHA-256
+      // 或签名对不上）时 error 是 null，只靠两个 bool 传达。调用方
+      // 按 error 区分失败原因，所以这里把 mismatch 翻译成机器可读
+      // 的原因码，签名优先（与下载器按 signatureMatches 选
+      // verify/signature 的顺序一致）；原生已填的 error 原样保留；
+      // 空 map（没跑过校验）保持 null。
+      error:
+          error ??
+          (sha256Checked && !signatureMatches
+              ? 'signature'
+              : sha256Checked && !sha256Matches
+                  ? 'verify'
+                  : null),
     );
   }
 }

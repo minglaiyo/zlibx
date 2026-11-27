@@ -15,7 +15,6 @@ import '../../providers/search_filter_options_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/update_provider.dart';
 import '../../routes/app_routes.dart';
-import '../../services/hive_service.dart';
 import '../../theme/app_metrics.dart';
 import '../../utils/app_log.dart';
 import '../../utils/app_snack.dart';
@@ -23,43 +22,15 @@ import '../../utils/isbn.dart';
 import '../../widgets/update_dialog.dart';
 import '../reader/reader_screen.dart';
 import 'barcode_scanner_screen.dart';
+import 'recent_searches_store.dart';
 import 'search_filters.dart';
+import 'search_scroll_handler.dart';
 import 'widgets/search_body_view.dart';
 import 'widgets/search_filter_dialog.dart';
 import 'widgets/search_glass_header.dart';
 import 'widgets/search_mode_selector.dart';
 
-
-const _recentSearchesKey = 'recent_search_keywords';
-const _recentSearchesLimit = 12;
-
-/// Arguments for opening the search screen with a preset: either
-/// scoped to one category (browse it immediately, empty query) or
-/// pre-filled with a query (run it immediately). The category pages
-/// are gone — category lives only inside search now, so the category
-/// form is also what the book-detail category chips navigate to;
-/// the query form is what the book-detail author/publisher taps
-/// navigate to.
-class SearchScreenArgs {
-  final int? categoryId;
-  final String? categoryName;
-
-  /// Query to pre-fill and run on open (detail-page author/publisher
-  /// tap). Null means no preset query.
-  final String? query;
-
-  /// Field the query is scoped to when it comes from a detail-page
-  /// author/publisher tap (`author` / `publisher`); null is an
-  /// unscoped general search. See [SearchField].
-  final SearchField? field;
-
-  const SearchScreenArgs({
-    this.categoryId,
-    this.categoryName,
-    this.query,
-    this.field,
-  });
-}
+export 'search_screen_args.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   final BookSource? initialSource;
@@ -102,7 +73,7 @@ class SearchScreen extends ConsumerStatefulWidget {
 ///
 /// 三个 ValueNotifier 把高频重建从整屏收窄到局部（审查 B2）：
 ///  * [_glassHeaderHeight]——头部布局期高度 → 结果区让位 padding；
-///  * [_headerVisible]——chips 列滚动折叠，折叠动画帧不再重挂整屏；
+///  * [_scrollHandler]——chips 列滚动折叠，折叠动画帧不再重挂整屏；
 ///  * [_isListView]——网格↔列表切换，只重建结果区。
 /// 建议面板的逐字刷新由头部自己监听输入框（只重建头部一层）。
 class _SearchScreenState extends ConsumerState<SearchScreen> {
@@ -149,24 +120,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   final ValueNotifier<bool> _isListView = ValueNotifier(false);
 
   bool _isQueryEmpty = true;
-  List<String> _recentSearches = [];
 
-  /// Pixels of accumulated scroll in one direction before the
-  /// header folds away (down) or back in (up).
-  static const double _scrollHideThreshold = 12;
+  /// Recent-search keywords (Hive-backed, de-duped, capped at 12).
+  final _recentSearches = RecentSearchesStore();
 
-  /// Whether the source / mode / filter-chip header is shown. It
-  /// folds away (animated) while the user scrolls down through the
-  /// results and folds back in when scrolling back up; a fresh
-  /// search always brings it back (see [_runSearch]). ValueNotifier：
-  /// 折叠/展开只重建头部 chips 列（审查 B2）。
-  final ValueNotifier<bool> _headerVisible = ValueNotifier(true);
-
-  /// Accumulated scroll delta in the current direction, for the
-  /// fold threshold above. A single pixel's delta is noise
-  /// (overscroll, fling settle), so the direction must persist —
-  /// a slow drag still folds the header once it has moved this far.
-  double _scrollAccum = 0;
+  /// Scroll-driven header fold + load-more (see [SearchScrollHandler]).
+  late final _scrollHandler = SearchScrollHandler(onLoadMore: _loadMore);
 
   String _lastSubmittedQuery = '';
 
@@ -184,18 +143,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     _source = widget.initialSource ?? BookSource.zlibrary;
     _filters.categoryId = widget.initialCategoryId;
     _filters.categoryName = widget.initialCategoryName;
-    final savedSearches = HiveService.settingsBox.get(_recentSearchesKey);
-    if (savedSearches is List) {
-      final seen = <String>{};
-      _recentSearches = savedSearches
-          .whereType<String>()
-          .map((keyword) => keyword.trim())
-          .where(
-            (keyword) => keyword.isNotEmpty && seen.add(keyword.toLowerCase()),
-          )
-          .take(_recentSearchesLimit)
-          .toList();
-    }
+    _recentSearches.load();
     // Opened with a query (detail-page author/publisher tap): put
     // the query in the box before the listener is attached, so the
     // empty-state flag is set here rather than via a setState in
@@ -232,7 +180,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     _searchController.dispose();
     _searchFocus.dispose();
     _glassHeaderHeight.dispose();
-    _headerVisible.dispose();
+    _scrollHandler.dispose();
     _isListView.dispose();
     super.dispose();
   }
@@ -253,11 +201,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   // ── Recent searches ──────────────────────────────────────────
 
   Future<void> _saveRecentSearches(List<String> searches) async {
-    setState(() => _recentSearches = searches);
+    setState(() => _recentSearches.searches = searches);
     // 无痕模式（隐私锁配套）：内存态保留（本次会话 UI 照常），不落盘。
     if (ref.read(incognitoModeProvider)) return;
     try {
-      await HiveService.settingsBox.put(_recentSearchesKey, searches);
+      await _recentSearches.persist();
     } catch (error) {
       AppLog.report(
         'Failed to save recent searches: ${error.runtimeType}',
@@ -273,12 +221,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   void _rememberSearch(String query) {
-    final normalized = query.toLowerCase();
-    final searches = [
-      query,
-      ..._recentSearches.where((item) => item.toLowerCase() != normalized),
-    ].take(_recentSearchesLimit).toList();
-    unawaited(_saveRecentSearches(searches));
+    unawaited(_saveRecentSearches(_recentSearches.remembered(query)));
   }
 
   void _searchAgain(String keyword) {
@@ -291,11 +234,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   void _removeRecentSearch(String keyword) {
-    unawaited(
-      _saveRecentSearches(
-        _recentSearches.where((item) => item != keyword).toList(),
-      ),
-    );
+    unawaited(_saveRecentSearches(_recentSearches.without(keyword)));
   }
 
   void _clearRecentSearches() {
@@ -500,8 +439,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     // scroll-folded header comes back with them (and the
     // accumulated scroll direction starts over). ValueNotifier 写入
     // 即可——值相同不通知，头部自己收。
-    _scrollAccum = 0;
-    _headerVisible.value = true;
+    _scrollHandler.reset();
 
     // Plan item 7: a whole query that is a bare ISBN (typed or pasted,
     // with or without separators) searches its canonical ISBN-13
@@ -676,47 +614,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     }
   }
 
-  /// 滚动加载走气泡通知（结果区在 [SearchBodyView] 里由结果分支包
-  /// NotificationListener）：不再需要 ScrollController，网格↔列表
-  /// 切换的 AnimatedSwitcher 过渡期间新旧两个列表才能同时在树上。
-  /// 阈值与原 controller 监听一致；重复触发由各 provider 的
-  /// isLoadingMore / totalPages 守卫兜底。
-  ///
-  /// 同时管搜索栏下方那组标题（来源 / 模式 / 筛选 chips）的收起：
-  /// 往下翻结果时收起来、往回翻时展开、回到顶部时一定展开。
-  /// 只认 ScrollUpdateNotification 的 delta（正 = 往下翻 = 收起，
-  /// 负 = 往回翻 = 展开），按方向累计到阈值才动，避免抖动。折叠/
-  /// 展开走 [_headerVisible] ValueNotifier——只在头部 chips 列上
-  /// 重建，整屏不跟（审查 B2 前的实际行为是每个折叠帧整屏 setState）。
-  bool _onScrollNotification(ScrollNotification n) {
-    if (n.metrics.pixels >= n.metrics.maxScrollExtent - 200) {
-      _loadMore();
-    }
-    if (n.metrics.pixels <= 0) {
-      // Back at the top: the header always comes back.
-      _scrollAccum = 0;
-      _headerVisible.value = true;
-      return false;
-    }
-    final delta = n is ScrollUpdateNotification ? n.scrollDelta : null;
-    if (delta != null && delta != 0) {
-      if (_scrollAccum == 0 || delta.sign == _scrollAccum.sign) {
-        _scrollAccum += delta;
-      } else {
-        _scrollAccum = delta;
-      }
-      if (_scrollAccum > _scrollHideThreshold && _headerVisible.value) {
-        _scrollAccum = 0;
-        _headerVisible.value = false;
-      } else if (_scrollAccum < -_scrollHideThreshold &&
-          !_headerVisible.value) {
-        _scrollAccum = 0;
-        _headerVisible.value = true;
-      }
-    }
-    return false;
-  }
-
   void _openBook(DisplayBook book) {
     // A removed book from a category list keeps its download blocked
     // on the detail page (the category pages carry the per-card
@@ -843,7 +740,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   showResults: showResults,
                   isListViewListenable: _isListView,
                   onToggleView: () => _isListView.value = !_isListView.value,
-                  onScrollNotification: _onScrollNotification,
+                  onScrollNotification: _scrollHandler.onScrollNotification,
                   currentPage: view.currentPage,
                   totalPagesText: view.totalPagesText,
                   isFullTextMode: isFullTextMode,
@@ -851,7 +748,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   books: view.books,
                   hits: view.hits,
                   articles: view.articles,
-                  recentSearches: _recentSearches,
+                  recentSearches: _recentSearches.searches,
                   onSearchAgain: _searchAgain,
                   onRemoveRecentSearch: _removeRecentSearch,
                   onClearRecentSearches: _clearRecentSearches,
@@ -882,7 +779,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 activeFilterCount: _filters.activeFilterCount(_mode),
                 isQueryEmpty: _isQueryEmpty,
                 lastSubmittedQuery: _lastSubmittedQuery,
-                headerVisibleListenable: _headerVisible,
+                headerVisibleListenable: _scrollHandler.headerVisible,
                 showResults: showResults,
                 languageNames: languageNames,
                 orderNames: orderNames,

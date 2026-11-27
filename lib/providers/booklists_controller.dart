@@ -1,0 +1,796 @@
+/// Booklists controller (P1-4 split of booklists_provider.dart):
+/// the [BooklistsController] state machine + [booklistsControllerProvider].
+/// The state model lives in booklists_state.dart, cache invalidation in
+/// booklists_cache.dart; booklists_provider.dart re-exports all three so
+/// existing call sites keep importing it unchanged.
+library;
+
+import 'dart:async';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:olib_api_plugin/olib_api_plugin.dart';
+
+import '../services/booklist_repository.dart';
+import 'auth_provider.dart';
+import 'booklists_cache.dart';
+import 'booklists_state.dart';
+import 'zlibrary_provider.dart';
+
+/// Own booklists + public booklists to discover, with search and paging.
+///
+/// List pages are the site's HTML (`/booklists`, `/booklists/my`). A
+/// cached page paints instantly and is revalidated in the background
+/// (a failed background refresh keeps the cached lists); when Dio hits
+/// the browser-check wall the same page is fetched via the WebView
+/// solver. Fetching, parsing, the page cache and invalidation live in
+/// [BooklistRepository]; this controller keeps the state machine.
+class BooklistsController extends AutoDisposeNotifier<BooklistsState> {
+  static const int _pageSize = 10;
+
+  bool _alive = true;
+
+  /// Bumped by every fresh load (tab switch, search, retry, refresh);
+  /// every in-flight load carries the generation it started with, and a
+  /// slower response for an old tab/query is dropped.
+  int _generation = 0;
+
+  /// Tab/query/order of the lists currently painted (recorded in
+  /// [_applyPage]). A reload for the SAME key must not blank them —
+  /// see [loadFirst].
+  BooklistTab? _paintedTab;
+  String _paintedQuery = '';
+  String _paintedOrder = '';
+
+  /// Identity of the loadMore currently holding the [BooklistsState.isLoadingMore]
+  /// flag (0 = none). A stale loadMore's `finally` must not clear a
+  /// newer loadMore's flag — only the holder may release it.
+  int _loadMoreToken = 0;
+  int _loadMoreOwner = 0;
+
+  /// Data layer: fetching, parsing, the page cache and invalidation
+  /// (see [BooklistRepository]). Holds no state of its own; rebuilt on
+  /// every (re)build from the shared API instance.
+  late BooklistRepository _repository;
+
+  /// Cache invalidation after writes (see [BooklistsCache]): the keys
+  /// only — the cache itself lives in [BooklistRepository].
+  late BooklistsCache _cache;
+
+  @override
+  BooklistsState build() {
+    _repository = BooklistRepository(ref.read(zlibraryApiProvider));
+    _cache = BooklistsCache(_repository, _accountIdFor);
+    _alive = true;
+    ref.onDispose(() => _alive = false);
+    Future<void>.microtask(loadFirst);
+    return const BooklistsState();
+  }
+
+  bool _isCurrent(int generation) => _alive && generation == _generation;
+
+  /// Cache partition: the own-lists and favorites tabs are
+  /// account-scoped (the same URL serves another account's lists
+  /// after a switch); discover is public.
+  String? _accountIdFor(BooklistTab tab) => tab == BooklistTab.discover
+      ? null
+      : (ref.read(authProvider).user?.id ?? 'signed-out');
+
+  void setTab(BooklistTab tab) {
+    if (tab == state.tab) return;
+    state = state.copyWith(tab: tab);
+    unawaited(loadFirst());
+  }
+
+  void search(String query) {
+    final trimmed = query.trim();
+    if (trimmed == state.query) return;
+    state = state.copyWith(query: trimmed);
+    unawaited(loadFirst());
+  }
+
+  /// Change the list sort order and reload page 1. [order] is one of
+  /// `popular`, `date_created`, `date_updated`.
+  void setOrder(String order) {
+    if (order == state.order) return;
+    state = state.copyWith(order: order);
+    unawaited(loadFirst());
+  }
+
+  /// Delete one of the user's own lists (mine tab only): optimistic
+  /// removal, restored on failure. Returns the API response so the
+  /// caller can show the failure message; the guard cases return a
+  /// failure response and change nothing.
+  ///
+  /// The restore is guarded by the generation captured at delete
+  /// start: a refresh that ran during the delete owns the
+  /// authoritative list, so a stale restore must not re-insert a
+  /// list the refresh already dropped (or duplicate one it kept).
+  Future<ApiResponse<bool>> deleteBooklist(Booklist list) async {
+    if (state.tab != BooklistTab.mine || state.phase != BooklistsPhase.ready) {
+      return ApiResponse.fail('delete booklist not available');
+    }
+    final index = state.lists.indexWhere((l) => l.id == list.id);
+    if (index < 0) return ApiResponse.fail('delete booklist not available');
+    final listId = int.tryParse(list.id);
+    if (listId == null) {
+      return ApiResponse.fail('delete booklist not available');
+    }
+    final generation = _generation;
+    final removed = state.lists[index];
+    state = state.copyWith(lists: [...state.lists]..removeAt(index));
+    try {
+      final response = await _repository.deleteBooklist(listId);
+      if (!_alive) return response;
+      if (response.success) {
+        // The list is already gone from the visible page (optimistic
+        // removal above). Invalidate the cached mine page and the
+        // deleted list's detail page so a later refresh cannot repaint
+        // the stale page with the list back in it — that repaint is
+        // what made a delete look slow. No reload: there is nothing
+        // left to fetch.
+        _cache.invalidateMinePage(query: state.query, order: state.order);
+        _cache.invalidateBooklist(list.url, BooklistTab.mine);
+        return response;
+      }
+      _restoreDeleted(generation, removed, index);
+      return response;
+    } catch (_) {
+      if (!_alive) return ApiResponse.fail('delete booklist failed');
+      _restoreDeleted(generation, removed, index);
+      return ApiResponse.fail('delete booklist failed');
+    }
+  }
+
+  /// Re-inserts a list whose delete failed — only when the list has
+  /// not been replaced since the delete started (a refresh owns the
+  /// authoritative list then) and the list is not already present.
+  void _restoreDeleted(int generation, Booklist removed, int index) {
+    if (!_isCurrent(generation)) return;
+    if (state.lists.any((item) => item.id == removed.id)) return;
+    state = state.copyWith(
+      lists: [...state.lists]
+        ..insert(index.clamp(0, state.lists.length), removed),
+    );
+  }
+
+  /// A book was added to one of the user's lists (from the
+  /// add-to-booklist picker): bump that list's count optimistically
+  /// so the booklists screen shows the new count without waiting
+  /// for its next background refresh. No-op when the list is not
+  /// in the currently loaded page. The rebuilt list copies every
+  /// field — a hand-built constructor that drops one (color, private,
+  /// favorite, …) would silently wipe that state.
+  void noteBookAdded(String listId) {
+    final index = state.lists.indexWhere((item) => item.id == listId);
+    if (index < 0) return;
+    final list = state.lists[index];
+    final count = list.count;
+    if (count == null) return;
+    final updated = Booklist(
+      id: list.id,
+      name: list.name,
+      description: list.description,
+      author: list.author,
+      authorProfile: list.authorProfile,
+      authorAvatar: list.authorAvatar,
+      count: count + 1,
+      views: list.views,
+      comments: list.comments,
+      color: list.color,
+      isPrivate: list.isPrivate,
+      isFavorite: list.isFavorite,
+      coverUrl: list.coverUrl,
+      url: list.url,
+      previewBooks: list.previewBooks,
+    );
+    final lists = [...state.lists]..[index] = updated;
+    state = state.copyWith(lists: lists);
+  }
+
+  /// Replace one visible list with an updated copy (after a
+  /// successful edit, color change, visibility flip or favorite
+  /// toggle) without reloading the page. No-op when the list is not
+  /// in the currently loaded page.
+  void _replaceList(Booklist updated) {
+    final index = state.lists.indexWhere((item) => item.id == updated.id);
+    if (index < 0) return;
+    final lists = [...state.lists]..[index] = updated;
+    state = state.copyWith(lists: lists);
+  }
+
+  /// 失败回滚：从操作开始时的 [snapshot] 只恢复本次操作改动的那一个
+  /// 字段（[restore] 收当前条目、返回字段修正后的副本），其余字段保留
+  /// 现状。旧写法 `_replaceList(snapshot)` 拿整旧对象覆盖——两个操作
+  /// 重叠时，先发起者失败会把后发起者已成功的改动一起回滚掉（审查3
+  /// P1）。
+  void _rollbackFrom(
+    Booklist snapshot,
+    Booklist Function(Booklist current) restore,
+  ) {
+    final index = state.lists.indexWhere((item) => item.id == snapshot.id);
+    if (index < 0) return;
+    final lists = [...state.lists]..[index] = restore(state.lists[index]);
+    state = state.copyWith(lists: lists);
+  }
+
+  /// 发起 mutation 时的页面上下文（审查3 P2-3）。tab/query/order/
+  /// account 任一变化都会伴随一次 loadFirst（generation 前移），所以
+  /// 回滚用 generation 相等即可判定"页面还是我乐观更新过的那页"；
+  /// 成功侧的合并刻意不绑 generation（刷新吞掉合法写入是审查点名的
+  /// 反模式），只比上下文元组。缓存失效同样不吃上下文——服务器确实
+  /// 变了，用发起时的 account 分区精确失效。
+  ({BooklistTab tab, String query, String order, String? accountId})
+  _captureScope() => (
+    tab: state.tab,
+    query: state.query,
+    order: state.order,
+    accountId: _accountIdFor(state.tab),
+  );
+
+  bool _scopeCurrent(
+    ({BooklistTab tab, String query, String order, String? accountId}) scope,
+  ) =>
+      state.tab == scope.tab &&
+      state.query == scope.query &&
+      state.order == scope.order &&
+      _accountIdFor(state.tab) == scope.accountId;
+
+  /// A list was just created on the account: prepend it to the visible
+  /// mine page (when the mine tab is showing an unfiltered page) and
+  /// invalidate the cached mine page, so a later refresh cannot repaint
+  /// the pre-create page without it. The position is optimistic: under
+  /// a non-date sort the next refresh settles the true order.
+  void noteBooklistCreated(Booklist created) {
+    _cache.invalidateMinePage(query: state.query, order: state.order);
+    if (state.tab != BooklistTab.mine ||
+        state.phase != BooklistsPhase.ready ||
+        state.query.isNotEmpty) {
+      return;
+    }
+    if (state.lists.any((item) => item.id == created.id)) return;
+    state = state.copyWith(lists: [created, ...state.lists]);
+  }
+
+  /// The create answer carried no list (empty body): invalidate the
+  /// cached mine page and refresh it in the background, without
+  /// blanking the lists already on screen.
+  void refreshMineAfterCreate() {
+    _cache.invalidateMinePage(query: state.query, order: state.order);
+    unawaited(loadFirst());
+  }
+
+  /// Edit one of the user's own lists (mine tab only): on success the
+  /// visible entry is replaced in place and the list's cached detail
+  /// pages are invalidated. Returns the API response so the caller can
+  /// show the failure message. When the answer carried no updated
+  /// list (empty-body success), the caller reloads instead.
+  Future<ApiResponse<Booklist?>> editBooklist(
+    Booklist list, {
+    required String title,
+    required String description,
+    required bool isPrivate,
+    required int? color,
+  }) async {
+    if (state.tab != BooklistTab.mine || state.phase != BooklistsPhase.ready) {
+      return ApiResponse.fail('edit booklist not available');
+    }
+    final listId = int.tryParse(list.id);
+    if (listId == null) {
+      return ApiResponse.fail('edit booklist not available');
+    }
+    final scope = _captureScope();
+    try {
+      final response = await _repository.editBooklist(
+        id: listId,
+        title: title,
+        description: description,
+        isPrivate: isPrivate,
+        color: color,
+      );
+      if (!_alive) return response;
+      final updated = response.data;
+      if (response.success && updated != null) {
+        // 失效落在发起时的 account 分区：服务器确实改了，缓存必须弃
+        // 读；但把服务端整对象并回界面只在上下文未变时进行（P2-3）。
+        _cache.invalidateBooklist(
+          list.url,
+          BooklistTab.mine,
+          accountId: scope.accountId,
+        );
+        if (_scopeCurrent(scope)) _replaceList(updated);
+      }
+      return response;
+    } catch (_) {
+      return ApiResponse.fail('edit booklist failed');
+    }
+  }
+
+  /// Change one of the user's own lists' color (mine tab only):
+  /// optimistic local update, restored on failure. The color value
+  /// (0–5) is the site's own numbering.
+  Future<ApiResponse<bool>> setBooklistColor(Booklist list, int color) async {
+    if (state.tab != BooklistTab.mine || state.phase != BooklistsPhase.ready) {
+      return ApiResponse.fail('change booklist color not available');
+    }
+    final listId = int.tryParse(list.id);
+    if (listId == null) {
+      return ApiResponse.fail('change booklist color not available');
+    }
+    final updated = _withColor(list, color);
+    _replaceList(updated);
+    // 回滚许可 = 页面还是乐观更新落下的那一页：tab/query/order/账户
+    // 任何漂移都伴随 generation 前移（P2-3）。
+    final scope = _captureScope();
+    final generation = _generation;
+    try {
+      final response = await _repository.setBooklistColor(
+        id: listId,
+        color: color,
+      );
+      if (!_alive) return response;
+      if (response.success) {
+        _cache.invalidateBooklist(
+          list.url,
+          BooklistTab.mine,
+          accountId: scope.accountId,
+        );
+        return response;
+      }
+      if (generation == _generation) {
+        _rollbackFrom(list, (current) => _withColor(current, list.color));
+      }
+      return response;
+    } catch (_) {
+      if (_alive && generation == _generation) {
+        _rollbackFrom(list, (current) => _withColor(current, list.color));
+      }
+      return ApiResponse.fail('change booklist color failed');
+    }
+  }
+
+  /// Flip one of the user's own lists between public and private (mine
+  /// tab only): the server flips the current state, so the local flag
+  /// is flipped optimistically and restored on failure.
+  Future<ApiResponse<bool>> toggleBooklistPublic(Booklist list) async {
+    if (state.tab != BooklistTab.mine || state.phase != BooklistsPhase.ready) {
+      return ApiResponse.fail('change booklist visibility not available');
+    }
+    final listId = int.tryParse(list.id);
+    if (listId == null) {
+      return ApiResponse.fail('change booklist visibility not available');
+    }
+    final updated = _withPrivate(list, !list.isPrivate);
+    _replaceList(updated);
+    final scope = _captureScope();
+    final generation = _generation;
+    try {
+      final response = await _repository.toggleBooklistPublic(listId);
+      if (!_alive) return response;
+      if (response.success) {
+        _cache.invalidateBooklist(
+          list.url,
+          BooklistTab.mine,
+          accountId: scope.accountId,
+        );
+        return response;
+      }
+      if (generation == _generation) {
+        _rollbackFrom(list, (current) => _withPrivate(current, list.isPrivate));
+      }
+      return response;
+    } catch (_) {
+      if (_alive && generation == _generation) {
+        _rollbackFrom(list, (current) => _withPrivate(current, list.isPrivate));
+      }
+      return ApiResponse.fail('change booklist visibility failed');
+    }
+  }
+
+  /// Favorite or unfavorite a booklist (either tab): optimistic local
+  /// flip, restored on failure. The cached list page is left to the
+  /// next background revalidation — the visible state is what the
+  /// user sees.
+  Future<ApiResponse<bool>> setBooklistFavorite(
+    Booklist list,
+    bool favorite,
+  ) async {
+    if (state.phase != BooklistsPhase.ready) {
+      return ApiResponse.fail('favorite booklist not available');
+    }
+    final listId = int.tryParse(list.id);
+    if (listId == null) {
+      return ApiResponse.fail('favorite booklist not available');
+    }
+    final updated = _withFavorite(list, favorite);
+    // 在收藏 tab 上取消收藏 = 这条目即将从这一页消失:乐观移除
+    // (同 delete 的模式),失败再插回原位;其余场景只翻转心形。
+    final removeFromFavoriteTab =
+        state.tab == BooklistTab.favorite && !favorite;
+    final removedIndex = removeFromFavoriteTab
+        ? state.lists.indexWhere((l) => l.id == list.id)
+        : -1;
+    if (removeFromFavoriteTab && removedIndex >= 0) {
+      state = state.copyWith(lists: [...state.lists]..removeAt(removedIndex));
+    } else {
+      _replaceList(updated);
+    }
+    final generation = _generation;
+    try {
+      final response = favorite
+          ? await _repository.favoriteBooklist(listId)
+          : await _repository.unfavoriteBooklist(listId);
+      if (!_alive) return response;
+      if (response.success) {
+        // 服务器端收藏集合变了:失效收藏页缓存,收藏 tab 的下一次
+        // 加载必须重拉,不能把旧集合画回去。
+        _cache.invalidateFavoritePage(
+          onFavoriteTab: state.tab == BooklistTab.favorite,
+          query: state.query,
+          order: state.order,
+        );
+        return response;
+      }
+      if (generation == _generation) {
+        if (removeFromFavoriteTab && removedIndex >= 0) {
+          _restoreDeleted(generation, list, removedIndex);
+        } else {
+          _rollbackFrom(
+            list,
+            (current) => _withFavorite(current, list.isFavorite),
+          );
+        }
+      }
+      return response;
+    } catch (_) {
+      if (_alive && generation == _generation) {
+        if (removeFromFavoriteTab && removedIndex >= 0) {
+          _restoreDeleted(generation, list, removedIndex);
+        } else {
+          _rollbackFrom(
+            list,
+            (current) => _withFavorite(current, list.isFavorite),
+          );
+        }
+      }
+      return ApiResponse.fail('favorite booklist failed');
+    }
+  }
+
+  /// Rebuild [list] with a new color, copying every other field.
+  /// Nullable so a rollback can restore a snapshot that carried no
+  /// color at all.
+  static Booklist _withColor(Booklist list, int? color) => Booklist(
+    id: list.id,
+    name: list.name,
+    description: list.description,
+    author: list.author,
+    authorProfile: list.authorProfile,
+    authorAvatar: list.authorAvatar,
+    count: list.count,
+    views: list.views,
+    comments: list.comments,
+    color: color,
+    isPrivate: list.isPrivate,
+    isFavorite: list.isFavorite,
+    coverUrl: list.coverUrl,
+    url: list.url,
+    previewBooks: list.previewBooks,
+  );
+
+  /// Rebuild [list] with a new private flag, copying every other field.
+  static Booklist _withPrivate(Booklist list, bool isPrivate) => Booklist(
+    id: list.id,
+    name: list.name,
+    description: list.description,
+    author: list.author,
+    authorProfile: list.authorProfile,
+    authorAvatar: list.authorAvatar,
+    count: list.count,
+    views: list.views,
+    comments: list.comments,
+    color: list.color,
+    isPrivate: isPrivate,
+    isFavorite: list.isFavorite,
+    coverUrl: list.coverUrl,
+    url: list.url,
+    previewBooks: list.previewBooks,
+  );
+
+  /// Rebuild [list] with a new favorite flag, copying every other field.
+  static Booklist _withFavorite(Booklist list, bool isFavorite) => Booklist(
+    id: list.id,
+    name: list.name,
+    description: list.description,
+    author: list.author,
+    authorProfile: list.authorProfile,
+    authorAvatar: list.authorAvatar,
+    count: list.count,
+    views: list.views,
+    comments: list.comments,
+    color: list.color,
+    isPrivate: list.isPrivate,
+    isFavorite: isFavorite,
+    coverUrl: list.coverUrl,
+    url: list.url,
+    previewBooks: list.previewBooks,
+  );
+
+  /// Pull-to-refresh: revalidate page 1 in place when lists are on
+  /// screen, otherwise do a full first load.
+  Future<void> refresh() async {
+    if (state.phase != BooklistsPhase.ready || state.lists.isEmpty) {
+      return loadFirst();
+    }
+    if (!_alive) return;
+    final generation = ++_generation;
+    await _loadPage(
+      1,
+      replace: true,
+      generation: generation,
+      accountId: _accountIdFor(state.tab),
+    );
+  }
+
+  Future<void> loadFirst() async {
+    if (!_alive) return;
+    // Only the discover tab is public; own-lists and favorites tabs
+    // need a login (the favorites page is the account's own list).
+    if (state.tab != BooklistTab.discover &&
+        ref.read(authProvider).user == null) {
+      state = state.copyWith(phase: BooklistsPhase.loggedOut, lists: const []);
+      return;
+    }
+    final generation = ++_generation;
+    final tab = state.tab;
+    final accountId = _accountIdFor(tab);
+    final url = _repository.booklistsPageUrl(
+      mine: tab == BooklistTab.mine,
+      favorite: tab == BooklistTab.favorite,
+      query: state.query,
+      order: state.order,
+      page: 1,
+    );
+    final cachedPage = await _repository.cachedListPage(
+      url,
+      accountId: accountId,
+    );
+    // Guard: if the user switched tab/query/order while the cache was
+    // being read, this generation is stale — discard the result so old
+    // data cannot briefly paint under the new search key.
+    if (!_isCurrent(generation)) return;
+    if (cachedPage != null) {
+      // Stale-while-revalidate: paint the last-known lists instantly,
+      // then refresh page 1 in the background.
+      _applyPage(cachedPage, 1, replace: true);
+      unawaited(
+        _loadPage(
+          1,
+          replace: true,
+          generation: generation,
+          accountId: accountId,
+        ),
+      );
+      return;
+    }
+    // Same tab/query/order and lists already painted: this is a reload
+    // of what the user is already looking at (provider rebuild, a
+    // second load racing the first) — revalidate in the background
+    // and never blank the painted lists. A tab/query/order change
+    // still blanks: the painted lists belong to the old key.
+    if (state.phase == BooklistsPhase.ready &&
+        state.lists.isNotEmpty &&
+        _paintedTab == state.tab &&
+        _paintedQuery == state.query &&
+        _paintedOrder == state.order) {
+      unawaited(
+        _loadPage(
+          1,
+          replace: true,
+          generation: generation,
+          accountId: accountId,
+        ),
+      );
+      return;
+    }
+    state = state.copyWith(
+      phase: BooklistsPhase.loading,
+      lists: const [],
+      nextPage: 1,
+      hasMore: true,
+      isLoadingMore: false,
+      clearError: true,
+    );
+    await _loadPage(1, generation: generation, accountId: accountId);
+  }
+
+  Future<void> loadMore() async {
+    final s = state;
+    if (!_alive ||
+        s.phase != BooklistsPhase.ready ||
+        !s.hasMore ||
+        s.isLoadingMore) {
+      return;
+    }
+    await _loadPage(
+      s.nextPage,
+      generation: _generation,
+      accountId: _accountIdFor(s.tab),
+    );
+  }
+
+  Future<void> _loadPage(
+    int page, {
+    bool replace = false,
+    required int generation,
+    required String? accountId,
+  }) async {
+    final tab = state.tab;
+    final query = state.query;
+    final tracksLoadMore = page > 1;
+    // This loadMore's identity: only the request currently holding
+    // the flag may release it (see the finally below).
+    final loadMoreToken = tracksLoadMore ? ++_loadMoreToken : 0;
+    if (tracksLoadMore) {
+      _loadMoreOwner = loadMoreToken;
+      state = state.copyWith(isLoadingMore: true);
+    }
+    try {
+      final response = switch (tab) {
+        BooklistTab.mine => await _repository.searchMyBooklists(
+          query: query,
+          order: state.order,
+          page: page,
+        ),
+        BooklistTab.favorite => await _repository.searchFavoriteBooklists(
+          query: query,
+          order: state.order,
+          page: page,
+        ),
+        BooklistTab.discover => await _repository.searchPublicBooklists(
+          query: query,
+          order: state.order,
+          page: page,
+        ),
+      };
+      if (!_isCurrent(generation)) return;
+      final data = response.data;
+      if (response.success && data != null) {
+        _applyPage(data, page, replace: replace);
+        return;
+      }
+      final error = response.error ?? 'Failed to load booklists';
+      if (_repository.isChallengeError(response.error)) {
+        await _loadViaSolver(
+          page,
+          error,
+          replace: replace,
+          generation: generation,
+          accountId: accountId,
+        );
+        return;
+      }
+      _applyFailure(page, error, replace: replace);
+    } catch (e) {
+      if (!_isCurrent(generation)) return;
+      _applyFailure(page, e.toString(), replace: replace);
+    } finally {
+      // A stale response (a refresh bumped the generation while this
+      // loadMore was in flight) is dropped above WITHOUT any path that
+      // resets isLoadingMore — the flag then blocks every future
+      // loadMore() at the `s.isLoadingMore` guard forever. Reset it
+      // here so pagination can never dead-lock. But only the request
+      // currently holding the flag may release it: a newer loadMore
+      // may have started since (a refresh cleared the way), and
+      // clearing its flag would let a duplicate loadMore through.
+      if (tracksLoadMore && _loadMoreOwner == loadMoreToken && _alive) {
+        _loadMoreOwner = 0;
+        state = state.copyWith(isLoadingMore: false);
+      }
+    }
+  }
+
+  /// Fetch one list page through the WebView solver and parse it. The
+  /// own-lists and favorites pages need the login session; discover
+  /// does not. A failure reports the fast path's original error, so
+  /// retry re-runs fast-then-solver.
+  Future<void> _loadViaSolver(
+    int page,
+    String originalError, {
+    required bool replace,
+    required int generation,
+    required String? accountId,
+  }) async {
+    final tab = state.tab;
+    final url = _repository.booklistsPageUrl(
+      mine: tab == BooklistTab.mine,
+      favorite: tab == BooklistTab.favorite,
+      query: state.query,
+      order: state.order,
+      page: page,
+    );
+    String? userId;
+    String? userKey;
+    if (tab != BooklistTab.discover) {
+      final user = ref.read(authProvider).user;
+      userKey = user?.remixUserkey;
+      if (user == null || userKey == null || userKey.isEmpty) {
+        // The session key is gone — show the login prompt.
+        state = state.copyWith(phase: BooklistsPhase.loggedOut);
+        return;
+      }
+      userId = user.id;
+    }
+    final html = await _repository.fetchViaSolver(
+      url,
+      accountId: accountId,
+      userId: userId,
+      userKey: userKey,
+    );
+    if (!_isCurrent(generation)) return;
+    if (html == null) {
+      _applyFailure(page, originalError, replace: replace);
+      return;
+    }
+    // parseListPage 是 Future——解析期间用户可能已经切 tab/搜索/换
+    // 排序（generation 前移），落笔前必须复检，否则旧请求会把过期
+    // 结果画进新页面（审查3 P2）。
+    final parsed = await _repository.parseListPage(
+      html,
+      baseUrl: Uri.parse(url).origin,
+    );
+    if (!_isCurrent(generation)) return;
+    _applyPage(parsed, page, replace: replace);
+  }
+
+  void _applyPage(BooklistsPage data, int page, {bool replace = false}) {
+    // The painted lists belong to this key from now on. Safe to read
+    // from state here: a stale load (tab/query/order changed since it
+    // started) is dropped before _applyPage is ever reached.
+    _paintedTab = state.tab;
+    _paintedQuery = state.query;
+    _paintedOrder = state.order;
+    state = state.copyWith(
+      phase: BooklistsPhase.ready,
+      // A background refresh replaces the cached page instead of
+      // appending to it.
+      lists: replace || page == 1
+          ? data.lists
+          : [...state.lists, ...data.lists],
+      // The site pages at 10 lists; a short page ends the list. A parsed
+      // page count (0 = unknown) is the second signal.
+      hasMore:
+          data.lists.length >= _pageSize &&
+          (data.totalPages <= 0 || page < data.totalPages),
+      nextPage: page + 1,
+      isLoadingMore: false,
+      clearError: true,
+    );
+  }
+
+  void _applyFailure(int page, String message, {bool replace = false}) {
+    // A background refresh (cached lists on screen) never errors: the
+    // cached data stays, and the next open or pull-to-refresh retries.
+    // It still must clear a leftover loadMore flag — a loadMore that ran
+    // concurrently with this refresh had its response dropped.
+    if (replace) {
+      state = state.copyWith(isLoadingMore: false);
+      return;
+    }
+    if (page == 1) {
+      state = state.copyWith(
+        phase: BooklistsPhase.error,
+        error: message,
+        isLoadingMore: false,
+      );
+    } else {
+      state = state.copyWith(isLoadingMore: false, hasMore: false);
+    }
+  }
+}
+
+final booklistsControllerProvider =
+    NotifierProvider.autoDispose<BooklistsController, BooklistsState>(
+      BooklistsController.new,
+    );
+
+// RecommendedBooklists*（发现页推荐书单）拆到了 recommended_booklists_provider.dart

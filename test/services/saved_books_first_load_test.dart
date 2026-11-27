@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
@@ -23,6 +25,7 @@ class _FakeZLibraryApi implements ZLibraryApi {
   int getUserSavedCalls = 0;
   int? lastPage;
   int? lastLimit;
+  final List<Completer<ApiResponse<List<Book>>>> responseGates = [];
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>
@@ -33,11 +36,20 @@ class _FakeZLibraryApi implements ZLibraryApi {
     getUserSavedCalls++;
     lastPage = page;
     lastLimit = limit;
+    if (responseGates.isNotEmpty) return responseGates.removeAt(0).future;
     return ApiResponse.ok(
       const [Book(id: 1, title: 'Book 1'), Book(id: 2, title: 'Book 2')],
       meta: const {'total_pages': 1},
     );
   }
+}
+
+Future<void> _waitForCalls(_FakeZLibraryApi api, int count) async {
+  for (var i = 0; i < 100; i++) {
+    if (api.getUserSavedCalls >= count) return;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  throw StateError('getUserSaved never reached $count calls');
 }
 
 void main() {
@@ -86,5 +98,66 @@ void main() {
     final state = container.read(savedBooksProvider);
     expect(state.valueOrNull?.map((book) => book.id).toList(), [1, 2]);
     expect(api.getUserSavedCalls, 2);
+  });
+
+  test('并发全量加载：旧成功不能覆盖新结果', () async {
+    final api = _FakeZLibraryApi();
+    final container = ProviderContainer(
+      overrides: [zlibraryApiProvider.overrideWithValue(api)],
+    );
+    addTearDown(container.dispose);
+
+    container.read(savedBooksProvider);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    final notifier = container.read(savedBooksProvider.notifier);
+
+    final olderGate = Completer<ApiResponse<List<Book>>>();
+    api.responseGates.add(olderGate);
+    final older = notifier.loadSavedBooks(silent: true);
+    await _waitForCalls(api, 2);
+
+    final newerGate = Completer<ApiResponse<List<Book>>>();
+    api.responseGates.add(newerGate);
+    final newer = notifier.loadSavedBooks(silent: true);
+    await _waitForCalls(api, 3);
+
+    newerGate.complete(ApiResponse.ok(const [Book(id: 9, title: 'New')]));
+    await newer;
+    expect(container.read(savedBooksProvider).valueOrNull?.single.id, 9);
+
+    olderGate.complete(ApiResponse.ok(const [Book(id: 1, title: 'Old')]));
+    await older;
+    expect(container.read(savedBooksProvider).valueOrNull?.single.id, 9);
+  });
+
+  test('并发全量加载：旧失败不能覆盖新成功', () async {
+    final api = _FakeZLibraryApi();
+    final container = ProviderContainer(
+      overrides: [zlibraryApiProvider.overrideWithValue(api)],
+    );
+    addTearDown(container.dispose);
+
+    container.read(savedBooksProvider);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    final notifier = container.read(savedBooksProvider.notifier);
+
+    final olderGate = Completer<ApiResponse<List<Book>>>();
+    api.responseGates.add(olderGate);
+    final older = notifier.loadSavedBooks(silent: true);
+    await _waitForCalls(api, 2);
+
+    final newerGate = Completer<ApiResponse<List<Book>>>();
+    api.responseGates.add(newerGate);
+    final newer = notifier.loadSavedBooks(silent: true);
+    await _waitForCalls(api, 3);
+
+    newerGate.complete(ApiResponse.ok(const [Book(id: 9, title: 'New')]));
+    await newer;
+    olderGate.complete(ApiResponse.fail('old request failed'));
+    await older;
+
+    final state = container.read(savedBooksProvider);
+    expect(state.hasError, isFalse);
+    expect(state.valueOrNull?.single.id, 9);
   });
 }

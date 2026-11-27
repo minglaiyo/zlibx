@@ -11,10 +11,12 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
+import 'package:zlibx/models/display_book.dart';
 import 'package:zlibx/providers/download_provider.dart';
 import 'package:zlibx/providers/zlibrary_provider.dart';
 import 'package:zlibx/services/hive_service.dart';
@@ -24,6 +26,7 @@ import 'package:zlibx/services/storage_service.dart';
 /// (null = 成功)。没给门时直接成功,避免测试卡住。
 class _FakeZLibraryApi implements ZLibraryApi {
   int downloadBookCalls = 0;
+  bool writeFile = false;
 
   final List<Completer<Object?>> attemptGates = [];
 
@@ -43,10 +46,55 @@ class _FakeZLibraryApi implements ZLibraryApi {
         : (Completer<Object?>()..complete(null));
     final outcome = await gate.future;
     if (outcome != null) throw outcome;
+    if (writeFile) {
+      final file = File(savePath);
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(<int>[1, 2, 3]);
+    }
   }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _GatedStorage extends StorageService {
+  final Map<String, dynamic> history = <String, dynamic>{};
+  final Completer<void> historyWriteStarted = Completer<void>();
+  final Completer<void> historyWriteRelease = Completer<void>();
+
+  @override
+  Future<Map<String, dynamic>> getDownloadHistory() async => history;
+
+  @override
+  Future<void> removeFromDownloadHistory(String bookId) async {
+    history.remove(bookId);
+  }
+
+  @override
+  Future<void> addToDownloadHistory(
+    String bookId,
+    String title,
+    String? author,
+    String filePath, {
+    String? cover,
+    String? extension,
+    String? source,
+    String? customSubfolder,
+    String? realPath,
+  }) async {
+    if (!historyWriteStarted.isCompleted) historyWriteStarted.complete();
+    await historyWriteRelease.future;
+    history[bookId] = <String, dynamic>{
+      'title': title,
+      'author': author,
+      'filePath': filePath,
+      'cover': cover,
+      'extension': extension,
+      'source': source,
+      'customSubfolder': customSubfolder,
+      'realPath': realPath,
+    };
+  }
 }
 
 DioException _connectionError() => DioException(
@@ -64,6 +112,7 @@ DioException _notFound() => DioException(
 );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late Directory hiveDir;
   late Directory downloadDir;
 
@@ -91,10 +140,10 @@ void main() {
 
   const book = Book(id: 7, title: 'T', hash: 'abc123');
 
-  ProviderContainer container(_FakeZLibraryApi api) {
+  ProviderContainer container(_FakeZLibraryApi api, {StorageService? storage}) {
     final c = ProviderContainer(
       overrides: [
-        storageServiceProvider.overrideWithValue(StorageService()),
+        storageServiceProvider.overrideWithValue(storage ?? StorageService()),
         zlibraryApiProvider.overrideWithValue(api),
       ],
     );
@@ -133,6 +182,116 @@ void main() {
       'downloadBook never reached $count calls: ${api.downloadBookCalls}',
     );
   }
+
+  test('外部源 Wi-Fi 拦截仍保留重试入口', () async {
+    const external = Book(id: 8, title: 'External', hash: 'abc123');
+    final api = _FakeZLibraryApi();
+    final c = container(api);
+    final engine = await readyEngine(c);
+
+    await HiveService.settingsBox.put('wifiOnlyDownloads', true);
+    const channel = MethodChannel('dev.fluttercommunity.plus/connectivity');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          if (call.method == 'check') return <String>['mobile'];
+          return null;
+        });
+    addTearDown(() async {
+      await HiveService.settingsBox.put('wifiOnlyDownloads', false);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    await engine.startDownload(
+      external,
+      presetUrl: 'https://example.com/book',
+      source: BookSource.annasArchive,
+    );
+
+    final task = c.read(downloadProvider).single;
+    expect(task.wifiOnlyBlocked, isTrue);
+    expect(task.needsFreshLink, isFalse);
+    expect(task.presetUrl, 'https://example.com/book');
+    expect(task.canRetry, isTrue);
+    expect(api.downloadBookCalls, 0);
+  });
+
+  test('排队取消后不残留 cancel token', () async {
+    final api = _FakeZLibraryApi();
+    final activeGates = List<Completer<Object?>>.generate(
+      3,
+      (_) => Completer<Object?>(),
+    );
+    api.attemptGates.addAll(activeGates);
+    final c = container(api);
+    final engine = await readyEngine(c);
+
+    final rounds = <Future<void>>[
+      for (var id = 7; id <= 9; id++)
+        engine.startDownload(Book(id: id, title: 'Book $id', hash: 'abc123')),
+    ];
+    await waitForCalls(api, 3);
+
+    final queued = engine.startDownload(
+      const Book(id: 10, title: 'Queued', hash: 'abc123'),
+    );
+    for (var i = 0; i < 100 && engine.liveCancelTokenCount < 4; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(engine.liveCancelTokenCount, 4);
+
+    engine.cancelDownload('10');
+    expect(engine.liveCancelTokenCount, 3);
+
+    // 取消排队任务只会摘掉它的 token；startDownload 仍要等一个槽位
+    // 才能返回。取消并放行一个占用槽位的任务，让排队轮次走到取消分支。
+    engine.cancelDownload('7');
+    activeGates[0].complete(_connectionError());
+    await queued;
+    expect(engine.liveCancelTokenCount, 2);
+
+    for (final id in <String>['8', '9']) {
+      engine.cancelDownload(id);
+    }
+    for (final gate in activeGates.skip(1)) {
+      gate.complete(_connectionError());
+    }
+    await Future.wait(rounds);
+    expect(engine.liveCancelTokenCount, 0);
+  });
+
+  test('删除与 finalize 竞态不会发布文件或重建历史', () async {
+    final storage = _GatedStorage();
+    final api = _FakeZLibraryApi()..writeFile = true;
+    final c = container(api, storage: storage);
+    final engine = await readyEngine(c);
+
+    final round = engine.startDownload(book);
+    await storage.historyWriteStarted.future.timeout(
+      const Duration(seconds: 5),
+    );
+
+    final published = downloadDir
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.epub'))
+        .toList();
+    expect(published, hasLength(1));
+
+    await engine.removeTask('7');
+    storage.historyWriteRelease.complete();
+    await round;
+
+    expect(c.read(downloadProvider), isEmpty);
+    expect(storage.history, isEmpty);
+    expect(
+      downloadDir
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((file) => file.path.endsWith('.epub')),
+      isEmpty,
+    );
+  });
 
   test('不存在的任务取消/暂停/恢复/置顶/删除是无害 no-op', () async {
     final api = _FakeZLibraryApi();

@@ -2,47 +2,29 @@
 
 /**
  * Olib Version Bumper Script
- * 
+ *
  * Usage:
  *   node scripts/bump_version.js <new_version>
- * 
- * Examples:
- *   node scripts/bump_version.js 1.0.6      # bump to 1.0.6
- *   node scripts/bump_version.js 1.1.0      # bump to 1.1.0
- *   node scripts/bump_version.js 2.0.0      # bump to 2.0.0
- * 
- * This script updates the version number in ALL of the following locations:
- *   1. pubspec.yaml          → version: x.y.z+buildNumber & msix_version
- *   2. installer.iss         → #define MyAppVersion
- *   3. settings_screen.dart  → hardcoded trailing version text
- *   4. publish_page/version.json  → remote version config
- *   5. publish_page/config.js     → download page version display
+ *
+ * Updates pubspec.yaml and any legacy desktop/publish targets that still
+ * exist. Missing legacy files are skipped; an existing target whose
+ * version marker cannot be found is an error.
  */
 
 const fs = require('fs');
 const path = require('path');
 
-// ─── Config ──────────────────────────────────────────────────────────────────
-
 const ROOT = path.resolve(__dirname, '..');
 
 const FILES = {
-  pubspec:        path.join(ROOT, 'pubspec.yaml'),
-  installer:      path.join(ROOT, 'installer.iss'),
-  settingsScreen: path.join(ROOT, 'lib', 'screens', 'settings', 'settings_screen.dart'),
-  versionJson:    path.join(ROOT, 'publish_page', 'version.json'),
-  configJs:       path.join(ROOT, 'publish_page', 'config.js'),
+  pubspec: path.join(ROOT, 'pubspec.yaml'),
+  installer: path.join(ROOT, 'installer.iss'),
+  versionJson: path.join(ROOT, 'publish_page', 'version.json'),
+  configJs: path.join(ROOT, 'publish_page', 'config.js'),
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 function readFile(filePath) {
-  // 安卓化后部分目标已不存在（installer.iss、publish_page/*）：
-  // 缺失的文件跳过并告警，不再让整个版本提升中断。
-  if (!fs.existsSync(filePath)) {
-    console.log(`  ⚠️  跳过不存在的文件: ${filePath}`);
-    return null;
-  }
+  if (!fs.existsSync(filePath)) return null;
   return fs.readFileSync(filePath, 'utf-8');
 }
 
@@ -50,9 +32,6 @@ function writeFile(filePath, content) {
   fs.writeFileSync(filePath, content, 'utf-8');
 }
 
-/**
- * Parse a semver string "x.y.z" into { major, minor, patch }
- */
 function parseSemver(version) {
   const match = version.match(/^(\d+)\.(\d+)\.(\d+)$/);
   if (!match) return null;
@@ -63,115 +42,102 @@ function parseSemver(version) {
   };
 }
 
-/**
- * Compute a build number from the version: major * 10000 + minor * 100 + patch
- * This gives us a monotonically increasing integer suitable for Android versionCode.
- */
 function computeBuildNumber(semver) {
   return semver.major * 10000 + semver.minor * 100 + semver.patch;
 }
 
-/**
- * Extract the current version from pubspec.yaml
- */
 function getCurrentVersion() {
   const content = readFile(FILES.pubspec);
+  if (content === null) throw new Error('missing pubspec.yaml');
   const match = content.match(/^version:\s*(\d+\.\d+\.\d+)\+/m);
-  return match ? match[1] : null;
+  if (!match) throw new Error('pubspec.yaml has no version: x.y.z+build marker');
+  return match[1];
 }
 
-// ─── Updaters ────────────────────────────────────────────────────────────────
+function requireMatch(content, pattern, label) {
+  if (!pattern.test(content)) {
+    throw new Error(`${label}: expected version marker was not found`);
+  }
+}
+
+function finishWrite(filePath, content, original) {
+  if (content === original) return 'unchanged';
+  writeFile(filePath, content);
+  return 'updated';
+}
 
 function updatePubspec(version, buildNumber) {
-  let content = readFile(FILES.pubspec);
+  const original = readFile(FILES.pubspec);
+  if (original === null) throw new Error('missing pubspec.yaml');
 
-  // Update version: x.y.z+buildNumber
-  content = content.replace(
-    /^(version:\s*)\d+\.\d+\.\d+\+\d+/m,
-    `$1${version}+${buildNumber}`
+  const versionPattern = /^(version:\s*)\d+\.\d+\.\d+\+\d+/m;
+  requireMatch(original, versionPattern, 'pubspec.yaml');
+  let content = original.replace(
+    versionPattern,
+    `$1${version}+${buildNumber}`,
   );
 
-  // Update msix_version: x.y.z.0
-  content = content.replace(
-    /^(\s*msix_version:\s*)\d+\.\d+\.\d+\.\d+/m,
-    `$1${version}.0`
-  );
+  const msixPattern = /^(\s*msix_version:\s*)\d+\.\d+\.\d+\.\d+/m;
+  if (msixPattern.test(content)) {
+    content = content.replace(msixPattern, `$1${version}.0`);
+  }
 
-  writeFile(FILES.pubspec, content);
-  return true;
+  return finishWrite(FILES.pubspec, content, original);
 }
 
 function updateInstaller(version) {
-  let content = readFile(FILES.installer);
-  if (content === null) return;
+  const original = readFile(FILES.installer);
+  if (original === null) return 'missing';
 
-  content = content.replace(
-    /#define MyAppVersion ".*?"/,
-    `#define MyAppVersion "${version}"`
-  );
-
-  writeFile(FILES.installer, content);
-  return true;
-}
-
-function updateSettingsScreen(version) {
-  let content = readFile(FILES.settingsScreen);
-  if (content === null) return;
-
-  // Replace the hardcoded version in the About section
-  // Pattern: trailing: const Text('x.y.z'),
-  content = content.replace(
-    /(trailing:\s*const\s+Text\(')\d+\.\d+\.\d+('\))/,
-    `$1${version}$2`
-  );
-
-  writeFile(FILES.settingsScreen, content);
-  return true;
+  const pattern = /#define MyAppVersion ".*?"/;
+  requireMatch(original, pattern, 'installer.iss');
+  const content = original.replace(pattern, `#define MyAppVersion "${version}"`);
+  return finishWrite(FILES.installer, content, original);
 }
 
 function updateVersionJson(version) {
-  const content = readFile(FILES.versionJson);
-  if (content === null) return;
-  const json = JSON.parse(content);
+  const original = readFile(FILES.versionJson);
+  if (original === null) return 'missing';
 
-  const oldVersion = json.version;
-  json.version = version;
+  const json = JSON.parse(original);
+  let content = original;
+  let changed = false;
 
-  // Update changelog version references
+  if (json.version !== version) {
+    json.version = version;
+    changed = true;
+  }
+
   if (json.changelog) {
-    if (json.changelog.en) {
-      json.changelog.en = json.changelog.en.replace(/v\d+\.\d+\.\d+/, `v${version}`);
-    }
-    if (json.changelog.zh) {
-      json.changelog.zh = json.changelog.zh.replace(/v\d+\.\d+\.\d+/, `v${version}`);
+    for (const locale of ['en', 'zh']) {
+      const value = json.changelog[locale];
+      if (typeof value !== 'string') continue;
+      const updated = value.replace(/v\d+\.\d+\.\d+/, `v${version}`);
+      if (updated !== value) {
+        json.changelog[locale] = updated;
+        changed = true;
+      }
     }
   }
 
-  writeFile(FILES.versionJson, JSON.stringify(json, null, 4) + '\n');
-  return true;
+  if (!changed) return 'unchanged';
+  content = JSON.stringify(json, null, 4) + '\n';
+  return finishWrite(FILES.versionJson, content, original);
 }
 
 function updateConfigJs(version) {
-  let content = readFile(FILES.configJs);
-  if (content === null) return;
+  const original = readFile(FILES.configJs);
+  if (original === null) return 'missing';
 
-  // Update version: 'vx.y.z'
-  content = content.replace(
-    /(version:\s*')v?\d+\.\d+\.\d+(')/,
-    `$1v${version}$2`
-  );
-
-  // Update direct download APK filename reference (e.g. o-lib1.0.5.apk → o-lib1.0.6.apk)
+  const versionPattern = /(version:\s*')v?\d+\.\d+\.\d+(')/;
+  requireMatch(original, versionPattern, 'publish_page/config.js');
+  let content = original.replace(versionPattern, `$1v${version}$2`);
   content = content.replace(
     /(o-lib)\d+\.\d+\.\d+(\.apk)/g,
-    `$1${version}$2`
+    `$1${version}$2`,
   );
-
-  writeFile(FILES.configJs, content);
-  return true;
+  return finishWrite(FILES.configJs, content, original);
 }
-
-// ─── Main ────────────────────────────────────────────────────────────────────
 
 function main() {
   const newVersion = process.argv[2];
@@ -179,66 +145,71 @@ function main() {
   if (!newVersion) {
     const current = getCurrentVersion();
     console.log('');
-    console.log('  Olib Version Bumper');
-    console.log('  ───────────────────');
-    console.log(`  Current version: ${current || 'unknown'}`);
+    console.log('Olib Version Bumper');
+    console.log('==================');
+    console.log(`Current version: ${current}`);
     console.log('');
-    console.log('  Usage: node scripts/bump_version.js <new_version>');
-    console.log('  Example: node scripts/bump_version.js 1.0.6');
+    console.log('Usage: node scripts/bump_version.js <new_version>');
+    console.log('Example: node scripts/bump_version.js 1.0.6');
     console.log('');
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const semver = parseSemver(newVersion);
   if (!semver) {
-    console.error(`❌ Invalid version format: "${newVersion}". Expected: x.y.z (e.g. 1.0.6)`);
-    process.exit(1);
+    console.error(
+      `Invalid version format: "${newVersion}". Expected: x.y.z (e.g. 1.0.6)`,
+    );
+    process.exitCode = 1;
+    return;
   }
 
   const currentVersion = getCurrentVersion();
   const buildNumber = computeBuildNumber(semver);
 
   console.log('');
-  console.log('  🚀 Olib Version Bumper');
-  console.log('  ─────────────────────');
-  console.log(`  ${currentVersion || '?'} → ${newVersion} (build ${buildNumber})`);
+  console.log('Olib Version Bumper');
+  console.log('==================');
+  console.log(
+    `${currentVersion} -> ${newVersion} (build ${buildNumber})`,
+  );
   console.log('');
 
-  // 预检：缺失的文件（安卓化后已删除的 installer.iss、publish_page/*）
-  // 在各 updater 里跳过，这里只告警不再整体退出。
-  for (const [name, filePath] of Object.entries(FILES)) {
-    if (!fs.existsSync(filePath)) {
-      console.log(`  ⚠️  跳过不存在的文件: ${filePath}`);
-    }
-  }
-
-  // Run all updates
   const updates = [
-    { name: 'pubspec.yaml',                fn: () => updatePubspec(newVersion, buildNumber) },
-    { name: 'installer.iss',               fn: () => updateInstaller(newVersion) },
-    { name: 'settings_screen.dart',        fn: () => updateSettingsScreen(newVersion) },
-    { name: 'publish_page/version.json',   fn: () => updateVersionJson(newVersion) },
-    { name: 'publish_page/config.js',      fn: () => updateConfigJs(newVersion) },
+    { name: 'pubspec.yaml', fn: () => updatePubspec(newVersion, buildNumber) },
+    { name: 'installer.iss', fn: () => updateInstaller(newVersion) },
+    {
+      name: 'publish_page/version.json',
+      fn: () => updateVersionJson(newVersion),
+    },
+    { name: 'publish_page/config.js', fn: () => updateConfigJs(newVersion) },
   ];
 
-  let successCount = 0;
+  const counts = { updated: 0, unchanged: 0, missing: 0, failed: 0 };
   for (const update of updates) {
     try {
-      update.fn();
-      console.log(`  ✅ ${update.name}`);
-      successCount++;
+      const result = update.fn();
+      counts[result]++;
+      const label =
+        result === 'updated'
+          ? 'updated'
+          : result === 'unchanged'
+          ? 'already current'
+          : 'skipped (missing)';
+      console.log(`${update.name}: ${label}`);
     } catch (err) {
-      console.error(`  ❌ ${update.name}: ${err.message}`);
+      counts.failed++;
+      console.error(`${update.name}: ERROR: ${err.message}`);
     }
   }
 
   console.log('');
-  if (successCount === updates.length) {
-    console.log(`  🎉 All ${successCount} files updated to v${newVersion}!`);
-  } else {
-    console.log(`  ⚠️  ${successCount}/${updates.length} files updated. Check errors above.`);
-  }
-  console.log('');
+  console.log(
+    `${counts.updated} updated, ${counts.unchanged} already current, ` +
+      `${counts.missing} skipped, ${counts.failed} failed`,
+  );
+  if (counts.failed > 0) process.exitCode = 1;
 }
 
 main();

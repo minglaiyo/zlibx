@@ -1,9 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'article_search_provider.dart';
+import 'author_books_provider.dart';
 import 'booklists_provider.dart';
 import 'books_provider.dart';
 import 'feed_controller.dart';
-
+import 'fulltext_search_provider.dart';
 
 /// Invalidate every provider that caches account-scoped data.
 ///
@@ -29,6 +31,13 @@ void invalidateAccountScopedProviders(Ref ref) {
   ref.invalidate(homeFeedProvider);
   ref.invalidate(downloadedBooksProvider);
   ref.invalidate(savedBooksProvider);
+  // 搜索结果与作者页都持有上一账号/线路的列表和分页游标。它们各自
+  // 独立缓存，不 watch authProvider，换号时必须在这里统一清掉。
+  ref.invalidate(searchProvider);
+  ref.invalidate(articleSearchProvider);
+  ref.invalidate(fulltextSearchProvider);
+  ref.invalidate(externalSearchProvider);
+  ref.invalidate(authorBooksProvider);
   // The booklists screen's own-lists tab is account-scoped too (the
   // same URL serves another account's lists after a switch, and the
   // controller does not watch authProvider): without this, switching

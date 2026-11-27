@@ -267,6 +267,27 @@ void main() {
       await _settle();
       expect(_ids(container.read(popularFeedProvider)), ['9']);
     });
+
+    test('refresh 返回空页时保留旧内容和分页能力', () async {
+      final api = _FakeFeedApi();
+      final container = _container(api);
+      container.read(popularFeedProvider);
+      await _settle();
+      expect(_ids(container.read(popularFeedProvider)), ['1', '2']);
+
+      api.snapshot = const [];
+      await container.read(popularFeedProvider.notifier).refresh();
+      var state = container.read(popularFeedProvider);
+      expect(_ids(state), ['1', '2']);
+      expect(state.hasMore, isTrue);
+
+      api.searchPages['popular'] = {
+        1: [_book(3)],
+      };
+      await container.read(popularFeedProvider.notifier).loadMore();
+      state = container.read(popularFeedProvider);
+      expect(_ids(state), ['1', '2', '3']);
+    });
   });
 
   group('最新信息流', () {

@@ -9,6 +9,7 @@ import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:path_provider/path_provider.dart';
@@ -75,6 +76,9 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
   StorageService get _storage => ref.read(storageServiceProvider);
   final Map<String, CancelToken> _cancelTokens = {};
 
+  @visibleForTesting
+  int get liveCancelTokenCount => _cancelTokens.length;
+
   /// Throttle for progress ticks: Dio can fire dozens of callbacks per
   /// second, and every publish rebuilds the whole task list for every
   /// listener. A tick is published only when progress moved >= 1% or
@@ -90,7 +94,7 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
 
   /// Cancel a download
   void cancelDownload(String id) {
-    final token = _cancelTokens[id];
+    final token = _cancelTokens.remove(id);
     if (token == null) return;
     token.cancel();
     _updateTask(id, (t) => t.copyWith(status: DownloadStatus.cancelled));
@@ -127,8 +131,13 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
   Future<void> _deleteStagingTracesForTask(DownloadTask task) =>
       Future<void>.value();
 
+  /// Marks an in-flight round as obsolete before removal starts awaiting.
+  /// The engine override only records ids that still have a running round.
+  void _markTaskRemoved(String id) {}
+
   /// Remove task and delete file
   Future<void> removeTask(String id) async {
+    _markTaskRemoved(id);
     cancelDownload(id);
     // Idempotent delete: the task may already be gone (double tap on the
     // menu, history cleanup racing the UI). A missing task used to throw

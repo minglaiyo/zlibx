@@ -153,8 +153,9 @@ abstract class PagedFeedController extends Notifier<FeedState> {
         // 真空：接口成功但没书（新装/源耗尽），空态而不是错误。
         state = state.copyWith(isLoading: false, hasMore: false, error: null);
       } else {
-        // 有旧内容但新一轮空了：保旧（别掀掉用户已滚到的信息流）。
-        state = state.copyWith(isLoading: false, hasMore: false, error: null);
+        // 有旧内容但新一轮空了：保旧，同时保留分页能力。空快照不等于
+        // 续页搜索源耗尽；错误路径也保持 hasMore，两条路径语义一致。
+        state = state.copyWith(isLoading: false, error: null);
       }
     } on Object catch (error) {
       if (epoch != _epoch) return;

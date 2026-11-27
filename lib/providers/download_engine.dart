@@ -157,6 +157,18 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
   /// offset, duplicating bytes into the book.
   final Map<String, Future<void>> _runningRounds = {};
 
+  /// Rows removed while their round was still running. The marker is set
+  /// before removeTask's first await so finalization can stop between any
+  /// two of its own awaits and roll back a file/history row it already wrote.
+  final Set<String> _removedRounds = <String>{};
+
+  @override
+  void _markTaskRemoved(String id) {
+    if (_runningRounds.containsKey(id)) _removedRounds.add(id);
+  }
+
+  bool _isRoundRemoved(String id) => _removedRounds.contains(id);
+
   /// Start a download.
   ///
   /// 默认走 ZLibraryApi（用户自己账号查 URL + 下载）。
@@ -187,6 +199,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
   }) {
     final id = book.id.toString();
     final previous = _runningRounds[id];
+    if (previous == null) _removedRounds.remove(id);
     final round = _runDownloadRound(
       book,
       presetUrl: presetUrl,
@@ -210,7 +223,10 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
   }
 
   void _dropRound(String id, Future<void> round) {
-    if (identical(_runningRounds[id], round)) _runningRounds.remove(id);
+    if (identical(_runningRounds[id], round)) {
+      _runningRounds.remove(id);
+      _removedRounds.remove(id);
+    }
   }
 
   /// True when a round for [id] is currently downloading or queued.
@@ -377,6 +393,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       if (identical(_cancelTokens[ctx.id], ctx.cancelToken)) {
         _cancelTokens.remove(ctx.id);
       }
+      _removedRounds.remove(ctx.id);
     }
   }
 
@@ -408,6 +425,7 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     }
     // Re-check: another round may have started while we waited.
     if (_isDownloadActive(ctx.id)) return false;
+    if (_isRoundRemoved(ctx.id)) return false;
 
     // #95：这轮实际用的子文件夹，算一次、三处共用（暂存路径、待发
     // 布条目、正式发布），保证同一本书三处落在同一个文件夹。
@@ -424,7 +442,8 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
           status: DownloadStatus.error,
           error: 'wifi-only',
           wifiOnlyBlocked: true,
-          needsFreshLink: ctx.presetUrl != null,
+          needsFreshLink:
+              ctx.presetUrl == null && (ctx.book.hash?.isEmpty ?? true),
           presetUrl: ctx.presetUrl,
           fallbackUrls: ctx.fallbackUrls,
           source: ctx.source,
@@ -443,7 +462,8 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         id: ctx.id,
         book: ctx.book,
         status: DownloadStatus.pending,
-        needsFreshLink: ctx.presetUrl != null,
+        needsFreshLink:
+            ctx.presetUrl == null && (ctx.book.hash?.isEmpty ?? true),
         presetUrl: ctx.presetUrl,
         fallbackUrls: ctx.fallbackUrls,
         source: ctx.source,
@@ -460,6 +480,9 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     // the release has to happen here.)
     if (cancelToken.isCancelled) {
       _slotPool.release();
+      if (identical(_cancelTokens[ctx.id], cancelToken)) {
+        _cancelTokens.remove(ctx.id);
+      }
       // 排队期间被暂停：任务已由 pauseDownload 置为 paused，.part 还
       // 没有开始写，无需清理；只要消费掉本轮的暂停标记。
       _pauseRequested.remove(cancelToken);
@@ -674,6 +697,17 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     }
   }
 
+  Future<void> _rollbackRemovedFinalize(
+    _DownloadRoundState ctx,
+    String recordedPath,
+  ) async {
+    await _storage.removeFromDownloadHistory(ctx.id);
+    await MediaStoreFiles.delete(recordedPath);
+    if (ctx.temporaryPath != null) {
+      await _deleteSidecarQuietly(ctx.temporaryPath!);
+    }
+  }
+
   /// Stage 4 — finalize: publish the finished bytes into Downloads,
   /// verify the MD5 for external-source downloads, record history,
   /// notify, and mark the task completed. A publish failure throws
@@ -691,6 +725,11 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       // Flush the writer's buffer and publish the pending entry
       // (clear IS_PENDING): the book is already in Downloads/zlibx.
       await writer.flush();
+      if (_isRoundRemoved(ctx.id)) {
+        await writer.discard();
+        ctx.pendingWriter = null;
+        return;
+      }
       if (!await writer.finish()) {
         // Publishing failed (e.g. the entry was removed): the book
         // never reached Downloads — fail, don't record a dead URI.
@@ -741,6 +780,10 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         }
       }
     }
+    if (_isRoundRemoved(ctx.id)) {
+      await _rollbackRemovedFinalize(ctx, recordedPath);
+      return;
+    }
 
     // 外部源内容完整性校验（审查 2026-11-21 5.1）：Anna/LibGen 以
     // 文件 MD5 标识文件（synthesizeExternalBook 把它放进 book.hash），
@@ -777,6 +820,10 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
         return;
       }
     }
+    if (_isRoundRemoved(ctx.id)) {
+      await _rollbackRemovedFinalize(ctx, recordedPath);
+      return;
+    }
 
     // Orphaned-row recovery (2026-11-26): clearing the app's data
     // can disown the MediaStore row (owner_package_name NULL), after
@@ -787,6 +834,10 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
     // to itself; a failed resolution stores nothing (no behavior
     // change).
     final realPath = await MediaStoreFiles.realPath(recordedPath);
+    if (_isRoundRemoved(ctx.id)) {
+      await _rollbackRemovedFinalize(ctx, recordedPath);
+      return;
+    }
 
     // Save to download history (with cover and extension for persistence)
     await _storage.addToDownloadHistory(
@@ -801,8 +852,16 @@ mixin _DownloadEngineMixin on _DownloadPathsMixin {
       customSubfolder: ctx.customSubfolder,
       realPath: realPath,
     );
+    if (_isRoundRemoved(ctx.id)) {
+      await _rollbackRemovedFinalize(ctx, recordedPath);
+      return;
+    }
     // 书已落地：来源 sidecar 使命结束。
     await _deleteSidecarQuietly(ctx.temporaryPath!);
+    if (_isRoundRemoved(ctx.id)) {
+      await _rollbackRemovedFinalize(ctx, recordedPath);
+      return;
+    }
     // E3+F4: 完成通知（独立于进度通知的普通重要性渠道），点击直达
     // 文件，副文本带当日剩余额度（best-effort，取不到就省略）。
     unawaited(_notifyCompletedWithQuota(ctx.book, recordedPath));

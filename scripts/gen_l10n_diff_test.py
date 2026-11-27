@@ -1,34 +1,14 @@
 #!/usr/bin/env python3
-"""Generate test/l10n/generated_strings_diff_test.dart from the snapshot.
+"""Generate test/l10n/generated_strings_diff_test.dart from the ARB files.
 
-Reads scripts/l10n_snapshot.json (the pre-migration strings, dumped
-by scripts/l10n_snapshot.py) and emits a test that instantiates each
-generated gen-l10n locale class (AppLocalizationsEn, ...ZhHant) and
-compares every one of its 429 getters/methods against the snapshot
-value. For the 22 placeholder keys it calls the generated method
-with a fixed sample argument and compares against the snapshot value
-with the placeholder replaced by the sample's string form.
-
-The test must FAIL if any user-visible string differs, so the
-migration can prove byte-identical strings at every step. It is
-generated (not hand-written) because 429 keys x 5 locales = 2,145
-expectations cannot be maintained by hand.
+The generated test instantiates every gen-l10n locale class and compares
+all getters/methods with the source ARB values. Placeholder methods are
+called with fixed sample arguments derived from each message's ARB
+metadata, so newly added messages are covered automatically.
 
 Usage (from the repo root):
 
     python3 scripts/gen_l10n_diff_test.py
-
-Paths are resolved relative to this file, so it also works from any
-other working directory. The output is deterministic (keys sorted
-alphabetically by their snake_case form, no timestamps). The
-placeholder table below MUST match scripts/dart_maps_to_arb.py's
-PLACEHOLDERS (names and types); this script validates the names
-against the snapshot and exits non-zero on any drift.
-
-Sample arguments: int placeholders get ``1``; String placeholders
-get ``'X'``. The expected string is the snapshot value with each
-``{name}`` (or ``%d`` for confirm_remove_msg) replaced by the
-sample's string form.
 """
 
 from __future__ import annotations
@@ -38,234 +18,145 @@ import re
 import sys
 from pathlib import Path
 
-# (locale key in the snapshot, generated class name). The snapshot
-# keys are the Dart table file names (zh_hant, lowercase).
+ROOT = Path(__file__).resolve().parent.parent
+ARB_DIR = ROOT / "lib" / "l10n"
+OUTPUT_PATH = ROOT / "test" / "l10n" / "generated_strings_diff_test.dart"
+
 LOCALES = (
-    ("en", "AppLocalizationsEn"),
-    ("ja", "AppLocalizationsJa"),
-    ("ko", "AppLocalizationsKo"),
-    ("zh", "AppLocalizationsZh"),
-    ("zh_hant", "AppLocalizationsZhHant"),
+    ("en", "app_en.arb", "AppLocalizationsEn"),
+    ("ja", "app_ja.arb", "AppLocalizationsJa"),
+    ("ko", "app_ko.arb", "AppLocalizationsKo"),
+    ("zh", "app_zh.arb", "AppLocalizationsZh"),
+    ("zh_Hant", "app_zh_Hant.arb", "AppLocalizationsZhHant"),
 )
 
-# Placeholder keys: snake_case key -> [(name, type, sample Dart
-# literal, sample string form)]. Names and types MUST match
-# scripts/dart_maps_to_arb.py's PLACEHOLDERS. Order is the order of
-# first appearance in the English value (the generated method's
-# parameter order).
-PLACEHOLDERS: dict[str, list[tuple[str, str, str, str]]] = {
-    "add_to_booklist_failed": [("error", "String", "'X'", "X")],
-    "booklist_book_count": [("count", "int", "1", "1")],
-    "booklist_color_failed": [("error", "String", "'X'", "X")],
-    "booklist_create_failed": [("error", "String", "'X'", "X")],
-    "booklist_edit_failed": [("error", "String", "'X'", "X")],
-    "booklist_favorite_failed": [("error", "String", "'X'", "X")],
-    "booklist_delete_failed": [("error", "String", "'X'", "X")],
-    "booklist_note_failed": [("error", "String", "'X'", "X")],
-    "booklist_remove_book_failed": [("error", "String", "'X'", "X")],
-    "booklist_visibility_failed": [("error", "String", "'X'", "X")],
-    "confirm_remove_msg": [("count", "int", "1", "1")],
-    "current_version_label": [("version", "String", "'X'", "X")],
-    "line_number": [("index", "int", "1", "1")],
-    "login_unknown_failure": [
-        ("line", "String", "'X'", "X"),
-        ("time", "String", "'X'", "X"),
-        ("detail", "String", "'X'", "X"),
-    ],
-    "mirror_device_ms": [("ms", "int", "1", "1")],
-    "mirror_list_updated": [("count", "int", "1", "1")],
-    "mirror_trust_body": [("host", "String", "'X'", "X")],
-    "new_version_found": [("version", "String", "'X'", "X")],
-    "reader_log_export_failed": [("error", "String", "'X'", "X")],
-    "reader_resource_log_count": [("count", "int", "1", "1")],
-    "search_page_progress": [
-        ("current", "int", "1", "1"),
-        ("total", "String", "'X'", "X"),
-    ],
-    "search_results_count": [("count", "int", "1", "1")],
-    "shelf_count": [("count", "int", "1", "1")],
-    "switch_network": [("label", "String", "'X'", "X")],
-    "update_current_latest": [
-        ("current", "String", "'X'", "X"),
-        ("latest", "String", "'X'", "X"),
-    ],
-    "update_dropped_links": [("count", "int", "1", "1")],
-    "update_found_title": [("version", "String", "'X'", "X")],
-}
-
 PLACEHOLDER_RE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
-
-HEADER = """// GENERATED by scripts/gen_l10n_diff_test.py — do not edit by hand.
-// Regenerate: `python3 scripts/gen_l10n_diff_test.py`.
-//
-// Proves the generated gen-l10n output returns byte-identical strings
-// to the pre-migration hand-written tables (scripts/l10n_snapshot.json):
-// every one of the 429 getters/methods, in all 5 locales, plus the 27
-// placeholder methods called with fixed sample arguments. If any
-// user-visible string differs, this test fails.
-//
-// The per-locale classes (AppLocalizationsEn, ...ZhHant) live in the
-// per-LANGUAGE files (app_localizations_zh.dart holds both Zh and
-// ZhHant); app_localizations.dart imports them but does not export
-// them, so each language file is imported below.
-"""
+SAMPLES = {
+    "String": ("'X'", "X"),
+    "int": ("1", "1"),
+}
 
 
 def fail(message: str) -> "NoReturn":
-    """Print an error to stderr and exit non-zero (never returns)."""
     print(f"gen_l10n_diff_test: error: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
-def to_camel_case(snake: str) -> str:
-    """Convert a snake_case key to a lowerCamelCase Dart identifier.
-
-    Same conversion as gen-l10n's own.
-    """
-    words = snake.split("_")
-    return words[0] + "".join(word.capitalize() for word in words[1:])
-
-
 def dart_single_quoted(value: str) -> str:
-    """Render a Dart single-quoted string literal for `value`.
-
-    Single quotes are used deliberately: the repo's analyzer config
-    enables prefer_single_quotes via flutter_lints, so double-quoted
-    literals would fail `flutter analyze`.
-    """
     out: list[str] = ["'"]
-    for ch in value:
-        if ch == "\\":
+    for char in value:
+        if char == "\\":
             out.append("\\\\")
-        elif ch == "'":
+        elif char == "'":
             out.append("\\'")
-        elif ch == "$":
+        elif char == "$":
             out.append("\\$")
-        elif ch == "\n":
+        elif char == "\n":
             out.append("\\n")
-        elif ch == "\r":
+        elif char == "\r":
             out.append("\\r")
-        elif ch == "\t":
+        elif char == "\t":
             out.append("\\t")
-        elif ord(ch) < 0x20:
-            out.append(f"\\u{ord(ch):04x}")
+        elif ord(char) < 0x20:
+            out.append(f"\\u{ord(char):04x}")
         else:
-            out.append(ch)
+            out.append(char)
     out.append("'")
     return "".join(out)
 
 
-def substituted(value: str, snake: str) -> str:
-    """Snapshot value with each placeholder replaced by its sample."""
-    result = value
-    if snake == "confirm_remove_msg":
-        result = result.replace("%d", "1")
-        return result
-    for name, _typ, _lit, form in PLACEHOLDERS[snake]:
-        result = result.replace("{" + name + "}", form)
-    return result
+def message_keys(data: dict) -> list[str]:
+    return sorted(key for key in data if not key.startswith("@"))
+
+
+def placeholder_names(value: str) -> tuple[str, ...]:
+    return tuple(match.group(1) for match in PLACEHOLDER_RE.finditer(value))
 
 
 def main() -> int:
-    root = Path(__file__).resolve().parent.parent
-    snapshot_path = root / "scripts" / "l10n_snapshot.json"
-    output_path = root / "test" / "l10n" / "generated_strings_diff_test.dart"
-    if not snapshot_path.is_file():
-        fail(f"missing snapshot: {snapshot_path}")
-    snapshot: dict[str, dict[str, str]] = json.loads(
-        snapshot_path.read_text(encoding="utf-8")
-    )
-    locales = [locale for locale, _ in LOCALES]
-    for locale in locales:
-        if locale not in snapshot:
-            fail(f"snapshot has no locale {locale!r}")
-        if len(snapshot[locale]) != 429:
-            fail(f"snapshot {locale} has {len(snapshot[locale])} keys, expected 429")
-    reference = set(snapshot["en"])
-    for locale in locales[1:]:
-        if set(snapshot[locale]) != reference:
-            fail(f"snapshot {locale} key set differs from en")
+    locale_data: dict[str, dict] = {}
+    for locale, filename, _ in LOCALES:
+        path = ARB_DIR / filename
+        if not path.is_file():
+            fail(f"missing ARB file: {path}")
+        locale_data[locale] = json.loads(path.read_text(encoding="utf-8"))
 
-    # Validate the placeholder table against the snapshot values.
-    for snake in sorted(reference):
-        names = {
-            locale: tuple(
-                m.group(1)
-                for m in PLACEHOLDER_RE.finditer(snapshot[locale][snake])
-            )
-            for locale in locales
-        }
-        if snake == "confirm_remove_msg":
-            if any("%d" not in snapshot[locale][snake] for locale in locales):
-                fail("confirm_remove_msg lost its %d placeholder")
-            if any(names[locale] for locale in locales):
-                fail("confirm_remove_msg unexpectedly has {name} placeholders")
-            continue
-        expected = tuple(name for name, _, _, _ in PLACEHOLDERS.get(snake, []))
-        for locale in locales:
-            if names[locale] != expected:
+    reference_keys = message_keys(locale_data["en"])
+    if not reference_keys:
+        fail("app_en.arb has no messages")
+
+    for locale, _, _ in LOCALES[1:]:
+        keys = message_keys(locale_data[locale])
+        if keys != reference_keys:
+            missing = sorted(set(reference_keys) - set(keys))
+            extra = sorted(set(keys) - set(reference_keys))
+            fail(f"{locale} key set differs from en; missing={missing}, extra={extra}")
+
+    placeholders: dict[str, list[tuple[str, str, str, str]]] = {}
+    for key in reference_keys:
+        metadata = locale_data["en"].get(f"@{key}", {})
+        definitions = metadata.get("placeholders", {})
+        names = tuple(definitions)
+        samples: list[tuple[str, str, str, str]] = []
+        for name in names:
+            placeholder_type = definitions[name].get("type")
+            if placeholder_type not in SAMPLES:
+                fail(f"{key}.{name}: unsupported placeholder type {placeholder_type!r}")
+            literal, form = SAMPLES[placeholder_type]
+            samples.append((name, placeholder_type, literal, form))
+
+        for locale, _, _ in LOCALES:
+            value = locale_data[locale][key]
+            actual = placeholder_names(value)
+            if actual != names:
                 fail(
-                    f"{snake}: placeholder names in {locale} are "
-                    f"{list(names[locale])}, expected {list(expected)}"
+                    f"{key}: {locale} placeholders are {list(actual)}, "
+                    f"expected {list(names)} from app_en.arb metadata"
                 )
-    actual = {
-        snake
-        for snake in reference
-        if any(
-            PLACEHOLDER_RE.search(snapshot[locale][snake]) for locale in locales
-        )
-    } | {"confirm_remove_msg"}
-    if set(PLACEHOLDERS) != actual:
-        fail(
-            "placeholder table drift: table has "
-            f"{sorted(set(PLACEHOLDERS) - actual)}, snapshot has "
-            f"{sorted(actual - set(PLACEHOLDERS))}"
-        )
+        placeholders[key] = samples
 
-    keys = sorted(reference)
-    lines: list[str] = [HEADER.rstrip("\n"), ""]
-    lines.append("import 'package:flutter_test/flutter_test.dart';")
-    # NOTE: the main generated file (app_localizations.dart) is NOT
-    # imported on purpose: the test uses only the per-locale classes,
-    # and importing it trips unused_import (fatal under flutter analyze).
-    # The generated per-locale classes live in the per-LANGUAGE files
-    # (app_localizations_zh.dart holds both Zh and ZhHant); the main
-    # file imports them but does not export them, so each language
-    # file must be imported for the classes to be visible.
-    for language in sorted({locale.split("_")[0] for locale, _ in LOCALES}):
+    placeholder_count = sum(bool(items) for items in placeholders.values())
+    expectation_count = len(reference_keys) * len(LOCALES)
+    lines = [
+        "// GENERATED by scripts/gen_l10n_diff_test.py - do not edit by hand.",
+        "// Regenerate: `python3 scripts/gen_l10n_diff_test.py`.",
+        "//",
+        f"// Covers {len(reference_keys)} messages in all {len(LOCALES)} locales "
+        f"({expectation_count} expectations),",
+        f"// including {placeholder_count} placeholder methods per locale.",
+        "",
+        "import 'package:flutter_test/flutter_test.dart';",
+    ]
+    for language in sorted({locale.split("_")[0] for locale, _, _ in LOCALES}):
         lines.append(
             f"import 'package:zlibx/l10n/generated/app_localizations_{language}.dart';"
         )
-    lines.append("")
-    lines.append("void main() {")
-    for locale, class_name in LOCALES:
-        lines.append(
-            f"  test('generated {locale} strings match the snapshot', () {{"
-        )
+    lines.extend(["", "void main() {"])
+    for locale, _, class_name in LOCALES:
+        lines.append(f"  test('generated {locale} strings match the ARB source', () {{")
         lines.append(f"    final loc = {class_name}();")
-        for snake in keys:
-            camel = to_camel_case(snake)
-            value = snapshot[locale][snake]
-            if snake in PLACEHOLDERS:
-                args = ", ".join(lit for _, _, lit, _ in PLACEHOLDERS[snake])
-                expected = substituted(value, snake)
+        for key in reference_keys:
+            value = locale_data[locale][key]
+            samples = placeholders[key]
+            if samples:
+                args = ", ".join(literal for _, _, literal, _ in samples)
+                expected = value
+                for name, _, _, form in samples:
+                    expected = expected.replace("{" + name + "}", form)
                 lines.append(
-                    f"    expect(loc.{camel}({args}), "
-                    f"{dart_single_quoted(expected)});"
+                    f"    expect(loc.{key}({args}), {dart_single_quoted(expected)});"
                 )
             else:
-                lines.append(
-                    f"    expect(loc.{camel}, {dart_single_quoted(value)});"
-                )
-        lines.append("  });")
-        lines.append("")
+                lines.append(f"    expect(loc.{key}, {dart_single_quoted(value)});")
+        lines.extend(["  });", ""])
     lines.append("}")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    OUTPUT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(
-        f"gen_l10n_diff_test: wrote {output_path} "
-        f"({len(keys)} keys x {len(LOCALES)} locales = "
-        f"{len(keys) * len(LOCALES)} expectations)"
+        f"gen_l10n_diff_test: wrote {OUTPUT_PATH} "
+        f"({len(reference_keys)} keys x {len(LOCALES)} locales = "
+        f"{expectation_count} expectations)"
     )
     return 0
 

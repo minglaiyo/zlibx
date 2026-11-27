@@ -28,10 +28,13 @@ class SavedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
     return const AsyncValue.loading();
   }
 
+  int _generation = 0;
+
   /// 全量拉取收藏列表。[silent] 为 true 时是后台静默 revalidate：不
   /// 置 loading 态，失败时保留已有数据（只在尚无数据时才报 error），
   /// 收藏/取消后的后台对账就用它，列表不闪一下 loading。
   Future<void> loadSavedBooks({bool silent = false}) async {
+    final generation = ++_generation;
     // build() 直接调这里，而首次 build 时 state 还不存在：读 `state`
     // 会抛 StateError（'Tried to read the state of an uninitialized
     // provider'），抛在 try 之前、第一个 await 之前，整个拉取直接
@@ -47,6 +50,7 @@ class SavedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
       final seen = <int>{};
       for (var page = 1; page <= 100; page++) {
         final response = await _api.getUserSaved(page: page, limit: pageSize);
+        if (generation != _generation) return;
         if (!response.success) {
           throw StateError(response.error ?? 'Could not load saved books');
         }
@@ -64,8 +68,10 @@ class SavedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
           break;
         }
       }
+      if (generation != _generation) return;
       state = AsyncValue.data(books);
     } catch (e, stack) {
+      if (generation != _generation) return;
       // 静默对账失败：已有列表是乐观更新后的正确内容，别用 error 覆盖它。
       if (silent && hadData) return;
       state = AsyncValue.error(e, stack);

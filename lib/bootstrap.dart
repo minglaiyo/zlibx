@@ -3,7 +3,6 @@
 // extraction — execution order and behaviour are unchanged; the long
 // inline comments moved here as doc comments on each function.
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';

@@ -15,6 +15,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/display_book.dart';
 import '../services/download_foreground_service.dart';
+import '../services/download_stall_guard.dart';
 import '../services/download_target.dart';
 import '../services/hive_service.dart';
 import '../services/http_client.dart';

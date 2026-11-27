@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:zlibx/providers/download_provider.dart';
+import 'package:zlibx/services/download_stall_guard.dart';
 import 'package:zlibx/services/resumable_downloader.dart';
 
 /// M4: only transient transport failures retry with backoff. A content
@@ -22,6 +23,13 @@ void main() {
   });
 
   group('isRetryableDownloadError', () {
+    test('no-progress watchdog failures retry', () {
+      expect(
+        isRetryableDownloadError(const DownloadNoProgressException()),
+        isTrue,
+      );
+    });
+
     test('connection errors retry', () {
       expect(
         isRetryableDownloadError(
@@ -142,7 +150,7 @@ void main() {
       );
     });
 
-    test('plan item 10: other 4xx and timeouts never retry', () {
+    test('plan item 10: other 4xx and ordinary cancellation never retry', () {
       for (final status in [400, 401, 403, 429]) {
         expect(
           isRetryableDownloadError(
@@ -164,11 +172,30 @@ void main() {
         isRetryableDownloadError(
           DioException(
             requestOptions: RequestOptions(path: 'https://example.com'),
-            type: DioExceptionType.connectionTimeout,
+            type: DioExceptionType.cancel,
           ),
         ),
         isFalse,
       );
+    });
+
+    test('connection, receive, and send timeouts retry', () {
+      for (final type in [
+        DioExceptionType.connectionTimeout,
+        DioExceptionType.receiveTimeout,
+        DioExceptionType.sendTimeout,
+      ]) {
+        expect(
+          isRetryableDownloadError(
+            DioException(
+              requestOptions: RequestOptions(path: 'https://example.com'),
+              type: type,
+            ),
+          ),
+          isTrue,
+          reason: '$type',
+        );
+      }
     });
   });
 }

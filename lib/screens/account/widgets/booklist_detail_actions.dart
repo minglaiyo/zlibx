@@ -74,35 +74,68 @@ Future<String?> showBooklistNoteDialog(
   Book book,
 ) async {
   final l10n = AppLocalizations.of(context)!;
-  final controller = TextEditingController(text: book.note ?? '');
-  final note = await showDialog<String>(
+  return showDialog<String>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text(
-        book.note == null || book.note!.isEmpty
-            ? l10n.booklistAddNote
-            : l10n.booklistEditNote,
-      ),
+    builder: (dialogContext) => _BooklistNoteDialog(
+      l10n: l10n,
+      initialNote: book.note ?? '',
+      title: book.note == null || book.note!.isEmpty
+          ? l10n.booklistAddNote
+          : l10n.booklistEditNote,
+    ),
+  );
+}
+
+/// 批注对话框本体:controller 归对话框自己管,随对话框一起
+/// dispose。之前是 showBooklistNoteDialog 里建好、showDialog 一
+/// 返回就 dispose,但对话框的退出动画还没跑完,TextField 还挂在
+/// 树上,下一帧重建就会摸到已 dispose 的 controller 抛异常。
+class _BooklistNoteDialog extends StatefulWidget {
+  const _BooklistNoteDialog({
+    required this.l10n,
+    required this.initialNote,
+    required this.title,
+  });
+
+  final AppLocalizations l10n;
+  final String initialNote;
+  final String title;
+
+  @override
+  State<_BooklistNoteDialog> createState() => _BooklistNoteDialogState();
+}
+
+class _BooklistNoteDialogState extends State<_BooklistNoteDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialNote);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
       content: TextField(
-        controller: controller,
+        controller: _controller,
         autofocus: true,
         maxLines: 4,
         minLines: 1,
-        decoration: InputDecoration(labelText: l10n.booklistNote),
+        decoration: InputDecoration(labelText: widget.l10n.booklistNote),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(dialogContext),
-          child: Text(l10n.cancel),
+          onPressed: () => Navigator.pop(context),
+          child: Text(widget.l10n.cancel),
         ),
         FilledButton(
-          onPressed: () =>
-              Navigator.pop(dialogContext, controller.text.trim()),
-          child: Text(l10n.save),
+          onPressed: () => Navigator.pop(context, _controller.text.trim()),
+          child: Text(widget.l10n.save),
         ),
       ],
-    ),
-  );
-  controller.dispose();
-  return note;
+    );
+  }
 }

@@ -10,6 +10,19 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  exclude:
+    # P3-1: generated code is never hand-edited, so lint findings
+    # there are unfixable by definition. The strict profile already
+    # excludes the FRB files for the same reason; the main profile
+    # now matches it, plus the gen-l10n output (generated into
+    # lib/l10n/generated/ during the build, so it is on disk when
+    # CI runs `flutter analyze` even though it is not committed).
+    - lib/frb_generated.dart
+    - lib/frb_generated.io.dart
+    - lib/frb_generated.web.dart
+    - lib/lib.dart
+    - lib/models.dart
+    - lib/l10n/generated/**
   language:
     # Promoted from analysis_options_strict.yaml (M8 batch 1, 2026-11-14):
     # the whole codebase compiles clean under both — findings fixed at

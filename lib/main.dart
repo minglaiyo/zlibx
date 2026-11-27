@@ -1,39 +1,22 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:dynamic_color/dynamic_color.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'core/rust_annas.dart';
-import 'core/rust_article.dart';
-import 'core/rust_book_detail.dart';
-import 'core/rust_booklists.dart';
-import 'core/rust_books.dart';
-import 'core/rust_fulltext.dart';
-import 'core/rust_libgen.dart';
+import 'bootstrap.dart';
 import 'l10n/generated/app_localizations.dart';
 import 'l10n/locale_resolution.dart';
 import 'providers/auth_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/zlibrary_provider.dart';
 import 'routes/app_routes.dart';
-import 'screens/challenge_solver/challenge_solver_screen.dart';
 import 'services/app_lock_service.dart';
 import 'services/app_shortcuts.dart';
 import 'services/booklist_html_cache.dart';
-import 'services/challenge_html_cache.dart';
-import 'services/domain_probe.dart';
-import 'services/download_foreground_service.dart';
 import 'services/hive_service.dart';
-import 'services/instance_manager.dart';
-import 'services/mirror_trust.dart';
 import 'services/storage_service.dart';
-import 'services/wall_cookie_bridge.dart';
-import 'services/webview_challenge_solver.dart';
 import 'theme/app_theme.dart';
-import 'utils/diagnostics.dart';
 import 'widgets/app_lock_overlay.dart';
 import 'widgets/update_progress_bar.dart';
 
@@ -52,121 +35,15 @@ void main() async {
   // 如需强制特定帧率（不推荐，会影响电量），可以取消注释：
   // SchedulerBinding.instance.setPreferredFramesPerSecond(120);
 
-  // Global error hooks (M2): uncaught async errors (e.g. inside an
-  // unawaited(...) Future) and framework errors otherwise vanish
-  // silently in a release + obfuscated build — the user only sees
-  // "it doesn't work". logIgnored records only the tag + exception
-  // TYPE + timestamp (never the message or URL), so nothing sensitive
-  // reaches the ring log; Settings can dump it for bug reports.
-  //
-  // Debug: show the full error + stack on the console FIRST — the ring
-  // log only keeps the exception type, which is not enough to debug.
-  // Release: the ring log additionally records the topmost
-  // `package:zlibx` frame (file:line) and, for network errors, the HTTP
-  // status code — both data-free, see [Diagnostics.record].
-  FlutterError.onError = (details) {
-    if (kDebugMode) {
-      FlutterError.presentError(details);
-      debugPrint(details.stack.toString());
-    }
-    logIgnored('flutter', details.exception, stack: details.stack);
-  };
-  PlatformDispatcher.instance.onError = (error, stack) {
-    if (kDebugMode) {
-      debugPrint('Uncaught async error: $error');
-      debugPrint(stack.toString());
-    }
-    logIgnored('platform', error, stack: stack);
-    return true;
-  };
+  installGlobalErrorHooks();
 
   await HiveService.init();
-  // Phase 2: route the fulltext page parse through the Rust bridge.
-  // Pure in-memory hook registration — the FRB engine initializes lazily
-  // on the first full-text search (see rust_fulltext.dart), so startup
-  // timing is unaffected and a missing .so falls back to Dart silently.
-  injectRustFulltextParser();
-  // Phase 3: same for the article search page parse (文章 tab).
-  injectRustArticleParser();
-  // Phase 3: same for the book detail metadata rows.
-  injectRustBookDetailParser();
-  // Phase 3: same for booklists / category / download history.
-  injectRustBooklistParsers();
-  // Phase 4: Anna's Archive heavy parsers (search + md5 detail).
-  injectRustAnnasParsers();
-  // Phase 4: Library Genesis / Open Library external feeds.
-  injectRustExternalParsers();
-  // JSON sink: route the eapi book-list decode (_booksOf) through Rust.
-  injectRustBooksParser();
-  // O1: register the background-download foreground-service bridge and
-  // request the notification permission (Android 13+) up front.
-  DownloadForegroundService.register();
-  unawaited(DownloadForegroundService.requestNotificationPermission());
-  // 隐私锁：冷启动也要锁，而且必须在 runApp 之前判定。
-  //
-  // 之前锁的判定只挂在 didChangeAppLifecycleState 上，而内存里的
-  // "离开前台时间" 一起进程就没了——Android 杀掉后台 app 是常态，用户
-  // 切出去再回来往往是一次冷启动，resumed 回调里 backgroundedAt == null
-  // 直接判成"不用锁"。结果是开着隐私锁也能上滑杀掉再打开绕过。
-  // 这里读盘上记录的最后一次离开前台时刻，按同样档位重判一次。
-  // 直接读 settingsBox：providers 还没建，且这个判定不参与任何 UI 订阅。
-  final appLockEnabled = HiveService.settingsBox.get('appLockEnabled');
-  final appLockTimeout = HiveService.settingsBox.get('appLockTimeoutSeconds');
-  final leftForegroundAt = HiveService.settingsBox.get(
-    appLockLeftForegroundKey,
-  );
-  AppLockController.instance.restoreOnStartup(
-    enabled: appLockEnabled is bool && appLockEnabled,
-    timeoutSeconds: appLockTimeout is int ? appLockTimeout : 0,
-    leftForegroundAtMs: leftForegroundAt is int ? leftForegroundAt : null,
-  );
-  // Existing installs keep their current line without a trust prompt.
-  await MirrorTrust.grandfatherCurrent();
-
-  // L7: a SIGKILL skips every `finally`, so a solver session can
-  // survive in the WebView's cookie store and ride the next anonymous
-  // solve for the same host. Clear it once at startup (after the
-  // migration above, so the trusted set is complete). Fire-and-forget
-  // and best-effort — startup must not block on the cookie store.
-  unawaited(deleteStaleSessionCookies());
-
-  // One-time favorites migration: move the legacy shared
-  // 'favorite_books' list to the account signed in right now (see
-  // StorageService.migrateLegacyFavorites). Fire-and-forget and never
-  // throws — if nobody is signed in yet it defers to the first
-  // favorites access after login, and the per-operation guard in the
-  // storage layer covers that path too.
-  unawaited(StorageService().migrateLegacyFavorites());
-
-  // Warm the Anna's Archive / LibGen mirror catalogue (open-slum.org) so
-  // the first external search does not wait on it. refreshOnStartup is
-  // the startup variant of InstanceManager.refresh(): it restores the
-  // cached list first and never throws. Fire-and-forget on purpose —
-  // startup must not block on the mirror list.
-  unawaited(InstanceManager().refreshOnStartup());
-
-  // Plan item 4: cold-start re-verification of discovered redirect
-  // targets — a host a past probe adopted is only trusted again after
-  // it still answers `/eapi/info/domains` with a family domain in the
-  // list. Fire-and-forget and never throws; a host that fails is
-  // dropped from `discovered_hosts`, not retried.
-  unawaited(DomainProbe.reverifyDiscoveredHosts());
-
-  // When the headless challenge solve fails (e.g. a human CAPTCHA shows),
-  // show the solver as a visible page over the current screen. The user
-  // watches the check clear and the page closes itself as soon as the
-  // HTML is captured; the caller then parses the cached HTML instead of
-  // retrying a doomed Dio request. Registered here (before runApp) so it
-  // is in place before any Anna search can run; the callback only uses
-  // rootNavigatorKey when it is actually invoked.
-  WebviewChallengeSolver.visibleSolverFallback = (url) async {
-    final context = rootNavigatorKey.currentContext;
-    if (context == null) return null;
-    final solved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => ChallengeSolverScreen(url: url)),
-    );
-    return solved == true ? ChallengeHtmlCache.get(url) : null;
-  };
+  registerRustParsers();
+  registerBackgroundDownload();
+  restoreAppLockOnStartup();
+  await runStartupMigrations();
+  warmCaches();
+  registerChallengeSolverFallback(rootNavigatorKey);
 
   runApp(const ProviderScope(child: MyApp()));
 }

@@ -586,7 +586,10 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
           }
           return;
         }
-        final result = await OpenFilex.open(local.filePath!);
+        final result = await OpenFilex.open(
+          local.filePath!,
+          type: MediaStoreFiles.mimeTypeForPath(local.filePath!),
+        );
         if (result.type == ResultType.done) return;
         if (mounted) _message(result.message);
       } catch (error) {

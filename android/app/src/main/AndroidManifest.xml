@@ -104,10 +104,30 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
-        <!-- Required for opening files with external apps (PDF viewers, etc.) on Android 11+ -->
+        <!-- Required for opening files with external apps (PDF viewers, etc.) on Android 11+.
+             Narrowed (P3-3) to the ebook MIME types the app actually opens: the full
+             output set of MediaStoreFiles.mimeTypeForExtension (except the
+             application/octet-stream default). The OpenFilex call sites pass the
+             MIME explicitly, so a */* fallback is not needed — and keeping */*
+             would let the app enumerate every VIEW handler on the device. -->
         <intent>
             <action android:name="android.intent.action.VIEW"/>
-            <data android:mimeType="*/*"/>
+            <data android:mimeType="application/epub+zip"/>
+            <data android:mimeType="application/pdf"/>
+            <data android:mimeType="application/x-mobipocket-ebook"/>
+            <data android:mimeType="application/vnd.amazon.ebook"/>
+            <data android:mimeType="application/vnd.amazon.mobi8-ebook"/>
+            <data android:mimeType="application/x-fictionbook+xml"/>
+            <data android:mimeType="application/x-cbz"/>
+            <data android:mimeType="application/x-cbr"/>
+            <data android:mimeType="text/plain"/>
+            <data android:mimeType="image/vnd.djvu"/>
+            <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document"/>
+            <data android:mimeType="application/msword"/>
+            <data android:mimeType="application/rtf"/>
+            <data android:mimeType="application/zip"/>
+            <data android:mimeType="application/vnd.ms-htmlhelp"/>
+            <data android:mimeType="application/x-ms-reader"/>
         </intent>
     </queries>
 </manifest>

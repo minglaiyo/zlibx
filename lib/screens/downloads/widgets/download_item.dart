@@ -356,7 +356,10 @@ class DownloadItem extends ConsumerWidget {
         }
         return;
       }
-      final result = await OpenFilex.open(task.filePath!);
+      final result = await OpenFilex.open(
+        task.filePath!,
+        type: MediaStoreFiles.mimeTypeForPath(task.filePath!),
+      );
       if (result.type != ResultType.done && context.mounted) {
         showAppSnack(context, result.message);
       }

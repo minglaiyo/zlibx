@@ -9,6 +9,7 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 
 import 'package:zlibx/services/media_store.dart';
 
@@ -282,18 +283,20 @@ void main() {
     });
 
     test('copies a real file outside the cache into the cache', () async {
-      final source =
-          File('${sourceDir.path}/Bird (DK Eyewitness Books) - 1114478.pdf')
-            ..writeAsBytesSync(<int>[1, 2, 3, 4]);
+      final source = File(p.join(
+        sourceDir.path,
+        'Bird (DK Eyewitness Books) - 1114478.pdf',
+      ))
+        ..writeAsBytesSync(<int>[1, 2, 3, 4]);
       final shared = await MediaStoreFiles.shareablePath(source.path);
       expect(shared,
-          '${tempDir.path}/share_Bird (DK Eyewitness Books) - 1114478.pdf');
+          p.join(tempDir.path, 'share_Bird (DK Eyewitness Books) - 1114478.pdf'));
       expect(File(shared!).readAsBytesSync(), <int>[1, 2, 3, 4]);
       expect(await source.exists(), isTrue);
     });
 
     test('returns a path already in the cache unchanged', () async {
-      final file = File('${tempDir.path}/already.epub')
+      final file = File(p.join(tempDir.path, 'already.epub'))
         ..writeAsBytesSync(<int>[9]);
       expect(await MediaStoreFiles.shareablePath(file.path), file.path);
       expect(
@@ -304,17 +307,17 @@ void main() {
 
     test('returns null for a missing plain file', () async {
       expect(
-        await MediaStoreFiles.shareablePath('${sourceDir.path}/gone.epub'),
+        await MediaStoreFiles.shareablePath(p.join(sourceDir.path, 'gone.epub')),
         isNull,
       );
     });
 
     test('truncates a long CJK stem to 120 UTF-8 bytes', () async {
       final name = '${'黎' * 50} - 123.epub';
-      final source = File('${sourceDir.path}/$name')
+      final source = File(p.join(sourceDir.path, name))
         ..writeAsBytesSync(<int>[7]);
       final shared = await MediaStoreFiles.shareablePath(source.path);
-      expect(shared, '${tempDir.path}/share_${'黎' * 40}.epub');
+      expect(shared, p.join(tempDir.path, 'share_${'黎' * 40}.epub'));
       expect(File(shared!).readAsBytesSync(), <int>[7]);
     });
   });

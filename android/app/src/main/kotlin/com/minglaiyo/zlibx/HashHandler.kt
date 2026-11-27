@@ -26,7 +26,7 @@ class HashHandler(
 
     /// Streaming MD5 of a download product (review 2026-11-21 5.1):
     /// content URIs read through the ContentResolver, plain paths through
-    /// a FileInputStream — 64 KB chunks, nothing buffered in memory (a
+    /// a FileInputStream — 1 MB chunks, nothing buffered in memory (a
     /// few hundred MB PDF must not be materialized to hash it). Returns
     /// lowercase hex, or null on any failure: the Dart side fails open
     /// (a broken checksum channel must not throw away a downloaded book).
@@ -39,7 +39,7 @@ class HashHandler(
             }
             input?.use { stream ->
                 val md = java.security.MessageDigest.getInstance("MD5")
-                val buffer = ByteArray(64 * 1024)
+                val buffer = ByteArray(1024 * 1024)
                 while (true) {
                     val read = stream.read(buffer)
                     if (read <= 0) break

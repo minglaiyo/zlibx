@@ -45,6 +45,10 @@ class DownloadTask {
   /// 入口重跑下载流程；z 站任务为 null。
   final String? presetUrl;
 
+  /// Equivalent external-source URLs tried after [presetUrl] fails with a
+  /// retryable transport error.
+  final List<String> fallbackUrls;
+
   /// 这本书是从哪个源下的（#143 下载记录标注来源）：z 站 / Anna /
   /// LibGen。创建任务时由调用方写死；旧历史记录没存这个字段，读回
   /// 来是 null，下载页就不标（不猜——文件名反解分不清 z 书和外部
@@ -80,6 +84,7 @@ class DownloadTask {
     this.wifiOnlyBlocked = false,
     this.pinned = false,
     this.presetUrl,
+    this.fallbackUrls = const [],
     this.source,
     this.customSubfolder,
   });
@@ -100,6 +105,7 @@ class DownloadTask {
     bool? wifiOnlyBlocked,
     bool? pinned,
     String? presetUrl,
+    List<String>? fallbackUrls,
     BookSource? source,
     String? customSubfolder,
   }) {
@@ -119,6 +125,7 @@ class DownloadTask {
       wifiOnlyBlocked: wifiOnlyBlocked ?? this.wifiOnlyBlocked,
       pinned: pinned ?? this.pinned,
       presetUrl: presetUrl ?? this.presetUrl,
+      fallbackUrls: fallbackUrls ?? this.fallbackUrls,
       source: source ?? this.source,
       customSubfolder: customSubfolder ?? this.customSubfolder,
     );

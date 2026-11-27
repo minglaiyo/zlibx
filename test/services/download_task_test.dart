@@ -145,6 +145,8 @@ void main() {
         status: DownloadStatus.downloading,
         source: BookSource.libgen,
         customSubfolder: '小说',
+        presetUrl: 'https://example.com/primary',
+        fallbackUrls: ['https://example.com/mirror'],
       );
       // 状态推进（下载中 → 已完成）只改状态与进度，来源与文件夹保留。
       final updated = task.copyWith(
@@ -153,10 +155,67 @@ void main() {
       );
       expect(updated.source, BookSource.libgen);
       expect(updated.customSubfolder, '小说');
+      expect(updated.presetUrl, 'https://example.com/primary');
+      expect(updated.fallbackUrls, ['https://example.com/mirror']);
       // 显式改指定文件夹：只改这一个字段。
       final moved = task.copyWith(customSubfolder: '科幻');
       expect(moved.customSubfolder, '科幻');
       expect(moved.source, BookSource.libgen);
+    });
+  });
+
+  group('downloadNotificationSummary', () {
+    test('single task keeps the existing text', () {
+      final summary = downloadNotificationSummary([
+        DownloadTask(
+          id: '7',
+          book: book,
+          status: DownloadStatus.downloading,
+          progress: 0.42,
+        ),
+      ]);
+      expect(summary.count, 1);
+      expect(summary.percent, 42);
+      expect(summary.text, '下载中 42%');
+    });
+
+    test('concurrent tasks use one stable aggregate', () {
+      final summary = downloadNotificationSummary([
+        DownloadTask(
+          id: '7',
+          book: book,
+          status: DownloadStatus.downloading,
+          progress: 0.2,
+        ),
+        DownloadTask(
+          id: '8',
+          book: book,
+          status: DownloadStatus.pending,
+          progress: 0.6,
+        ),
+        DownloadTask(
+          id: '9',
+          book: book,
+          status: DownloadStatus.completed,
+          progress: 1,
+        ),
+      ]);
+      expect(summary.count, 2);
+      expect(summary.percent, 40);
+      expect(summary.text, '2 个任务 · 下载中 40%');
+    });
+
+    test('no active task produces no notification progress', () {
+      final summary = downloadNotificationSummary([
+        DownloadTask(
+          id: '7',
+          book: book,
+          status: DownloadStatus.paused,
+          progress: 0.5,
+        ),
+      ]);
+      expect(summary.count, 0);
+      expect(summary.text, '下载中…');
     });
   });
 

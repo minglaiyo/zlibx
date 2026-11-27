@@ -196,7 +196,11 @@ Future<DownloadTarget> resolveExternalDownload(BookInfoData info) async {
     try {
       final mirrors = await MirrorFetcherService().fetchMirrors(mirror);
       if (mirrors.isNotEmpty) {
-        return chooseDownloadTarget(url: mirrors.first, fast: false);
+        return chooseDownloadTarget(
+          url: mirrors.first,
+          fallbackUrls: mirrors.skip(1).toList(),
+          fast: false,
+        );
       }
     } catch (e) {
       logger.debug(

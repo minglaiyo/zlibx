@@ -232,6 +232,7 @@ class _ExternalBookActionBarState extends ConsumerState<ExternalBookActionBar> {
         ref.read(downloadProvider.notifier).startDownload(
           book,
           presetUrl: target.url!,
+          fallbackUrls: target.fallbackUrls,
           // #143：直下的是哪个源（Anna 还是 LibGen）就记哪个。
           source: widget.displayBook.source,
           // #95：指定文件夹沿用。

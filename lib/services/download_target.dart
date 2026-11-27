@@ -13,6 +13,10 @@ class DownloadTarget {
   /// The URL to download, or null when no route produced one.
   final String? url;
 
+  /// Equivalent URLs to try after [url] fails with a retryable transport
+  /// error. The primary URL is not repeated here.
+  final List<String> fallbackUrls;
+
   /// True when [url] bypasses mirror scraping (a re-resolved CDN link, a
   /// donation-key fast link, or a libgen `get.php` URL).
   final bool fast;
@@ -20,9 +24,16 @@ class DownloadTarget {
   /// The mirror's own reason for withholding the file, when it gave one.
   final String? refusal;
 
-  const DownloadTarget({this.url, this.fast = false, this.refusal});
+  const DownloadTarget({
+    this.url,
+    this.fallbackUrls = const [],
+    this.fast = false,
+    this.refusal,
+  });
 
   bool get hasUrl => url != null && url!.isNotEmpty;
+
+  List<String> get candidateUrls => uniqueDownloadUrls(url, fallbackUrls);
 }
 
 /// Chooses the download button's target once every resolution route has
@@ -42,10 +53,35 @@ class DownloadTarget {
 DownloadTarget chooseDownloadTarget({
   required String? url,
   required bool fast,
+  List<String> fallbackUrls = const [],
   String? refusal,
 }) {
   final usable = (url != null && url.isNotEmpty) ? url : null;
-  if (refusal == null) return DownloadTarget(url: usable, fast: fast);
-  if (fast) return DownloadTarget(url: usable, fast: true);
+  final candidates = uniqueDownloadUrls(usable, fallbackUrls);
+  if (refusal == null) {
+    return DownloadTarget(
+      url: candidates.firstOrNull,
+      fallbackUrls: candidates.skip(1).toList(),
+      fast: fast,
+    );
+  }
+  if (fast) {
+    return DownloadTarget(
+      url: candidates.firstOrNull,
+      fallbackUrls: candidates.skip(1).toList(),
+      fast: true,
+    );
+  }
   return DownloadTarget(refusal: refusal);
+}
+
+List<String> uniqueDownloadUrls(String? primary, List<String> fallbacks) {
+  final seen = <String>{};
+  final result = <String>[];
+  for (final candidate in [if (primary != null) primary, ...fallbacks]) {
+    final trimmed = candidate.trim();
+    if (trimmed.isEmpty || !seen.add(trimmed)) continue;
+    result.add(trimmed);
+  }
+  return result;
 }

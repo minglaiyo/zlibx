@@ -195,6 +195,7 @@ class DownloadItem extends ConsumerWidget {
                         .startDownload(
                           task.book,
                           presetUrl: task.presetUrl,
+                          fallbackUrls: task.fallbackUrls,
                           source: task.source,
                           customSubfolder: task.customSubfolder,
                         ),

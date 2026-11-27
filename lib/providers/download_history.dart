@@ -281,6 +281,13 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
           final rawId = decoded['id'];
           final id = rawId is int ? rawId : int.tryParse('$rawId');
           if (id != null && id > 0) {
+            final rawFallbacks = decoded['fallbackUrls'];
+            final fallbackUrls = rawFallbacks is List
+                ? uniqueDownloadUrls(
+                    null,
+                    rawFallbacks.whereType<String>().toList(),
+                  )
+                : const <String>[];
             return DownloadTask(
               id: '$id',
               book: Book(
@@ -293,6 +300,7 @@ mixin _DownloadHistoryMixin on _DownloadPathsMixin {
               ),
               status: DownloadStatus.paused,
               presetUrl: decoded['presetUrl'] as String?,
+              fallbackUrls: fallbackUrls,
               // #143：sidecar 里有来源就带上，恢复后继续下载也不丢。
               source: parseDownloadSource(decoded['source']),
               // #95：sidecar 里有指定文件夹就带上，恢复后继续下载

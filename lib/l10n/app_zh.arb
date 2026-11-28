@@ -848,8 +848,7 @@
         }
     }
   },
-  "webServiceSnapshotNote": "书籍列表与下载状态实时更新，无需重启服务。",
-  "webServiceSecurityNote": "仅在可信 Wi-Fi 或热点使用。访问地址含访问令牌，请勿分享；获得地址的人可读取手机上的共享书籍。",
+  "webServiceSnapshotNote": "列表是开启服务时的快照，运行期间的变化不会同步；停止后重新开启即可刷新。",
   "webServiceStartFailed": "无法开启服务：{error}",
   "@webServiceStartFailed": {
     "placeholders": {

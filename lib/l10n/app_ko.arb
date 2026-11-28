@@ -848,8 +848,7 @@
         }
     }
   },
-  "webServiceSnapshotNote": "도서 목록과 다운로드 상태가 실시간으로 업데이트되므로 서비스를 다시 시작할 필요가 없습니다.",
-  "webServiceSecurityNote": "신뢰할 수 있는 Wi-Fi 또는 핫스팟에서만 사용하세요. 주소에 액세스 토큰이 포함되어 있으니 공유하지 마세요. 주소를 가진 사람은 이 기기의 공유 도서를 읽을 수 있습니다.",
+  "webServiceSnapshotNote": "목록은 서비스를 시작한 시점의 스냅샷입니다. 새로 고치려면 중지했다가 다시 시작하세요.",
   "webServiceStartFailed": "서비스를 시작할 수 없습니다: {error}",
   "@webServiceStartFailed": {
     "placeholders": {

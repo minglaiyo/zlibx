@@ -21,10 +21,6 @@ class DownloadTask {
   final String? error;
   final DateTime? downloadedAt;
   final int? fileSize;
-  final int? receivedBytes;
-
-  /// Transient task incarnation; retries preserve it, removal and restart do not.
-  final int generation;
   final bool needsFreshLink;
   final bool missingFile;
 
@@ -81,8 +77,6 @@ class DownloadTask {
     this.error,
     this.downloadedAt,
     this.fileSize,
-    this.receivedBytes,
-    this.generation = 0,
     this.needsFreshLink = false,
     this.missingFile = false,
     this.quotaExceeded = false,
@@ -104,8 +98,6 @@ class DownloadTask {
     String? error,
     DateTime? downloadedAt,
     int? fileSize,
-    int? receivedBytes,
-    int? generation,
     bool? needsFreshLink,
     bool? missingFile,
     bool? quotaExceeded,
@@ -126,8 +118,6 @@ class DownloadTask {
       error: error ?? this.error,
       downloadedAt: downloadedAt ?? this.downloadedAt,
       fileSize: fileSize ?? this.fileSize,
-      receivedBytes: receivedBytes ?? this.receivedBytes,
-      generation: generation ?? this.generation,
       needsFreshLink: needsFreshLink ?? this.needsFreshLink,
       missingFile: missingFile ?? this.missingFile,
       quotaExceeded: quotaExceeded ?? this.quotaExceeded,

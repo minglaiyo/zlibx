@@ -359,6 +359,14 @@ class WebPageStrings {
   final String notFound;
   final String convertFailed;
 
+  /// The chip marking a shelf book whose file is already on this
+  /// phone ("已下载").
+  final String downloadedTag;
+
+  /// The "downloading" line on a card whose round is in flight
+  /// ("正在下载…").
+  final String downloading;
+
   /// The pack-all capsule ("全部打包").
   final String packAll;
 
@@ -395,6 +403,8 @@ class WebPageStrings {
     required this.backHome,
     required this.notFound,
     required this.convertFailed,
+    required this.downloadedTag,
+    required this.downloading,
     required this.packAll,
     required this.downloadToPhone,
     required this.searchHeading,
@@ -419,6 +429,8 @@ class WebPageStrings {
     backHome: 'Back to home',
     notFound: 'Not found',
     convertFailed: 'This text file could not be converted for reading.',
+    downloadedTag: 'Downloaded',
+    downloading: 'Downloading…',
     packAll: 'Pack all',
     downloadToPhone: 'Download to phone',
     searchHeading: _searchHeadingEn,
@@ -1118,7 +1130,7 @@ class WebService extends ChangeNotifier {
       for (final e in _snapshot.library) {
         if ((hit(e.title) || hit(e.author)) &&
             (e.fileIndex == null || !matchedFiles.contains(e.fileIndex))) {
-          cards.add(_bookCard(e));
+          cards.add(_bookCard(e, library: true));
         }
       }
     }
@@ -1499,6 +1511,9 @@ class WebService extends ChangeNotifier {
         'display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700}'
         '.info{flex:1;min-width:0}'
         '.name{font-weight:700;color:$text;word-wrap:break-word}'
+        '.dl-tag{display:inline-block;margin-left:8px;padding:1px 10px;'
+        'border-radius:30px;font-size:11px;font-weight:600;'
+        'background:$brandSoft;color:$brand;vertical-align:1px}'
         '.meta{color:$muted;font-size:12px;margin-top:2px}'
         '.desc{color:$muted;font-size:12px;margin-top:4px;max-height:3em;'
         'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'
@@ -1637,7 +1652,7 @@ class WebService extends ChangeNotifier {
   /// "downloading". (Legado shows chapter counts and read progress
   /// here; zlibx has no such data, so its lines are title,
   /// author · format · size, description, actions.)
-  String _bookCard(WebEntry e) {
+  String _bookCard(WebEntry e, {bool library = false}) {
     final b = StringBuffer('<article class="card">');
     final cover = e.coverUrl;
     if (cover != null && cover.isNotEmpty) {
@@ -1664,7 +1679,12 @@ class WebService extends ChangeNotifier {
     }
     b.write('<div class="info">');
     final title = escapeHtml(e.title);
-    b.write('<div class="name">$title</div>');
+    // 图书馆区里已在手机上的书：标题旁一枚同风格小胶囊标注（主色
+    // 软底 + 主色文字，与次级按钮同族）。
+    final tag = library && e.fileIndex != null
+        ? '<span class="dl-tag">${escapeHtml(_strings.downloadedTag)}</span>'
+        : '';
+    b.write('<div class="name">$title$tag</div>');
     final meta = [
       if (e.author.isNotEmpty) e.author,
       if (e.extension.isNotEmpty) e.extension.toUpperCase(),
@@ -1697,7 +1717,9 @@ class WebService extends ChangeNotifier {
       b.write('</div>');
     } else if (e.downloadPending) {
       b.write(
-        '<div class="actions"><span class="dim">正在下载…</span></div>',
+        '<div class="actions">'
+        '<span class="dim">${escapeHtml(_strings.downloading)}</span>'
+        '</div>',
       );
     } else if (e.bookId != null) {
       b.write(
@@ -1730,7 +1752,7 @@ class WebService extends ChangeNotifier {
     final downloaded = [
       for (var i = 0; i < _snapshot.files.length; i++) _bookCard(_entryFromFile(i)),
     ];
-    final library = _snapshot.library.map(_bookCard);
+    final library = _snapshot.library.map((e) => _bookCard(e, library: true));
     // The pack-all and reload capsules share one row, symmetric: pack
     // all on the left, reload on the right. An empty href navigates to
     // the current URL: a plain reload that picks up the phone's latest

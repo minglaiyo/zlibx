@@ -400,6 +400,19 @@ void main() {
       expect(r.body, contains("this.replaceWith(p)\">"));
       expect(r.body, contains('class="cover-ph"'));
       expect(r.body, contains('>P</div>'));
+      // 图书馆里已在手机上的书：标题旁一枚"Downloaded"同风格胶囊；
+      // 未下载的书（Not here）没有。
+      expect(
+        r.body,
+        contains('<div class="name">On shelf<span class="dl-tag">'
+            'Downloaded</span></div>'),
+      );
+      // 未下载的 Not here 卡没有标注。
+      expect(
+        r.body,
+        contains('<div class="name">Not here</div>'),
+      );
+      expect(r.body, isNot(contains('class="badge"')));
       expect(r.body, contains('href="/download/0"'));
       expect(r.body, contains('href="/read/0"'));
       expect(r.body, contains('href="/download/1"'));

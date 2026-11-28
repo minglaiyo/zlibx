@@ -880,5 +880,7 @@
   "webPageDownloadStarted": "ダウンロードを開始しました。1日の上限に数えます。このまま閲覧やダウンロードを続けられます。リストは自動更新され、このページはすぐに戻ります。",
   "webPageAlreadyDownloaded": "この本はすでにダウンロード済みです。",
   "webPageAlreadyDownloading": "この本は現在ダウンロード中です。しばらくお待ちください。",
-  "bookQuoteAgain": "もう一枚引く"
+  "bookQuoteAgain": "もう一枚引く",
+  "webPageDownloadedTag": "ダウンロード済み",
+  "webPageDownloading": "ダウンロード中…"
 }

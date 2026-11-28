@@ -880,5 +880,7 @@
   "webPageDownloadStarted": "已開始下載，會占用下載額度。可以繼續瀏覽或閱讀，列表會自動更新，本頁稍後自動返回。",
   "webPageAlreadyDownloaded": "這本書已經下載過了。",
   "webPageAlreadyDownloading": "這本書正在下載中，請稍後再來。",
-  "bookQuoteAgain": "再抽一張"
+  "bookQuoteAgain": "再抽一張",
+  "webPageDownloadedTag": "已下載",
+  "webPageDownloading": "正在下載…"
 }

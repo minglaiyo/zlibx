@@ -887,5 +887,7 @@
   "webPageDownloadStarted": "Download started — it counts against your daily quota. You can keep browsing; the lists update automatically and this page returns you where you were.",
   "webPageAlreadyDownloaded": "This book is already on the phone.",
   "webPageAlreadyDownloading": "A download for this book is already running — please wait.",
-  "bookQuoteAgain": "Draw another"
+  "bookQuoteAgain": "Draw another",
+  "webPageDownloadedTag": "Downloaded",
+  "webPageDownloading": "Downloading…"
 }

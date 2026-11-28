@@ -202,6 +202,8 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     notFound: t.webPageNotFound,
     convertFailed: t.webPageConvertFailed,
     refreshLink: t.webPageRefresh,
+    downloadedTag: t.webPageDownloadedTag,
+    downloading: t.webPageDownloading,
     packAll: t.webPagePackAll,
     downloadToPhone: t.webPageDownloadToPhone,
     searchHeading: t.webPageSearchHeading,

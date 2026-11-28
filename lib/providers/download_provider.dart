@@ -79,6 +79,13 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
   @visibleForTesting
   int get liveCancelTokenCount => _cancelTokens.length;
 
+  /// Which ids hold a live cancel token. Tests assert on this rather
+  /// than the bare count: two cancelling paths that race can transiently
+  /// drop the count below any expected mid-test value, and only the ids
+  /// tell which round actually kept its token.
+  @visibleForTesting
+  Set<String> get liveCancelTokenIds => _cancelTokens.keys.toSet();
+
   /// Throttle for progress ticks: Dio can fire dozens of callbacks per
   /// second, and every publish rebuilds the whole task list for every
   /// listener. A tick is published only when progress moved >= 1% or

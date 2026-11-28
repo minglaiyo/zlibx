@@ -871,5 +871,6 @@
   "webPageOfficialLink": "Full list on Z-Library",
   "webPagePreviewNote": "Preview books only",
   "webPageNotFound": "Not found",
-  "webPageConvertFailed": "This text file could not be converted for reading. You can still download it."
+  "webPageConvertFailed": "This text file could not be converted for reading. You can still download it.",
+  "webPageRefresh": "Refresh"
 }

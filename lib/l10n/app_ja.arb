@@ -871,5 +871,6 @@
   "webPageOfficialLink": "Z-Library 公式サイトで全リストを見る",
   "webPagePreviewNote": "プレビューの本のみ",
   "webPageNotFound": "見つかりません",
-  "webPageConvertFailed": "このテキストファイルは読める形式に変換できませんでした。ダウンロードは可能です。"
+  "webPageConvertFailed": "このテキストファイルは読める形式に変換できませんでした。ダウンロードは可能です。",
+  "webPageRefresh": "更新"
 }

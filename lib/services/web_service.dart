@@ -358,6 +358,11 @@ class WebPageStrings {
   final String notFound;
   final String convertFailed;
 
+  /// Link on the downloads heading row that reloads the page, so a
+  /// reader sees a re-synced snapshot without finding the browser's
+  /// own reload menu entry.
+  final String refreshLink;
+
   const WebPageStrings({
     required this.homeTitle,
     required this.downloadedSection,
@@ -369,6 +374,7 @@ class WebPageStrings {
     required this.backHome,
     required this.notFound,
     required this.convertFailed,
+    this.refreshLink = '',
   });
 
   /// English defaults (used by tests and as a safe fallback).
@@ -383,6 +389,7 @@ class WebPageStrings {
     backHome: 'Back to home',
     notFound: 'Not found',
     convertFailed: 'This text file could not be converted for reading.',
+    refreshLink: 'Refresh',
   );
 }
 
@@ -569,6 +576,28 @@ class WebService extends ChangeNotifier {
     );
     notifyListeners();
     return server.port;
+  }
+
+  /// Swap the served snapshot — and optionally the page strings and the
+  /// download callback — WHILE RUNNING. Every new request reads the
+  /// snapshot fresh, and streaming responses hold their own file
+  /// handles, so nothing breaks: a browser only needs to reload the
+  /// page to see the new state. No rebind, no lost connections.
+  ///
+  /// No-op while stopped (the next [start] picks the data up).
+  /// [strings] / [onRequestDownload] are kept when omitted.
+  void refresh({
+    required WebSnapshot snapshot,
+    WebPageStrings? strings,
+    RequestDownloadHandler? onRequestDownload,
+  }) {
+    if (_server == null) return;
+    _snapshot = snapshot;
+    // Resolved paths belong to the old snapshot's locations.
+    _pathCache.clear();
+    if (strings != null) _strings = strings;
+    if (onRequestDownload != null) _onRequestDownload = onRequestDownload;
+    notifyListeners();
   }
 
   /// Ask the native side to ensure the local-network permission is
@@ -1253,6 +1282,7 @@ class WebService extends ChangeNotifier {
       '.head-row h1,.head-row h2{margin:0;border-top:none;padding-top:0;'
       'flex:1 1 auto;min-width:0}'
       '.head-row .search{flex:0 1 320px;min-width:200px;margin:0}'
+      '.head-row .refresh{flex:0 0 auto;font-size:14px;font-weight:600;text-decoration:none}'
       '.search input{width:100%;box-sizing:border-box;border:1.5px solid transparent;'
       'border-radius:30px;padding:16px 24px;font-size:16px;line-height:1.5;'
       '-webkit-appearance:none;appearance:none;background:#FFFFFF;color:#1A2421;'
@@ -1374,10 +1404,15 @@ class WebService extends ChangeNotifier {
     final value = searchValue.isEmpty
         ? ''
         : ' value="${escapeHtml(searchValue)}"';
+    // An empty href navigates to the current URL: a plain reload that
+    // picks up the phone's latest snapshot without breaking anything.
+    final refresh = _strings.refreshLink.isEmpty
+        ? ''
+        : '<a class="refresh" href="">${escapeHtml(_strings.refreshLink)}</a>';
     return '<div class="head-row">$heading'
         '<form class="search" method="get" action="/search">'
         '<input name="q" type="search"$value>'
-        '</form></div>';
+        '</form>$refresh</div>';
   }
 
   String _messagePage(String message) => _page(

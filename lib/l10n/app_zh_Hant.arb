@@ -871,5 +871,6 @@
   "webPageOfficialLink": "在 Z-Library 官網查看完整書單",
   "webPagePreviewNote": "僅顯示預覽書目",
   "webPageNotFound": "找不到",
-  "webPageConvertFailed": "這個文字檔無法轉換為可閱讀格式，但仍可下載。"
+  "webPageConvertFailed": "這個文字檔無法轉換為可閱讀格式，但仍可下載。",
+  "webPageRefresh": "重新整理"
 }

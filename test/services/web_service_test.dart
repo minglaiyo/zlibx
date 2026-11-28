@@ -407,6 +407,10 @@ void main() {
       expect(r.body, contains('href="/book/1"'));
       expect(r.body, isNot(contains('href="/read/1"')));
       expect(r.body, contains('Epub &lt;Book&gt;')); // escaped
+      // The heading row carries a reload link (an empty href reloads
+      // the page), so a reader can pull a re-synced snapshot without
+      // the browser's own menu entry.
+      expect(r.body, contains('class="refresh" href="">Refresh</a>'));
       expect(r.body.toLowerCase(), isNot(contains('<script')));
       expect(r.body, contains('(3)')); // downloaded section count
       // Item 8: the app icon is linked in the head.
@@ -767,6 +771,44 @@ void main() {
       final getR = await get('/zip/all');
       final headR = await get('/zip/all', method: 'HEAD');
       expect(headR.header('content-length'), getR.header('content-length'));
+    });
+
+    test('refresh swaps the served snapshot without stopping the server',
+        () async {
+      await service.start(snapshot: snapshot, preferredPort: 0);
+      final before = await get('/');
+      expect(before.body, contains('Epub &lt;Book&gt;'));
+      expect(service.isRunning, isTrue);
+
+      File('${tmp.path}/fresh.epub').writeAsStringSync('FRESH-EPUB-BYTES');
+      final fresh = WebSnapshot(
+        files: [
+          WebFile(
+            bookId: 7,
+            title: 'Fresh Book',
+            author: 'New Author',
+            extension: 'epub',
+            location: '${tmp.path}/fresh.epub',
+          ),
+        ],
+      );
+      service.refresh(snapshot: fresh, strings: WebPageStrings.english);
+
+      // Same server, same port, new content: a browser reload sees it.
+      expect(service.isRunning, isTrue);
+      final after = await get('/');
+      expect(after.body, contains('Fresh Book'));
+      expect(after.body, isNot(contains('Epub &lt;Book&gt;')));
+      // The fresh file is downloadable through its new index.
+      final dl = await get('/download/0');
+      expect(dl.status, 200);
+      expect(dl.body, 'FRESH-EPUB-BYTES');
+
+      // While stopped, refresh is a no-op (next start() takes over).
+      await service.stop();
+      expect(service.isRunning, isFalse);
+      service.refresh(snapshot: fresh, strings: WebPageStrings.english);
+      expect(service.isRunning, isFalse);
     });
 
     test('request-download calls the callback and confirms', () async {

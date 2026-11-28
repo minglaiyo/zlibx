@@ -7,6 +7,8 @@ import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:flutter/foundation.dart';
+
 import '../../l10n/generated/app_localizations.dart';
 import '../../providers/download_provider.dart';
 import '../../providers/saved_books_notifier.dart';
@@ -41,19 +43,33 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
   List<String>? _clients;
   bool _busy = false;
 
+  /// Debounced snapshot sync (see [_onTasksMaybeChanged]).
+  Timer? _syncDebounce;
+
+  /// Signature of the tasks already synced (id + status + missing
+  /// flag). Progress ticks keep it stable, so streaming a download
+  /// does not rebuild the snapshot every second.
+  Set<String>? _lastTaskSig;
+
   @override
   void initState() {
     super.initState();
     _service.addListener(_onServiceChanged);
     // Coming back to the page while the server runs: show it as
-    // running, with a freshly detected address.
-    if (_service.isRunning) unawaited(_detectNetwork());
+    // running, with a freshly detected address — and push the current
+    // app state into the served snapshot (books added or removed while
+    // this page was closed).
+    if (_service.isRunning) {
+      unawaited(_detectNetwork());
+      unawaited(_syncSnapshot());
+    }
   }
 
   @override
   void dispose() {
     // Only detach this page's listener. The service keeps running.
     _service.removeListener(_onServiceChanged);
+    _syncDebounce?.cancel();
     super.dispose();
   }
 
@@ -197,6 +213,48 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     );
   }
 
+  /// Only meaningful task changes trigger a snapshot rebuild: the
+  /// signature is id + status + missing flag, so per-second progress
+  /// ticks compare equal and are dropped. A real change (round started,
+  /// finished, paused, file lost) schedules one debounced sync.
+  void _onTasksMaybeChanged(List<DownloadTask> next) {
+    if (!_service.isRunning) return;
+    final sig = <String>{
+      for (final task in next)
+        '${task.book.id}:${task.status.name}:${task.missingFile}',
+    };
+    final last = _lastTaskSig;
+    _lastTaskSig = sig;
+    if (last != null && setEquals(last, sig)) return;
+    _scheduleSync();
+  }
+
+  /// Coalesce bursts (a download round flips several tasks in quick
+  /// succession) into a single snapshot rebuild.
+  void _scheduleSync() {
+    _syncDebounce?.cancel();
+    _syncDebounce = Timer(const Duration(milliseconds: 800), () {
+      unawaited(_syncSnapshot());
+    });
+  }
+
+  /// Rebuild the snapshot from the current app state and swap it into
+  /// the running server: no stop, no rebind, no broken reader — the
+  /// browser just reloads the page to see it.
+  Future<void> _syncSnapshot() async {
+    if (!_service.isRunning) return;
+    final built = await _buildSnapshot();
+    if (!mounted || !_service.isRunning) return;
+    final t = AppLocalizations.of(context)!;
+    final notifier = ref.read(downloadProvider.notifier);
+    _service.refresh(
+      snapshot: built.snapshot,
+      strings: _pageStrings(t),
+      onRequestDownload: (bookId) =>
+          _requestDownload(notifier, built.bookById, bookId),
+    );
+  }
+
   /// Web-triggered download (item 3): enqueue the book with the
   /// app's own download logic. Never starts a second round for a
   /// book that is already on this phone or already downloading —
@@ -253,6 +311,7 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     backHome: t.webPageBackHome,
     notFound: t.webPageNotFound,
     convertFailed: t.webPageConvertFailed,
+    refreshLink: t.webPageRefresh,
   );
 
   Future<void> _copy(String url) async {
@@ -283,6 +342,18 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     final port = _service.port;
     final selection = _selection;
     final snapshot = _service.snapshot;
+
+    // Live sync while this page is open: task status transitions and
+    // shelf changes push a fresh snapshot into the running server
+    // (debounced — see [_onTasksMaybeChanged]). Leaving the page stops
+    // listening; the server keeps serving the last synced snapshot
+    // until the page is opened again.
+    ref.listen(downloadProvider, (prev, next) {
+      _onTasksMaybeChanged(next);
+    });
+    ref.listen(savedBooksProvider, (prev, next) {
+      if (_service.isRunning) _scheduleSync();
+    });
 
     return Scaffold(
       appBar: AppBar(title: Text(t.webService)),

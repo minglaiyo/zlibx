@@ -884,7 +884,7 @@
     }
   },
   "webPageZipEmpty": "No downloaded books yet — the archive is empty.",
-  "webPageDownloadStarted": "Download started — it counts against your daily quota. When it finishes, the lists sync automatically; reload to see the book here.",
+  "webPageDownloadStarted": "Download started — it counts against your daily quota. You can keep browsing; the lists update automatically and this page returns you where you were.",
   "webPageAlreadyDownloaded": "This book is already on the phone.",
   "webPageAlreadyDownloading": "A download for this book is already running — please wait.",
   "bookQuoteAgain": "Draw another"

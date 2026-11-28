@@ -596,7 +596,7 @@ void main() {
     expect(loc.webPageBooklists, 'Booklists');
     expect(loc.webPageConvertFailed, 'This text file could not be converted for reading. You can still download it.');
     expect(loc.webPageDownload, 'Download');
-    expect(loc.webPageDownloadStarted, 'Download started — it counts against your daily quota. When it finishes, the lists sync automatically; reload to see the book here.');
+    expect(loc.webPageDownloadStarted, 'Download started — it counts against your daily quota. You can keep browsing; the lists update automatically and this page returns you where you were.');
     expect(loc.webPageDownloadToPhone, 'Download to phone');
     expect(loc.webPageDownloaded, 'Downloaded books');
     expect(loc.webPageEmpty, 'Nothing here');
@@ -1229,7 +1229,7 @@ void main() {
     expect(loc.webPageBooklists, 'ブックリスト');
     expect(loc.webPageConvertFailed, 'このテキストファイルは読める形式に変換できませんでした。ダウンロードは可能です。');
     expect(loc.webPageDownload, 'ダウンロード');
-    expect(loc.webPageDownloadStarted, 'ダウンロードを開始しました。1日のダウンロード上限に数えます。完了するとリストは自動で同期され、再読み込みするとこの本が表示されます。');
+    expect(loc.webPageDownloadStarted, 'ダウンロードを開始しました。1日の上限に数えます。このまま閲覧やダウンロードを続けられます。リストは自動更新され、このページはすぐに戻ります。');
     expect(loc.webPageDownloadToPhone, 'スマホにダウンロード');
     expect(loc.webPageDownloaded, 'ダウンロードした本');
     expect(loc.webPageEmpty, 'まだ何もありません');
@@ -1862,7 +1862,7 @@ void main() {
     expect(loc.webPageBooklists, '북리스트');
     expect(loc.webPageConvertFailed, '이 텍스트 파일을 읽을 수 있는 형식으로 변환할 수 없습니다. 다운로드는 가능합니다.');
     expect(loc.webPageDownload, '다운로드');
-    expect(loc.webPageDownloadStarted, '다운로드를 시작했습니다. 일일 다운로드 한도에 포함됩니다. 완료되면 목록이 자동 동기화되어 새로 고침 시 표시됩니다.');
+    expect(loc.webPageDownloadStarted, '다운로드를 시작했습니다. 일일 한도에 포함됩니다. 계속 열람하거나 다운로드할 수 있으며, 목록은 자동 갱신되고 이 페이지는 곧 돌아갑니다.');
     expect(loc.webPageDownloadToPhone, '휴대폰으로 다운로드');
     expect(loc.webPageDownloaded, '다운로드한 책');
     expect(loc.webPageEmpty, '아직 없습니다');
@@ -2495,7 +2495,7 @@ void main() {
     expect(loc.webPageBooklists, '书单');
     expect(loc.webPageConvertFailed, '这个文本文件无法转换为可阅读格式，但仍可下载。');
     expect(loc.webPageDownload, '下载');
-    expect(loc.webPageDownloadStarted, '已开始下载，会占用下载额度。完成后列表会自动同步，刷新页面即可看到这本书。');
+    expect(loc.webPageDownloadStarted, '已开始下载，会占用下载额度。可以继续浏览或阅读，列表会自动更新，本页稍后自动返回。');
     expect(loc.webPageDownloadToPhone, '下载到手机');
     expect(loc.webPageDownloaded, '下载的书');
     expect(loc.webPageEmpty, '这里还没有内容');
@@ -3128,7 +3128,7 @@ void main() {
     expect(loc.webPageBooklists, '書單');
     expect(loc.webPageConvertFailed, '這個文字檔無法轉換為可閱讀格式，但仍可下載。');
     expect(loc.webPageDownload, '下載');
-    expect(loc.webPageDownloadStarted, '已開始下載，會占用下載額度。完成後列表會自動同步，重新整理頁面即可看到這本書。');
+    expect(loc.webPageDownloadStarted, '已開始下載，會占用下載額度。可以繼續瀏覽或閱讀，列表會自動更新，本頁稍後自動返回。');
     expect(loc.webPageDownloadToPhone, '下載到手機');
     expect(loc.webPageDownloaded, '下載的書');
     expect(loc.webPageEmpty, '這裡還沒有內容');

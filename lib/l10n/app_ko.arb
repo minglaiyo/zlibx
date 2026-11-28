@@ -877,7 +877,7 @@
   "webPageDownloadToPhone": "휴대폰으로 다운로드",
   "webPageSearchHeading": "\"{q}\" 검색",
   "webPageZipEmpty": "다운로드한 책이 아직 없어 ZIP이 비어 있습니다.",
-  "webPageDownloadStarted": "다운로드를 시작했습니다. 일일 다운로드 한도에 포함됩니다. 완료되면 목록이 자동 동기화되어 새로 고침 시 표시됩니다.",
+  "webPageDownloadStarted": "다운로드를 시작했습니다. 일일 한도에 포함됩니다. 계속 열람하거나 다운로드할 수 있으며, 목록은 자동 갱신되고 이 페이지는 곧 돌아갑니다.",
   "webPageAlreadyDownloaded": "이 책은 이미 다운로드되어 있습니다.",
   "webPageAlreadyDownloading": "이 책은 다운로드 중입니다. 잠시 후 다시 시도해 주세요.",
   "bookQuoteAgain": "다시 뽑기"

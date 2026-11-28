@@ -818,6 +818,26 @@ void main() {
       expect(builds, 1);
     });
 
+    test('home auto-refreshes only while downloads are pending', () async {
+      await service.start(snapshot: snapshot, preferredPort: 0);
+      final idle = await get('/');
+      expect(idle.body, isNot(contains('http-equiv="refresh"')));
+
+      // 快照里有在途下载（web 触发或手机端触发）：首页挂 8 秒自刷新，
+      // 完成的那一次刷新把新书带进列表；任务清空后 meta 消失。
+      final pending = WebSnapshot(
+        files: [snapshot.files.first],
+        library: snapshot.library,
+        pendingBookIds: {42},
+      );
+      service.refresh(snapshot: pending, strings: WebPageStrings.english);
+      final running = await get('/');
+      expect(
+        running.body,
+        contains('<meta http-equiv="refresh" content="8; url=/">'),
+      );
+    });
+
     test('refresh swaps the served snapshot without stopping the server',
         () async {
       await service.start(snapshot: snapshot, preferredPort: 0);
@@ -914,9 +934,10 @@ void main() {
       );
       expect(r.status, 200);
       expect(calls, [9]);
+      // 确认页：开始文案 + 2 秒后自动返回来源页（无 Referer 时回首页）。
       expect(r.body, contains('Download started'));
-      expect(r.body, contains('sync automatically'));
-      expect(r.body, contains('daily quota'));
+      expect(r.body, contains('keep browsing'));
+      expect(r.body, contains('http-equiv="refresh" content="2; url=/"'));
       expect(
         (await svc.handleRequest(
           method: 'GET',
@@ -943,6 +964,7 @@ void main() {
       );
       expect(r.status, 200);
       expect(r.body, contains('already running'));
+      expect(r.body, contains('http-equiv="refresh"'));
       expect(r.body, isNot(contains('Download started')));
     });
 

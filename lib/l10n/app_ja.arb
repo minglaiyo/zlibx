@@ -879,5 +879,6 @@
   "webPageZipEmpty": "ダウンロード済みの本がまだないため、ZIPは空です。",
   "webPageDownloadStarted": "ダウンロードを開始しました。1日のダウンロード上限に数えます。完了するとリストは自動で同期され、再読み込みするとこの本が表示されます。",
   "webPageAlreadyDownloaded": "この本はすでにダウンロード済みです。",
-  "webPageAlreadyDownloading": "この本は現在ダウンロード中です。しばらくお待ちください。"
+  "webPageAlreadyDownloading": "この本は現在ダウンロード中です。しばらくお待ちください。",
+  "bookQuoteAgain": "もう一枚引く"
 }

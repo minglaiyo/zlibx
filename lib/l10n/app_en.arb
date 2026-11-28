@@ -886,5 +886,6 @@
   "webPageZipEmpty": "No downloaded books yet — the archive is empty.",
   "webPageDownloadStarted": "Download started — it counts against your daily quota. When it finishes, the lists sync automatically; reload to see the book here.",
   "webPageAlreadyDownloaded": "This book is already on the phone.",
-  "webPageAlreadyDownloading": "A download for this book is already running — please wait."
+  "webPageAlreadyDownloading": "A download for this book is already running — please wait.",
+  "bookQuoteAgain": "Draw another"
 }

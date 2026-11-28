@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../l10n/generated/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/update_dialog.dart';
+import '../../widgets/book_quote_slip.dart';
 import '../../routes/app_routes.dart';
 import '../auth/login_screen.dart';
 import 'widgets/about_section.dart';
@@ -113,25 +117,7 @@ class SettingsScreen extends ConsumerWidget {
               icon: Icons.system_update_rounded,
               title: AppLocalizations.of(context)!.update,
             ),
-            SettingsCard(
-              child: ListTile(
-                leading: const Icon(Icons.system_update),
-                title: Text(AppLocalizations.of(context)!.checkForUpdates),
-                subtitle: FutureBuilder<PackageInfo>(
-                  future: PackageInfo.fromPlatform(),
-                  builder: (context, snapshot) {
-                    final version = snapshot.data?.version ?? '...';
-                    return Text(
-                      AppLocalizations.of(
-                        context,
-                      )!.currentVersionLabel(version),
-                    );
-                  },
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => showManualUpdateCheck(context),
-              ),
-            ),
+            const _UpdateCard(),
 
             const SizedBox(height: 20),
 
@@ -144,6 +130,69 @@ class SettingsScreen extends ConsumerWidget {
             const AboutSection(),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 检查更新卡片：副标题是版本号，连点 5 次（2 秒窗口内）翻出一张
+/// 书语诗签彩蛋。点击只落在版本号文本上——GestureDetector 在
+/// ListTile 内层，命中测试先于外层卡片，"检查更新"的点击不受影响。
+/// 连点期间每次都给触觉反馈，让用户知道"点对了地方"。
+class _UpdateCard extends StatefulWidget {
+  const _UpdateCard();
+
+  @override
+  State<_UpdateCard> createState() => _UpdateCardState();
+}
+
+class _UpdateCardState extends State<_UpdateCard> {
+  int _taps = 0;
+  Timer? _tapWindow;
+
+  void _onVersionTap() {
+    HapticFeedback.selectionClick();
+    _taps += 1;
+    _tapWindow?.cancel();
+    _tapWindow = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _taps = 0);
+    });
+    if (_taps >= 5) {
+      _tapWindow?.cancel();
+      setState(() => _taps = 0);
+      unawaited(showBookQuoteSlip(context));
+    }
+  }
+
+  @override
+  void dispose() {
+    _tapWindow?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsCard(
+      child: ListTile(
+        leading: const Icon(Icons.system_update),
+        title: Text(AppLocalizations.of(context)!.checkForUpdates),
+        subtitle: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _onVersionTap,
+          child: FutureBuilder<PackageInfo>(
+            future: PackageInfo.fromPlatform(),
+            builder: (context, snapshot) {
+              final version = snapshot.data?.version ?? '...';
+              return Text(
+                AppLocalizations.of(
+                  context,
+                )!.currentVersionLabel(version),
+              );
+            },
+          ),
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => showManualUpdateCheck(context),
       ),
     );
   }

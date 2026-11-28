@@ -879,5 +879,6 @@
   "webPageZipEmpty": "這裡還沒有已下載的書，打包是空的。",
   "webPageDownloadStarted": "已開始下載，會占用下載額度。完成後列表會自動同步，重新整理頁面即可看到這本書。",
   "webPageAlreadyDownloaded": "這本書已經下載過了。",
-  "webPageAlreadyDownloading": "這本書正在下載中，請稍後再來。"
+  "webPageAlreadyDownloading": "這本書正在下載中，請稍後再來。",
+  "bookQuoteAgain": "再抽一張"
 }

@@ -241,22 +241,28 @@ void main() {
     expect(engine.liveCancelTokenCount, 4);
 
     engine.cancelDownload('10');
-    expect(engine.liveCancelTokenCount, 3);
+    // 排队取消只摘它自己的 token。同步段没有事件轮转，ids 断言是
+    // 确定的；裸计数断言在全量并发负载下会撞上下面的重试竞态
+    // （2026-11-28 修复的偶发失败）。
+    expect(engine.liveCancelTokenIds, {'7', '8', '9'});
 
-    // 取消排队任务只会摘掉它的 token；startDownload 仍要等一个槽位
-    // 才能返回。取消并放行一个占用槽位的任务，让排队轮次走到取消分支。
     engine.cancelDownload('7');
-    activeGates[0].complete(_connectionError());
-    await queued;
-    expect(engine.liveCancelTokenCount, 2);
+    // 运行中取消同样只摘它自己的 token；轮次解退（槽位释放、
+    // finally）在此之后异步进行。
+    expect(engine.liveCancelTokenIds, {'8', '9'});
 
-    for (final id in <String>['8', '9']) {
-      engine.cancelDownload(id);
-    }
-    for (final gate in activeGates.skip(1)) {
+    // 放行全部 gate，并取消其余任务。gate 与轮次的对应关系取决于
+    // 调度顺序：gate[0] 的持有者吃一个连接错误后本会重试一次，而假
+    // API 的 gate 已耗尽、重试立即"成功"（writeFile=false），随机地
+    // 提前摘掉自己的 token——这正是本测试此前在全量负载下偶发失败
+    // 的原因。先取消剩余任务，重试路径被 isCancelled 拦截，不再有
+    // 这种中间态；硬性约定只剩：全部轮次结束后不留任何 token。
+    for (final gate in activeGates) {
       gate.complete(_connectionError());
     }
-    await Future.wait(rounds);
+    engine.cancelDownload('8');
+    engine.cancelDownload('9');
+    await Future.wait([...rounds, queued]);
     expect(engine.liveCancelTokenCount, 0);
   });
 

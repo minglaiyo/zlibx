@@ -829,32 +829,32 @@
   "webServiceClients": "接続中のデバイス：{clients}",
   "@webServiceClients": {
     "placeholders": {
-        "clients": {
-          "type": "String"
-        }
+      "clients": {
+        "type": "String"
+      }
     }
   },
   "webServiceCounts": "ダウンロード {downloaded} 冊 · ライブラリ {library} 冊 · ブックリスト {booklists} 件",
   "@webServiceCounts": {
     "placeholders": {
-        "downloaded": {
-          "type": "int"
-        },
-        "library": {
-          "type": "int"
-        },
-        "booklists": {
-          "type": "int"
-        }
+      "downloaded": {
+        "type": "int"
+      },
+      "library": {
+        "type": "int"
+      },
+      "booklists": {
+        "type": "int"
+      }
     }
   },
-  "webServiceSnapshotNote": "一覧はサービス開始時のスナップショットです。更新するには停止してもう一度開始してください。",
+  "webServiceSnapshotNote": "リストはスマホ側の変化に自動で追従します。ブラウザを再読み込みすると最新状態が表示されます。",
   "webServiceStartFailed": "サービスを開始できませんでした：{error}",
   "@webServiceStartFailed": {
     "placeholders": {
-        "error": {
-          "type": "String"
-        }
+      "error": {
+        "type": "String"
+      }
     }
   },
   "webServiceLocalNetworkDenied": "他のデバイスから接続するにはローカルネットワークの権限が必要です。システム設定で「近くのデバイス」を許可してから再試行してください。",
@@ -871,5 +871,13 @@
   "webPageOfficialLink": "Z-Library 公式サイトで全リストを見る",
   "webPagePreviewNote": "プレビューの本のみ",
   "webPageNotFound": "見つかりません",
-  "webPageConvertFailed": "このテキストファイルは読める形式に変換できませんでした。ダウンロードは可能です。"
+  "webPageConvertFailed": "このテキストファイルは読める形式に変換できませんでした。ダウンロードは可能です。",
+  "webPageRefresh": "更新",
+  "webPagePackAll": "ZIPにまとめる",
+  "webPageDownloadToPhone": "スマホにダウンロード",
+  "webPageSearchHeading": "「{q}」を検索",
+  "webPageZipEmpty": "ダウンロード済みの本がまだないため、ZIPは空です。",
+  "webPageDownloadStarted": "ダウンロードを開始しました。1日のダウンロード上限に数えます。完了するとリストは自動で同期され、再読み込みするとこの本が表示されます。",
+  "webPageAlreadyDownloaded": "この本はすでにダウンロード済みです。",
+  "webPageAlreadyDownloading": "この本は現在ダウンロード中です。しばらくお待ちください。"
 }

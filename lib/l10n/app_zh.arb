@@ -829,32 +829,32 @@
   "webServiceClients": "已连接设备：{clients}",
   "@webServiceClients": {
     "placeholders": {
-        "clients": {
-          "type": "String"
-        }
+      "clients": {
+        "type": "String"
+      }
     }
   },
   "webServiceCounts": "下载的书 {downloaded} 本 · 图书馆 {library} 本 · 书单 {booklists} 个",
   "@webServiceCounts": {
     "placeholders": {
-        "downloaded": {
-          "type": "int"
-        },
-        "library": {
-          "type": "int"
-        },
-        "booklists": {
-          "type": "int"
-        }
+      "downloaded": {
+        "type": "int"
+      },
+      "library": {
+        "type": "int"
+      },
+      "booklists": {
+        "type": "int"
+      }
     }
   },
-  "webServiceSnapshotNote": "列表是开启服务时的快照，运行期间的变化不会同步；停止后重新开启即可刷新。",
+  "webServiceSnapshotNote": "列表会随手机上的变化自动同步，浏览器刷新即可看到最新状态。",
   "webServiceStartFailed": "无法开启服务：{error}",
   "@webServiceStartFailed": {
     "placeholders": {
-        "error": {
-          "type": "String"
-        }
+      "error": {
+        "type": "String"
+      }
     }
   },
   "webServiceLocalNetworkDenied": "需要本地网络权限，其他设备才能访问。请在系统设置里允许「附近设备」后重试。",
@@ -871,5 +871,13 @@
   "webPageOfficialLink": "在 Z-Library 官网查看完整书单",
   "webPagePreviewNote": "仅显示预览书目",
   "webPageNotFound": "没有找到",
-  "webPageConvertFailed": "这个文本文件无法转换为可阅读格式，但仍可下载。"
+  "webPageConvertFailed": "这个文本文件无法转换为可阅读格式，但仍可下载。",
+  "webPageRefresh": "刷新",
+  "webPagePackAll": "全部打包",
+  "webPageDownloadToPhone": "下载到手机",
+  "webPageSearchHeading": "搜索“{q}”",
+  "webPageZipEmpty": "这里还没有已下载的书，打包是空的。",
+  "webPageDownloadStarted": "已开始下载，会占用下载额度。完成后列表会自动同步，刷新页面即可看到这本书。",
+  "webPageAlreadyDownloaded": "这本书已经下载过了。",
+  "webPageAlreadyDownloading": "这本书正在下载中，请稍后再来。"
 }

@@ -407,6 +407,13 @@ void main() {
       expect(r.body, contains('href="/book/1"'));
       expect(r.body, isNot(contains('href="/read/1"')));
       expect(r.body, contains('Epub &lt;Book&gt;')); // escaped
+      // The pack row: pack-all on the left, the reload capsule on the
+      // right (an empty href reloads the page), same capsule style.
+      expect(
+        r.body,
+        contains('<div class="pack-row"><a class="zip-btn" href="/zip/all">'),
+      );
+      expect(r.body, contains('<a class="zip-btn" href="">Refresh</a>'));
       expect(r.body.toLowerCase(), isNot(contains('<script')));
       expect(r.body, contains('(3)')); // downloaded section count
       // Item 8: the app icon is linked in the head.
@@ -422,10 +429,10 @@ void main() {
       expect(r.body, isNot(contains('past one hundred and twenty')));
       // Item 3: an undownloaded library book gets the trigger link.
       expect(r.body, contains('href="/request-download/9"'));
-      expect(r.body, contains('下载到手机'));
+      expect(r.body, contains('Download to phone'));
       // Item 2: the downloaded section offers a pack-all button.
       expect(r.body, contains('href="/zip/all"'));
-      expect(r.body, contains('全部打包'));
+      expect(r.body, contains('Pack all'));
     });
 
     test('search filters by title and author, case-insensitively', () async {
@@ -450,7 +457,7 @@ void main() {
       expect(shelf.body, contains('href="/read/0"'));
       // The search page shows the term, a way home, and the search
       // box — prefilled — on the results heading row. No sidebar.
-      expect(byTitle.body, contains('搜索“EPUB”'));
+      expect(byTitle.body, contains('Search &quot;EPUB&quot;'));
       expect(byTitle.body, contains('Back to home'));
       expect(byTitle.body, contains('value="EPUB"'));
       expect(byTitle.body, contains('class="head-row"'));
@@ -461,7 +468,7 @@ void main() {
       final none = await get('/search', query: {'q': 'zzz'});
       expect(none.status, 200);
       expect(none.body, contains('Nothing here'));
-      expect(none.body, contains('搜索“zzz”'));
+      expect(none.body, contains('Search &quot;zzz&quot;'));
 
       final empty = await get('/search');
       expect(empty.status, 200);
@@ -769,6 +776,124 @@ void main() {
       expect(headR.header('content-length'), getR.header('content-length'));
     });
 
+    test('live source pushes a rebuilt snapshot on markDownloadChanged',
+        () async {
+      await service.start(snapshot: snapshot, preferredPort: 0);
+      File('${tmp.path}/live.epub').writeAsStringSync('LIVE-EPUB');
+      final fresh = WebSnapshot(
+        files: [
+          WebFile(
+            bookId: 9,
+            title: 'Live Book',
+            author: '',
+            extension: 'epub',
+            location: '${tmp.path}/live.epub',
+          ),
+        ],
+      );
+      var builds = 0;
+      service.setLiveSource(
+        buildSnapshot: () async {
+          builds++;
+          return fresh;
+        },
+        onRequestDownload: (bookId) async => WebDownloadRequest.started,
+      );
+
+      // A meaningful change schedules one debounced rebuild + swap; the
+      // browser reload then sees the new book — no restart involved.
+      service.markDownloadChanged();
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      expect(builds, 1);
+      final page = await get('/');
+      expect(page.body, contains('Live Book'));
+      expect(page.body, isNot(contains('Epub &lt;Book&gt;')));
+      final dl = await get('/download/0');
+      expect(dl.body, 'LIVE-EPUB');
+
+      // Without a running server the mark is a no-op (nothing fires).
+      await service.stop();
+      service.markDownloadChanged();
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      expect(builds, 1);
+    });
+
+    test('refresh swaps the served snapshot without stopping the server',
+        () async {
+      await service.start(snapshot: snapshot, preferredPort: 0);
+      final before = await get('/');
+      expect(before.body, contains('Epub &lt;Book&gt;'));
+      expect(service.isRunning, isTrue);
+
+      File('${tmp.path}/fresh.epub').writeAsStringSync('FRESH-EPUB-BYTES');
+      final fresh = WebSnapshot(
+        files: [
+          WebFile(
+            bookId: 7,
+            title: 'Fresh Book',
+            author: 'New Author',
+            extension: 'epub',
+            location: '${tmp.path}/fresh.epub',
+          ),
+        ],
+      );
+      service.refresh(snapshot: fresh, strings: WebPageStrings.english);
+
+      // Same server, same port, new content: a browser reload sees it.
+      expect(service.isRunning, isTrue);
+      final after = await get('/');
+      expect(after.body, contains('Fresh Book'));
+      expect(after.body, isNot(contains('Epub &lt;Book&gt;')));
+      // The fresh file is downloadable through its new index.
+      final dl = await get('/download/0');
+      expect(dl.status, 200);
+      expect(dl.body, 'FRESH-EPUB-BYTES');
+
+      // While stopped, refresh is a no-op (next start() takes over).
+      await service.stop();
+      expect(service.isRunning, isFalse);
+      service.refresh(snapshot: fresh, strings: WebPageStrings.english);
+      expect(service.isRunning, isFalse);
+    });
+
+    test('an app palette bakes one resolved scheme into the pages',
+        () async {
+      const palette = WebPalette(
+        bg: '#101010',
+        card: '#202020',
+        text: '#F0F0F0',
+        muted: '#A0A0A0',
+        line: '#303030',
+        brand: '#FF8800',
+        brandStrong: '#FF9900',
+        brandSoft: '#332211',
+        brandSoftStrong: '#553311',
+        onBrand: '#111111',
+        onSoft: '#F0F0F0',
+        tile: '#181818',
+        dark: true,
+      );
+      await service.start(
+        snapshot: snapshot,
+        preferredPort: 0,
+        palette: palette,
+      );
+      final r = await get('/');
+      // The resolved scheme is forced (no prefers-color-scheme guessing)
+      // and the palette colors are baked straight into the stylesheet.
+      expect(r.body, contains('theme-dark'));
+      expect(r.body, contains('background:#101010'));
+      expect(r.body, contains('#FF8800'));
+      expect(r.body, isNot(contains('#2D6A4F')));
+      expect(r.body, isNot(contains('prefers-color-scheme:dark')));
+      // Without a palette the default two-scheme CSS comes back.
+      await service.stop();
+      await service.start(snapshot: snapshot, preferredPort: 0);
+      final plain = await get('/');
+      expect(plain.body, contains('#2D6A4F'));
+      expect(plain.body, contains('prefers-color-scheme:dark'));
+    });
+
     test('request-download calls the callback and confirms', () async {
       final calls = <int>[];
       final svc = WebService(
@@ -789,9 +914,9 @@ void main() {
       );
       expect(r.status, 200);
       expect(calls, [9]);
-      expect(r.body, contains('已开始下载'));
-      expect(r.body, contains('重启 Web 服务'));
-      expect(r.body, contains('下载额度'));
+      expect(r.body, contains('Download started'));
+      expect(r.body, contains('sync automatically'));
+      expect(r.body, contains('daily quota'));
       expect(
         (await svc.handleRequest(
           method: 'GET',
@@ -817,8 +942,8 @@ void main() {
         await svc.handleRequest(method: 'GET', path: '/request-download/9'),
       );
       expect(r.status, 200);
-      expect(r.body, contains('正在下载中'));
-      expect(r.body, isNot(contains('已开始下载')));
+      expect(r.body, contains('already running'));
+      expect(r.body, isNot(contains('Download started')));
     });
 
     test('icon routes serve the app icon as PNG', () async {

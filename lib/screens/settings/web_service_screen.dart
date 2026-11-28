@@ -3,13 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../l10n/generated/app_localizations.dart';
 import '../../providers/download_provider.dart';
-import '../../providers/saved_books_notifier.dart';
 import '../../services/lan_share.dart';
 import '../../services/network_state_channel.dart';
 import '../../services/web_keepalive.dart';
@@ -46,7 +44,10 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     super.initState();
     _service.addListener(_onServiceChanged);
     // Coming back to the page while the server runs: show it as
-    // running, with a freshly detected address.
+    // running, with a freshly detected address. The served snapshot
+    // itself is kept fresh by the engine-side live source
+    // (DownloadNotifier → WebService.markDownloadChanged) — no page
+    // needs to be mounted.
     if (_service.isRunning) unawaited(_detectNetwork());
   }
 
@@ -94,23 +95,32 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
 
   Future<void> _start() async {
     final t = AppLocalizations.of(context)!;
+    // Captured before any await: the palette reads the theme, and the
+    // context must not cross async gaps.
+    final palette = _webPalette(context);
     setState(() => _busy = true);
     try {
       // Detect first: the hotspot address changes when the hotspot is
       // re-enabled, so the QR code must be regenerated.
       await _detectNetwork();
-      final built = await _buildSnapshot();
       // Capture the long-lived object now, not the widget's ref:
-      // the callback below may run after this page is left, when
-      // the ref is dead. The notifier lives in the ProviderContainer,
-      // so holding it is safe.
+      // the live source below keeps working after this page is left,
+      // when the ref is dead. The notifier lives in the
+      // ProviderContainer, so holding it is safe.
       final notifier = ref.read(downloadProvider.notifier);
-      final bookById = built.bookById;
       await _service.start(
-        snapshot: built.snapshot,
+        snapshot: await notifier.buildWebSnapshot(),
         strings: _pageStrings(t),
-        onRequestDownload: (bookId) =>
-            _requestDownload(notifier, bookById, bookId),
+        palette: palette,
+        onRequestDownload: notifier.webRequestDownload,
+      );
+      // Live source: engine-side transitions and shelf changes push a
+      // rebuilt snapshot into the running server on their own — the
+      // browser catches up on reload even with this page closed (or
+      // the phone locked mid-read).
+      _service.setLiveSource(
+        buildSnapshot: notifier.buildWebSnapshot,
+        onRequestDownload: notifier.webRequestDownload,
       );
       // Screen-off keep-alive (WebKeepaliveService): the notification
       // shows the address other devices should open. Best-effort —
@@ -180,68 +190,6 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     }
   }
 
-  /// Freeze the two lists at the moment the service starts, plus
-  /// the lookup the web callback needs (book id -> Book) so a web
-  /// request can find the real object.
-  Future<({WebSnapshot snapshot, Map<int, Book> bookById})>
-  _buildSnapshot() async {
-    final tasks = ref.read(downloadProvider);
-    final saved = await _loadSaved();
-    final bookById = <int, Book>{};
-    for (final book in saved) {
-      bookById[book.id] = book;
-    }
-    return (
-      snapshot: WebSnapshot.build(tasks: tasks, saved: saved),
-      bookById: bookById,
-    );
-  }
-
-  /// Web-triggered download (item 3): enqueue the book with the
-  /// app's own download logic. Never starts a second round for a
-  /// book that is already on this phone or already downloading —
-  /// the caller reports that instead. [notifier] and [bookById] are
-  /// captured at start time so this keeps working after the page
-  /// is left.
-  Future<WebDownloadRequest> _requestDownload(
-    DownloadNotifier notifier,
-    Map<int, Book> bookById,
-    int bookId,
-  ) async {
-    final book = bookById[bookId];
-    if (book == null) return WebDownloadRequest.notFound;
-    final tasks = notifier.tasks;
-    for (final task in tasks) {
-      if (task.book.id != bookId) continue;
-      if (task.status == DownloadStatus.completed && !task.missingFile) {
-        return WebDownloadRequest.alreadyDownloaded;
-      }
-    }
-    for (final task in tasks) {
-      if (task.book.id != bookId) continue;
-      if (task.status == DownloadStatus.downloading ||
-          task.status == DownloadStatus.pending ||
-          task.status == DownloadStatus.paused) {
-        return WebDownloadRequest.alreadyDownloading;
-      }
-    }
-    // Fire and forget: startDownload returns the round's future,
-    // which only settles when the whole file is down. The web page
-    // answers "started" at once.
-    unawaited(notifier.startDownload(book));
-    return WebDownloadRequest.started;
-  }
-
-  /// The shelf may still be loading on a cold start; wait briefly.
-  Future<List<Book>> _loadSaved() async {
-    for (var i = 0; i < 40; i++) {
-      final state = ref.read(savedBooksProvider);
-      if (!state.isLoading) return state.valueOrNull ?? const <Book>[];
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-    }
-    return ref.read(savedBooksProvider).valueOrNull ?? const <Book>[];
-  }
-
   WebPageStrings _pageStrings(AppLocalizations t) => WebPageStrings(
     homeTitle: t.webPageHome,
     downloadedSection: t.webPageDownloaded,
@@ -253,7 +201,51 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     backHome: t.webPageBackHome,
     notFound: t.webPageNotFound,
     convertFailed: t.webPageConvertFailed,
+    refreshLink: t.webPageRefresh,
+    packAll: t.webPagePackAll,
+    downloadToPhone: t.webPageDownloadToPhone,
+    searchHeading: t.webPageSearchHeading,
+    zipEmpty: t.webPageZipEmpty,
+    downloadStarted: t.webPageDownloadStarted,
+    alreadyDownloaded: t.webPageAlreadyDownloaded,
+    alreadyDownloading: t.webPageAlreadyDownloading,
   );
+
+  /// The app's resolved colors for its current theme (the theme section
+  /// can mean Material You dynamic color), handed to the web pages so
+  /// they follow the app. Web-triggered theme switches while the server
+  /// runs keep the last palette until the screen is opened again.
+  WebPalette _webPalette(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    String hex(Color c) {
+      final argb = c.toARGB32() & 0xFFFFFF;
+      return '#${argb.toRadixString(16).padLeft(6, '0')}';
+    }
+
+    final dark = theme.brightness == Brightness.dark;
+    return WebPalette(
+      bg: hex(theme.scaffoldBackgroundColor),
+      card: hex(cs.surface),
+      text: hex(cs.onSurface),
+      muted: hex(cs.onSurfaceVariant),
+      line: hex(cs.outlineVariant),
+      brand: hex(cs.primary),
+      // Hover goes darker on light schemes and lighter on dark ones,
+      // matching how the app's own press states resolve.
+      brandStrong: hex(
+        Color.lerp(cs.primary, dark ? Colors.white : Colors.black, 0.14)!,
+      ),
+      brandSoft: hex(cs.primaryContainer),
+      brandSoftStrong: hex(
+        Color.lerp(cs.primaryContainer, cs.primary, 0.25)!,
+      ),
+      onBrand: hex(cs.onPrimary),
+      onSoft: hex(cs.onPrimaryContainer),
+      tile: hex(cs.surfaceContainerHighest),
+      dark: dark,
+    );
+  }
 
   Future<void> _copy(String url) async {
     final t = AppLocalizations.of(context)!;

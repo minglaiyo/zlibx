@@ -848,8 +848,7 @@
         }
     }
   },
-  "webServiceSnapshotNote": "書籍一覧とダウンロード状態はリアルタイムで更新され、再起動は不要です。",
-  "webServiceSecurityNote": "信頼できる Wi-Fi またはホットスポットでのみ使用してください。アドレスにはアクセストークンが含まれるため共有しないでください。アドレスを持つ人はこの端末の共有書籍を読めます。",
+  "webServiceSnapshotNote": "一覧はサービス開始時のスナップショットです。更新するには停止してもう一度開始してください。",
   "webServiceStartFailed": "サービスを開始できませんでした：{error}",
   "@webServiceStartFailed": {
     "placeholders": {

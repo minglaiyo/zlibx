@@ -83,9 +83,7 @@ String _decodeUtf16(Uint8List body, {required bool littleEndian}) {
   final units = <int>[];
   for (var i = 0; i + 1 < body.length; i += 2) {
     units.add(
-      littleEndian
-          ? body[i] | (body[i + 1] << 8)
-          : (body[i] << 8) | body[i + 1],
+      littleEndian ? body[i] | (body[i + 1] << 8) : (body[i] << 8) | body[i + 1],
     );
   }
   return String.fromCharCodes(units);
@@ -162,10 +160,7 @@ List<TxtChapter> splitChapters(
   required String fallbackTitle,
   int maxBytes = kTxtChapterByteLimit,
 }) {
-  final lines = text
-      .replaceAll('\r\n', '\n')
-      .replaceAll('\r', '\n')
-      .split('\n');
+  final lines = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
 
   final rawChapters = <_RawChapter>[];
   var current = _RawChapter(fallbackTitle);
@@ -346,7 +341,9 @@ Uint8List buildEpub({
     final body = StringBuffer();
     body.writeln('<h2>${_xmlEscape(chapter.title)}</h2>');
     for (final para in chapter.paragraphs) {
-      body.writeln('<p>${para.split('\n').map(_xmlEscape).join('<br/>')}</p>');
+      body.writeln(
+        '<p>${para.split('\n').map(_xmlEscape).join('<br/>')}</p>',
+      );
     }
     add('OEBPS/$id.xhtml', '''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
@@ -427,15 +424,9 @@ class TxtToEpub {
     return Directory(p.join(base.path, 'txt_epub_cache'));
   }
 
-  static const _maxCacheEntries = 128;
-  static const _maxCacheBytes = 256 * 1024 * 1024;
-  static const _maxFallbackEntries = 32;
-  static const _maxFallbackBytes = 64 * 1024 * 1024;
-  final Map<String, Future<File>> _inFlight = <String, Future<File>>{};
-
-  /// Cached EPUB file for the TXT at [path]. The service can stream this
-  /// file with Range support instead of materialising the whole EPUB.
-  Future<File> epubFileFor(String path, {String? title}) async {
+  /// EPUB bytes for the TXT at [path]. Throws [TxtConvertException]
+  /// when the file cannot be read or decoded.
+  Future<Uint8List> epubFor(String path, {String? title}) async {
     final file = File(path);
     final FileStat stat;
     try {
@@ -448,44 +439,12 @@ class TxtToEpub {
     }
 
     final key = txtCacheKey(path, stat.size, stat.modified);
-    final pending = _inFlight[key];
-    if (pending != null) return pending;
-    final conversion = _convertFile(file, key, title);
-    _inFlight[key] = conversion;
-    try {
-      return await conversion;
-    } finally {
-      if (identical(_inFlight[key], conversion)) {
-        await _inFlight.remove(key);
-      }
-    }
-  }
-
-  Future<File> _convertFile(File file, String key, String? title) async {
-    final Directory dir;
-    try {
-      dir = await _cacheDir();
-    } catch (_) {
-      throw const TxtConvertException('cache not writable');
-    }
+    final dir = await _cacheDir();
     final cached = File(p.join(dir.path, '$key.epub'));
     try {
-      if (await cached.exists()) {
-        final handle = await cached.open();
-        final List<int> signature;
-        try {
-          signature = await handle.read(4);
-        } finally {
-          await handle.close();
-        }
-        if (signature.length == 4 &&
-            signature[0] == 0x50 &&
-            signature[1] == 0x4b) {
-          return cached;
-        }
-        await cached.delete();
-      }
+      if (await cached.exists()) return await cached.readAsBytes();
     } catch (e) {
+      // Unreadable cache entry: reconvert below.
       logIgnored('txt_to_epub', e);
     }
 
@@ -500,7 +459,7 @@ class TxtToEpub {
       throw const TxtConvertException('could not decode the text');
     }
 
-    final bookTitle = title ?? p.basenameWithoutExtension(file.path);
+    final bookTitle = title ?? p.basenameWithoutExtension(path);
     final chapters = splitChapters(text, fallbackTitle: bookTitle);
     final epub = buildEpub(
       title: bookTitle,
@@ -509,115 +468,13 @@ class TxtToEpub {
     );
     conversions++;
 
-    final staging = File('${cached.path}.part');
     try {
       await dir.create(recursive: true);
-      await staging.writeAsBytes(epub, flush: true);
-      await staging.rename(cached.path);
-      await _pruneCache(cached);
-      return cached;
+      await cached.writeAsBytes(epub, flush: true);
     } catch (e) {
       // A cache write failure must not fail the read.
       logIgnored('txt_to_epub', e);
-      try {
-        await staging.delete();
-      } catch (e) {
-        logIgnored('txt_to_epub_staging_delete', e);
-      }
-      final fallback = File(
-        p.join(Directory.systemTemp.path, 'zlibx-txt-$key.epub'),
-      );
-      await fallback.writeAsBytes(epub, flush: true);
-      await _pruneFallbackCache(fallback);
-      return fallback;
     }
-  }
-
-  Future<void> _pruneCache(File keep) async {
-    try {
-      final activePaths = <String>{
-        for (final key in _inFlight.keys) ...<String>[
-          p.join(keep.parent.path, '$key.epub'),
-          p.join(keep.parent.path, '$key.epub.part'),
-        ],
-      };
-      final cacheName = RegExp(r'^[0-9a-f]{16}\.epub(?:\.part)?$');
-      final entries = await keep.parent.list().where((e) => e is File).toList();
-      final owned = entries.cast<File>().where(
-        (file) => cacheName.hasMatch(p.basename(file.path)),
-      );
-      for (final file in owned) {
-        if (file.path.endsWith('.part') && !activePaths.contains(file.path)) {
-          await file.delete();
-        }
-      }
-      final files =
-          owned
-              .where(
-                (f) =>
-                    f.path != keep.path &&
-                    f.path.endsWith('.epub') &&
-                    !activePaths.contains(f.path),
-              )
-              .toList()
-            ..sort(
-              (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
-            );
-      var count = files.length + 1;
-      var bytes =
-          keep.lengthSync() + files.fold<int>(0, (n, f) => n + f.lengthSync());
-      for (final file in files) {
-        if (count <= _maxCacheEntries && bytes <= _maxCacheBytes) break;
-        final size = file.lengthSync();
-        await file.delete();
-        count--;
-        bytes -= size;
-      }
-    } catch (e) {
-      logIgnored('txt_to_epub_prune', e);
-    }
-  }
-
-  Future<void> _pruneFallbackCache(File keep) async {
-    try {
-      final root = Directory.systemTemp;
-      final activePaths = _inFlight.keys
-          .map(
-            (key) => p.join(Directory.systemTemp.path, 'zlibx-txt-$key.epub'),
-          )
-          .toSet();
-      final entries = await root
-          .list()
-          .where(
-            (entry) =>
-                entry is File &&
-                p.basename(entry.path).startsWith('zlibx-txt-') &&
-                entry.path.endsWith('.epub') &&
-                !activePaths.contains(entry.path),
-          )
-          .toList();
-      final files =
-          entries.cast<File>().where((f) => f.path != keep.path).toList()..sort(
-            (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
-          );
-      var count = files.length + 1;
-      var bytes =
-          keep.lengthSync() + files.fold<int>(0, (n, f) => n + f.lengthSync());
-      for (final file in files) {
-        if (count <= _maxFallbackEntries && bytes <= _maxFallbackBytes) break;
-        final size = file.lengthSync();
-        await file.delete();
-        count--;
-        bytes -= size;
-      }
-    } catch (e) {
-      logIgnored('txt_to_epub_fallback_prune', e);
-    }
-  }
-
-  /// EPUB bytes for the TXT at [path]. Throws [TxtConvertException]
-  /// when the file cannot be read or decoded.
-  Future<Uint8List> epubFor(String path, {String? title}) async {
-    return (await epubFileFor(path, title: title)).readAsBytes();
+    return epub;
   }
 }

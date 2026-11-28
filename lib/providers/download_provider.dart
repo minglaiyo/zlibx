@@ -57,7 +57,11 @@ part 'download_history.dart';
               100)
           .round();
   final prefix = active.length == 1 ? '' : '${active.length} 个任务 · ';
-  return (count: active.length, percent: percent, text: '$prefix下载中 $percent%');
+  return (
+    count: active.length,
+    percent: percent,
+    text: '$prefix下载中 $percent%',
+  );
 }
 
 /// Shared state and small helpers for the DownloadNotifier mixins below.
@@ -71,7 +75,6 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
   ZLibraryApi get _api => ref.read(zlibraryApiProvider);
   StorageService get _storage => ref.read(storageServiceProvider);
   final Map<String, CancelToken> _cancelTokens = {};
-  final Set<String> _cancelBeforeStart = <String>{};
 
   @visibleForTesting
   int get liveCancelTokenCount => _cancelTokens.length;
@@ -88,14 +91,6 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
   // Not final: build() re-assigns it on every invalidate (nothing reads
   // it today; kept for the startup-history signal).
   late Future<void> ready;
-
-  /// Cancel a start that is still waiting in preflight, before its task
-  /// and CancelToken have been published.
-  void cancelDownloadRequest(int bookId) {
-    final id = bookId.toString();
-    _cancelBeforeStart.add(id);
-    cancelDownload(id);
-  }
 
   /// Cancel a download
   void cancelDownload(String id) {
@@ -181,12 +176,7 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
   /// published when progress moved >= 1% since the last publish for
   /// this task, or >= 200 ms passed. A tick that reaches 1.0 always
   /// goes through immediately.
-  void _updateProgress(
-    String id,
-    double? progress, {
-    int? receivedBytes,
-    bool force = false,
-  }) {
+  void _updateProgress(String id, double progress) {
     // Late ticks from a cancelled/finished download must not republish
     // state: cancelDownload already flipped the status and cleared the
     // throttle maps, but chunks already queued in the stream keep
@@ -206,25 +196,20 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
             task.status != DownloadStatus.pending)) {
       return;
     }
-    final now = DateTime.now();
-    final last = _lastPublishedProgress[id];
-    final lastAt = _lastPublishedAt[id];
-    final throttled = progress == null
-        ? lastAt != null && now.difference(lastAt).inMilliseconds < 200
-        : last != null &&
-              (progress - last).abs() < 0.01 &&
-              lastAt != null &&
-              now.difference(lastAt).inMilliseconds < 200;
-    if (!force && throttled) return;
-    if (progress != null) _lastPublishedProgress[id] = progress;
-    _lastPublishedAt[id] = now;
-    _updateTask(
-      id,
-      (t) => t.copyWith(
-        progress: progress ?? t.progress,
-        receivedBytes: receivedBytes ?? t.receivedBytes,
-      ),
-    );
+    if (progress < 1.0) {
+      final now = DateTime.now();
+      final last = _lastPublishedProgress[id];
+      final lastAt = _lastPublishedAt[id];
+      if (last != null &&
+          (progress - last).abs() < 0.01 &&
+          lastAt != null &&
+          now.difference(lastAt).inMilliseconds < 200) {
+        return;
+      }
+      _lastPublishedProgress[id] = progress;
+      _lastPublishedAt[id] = now;
+    }
+    _updateTask(id, (t) => t.copyWith(progress: progress));
   }
 
   /// Drops the throttle bookkeeping for [id]; called when a task leaves

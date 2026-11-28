@@ -11,6 +11,7 @@ import '../services/storage_service.dart';
 import '../utils/diagnostics.dart';
 import 'zlibrary_provider.dart';
 
+
 // ── Saved Books ─────────────────────────────────────────────────────
 
 class SavedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
@@ -20,8 +21,6 @@ class SavedBooksNotifier extends Notifier<AsyncValue<List<Book>>> {
   // left the provider in an error state and blanked the library screen.
   ZLibraryApi get _api => ref.read(zlibraryApiProvider);
   StorageService get _storage => ref.read(storageServiceProvider);
-
-  List<Book> get books => state.valueOrNull ?? const <Book>[];
 
   @override
   AsyncValue<List<Book>> build() {

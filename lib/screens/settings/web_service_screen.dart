@@ -3,15 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:olib_api_plugin/olib_api_plugin.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'package:flutter/foundation.dart';
-
 import '../../l10n/generated/app_localizations.dart';
 import '../../providers/download_provider.dart';
-import '../../providers/saved_books_notifier.dart';
 import '../../services/lan_share.dart';
 import '../../services/network_state_channel.dart';
 import '../../services/web_keepalive.dart';
@@ -43,33 +39,22 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
   List<String>? _clients;
   bool _busy = false;
 
-  /// Debounced snapshot sync (see [_onTasksMaybeChanged]).
-  Timer? _syncDebounce;
-
-  /// Signature of the tasks already synced (id + status + missing
-  /// flag). Progress ticks keep it stable, so streaming a download
-  /// does not rebuild the snapshot every second.
-  Set<String>? _lastTaskSig;
-
   @override
   void initState() {
     super.initState();
     _service.addListener(_onServiceChanged);
     // Coming back to the page while the server runs: show it as
-    // running, with a freshly detected address — and push the current
-    // app state into the served snapshot (books added or removed while
-    // this page was closed).
-    if (_service.isRunning) {
-      unawaited(_detectNetwork());
-      unawaited(_syncSnapshot());
-    }
+    // running, with a freshly detected address. The served snapshot
+    // itself is kept fresh by the engine-side live source
+    // (DownloadNotifier → WebService.markDownloadChanged) — no page
+    // needs to be mounted.
+    if (_service.isRunning) unawaited(_detectNetwork());
   }
 
   @override
   void dispose() {
     // Only detach this page's listener. The service keeps running.
     _service.removeListener(_onServiceChanged);
-    _syncDebounce?.cancel();
     super.dispose();
   }
 
@@ -115,18 +100,23 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
       // Detect first: the hotspot address changes when the hotspot is
       // re-enabled, so the QR code must be regenerated.
       await _detectNetwork();
-      final built = await _buildSnapshot();
       // Capture the long-lived object now, not the widget's ref:
-      // the callback below may run after this page is left, when
-      // the ref is dead. The notifier lives in the ProviderContainer,
-      // so holding it is safe.
+      // the live source below keeps working after this page is left,
+      // when the ref is dead. The notifier lives in the
+      // ProviderContainer, so holding it is safe.
       final notifier = ref.read(downloadProvider.notifier);
-      final bookById = built.bookById;
       await _service.start(
-        snapshot: built.snapshot,
+        snapshot: await notifier.buildWebSnapshot(),
         strings: _pageStrings(t),
-        onRequestDownload: (bookId) =>
-            _requestDownload(notifier, bookById, bookId),
+        onRequestDownload: notifier.webRequestDownload,
+      );
+      // Live source: engine-side transitions and shelf changes push a
+      // rebuilt snapshot into the running server on their own — the
+      // browser catches up on reload even with this page closed (or
+      // the phone locked mid-read).
+      _service.setLiveSource(
+        buildSnapshot: notifier.buildWebSnapshot,
+        onRequestDownload: notifier.webRequestDownload,
       );
       // Screen-off keep-alive (WebKeepaliveService): the notification
       // shows the address other devices should open. Best-effort —
@@ -196,110 +186,6 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     }
   }
 
-  /// Freeze the two lists at the moment the service starts, plus
-  /// the lookup the web callback needs (book id -> Book) so a web
-  /// request can find the real object.
-  Future<({WebSnapshot snapshot, Map<int, Book> bookById})>
-  _buildSnapshot() async {
-    final tasks = ref.read(downloadProvider);
-    final saved = await _loadSaved();
-    final bookById = <int, Book>{};
-    for (final book in saved) {
-      bookById[book.id] = book;
-    }
-    return (
-      snapshot: WebSnapshot.build(tasks: tasks, saved: saved),
-      bookById: bookById,
-    );
-  }
-
-  /// Only meaningful task changes trigger a snapshot rebuild: the
-  /// signature is id + status + missing flag, so per-second progress
-  /// ticks compare equal and are dropped. A real change (round started,
-  /// finished, paused, file lost) schedules one debounced sync.
-  void _onTasksMaybeChanged(List<DownloadTask> next) {
-    if (!_service.isRunning) return;
-    final sig = <String>{
-      for (final task in next)
-        '${task.book.id}:${task.status.name}:${task.missingFile}',
-    };
-    final last = _lastTaskSig;
-    _lastTaskSig = sig;
-    if (last != null && setEquals(last, sig)) return;
-    _scheduleSync();
-  }
-
-  /// Coalesce bursts (a download round flips several tasks in quick
-  /// succession) into a single snapshot rebuild.
-  void _scheduleSync() {
-    _syncDebounce?.cancel();
-    _syncDebounce = Timer(const Duration(milliseconds: 800), () {
-      unawaited(_syncSnapshot());
-    });
-  }
-
-  /// Rebuild the snapshot from the current app state and swap it into
-  /// the running server: no stop, no rebind, no broken reader — the
-  /// browser just reloads the page to see it.
-  Future<void> _syncSnapshot() async {
-    if (!_service.isRunning) return;
-    final built = await _buildSnapshot();
-    if (!mounted || !_service.isRunning) return;
-    final t = AppLocalizations.of(context)!;
-    final notifier = ref.read(downloadProvider.notifier);
-    _service.refresh(
-      snapshot: built.snapshot,
-      strings: _pageStrings(t),
-      onRequestDownload: (bookId) =>
-          _requestDownload(notifier, built.bookById, bookId),
-    );
-  }
-
-  /// Web-triggered download (item 3): enqueue the book with the
-  /// app's own download logic. Never starts a second round for a
-  /// book that is already on this phone or already downloading —
-  /// the caller reports that instead. [notifier] and [bookById] are
-  /// captured at start time so this keeps working after the page
-  /// is left.
-  Future<WebDownloadRequest> _requestDownload(
-    DownloadNotifier notifier,
-    Map<int, Book> bookById,
-    int bookId,
-  ) async {
-    final book = bookById[bookId];
-    if (book == null) return WebDownloadRequest.notFound;
-    final tasks = notifier.tasks;
-    for (final task in tasks) {
-      if (task.book.id != bookId) continue;
-      if (task.status == DownloadStatus.completed && !task.missingFile) {
-        return WebDownloadRequest.alreadyDownloaded;
-      }
-    }
-    for (final task in tasks) {
-      if (task.book.id != bookId) continue;
-      if (task.status == DownloadStatus.downloading ||
-          task.status == DownloadStatus.pending ||
-          task.status == DownloadStatus.paused) {
-        return WebDownloadRequest.alreadyDownloading;
-      }
-    }
-    // Fire and forget: startDownload returns the round's future,
-    // which only settles when the whole file is down. The web page
-    // answers "started" at once.
-    unawaited(notifier.startDownload(book));
-    return WebDownloadRequest.started;
-  }
-
-  /// The shelf may still be loading on a cold start; wait briefly.
-  Future<List<Book>> _loadSaved() async {
-    for (var i = 0; i < 40; i++) {
-      final state = ref.read(savedBooksProvider);
-      if (!state.isLoading) return state.valueOrNull ?? const <Book>[];
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-    }
-    return ref.read(savedBooksProvider).valueOrNull ?? const <Book>[];
-  }
-
   WebPageStrings _pageStrings(AppLocalizations t) => WebPageStrings(
     homeTitle: t.webPageHome,
     downloadedSection: t.webPageDownloaded,
@@ -342,18 +228,6 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     final port = _service.port;
     final selection = _selection;
     final snapshot = _service.snapshot;
-
-    // Live sync while this page is open: task status transitions and
-    // shelf changes push a fresh snapshot into the running server
-    // (debounced — see [_onTasksMaybeChanged]). Leaving the page stops
-    // listening; the server keeps serving the last synced snapshot
-    // until the page is opened again.
-    ref.listen(downloadProvider, (prev, next) {
-      _onTasksMaybeChanged(next);
-    });
-    ref.listen(savedBooksProvider, (prev, next) {
-      if (_service.isRunning) _scheduleSync();
-    });
 
     return Scaffold(
       appBar: AppBar(title: Text(t.webService)),

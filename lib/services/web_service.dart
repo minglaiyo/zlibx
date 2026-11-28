@@ -37,6 +37,7 @@
 //    zip is generated on the fly ([StreamingZip]), and TXT -> EPUB
 //    conversion runs in a background isolate and is served from its
 //    cache file, not from a byte buffer.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -600,6 +601,65 @@ class WebService extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Live snapshot source (background sync) ────────────────────────
+  //
+  // The download engine calls [markDownloadChanged] on meaningful
+  // changes (task status transitions, removals, shelf changes); the
+  // service rebuilds the snapshot through the registered builder and
+  // swaps it in — no web service screen needs to be mounted for the
+  // browser to catch up (a phone locked mid-reading still pushes).
+
+  /// Registered by the web service screen at [start]: rebuilds the
+  /// snapshot from live provider state (the download notifier reads
+  /// its own tasks and the shelf provider — no widget refs involved).
+  Future<WebSnapshot> Function()? _liveSnapshotBuilder;
+
+  /// Rebuilt per swap so a web-triggered download always sees the
+  /// current shelf.
+  RequestDownloadHandler? _liveRequestDownload;
+  Timer? _liveDebounce;
+
+  /// Signature of the snapshot already swapped in, so progress-tick
+  /// rebuilds with unchanged content do not churn the snapshot (and
+  /// the resolved-path cache) for nothing.
+  String _liveSignature = '';
+
+  /// Register the live snapshot source. [onRequestDownload] is stored
+  /// and re-wrapped per swap around the freshly built snapshot.
+  void setLiveSource({
+    required Future<WebSnapshot> Function() buildSnapshot,
+    required RequestDownloadHandler onRequestDownload,
+  }) {
+    _liveSnapshotBuilder = buildSnapshot;
+    _liveRequestDownload = onRequestDownload;
+  }
+
+  /// A meaningful download/shelf change happened. Coalesces bursts
+  /// (a download round flips several tasks in quick succession) into
+  /// one rebuild. No-op while stopped or without a live source.
+  void markDownloadChanged() {
+    if (_server == null || _liveSnapshotBuilder == null) return;
+    _liveDebounce?.cancel();
+    _liveDebounce = Timer(const Duration(milliseconds: 800), () {
+      unawaited(_refreshFromLiveSource());
+    });
+  }
+
+  Future<void> _refreshFromLiveSource() async {
+    final builder = _liveSnapshotBuilder;
+    if (_server == null || builder == null) return;
+    final snapshot = await builder();
+    if (_server == null) return;
+    final signature = [
+      for (final f in snapshot.files) '${f.bookId}:${f.coverUrl ?? ''}',
+      for (final e in snapshot.library)
+        '${e.bookId}:${e.fileIndex ?? -1}:${e.downloadPending ? 1 : 0}',
+    ].join('|');
+    if (signature == _liveSignature) return;
+    _liveSignature = signature;
+    refresh(snapshot: snapshot, onRequestDownload: _liveRequestDownload);
+  }
+
   /// Ask the native side to ensure the local-network permission is
   /// granted (Android 17+ only; older Android answers true at once).
   /// Returns false when the user denied it. A missing channel method
@@ -621,6 +681,7 @@ class WebService extends ChangeNotifier {
     final server = _server;
     if (server == null) return;
     _server = null;
+    _liveDebounce?.cancel();
     _pathCache.clear();
     await server.close(force: true);
     notifyListeners();
@@ -1099,6 +1160,9 @@ class WebService extends ChangeNotifier {
       headers: <String, String>{
         'Content-Type': 'text/html; charset=utf-8',
         'Content-Length': bytes.length.toString(),
+        // The pages are dynamic (the snapshot swaps under them): never
+        // let a browser answer a reload from its cache.
+        'Cache-Control': 'no-store',
       },
       body: Uint8List.fromList(bytes),
     );

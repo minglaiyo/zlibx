@@ -773,6 +773,48 @@ void main() {
       expect(headR.header('content-length'), getR.header('content-length'));
     });
 
+    test('live source pushes a rebuilt snapshot on markDownloadChanged',
+        () async {
+      await service.start(snapshot: snapshot, preferredPort: 0);
+      File('${tmp.path}/live.epub').writeAsStringSync('LIVE-EPUB');
+      final fresh = WebSnapshot(
+        files: [
+          WebFile(
+            bookId: 9,
+            title: 'Live Book',
+            author: '',
+            extension: 'epub',
+            location: '${tmp.path}/live.epub',
+          ),
+        ],
+      );
+      var builds = 0;
+      service.setLiveSource(
+        buildSnapshot: () async {
+          builds++;
+          return fresh;
+        },
+        onRequestDownload: (bookId) async => WebDownloadRequest.started,
+      );
+
+      // A meaningful change schedules one debounced rebuild + swap; the
+      // browser reload then sees the new book — no restart involved.
+      service.markDownloadChanged();
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      expect(builds, 1);
+      final page = await get('/');
+      expect(page.body, contains('Live Book'));
+      expect(page.body, isNot(contains('Epub &lt;Book&gt;')));
+      final dl = await get('/download/0');
+      expect(dl.body, 'LIVE-EPUB');
+
+      // Without a running server the mark is a no-op (nothing fires).
+      await service.stop();
+      service.markDownloadChanged();
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      expect(builds, 1);
+    });
+
     test('refresh swaps the served snapshot without stopping the server',
         () async {
       await service.start(snapshot: snapshot, preferredPort: 0);

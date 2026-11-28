@@ -24,12 +24,14 @@ import '../services/media_store.dart';
 import '../services/pending_uri_writer.dart';
 import '../services/resumable_downloader.dart';
 import '../services/storage_service.dart';
+import '../services/web_service.dart';
 import '../utils/app_log.dart';
 import '../utils/diagnostics.dart';
 import '../utils/file_utils.dart';
 import '../utils/json_utils.dart';
 import 'download_slot_pool.dart';
 import 'download_task.dart';
+import 'saved_books_notifier.dart';
 import 'settings_provider.dart';
 import 'zlibrary_provider.dart';
 
@@ -169,6 +171,7 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
     // Remove from state
     state = state.where((t) => t.id != id).toList();
     _clearProgressThrottle(id);
+    WebService.shared.markDownloadChanged();
   }
 
   void _updateOrAddTask(DownloadTask task) {
@@ -176,6 +179,8 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
       state = state.map((t) => t.id == task.id ? task : t).toList();
     } else {
       state = [...state, task];
+      // A new pending row: the web page shows it as "downloading".
+      WebService.shared.markDownloadChanged();
     }
   }
 
@@ -264,12 +269,22 @@ abstract class _DownloadNotifierBase extends Notifier<List<DownloadTask>> {
   }
 
   void _updateTask(String id, DownloadTask Function(DownloadTask) updater) {
+    var webMeaningful = false;
     state = state.map((t) {
       if (t.id == id) {
-        return updater(t);
+        final next = updater(t);
+        // Progress ticks keep these equal and are dropped; a real
+        // transition (status / file appearing or vanishing / cover
+        // backfill) is what the served snapshot can show.
+        webMeaningful = next.status != t.status ||
+            next.missingFile != t.missingFile ||
+            next.filePath != t.filePath ||
+            next.book.cover != t.book.cover;
+        return next;
       }
       return t;
     }).toList();
+    if (webMeaningful) WebService.shared.markDownloadChanged();
   }
 }
 
@@ -302,6 +317,11 @@ class DownloadNotifier extends _DownloadNotifierBase
     ready = _loadDownloadHistory()
         .then((_) => _recoverPartialDownloads())
         .then((_) => _backfillMissingCovers());
+    // Web 快照实时源的书架依赖：收藏增删 / 封面回填也推给运行中的
+    // Web 服务（listen 不建立 rebuild 依赖，书架变化不会重建本引擎）。
+    ref.listen(savedBooksProvider, (_, __) {
+      WebService.shared.markDownloadChanged();
+    });
     return [];
   }
 
@@ -310,6 +330,64 @@ class DownloadNotifier extends _DownloadNotifierBase
   /// ref is dead, so they cannot use ref.read). Read-only view of
   /// [state].
   List<DownloadTask> get tasks => state;
+
+  // ── Web 快照实时源（后台同步，不依赖任何页面挂载） ─────────────
+  //
+  // 快照构建和"下载到手机"回调原本住在 Web 服务页里：页面关掉（手机
+  // 锁屏在口袋里继续下载）就没人推进快照，浏览器刷新看到的永远是
+  // 服务启动那一刻的数据。下沉到引擎后，任务状态迁移 / 删除 / 书架
+  // 变化经 [WebService.markDownloadChanged] 去抖，回调这里的构建器。
+
+  /// Rebuilds the LAN web snapshot from live provider state. The short
+  /// shelf wait mirrors the loader the web service screen used, for
+  /// cold starts where the shelf is still reading from disk.
+  Future<WebSnapshot> buildWebSnapshot() async {
+    for (var i = 0; i < 40; i++) {
+      final shelf = ref.read(savedBooksProvider);
+      if (!shelf.isLoading) {
+        return WebSnapshot.build(
+          tasks: state,
+          saved: shelf.valueOrNull ?? const <Book>[],
+        );
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+    return WebSnapshot.build(
+      tasks: state,
+      saved: ref.read(savedBooksProvider).valueOrNull ?? const <Book>[],
+    );
+  }
+
+  /// The web page's "download to this phone" trigger, with the dedup
+  /// rules the screen's callback always had. The shelf is read per
+  /// request, so a book saved seconds ago resolves immediately.
+  Future<WebDownloadRequest> webRequestDownload(int bookId) async {
+    final saved = ref.read(savedBooksProvider).valueOrNull ?? const <Book>[];
+    Book? book;
+    for (final b in saved) {
+      if (b.id == bookId) {
+        book = b;
+        break;
+      }
+    }
+    if (book == null) return WebDownloadRequest.notFound;
+    for (final task in state) {
+      if (task.book.id != bookId) continue;
+      if (task.status == DownloadStatus.completed && !task.missingFile) {
+        return WebDownloadRequest.alreadyDownloaded;
+      }
+      if (task.status == DownloadStatus.downloading ||
+          task.status == DownloadStatus.pending ||
+          task.status == DownloadStatus.paused) {
+        return WebDownloadRequest.alreadyDownloading;
+      }
+    }
+    // Fire and forget: startDownload returns the round's future, which
+    // only settles when the whole file is down. The web page answers
+    // "started" at once.
+    unawaited(startDownload(book));
+    return WebDownloadRequest.started;
+  }
 }
 
 final downloadProvider = NotifierProvider<DownloadNotifier, List<DownloadTask>>(

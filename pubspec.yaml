@@ -113,7 +113,7 @@ dependencies:
   # Stable 13.3.2 (was 12.0.0-beta.7). Only used for choosing the download
   # directory (settings/download_path_section.dart). win32 ^6.3.0 via
   # windows_file_picker, compatible with flutter_secure_storage ^11.2.0.
-  file_picker: ^13.3.2
+  file_picker: ^13.4.1
   flutter_inappwebview: ^6.1.5
 
   # ISBN barcode scanning (扫码搜书): ML Kit on-device barcode scan.

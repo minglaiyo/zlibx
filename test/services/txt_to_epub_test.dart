@@ -178,6 +178,42 @@ void main() {
       expect(converter.conversions, 2);
     });
 
+    test('concurrent requests for one book share a single conversion', () async {
+      final converter = TxtToEpub(cacheDir: () async => Directory('${tmp.path}/cc'));
+      final file = File('${tmp.path}/same.txt')
+        ..writeAsStringSync('第一章 开始\n内容\n\n第二章 继续\n更多\n');
+      final files = await Future.wait([
+        converter.epubFileFor(file.path),
+        converter.epubFileFor(file.path),
+        converter.epubFileFor(file.path),
+      ]);
+      expect(converter.conversions, 1);
+      expect(files.map((f) => f.path).toSet(), hasLength(1));
+      expect(files.first.existsSync(), isTrue);
+      // No half-written temp file is left behind.
+      expect(
+        Directory('${tmp.path}/cc').listSync().map((e) => e.path),
+        everyElement(endsWith('.epub')),
+      );
+    });
+
+    test('a large TXT converts in the background and stays correct', () async {
+      final converter = TxtToEpub(cacheDir: () async => Directory('${tmp.path}/big'));
+      final buf = StringBuffer();
+      for (var i = 1; i <= 3000; i++) {
+        buf.writeln('第$i章 标题$i');
+        for (var k = 0; k < 20; k++) {
+          buf.writeln('这是第$i章的第$k段内容，用来撑大文件体积。' * 3);
+        }
+        buf.writeln();
+      }
+      final file = File('${tmp.path}/large.txt')..writeAsStringSync(buf.toString());
+      final epub = await converter.epubFileFor(file.path, title: 'Large');
+      final archive = ZipDecoder().decodeBytes(await epub.readAsBytes());
+      final chapters = archive.files.where((f) => f.name.startsWith('OEBPS/ch'));
+      expect(chapters.length, greaterThan(1000));
+    });
+
     test('GBK file converts end to end', () async {
       final converter = TxtToEpub(cacheDir: () async => Directory('${tmp.path}/c'));
       final file = File('${tmp.path}/gbk.txt')

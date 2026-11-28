@@ -10,6 +10,7 @@
 // result keyed by FNV-1a(path + size + mtime).
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -407,7 +408,72 @@ String txtCacheKey(String path, int size, DateTime modified) =>
 
 // ───────────────────────── Converter with cache ─────────────────────────
 
-/// Converts TXT files to EPUB bytes, caching each result on disk.
+/// The whole conversion for one TXT: read → decode → split → pack →
+/// write the EPUB to [cachePath] (via a temp file + rename, so a
+/// reader never sees a half-written cache entry).
+///
+/// A top-level function that touches only its (sendable) arguments, so
+/// it can run in a background isolate: for a 50-100 MB novel the work
+/// is several seconds of CPU and a few hundred MB of transient
+/// strings, which on the UI isolate froze the whole app (and the
+/// phone's own screen) while the browser was waiting for /read.
+///
+/// Returns null on success, or a short failure message (an exception
+/// object would have to cross the isolate boundary; a string is safe).
+Future<String?> _convertTxtToCacheFile(
+  String path,
+  String? title,
+  String key,
+  String cachePath,
+) async {
+  final Uint8List bytes;
+  try {
+    bytes = await File(path).readAsBytes();
+  } catch (_) {
+    return 'file not readable';
+  }
+  final text = decodeTxtBytes(bytes);
+  if (text == null || text.trim().isEmpty) {
+    return 'could not decode the text';
+  }
+  final bookTitle = title ?? p.basenameWithoutExtension(path);
+  final chapters = splitChapters(text, fallbackTitle: bookTitle);
+  final Uint8List epub;
+  try {
+    epub = buildEpub(
+      title: bookTitle,
+      chapters: chapters,
+      identifier: 'urn:zlibx:txt:$key',
+    );
+  } on TxtConvertException catch (e) {
+    return e.message;
+  }
+  try {
+    final target = File(cachePath);
+    await target.parent.create(recursive: true);
+    final tmp = File('$cachePath.tmp');
+    await tmp.writeAsBytes(epub, flush: true);
+    await tmp.rename(cachePath);
+  } catch (_) {
+    // The cache is an optimisation for repeat opens, but here the
+    // file IS the result the caller serves, so this is a failure.
+    return 'could not write the converted EPUB';
+  }
+  return null;
+}
+
+/// Runs [_convertTxtToCacheFile] in a background isolate. Top-level on
+/// purpose: a closure created inside a [TxtToEpub] method could drag
+/// `this` (which holds function fields, i.e. unsendable) into the
+/// isolate message.
+Future<String?> _convertInBackground(
+  String path,
+  String? title,
+  String key,
+  String cachePath,
+) => Isolate.run(() => _convertTxtToCacheFile(path, title, key, cachePath));
+
+/// Converts TXT files to EPUB, caching each result on disk.
 class TxtToEpub {
   /// Where cached EPUBs live; injectable for tests.
   final Future<Directory> Function() _cacheDir;
@@ -415,6 +481,11 @@ class TxtToEpub {
   /// How many real conversions ran (cache hits do not count). Exposed
   /// so tests can prove the second open is served from the cache.
   int conversions = 0;
+
+  /// Conversions currently running, by cache key. /read and /book (and
+  /// a double-clicked link) can ask for the same book at the same
+  /// moment; they must share one conversion instead of racing.
+  final Map<String, Future<File>> _inFlight = <String, Future<File>>{};
 
   TxtToEpub({Future<Directory> Function()? cacheDir})
     : _cacheDir = cacheDir ?? _defaultCacheDir;
@@ -424,9 +495,12 @@ class TxtToEpub {
     return Directory(p.join(base.path, 'txt_epub_cache'));
   }
 
-  /// EPUB bytes for the TXT at [path]. Throws [TxtConvertException]
+  /// The cached EPUB FILE for the TXT at [path], converting (in a
+  /// background isolate) when there is none yet. Serving the file —
+  /// rather than reading it into a byte buffer — lets the web service
+  /// stream it and answer Range requests. Throws [TxtConvertException]
   /// when the file cannot be read or decoded.
-  Future<Uint8List> epubFor(String path, {String? title}) async {
+  Future<File> epubFileFor(String path, {String? title}) async {
     final file = File(path);
     final FileStat stat;
     try {
@@ -442,39 +516,56 @@ class TxtToEpub {
     final dir = await _cacheDir();
     final cached = File(p.join(dir.path, '$key.epub'));
     try {
-      if (await cached.exists()) return await cached.readAsBytes();
+      if (await cached.exists() && await cached.length() > 0) return cached;
     } catch (e) {
       // Unreadable cache entry: reconvert below.
       logIgnored('txt_to_epub', e);
     }
 
-    final Uint8List bytes;
+    // NB: the callback must be a block. `() => _inFlight.remove(key)`
+    // would RETURN the very future being completed, and whenComplete
+    // waits for a returned future: the conversion would deadlock.
+    return _inFlight[key] ??= _convert(path, title, key, cached).whenComplete(
+      () {
+        _inFlight.remove(key);
+      },
+    );
+  }
+
+  Future<File> _convert(
+    String path,
+    String? title,
+    String key,
+    File cached,
+  ) async {
+    // A conversion that finished while this one was being set up
+    // (the exists() check in epubFileFor and this point are separated
+    // by I/O) already produced the file: do not do the work twice.
     try {
-      bytes = await file.readAsBytes();
+      if (await cached.exists() && await cached.length() > 0) return cached;
+    } catch (e) {
+      // The cache entry vanished mid-check: log it and reconvert.
+      logIgnored('txt_to_epub', e);
+    }
+    final failure = await _convertInBackground(
+      path,
+      title,
+      key,
+      cached.path,
+    );
+    if (failure != null) throw TxtConvertException(failure);
+    conversions++;
+    return cached;
+  }
+
+  /// EPUB bytes for the TXT at [path]. Kept for callers and tests that
+  /// want the bytes; the web service uses [epubFileFor].
+  Future<Uint8List> epubFor(String path, {String? title}) async {
+    final file = await epubFileFor(path, title: title);
+    try {
+      return await file.readAsBytes();
     } catch (_) {
       throw const TxtConvertException('file not readable');
     }
-    final text = decodeTxtBytes(bytes);
-    if (text == null || text.trim().isEmpty) {
-      throw const TxtConvertException('could not decode the text');
-    }
-
-    final bookTitle = title ?? p.basenameWithoutExtension(path);
-    final chapters = splitChapters(text, fallbackTitle: bookTitle);
-    final epub = buildEpub(
-      title: bookTitle,
-      chapters: chapters,
-      identifier: 'urn:zlibx:txt:$key',
-    );
-    conversions++;
-
-    try {
-      await dir.create(recursive: true);
-      await cached.writeAsBytes(epub, flush: true);
-    } catch (e) {
-      // A cache write failure must not fail the read.
-      logIgnored('txt_to_epub', e);
-    }
-    return epub;
   }
 }

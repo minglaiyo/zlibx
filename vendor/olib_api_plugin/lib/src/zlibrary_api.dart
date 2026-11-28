@@ -10,6 +10,7 @@ import 'book.dart';
 import 'book_comment.dart';
 import 'book_detail_extras.dart';
 import 'book_detail_html.dart';
+import 'diamwall_interceptor.dart';
 import 'booklist.dart';
 import 'category.dart';
 import 'download_range.dart';
@@ -120,7 +121,9 @@ abstract class ZLibraryApiBase {
               },
             ),
           ),
-      _destructiveDio = destructiveDio;
+      _destructiveDio = destructiveDio {
+    if (dio == null) _dio.interceptors.add(DiamWallInterceptor(_dio));
+  }
 
   static String _cleanDomain(String domain) {
     var d = domain.trim();

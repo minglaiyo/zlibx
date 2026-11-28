@@ -58,6 +58,7 @@ dependencies:
   
   # HTTP & Network
   dio: ^5.4.3+1
+  crypto: ^3.0.8
   # Imported directly by lib/services/libgen_service.dart and
   # lib/services/annas_archieve.dart (used to be transitive-only).
   # 曾放宽到 >=1.17.0：Flutter 3.41.x 把 meta pin 在 1.17.0，^1.18.0 会让旧本地

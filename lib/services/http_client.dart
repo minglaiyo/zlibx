@@ -14,6 +14,7 @@
 // - Per-request `Options` still override these instance defaults
 //   (e.g. the Open Library feed's 5s/20s timeouts).
 import 'package:dio/dio.dart';
+import 'package:olib_api_plugin/olib_api_plugin.dart';
 
 /// Desktop-Chrome User-Agent shared by the app's HTTP clients.
 const String kDefaultUserAgent =
@@ -29,7 +30,7 @@ Dio createDio({
   Duration? receiveTimeout = const Duration(seconds: 30),
   Map<String, dynamic>? headers,
 }) {
-  return Dio(
+  final dio = Dio(
     BaseOptions(
       connectTimeout: connectTimeout,
       sendTimeout: sendTimeout,
@@ -37,4 +38,6 @@ Dio createDio({
       headers: {'User-Agent': kDefaultUserAgent, ...?headers},
     ),
   );
+  dio.interceptors.add(DiamWallInterceptor(dio));
+  return dio;
 }

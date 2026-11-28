@@ -202,6 +202,10 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     notFound: t.webPageNotFound,
     convertFailed: t.webPageConvertFailed,
     refreshLink: t.webPageRefresh,
+    packAll: t.webPagePackAll,
+    downloadToPhone: t.webPageDownloadToPhone,
+    searchHeading: t.webPageSearchHeading,
+    zipEmpty: t.webPageZipEmpty,
   );
 
   /// The app's resolved colors for its current theme (the theme section

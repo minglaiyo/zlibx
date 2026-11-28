@@ -872,5 +872,9 @@
   "webPagePreviewNote": "プレビューの本のみ",
   "webPageNotFound": "見つかりません",
   "webPageConvertFailed": "このテキストファイルは読める形式に変換できませんでした。ダウンロードは可能です。",
-  "webPageRefresh": "更新"
+  "webPageRefresh": "更新",
+  "webPagePackAll": "ZIPにまとめる",
+  "webPageDownloadToPhone": "スマホにダウンロード",
+  "webPageSearchHeading": "「{q}」を検索",
+  "webPageZipEmpty": "ダウンロード済みの本がまだないため、ZIPは空です。"
 }

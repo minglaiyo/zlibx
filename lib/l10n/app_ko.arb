@@ -872,5 +872,9 @@
   "webPagePreviewNote": "미리보기 도서만 표시",
   "webPageNotFound": "찾을 수 없음",
   "webPageConvertFailed": "이 텍스트 파일을 읽을 수 있는 형식으로 변환할 수 없습니다. 다운로드는 가능합니다.",
-  "webPageRefresh": "새로 고침"
+  "webPageRefresh": "새로 고침",
+  "webPagePackAll": "ZIP로 묶기",
+  "webPageDownloadToPhone": "휴대폰으로 다운로드",
+  "webPageSearchHeading": "\"{q}\" 검색",
+  "webPageZipEmpty": "다운로드한 책이 아직 없어 ZIP이 비어 있습니다."
 }

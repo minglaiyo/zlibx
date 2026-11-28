@@ -429,10 +429,10 @@ void main() {
       expect(r.body, isNot(contains('past one hundred and twenty')));
       // Item 3: an undownloaded library book gets the trigger link.
       expect(r.body, contains('href="/request-download/9"'));
-      expect(r.body, contains('下载到手机'));
+      expect(r.body, contains('Download to phone'));
       // Item 2: the downloaded section offers a pack-all button.
       expect(r.body, contains('href="/zip/all"'));
-      expect(r.body, contains('全部打包'));
+      expect(r.body, contains('Pack all'));
     });
 
     test('search filters by title and author, case-insensitively', () async {
@@ -457,7 +457,7 @@ void main() {
       expect(shelf.body, contains('href="/read/0"'));
       // The search page shows the term, a way home, and the search
       // box — prefilled — on the results heading row. No sidebar.
-      expect(byTitle.body, contains('搜索“EPUB”'));
+      expect(byTitle.body, contains('Search &quot;EPUB&quot;'));
       expect(byTitle.body, contains('Back to home'));
       expect(byTitle.body, contains('value="EPUB"'));
       expect(byTitle.body, contains('class="head-row"'));
@@ -468,7 +468,7 @@ void main() {
       final none = await get('/search', query: {'q': 'zzz'});
       expect(none.status, 200);
       expect(none.body, contains('Nothing here'));
-      expect(none.body, contains('搜索“zzz”'));
+      expect(none.body, contains('Search &quot;zzz&quot;'));
 
       final empty = await get('/search');
       expect(empty.status, 200);

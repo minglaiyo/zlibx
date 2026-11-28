@@ -872,5 +872,9 @@
   "webPagePreviewNote": "僅顯示預覽書目",
   "webPageNotFound": "找不到",
   "webPageConvertFailed": "這個文字檔無法轉換為可閱讀格式，但仍可下載。",
-  "webPageRefresh": "重新整理"
+  "webPageRefresh": "重新整理",
+  "webPagePackAll": "全部打包",
+  "webPageDownloadToPhone": "下載到手機",
+  "webPageSearchHeading": "搜尋「{q}」",
+  "webPageZipEmpty": "這裡還沒有已下載的書，打包是空的。"
 }

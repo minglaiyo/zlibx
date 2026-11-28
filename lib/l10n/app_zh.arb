@@ -872,5 +872,9 @@
   "webPagePreviewNote": "仅显示预览书目",
   "webPageNotFound": "没有找到",
   "webPageConvertFailed": "这个文本文件无法转换为可阅读格式，但仍可下载。",
-  "webPageRefresh": "刷新"
+  "webPageRefresh": "刷新",
+  "webPagePackAll": "全部打包",
+  "webPageDownloadToPhone": "下载到手机",
+  "webPageSearchHeading": "搜索“{q}”",
+  "webPageZipEmpty": "这里还没有已下载的书，打包是空的。"
 }

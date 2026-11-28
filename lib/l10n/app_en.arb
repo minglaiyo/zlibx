@@ -872,5 +872,16 @@
   "webPagePreviewNote": "Preview books only",
   "webPageNotFound": "Not found",
   "webPageConvertFailed": "This text file could not be converted for reading. You can still download it.",
-  "webPageRefresh": "Refresh"
+  "webPageRefresh": "Refresh",
+  "webPagePackAll": "Pack all",
+  "webPageDownloadToPhone": "Download to phone",
+  "webPageSearchHeading": "Search \"{q}\"",
+  "@webPageSearchHeading": {
+    "placeholders": {
+        "q": {
+          "type": "String"
+        }
+    }
+  },
+  "webPageZipEmpty": "No downloaded books yet — the archive is empty."
 }

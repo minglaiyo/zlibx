@@ -359,6 +359,19 @@ class WebPageStrings {
   final String notFound;
   final String convertFailed;
 
+  /// The pack-all capsule ("全部打包").
+  final String packAll;
+
+  /// The web-triggered download link on a shelf book that is not on
+  /// this phone ("下载到手机").
+  final String downloadToPhone;
+
+  /// The search results heading: `搜索"$q"`.
+  final String Function(String q) searchHeading;
+
+  /// The message page when there is nothing to pack.
+  final String zipEmpty;
+
   /// Link on the downloads heading row that reloads the page, so a
   /// reader sees a re-synced snapshot without finding the browser's
   /// own reload menu entry.
@@ -375,8 +388,14 @@ class WebPageStrings {
     required this.backHome,
     required this.notFound,
     required this.convertFailed,
+    required this.packAll,
+    required this.downloadToPhone,
+    required this.searchHeading,
+    required this.zipEmpty,
     this.refreshLink = '',
   });
+
+  static String _searchHeadingEn(String q) => 'Search "$q"';
 
   /// English defaults (used by tests and as a safe fallback).
   static const WebPageStrings english = WebPageStrings(
@@ -390,6 +409,10 @@ class WebPageStrings {
     backHome: 'Back to home',
     notFound: 'Not found',
     convertFailed: 'This text file could not be converted for reading.',
+    packAll: 'Pack all',
+    downloadToPhone: 'Download to phone',
+    searchHeading: _searchHeadingEn,
+    zipEmpty: 'No downloaded books yet — the archive is empty.',
     refreshLink: 'Refresh',
   );
 }
@@ -916,7 +939,7 @@ class WebService extends ChangeNotifier {
     if (indices.isEmpty) {
       return _html(
         HttpStatus.ok,
-        _messagePage('这里还没有已下载的书，打包是空的。'),
+        _messagePage(_strings.zipEmpty),
       );
     }
     final plan = <ZipPlanEntry>[];
@@ -945,7 +968,7 @@ class WebService extends ChangeNotifier {
     if (plan.isEmpty) {
       return _html(
         HttpStatus.ok,
-        _messagePage('这里还没有已下载的书，打包是空的。'),
+        _messagePage(_strings.zipEmpty),
       );
     }
     final zip = StreamingZip(plan);
@@ -1639,7 +1662,8 @@ class WebService extends ChangeNotifier {
     } else if (e.bookId != null) {
       b.write(
         '<div class="actions">'
-        '<a href="/request-download/${e.bookId}">下载到手机</a>'
+        '<a href="/request-download/${e.bookId}">'
+        '${escapeHtml(_strings.downloadToPhone)}</a>'
         '</div>',
       );
     } else {
@@ -1667,7 +1691,8 @@ class WebService extends ChangeNotifier {
     // snapshot without breaking anything.
     final packAll = downloaded.isEmpty
         ? ''
-        : '<a class="zip-btn" href="/zip/all">全部打包</a>';
+        : '<a class="zip-btn" href="/zip/all">'
+              '${escapeHtml(_strings.packAll)}</a>';
     final reload = _strings.refreshLink.isEmpty
         ? ''
         : '<a class="zip-btn" href="">${escapeHtml(_strings.refreshLink)}</a>';
@@ -1700,12 +1725,13 @@ class WebService extends ChangeNotifier {
     WebLayout layout, [
     WebTheme theme = WebTheme.auto,
   ]) {
+    final heading = escapeHtml(_strings.searchHeading(q));
     final main =
         '<p><a href="/">${escapeHtml(_strings.backHome)}</a></p>'
-        '${_headingRow('<h1>搜索“${escapeHtml(q)}”</h1>', searchValue: q)}'
+        '${_headingRow('<h1>$heading</h1>', searchValue: q)}'
         '${_grid(cards)}';
     return _page(
-      '搜索“$q”',
+      _strings.searchHeading(q),
       layout == WebLayout.mobile ? _mobileLayout(main) : _layout(main),
       layout: layout,
       theme: theme,

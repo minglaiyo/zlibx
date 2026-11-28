@@ -829,32 +829,32 @@
   "webServiceClients": "已連線裝置：{clients}",
   "@webServiceClients": {
     "placeholders": {
-        "clients": {
-          "type": "String"
-        }
+      "clients": {
+        "type": "String"
+      }
     }
   },
   "webServiceCounts": "下載的書 {downloaded} 本 · 圖書館 {library} 本 · 書單 {booklists} 個",
   "@webServiceCounts": {
     "placeholders": {
-        "downloaded": {
-          "type": "int"
-        },
-        "library": {
-          "type": "int"
-        },
-        "booklists": {
-          "type": "int"
-        }
+      "downloaded": {
+        "type": "int"
+      },
+      "library": {
+        "type": "int"
+      },
+      "booklists": {
+        "type": "int"
+      }
     }
   },
-  "webServiceSnapshotNote": "清單是開啟服務時的快照，運行期間的變化不會同步；停止後重新開啟即可更新。",
+  "webServiceSnapshotNote": "列表會隨手機上的變化自動同步，瀏覽器重新整理即可看到最新狀態。",
   "webServiceStartFailed": "無法開啟服務：{error}",
   "@webServiceStartFailed": {
     "placeholders": {
-        "error": {
-          "type": "String"
-        }
+      "error": {
+        "type": "String"
+      }
     }
   },
   "webServiceLocalNetworkDenied": "需要本地網絡權限，其他設備才能訪問。請在系統設置里允許「附近設備」後重試。",
@@ -876,5 +876,8 @@
   "webPagePackAll": "全部打包",
   "webPageDownloadToPhone": "下載到手機",
   "webPageSearchHeading": "搜尋「{q}」",
-  "webPageZipEmpty": "這裡還沒有已下載的書，打包是空的。"
+  "webPageZipEmpty": "這裡還沒有已下載的書，打包是空的。",
+  "webPageDownloadStarted": "已開始下載，會占用下載額度。完成後列表會自動同步，重新整理頁面即可看到這本書。",
+  "webPageAlreadyDownloaded": "這本書已經下載過了。",
+  "webPageAlreadyDownloading": "這本書正在下載中，請稍後再來。"
 }

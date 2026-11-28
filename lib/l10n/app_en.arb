@@ -829,32 +829,32 @@
   "webServiceClients": "Connected devices: {clients}",
   "@webServiceClients": {
     "placeholders": {
-        "clients": {
-          "type": "String"
-        }
+      "clients": {
+        "type": "String"
+      }
     }
   },
   "webServiceCounts": "Downloaded {downloaded} · Library {library} · Booklists {booklists}",
   "@webServiceCounts": {
     "placeholders": {
-        "downloaded": {
-          "type": "int"
-        },
-        "library": {
-          "type": "int"
-        },
-        "booklists": {
-          "type": "int"
-        }
+      "downloaded": {
+        "type": "int"
+      },
+      "library": {
+        "type": "int"
+      },
+      "booklists": {
+        "type": "int"
+      }
     }
   },
-  "webServiceSnapshotNote": "These lists are a snapshot taken when the service started. Stop and start again to refresh them.",
+  "webServiceSnapshotNote": "These lists follow the phone automatically — reload the browser page to see the latest state.",
   "webServiceStartFailed": "Could not start the service: {error}",
   "@webServiceStartFailed": {
     "placeholders": {
-        "error": {
-          "type": "String"
-        }
+      "error": {
+        "type": "String"
+      }
     }
   },
   "webServiceLocalNetworkDenied": "Local network permission is required for other devices to connect. Allow 'Nearby devices' in system settings and try again.",
@@ -878,10 +878,13 @@
   "webPageSearchHeading": "Search \"{q}\"",
   "@webPageSearchHeading": {
     "placeholders": {
-        "q": {
-          "type": "String"
-        }
+      "q": {
+        "type": "String"
+      }
     }
   },
-  "webPageZipEmpty": "No downloaded books yet — the archive is empty."
+  "webPageZipEmpty": "No downloaded books yet — the archive is empty.",
+  "webPageDownloadStarted": "Download started — it counts against your daily quota. When it finishes, the lists sync automatically; reload to see the book here.",
+  "webPageAlreadyDownloaded": "This book is already on the phone.",
+  "webPageAlreadyDownloading": "A download for this book is already running — please wait."
 }

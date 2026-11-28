@@ -829,32 +829,32 @@
   "webServiceClients": "연결된 기기: {clients}",
   "@webServiceClients": {
     "placeholders": {
-        "clients": {
-          "type": "String"
-        }
+      "clients": {
+        "type": "String"
+      }
     }
   },
   "webServiceCounts": "다운로드 {downloaded}권 · 라이브러리 {library}권 · 북리스트 {booklists}개",
   "@webServiceCounts": {
     "placeholders": {
-        "downloaded": {
-          "type": "int"
-        },
-        "library": {
-          "type": "int"
-        },
-        "booklists": {
-          "type": "int"
-        }
+      "downloaded": {
+        "type": "int"
+      },
+      "library": {
+        "type": "int"
+      },
+      "booklists": {
+        "type": "int"
+      }
     }
   },
-  "webServiceSnapshotNote": "목록은 서비스를 시작한 시점의 스냅샷입니다. 새로 고치려면 중지했다가 다시 시작하세요.",
+  "webServiceSnapshotNote": "목록은 휴대폰의 변화에 자동으로 동기화됩니다. 브라우저를 새로 고침하면 최신 상태가 표시됩니다.",
   "webServiceStartFailed": "서비스를 시작할 수 없습니다: {error}",
   "@webServiceStartFailed": {
     "placeholders": {
-        "error": {
-          "type": "String"
-        }
+      "error": {
+        "type": "String"
+      }
     }
   },
   "webServiceLocalNetworkDenied": "다른 기기에서 연결하려면 로컬 네트워크 권한이 필요합니다. 시스템 설정에서 '주변 기기'를 허용한 후 다시 시도하세요.",
@@ -876,5 +876,8 @@
   "webPagePackAll": "ZIP로 묶기",
   "webPageDownloadToPhone": "휴대폰으로 다운로드",
   "webPageSearchHeading": "\"{q}\" 검색",
-  "webPageZipEmpty": "다운로드한 책이 아직 없어 ZIP이 비어 있습니다."
+  "webPageZipEmpty": "다운로드한 책이 아직 없어 ZIP이 비어 있습니다.",
+  "webPageDownloadStarted": "다운로드를 시작했습니다. 일일 다운로드 한도에 포함됩니다. 완료되면 목록이 자동 동기화되어 새로 고침 시 표시됩니다.",
+  "webPageAlreadyDownloaded": "이 책은 이미 다운로드되어 있습니다.",
+  "webPageAlreadyDownloading": "이 책은 다운로드 중입니다. 잠시 후 다시 시도해 주세요."
 }

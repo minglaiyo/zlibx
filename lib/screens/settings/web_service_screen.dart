@@ -206,6 +206,9 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     downloadToPhone: t.webPageDownloadToPhone,
     searchHeading: t.webPageSearchHeading,
     zipEmpty: t.webPageZipEmpty,
+    downloadStarted: t.webPageDownloadStarted,
+    alreadyDownloaded: t.webPageAlreadyDownloaded,
+    alreadyDownloading: t.webPageAlreadyDownloading,
   );
 
   /// The app's resolved colors for its current theme (the theme section

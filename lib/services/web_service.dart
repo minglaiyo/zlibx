@@ -372,6 +372,12 @@ class WebPageStrings {
   /// The message page when there is nothing to pack.
   final String zipEmpty;
 
+  /// Message pages after a web-triggered download: started / already
+  /// on the phone / already downloading.
+  final String downloadStarted;
+  final String alreadyDownloaded;
+  final String alreadyDownloading;
+
   /// Link on the downloads heading row that reloads the page, so a
   /// reader sees a re-synced snapshot without finding the browser's
   /// own reload menu entry.
@@ -392,6 +398,9 @@ class WebPageStrings {
     required this.downloadToPhone,
     required this.searchHeading,
     required this.zipEmpty,
+    required this.downloadStarted,
+    required this.alreadyDownloaded,
+    required this.alreadyDownloading,
     this.refreshLink = '',
   });
 
@@ -413,6 +422,12 @@ class WebPageStrings {
     downloadToPhone: 'Download to phone',
     searchHeading: _searchHeadingEn,
     zipEmpty: 'No downloaded books yet — the archive is empty.',
+    downloadStarted: 'Download started — it counts against your daily '
+        'quota. When it finishes, the lists sync automatically; reload '
+        'to see the book here.',
+    alreadyDownloaded: 'This book is already on the phone.',
+    alreadyDownloading: 'A download for this book is already running — '
+        'please wait.',
     refreshLink: 'Refresh',
   );
 }
@@ -1021,17 +1036,17 @@ class WebService extends ChangeNotifier {
     }
     switch (outcome) {
       case WebDownloadRequest.started:
+        return _html(HttpStatus.ok, _messagePage(_strings.downloadStarted));
+      case WebDownloadRequest.alreadyDownloaded:
         return _html(
           HttpStatus.ok,
-          _messagePage(
-            '已开始下载，会占用下载额度。下载完成后重启 Web 服务，'
-            '才能在网页上看到这本书。',
-          ),
+          _messagePage(_strings.alreadyDownloaded),
         );
-      case WebDownloadRequest.alreadyDownloaded:
-        return _html(HttpStatus.ok, _messagePage('这本书已经下载过了。'));
       case WebDownloadRequest.alreadyDownloading:
-        return _html(HttpStatus.ok, _messagePage('这本书正在下载中，请稍后再来。'));
+        return _html(
+          HttpStatus.ok,
+          _messagePage(_strings.alreadyDownloading),
+        );
       case WebDownloadRequest.notFound:
         return _notFound();
     }

@@ -914,9 +914,9 @@ void main() {
       );
       expect(r.status, 200);
       expect(calls, [9]);
-      expect(r.body, contains('已开始下载'));
-      expect(r.body, contains('重启 Web 服务'));
-      expect(r.body, contains('下载额度'));
+      expect(r.body, contains('Download started'));
+      expect(r.body, contains('sync automatically'));
+      expect(r.body, contains('daily quota'));
       expect(
         (await svc.handleRequest(
           method: 'GET',
@@ -942,8 +942,8 @@ void main() {
         await svc.handleRequest(method: 'GET', path: '/request-download/9'),
       );
       expect(r.status, 200);
-      expect(r.body, contains('正在下载中'));
-      expect(r.body, isNot(contains('已开始下载')));
+      expect(r.body, contains('already running'));
+      expect(r.body, isNot(contains('Download started')));
     });
 
     test('icon routes serve the app icon as PNG', () async {

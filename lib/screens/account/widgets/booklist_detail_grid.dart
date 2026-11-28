@@ -139,6 +139,7 @@ class BooklistShelfTile extends StatelessWidget {
                     ? placeholder
                     : CachedNetworkImage(
                         imageUrl: book.cover!,
+                        cacheManager: coverCacheManager,
                         fit: BoxFit.cover,
                         memCacheWidth: coverCacheWidth(240, context),
                         memCacheHeight: coverCacheHeight(308, context),

@@ -333,11 +333,11 @@ class _BookCardState extends State<BookCard> {
         );
         return CachedNetworkImage(
           imageUrl: coverUrlAtWidth(widget.book.cover!, cacheWidth),
+          cacheManager: coverCacheManager,
           memCacheWidth: cacheWidth,
           memCacheHeight: cacheHeight,
-          fadeInDuration: AppMotion.slow,
+          fadeInDuration: AppMotion.fast,
           fadeOutDuration: AppMotion.fast,
-          httpHeaders: const {'Connection': 'keep-alive'},
           imageBuilder: (context, imageProvider) {
             return _maybeHero(content(image: imageProvider));
           },
@@ -388,11 +388,11 @@ class _BookCardState extends State<BookCard> {
             if (_hasCover)
               CachedNetworkImage(
                 imageUrl: coverUrlAtWidth(widget.book.cover!, cacheWidth),
+                cacheManager: coverCacheManager,
                 fit: BoxFit.cover,
                 memCacheWidth: cacheWidth,
-                fadeInDuration: AppMotion.slow,
+                fadeInDuration: AppMotion.fast,
                 fadeOutDuration: AppMotion.fast,
-                httpHeaders: const {'Connection': 'keep-alive'},
                 imageBuilder: (context, imageProvider) {
                   return _maybeHero(
                     Image(image: imageProvider, fit: BoxFit.cover),

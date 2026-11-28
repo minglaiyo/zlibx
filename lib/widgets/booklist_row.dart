@@ -49,6 +49,7 @@ class BooklistRow extends StatelessWidget {
                 )
               : CachedNetworkImage(
                   imageUrl: list.coverUrl,
+                  cacheManager: coverCacheManager,
                   fit: BoxFit.cover,
                   memCacheWidth: coverCacheWidth(40, context),
                   memCacheHeight: coverCacheHeight(56, context),

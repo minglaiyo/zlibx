@@ -30,6 +30,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   String _statusText = '';
   bool _networkOk = false;
 
+  /// R1: 认证并行启动时的线路快照——对话框里换过线路时，并行期的
+  /// 认证结论不可信，需要重置（见 _initialize）。
+  String? _domainAtStart;
+
   // ── Animation Controllers ──
   late final AnimationController _logoController;
   late final AnimationController _pulseController;
@@ -122,8 +126,18 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     // Start animation sequence
     _startAnimations();
 
-    // Fire-and-forget: start background speed test for all domains
-    Future.microtask(() => ref.read(speedTestProvider.notifier).runTest());
+    // Fire-and-forget: start background speed test for all domains.
+    // R2: 测速（并发 4）不与首屏数据抢带宽——延迟到启动 8 秒后再跑；
+    // 网络检测失败的 O3 分支仍在 _initialize 里立即强制测速。
+    Future.delayed(const Duration(seconds: 8), () {
+      if (mounted) ref.read(speedTestProvider.notifier).runTest();
+    });
+    // R1: 认证初始化与网络检测并行。此前 authProvider 只在检测完成后
+    // 才被首次读取——登录请求白白等完整个网络探测（弱网下最多
+    // 5+8 秒）才开始。首次读取即触发初始化，_waitForAuth 里 await
+    // 的就是同一个 future。换线的重置保护见 _initialize。
+    ref.read(authProvider.notifier);
+    _domainAtStart = ref.read(domainProvider);
     // Defer to after the first frame: _initialize's first statement reads
     // AppLocalizations.of(context), and dependOnInheritedWidget is illegal
     // until initState completes — the debug assert throws, killing the
@@ -151,6 +165,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     _pulseController.dispose();
     _ringController.dispose();
     _contentController.dispose();
+    _probeClient?.close(force: true);
     super.dispose();
   }
 
@@ -190,6 +205,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
     // Step 2: Wait for auth state
     if (!mounted) return;
+    // R1 保护：认证与网络检测并行后，它可能跑在旧线路上。换过线路、
+    // 或全程没有网络时，认证的失败结论不可信——不重置的话，有效凭据
+    // 会被误判成未登录（表现为"掉登录"，诱导用户重输密码）。与
+    // storageUnavailable 的处理同款：invalidate 一次，重跑有界。
+    final auth = ref.read(authProvider);
+    final lineChanged = ref.read(domainProvider) != _domainAtStart;
+    if (!auth.isAuthenticated &&
+        (auth.lineUnavailable || lineChanged || !_networkOk)) {
+      ref.invalidate(authProvider);
+    }
     setState(() => _statusText = AppLocalizations.of(context)!.loading);
     await _waitForAuth();
   }
@@ -234,29 +259,30 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     );
   }
 
+  /// R5（低风险项）：探测复用同一个 HttpClient，而不是每次新建 +
+  /// force-close——冷启动里探测要跑 1~3 次，复用让第二次起吃现成
+  /// 的 TLS 会话与连接。引擎随 splash 销毁关闭。
+  HttpClient? _probeClient;
+
   Future<bool> _checkNetwork() async {
     try {
       final domain = ref.read(domainProvider);
       // Use API endpoint for testing (same as domain selector)
       final uri = Uri.parse('https://$domain/eapi/info/languages');
 
-      final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 5);
+      final client = _probeClient ??= HttpClient()
+        ..connectionTimeout = const Duration(seconds: 5);
 
-      try {
-        final request = await client.getUrl(uri);
-        final response = await request.close().timeout(
-          const Duration(seconds: 8),
-        );
+      final request = await client.getUrl(uri);
+      final response = await request.close().timeout(
+        const Duration(seconds: 8),
+      );
 
-        // Headers are enough (same rule as the speed test): a healthy
-        // mirror answers this endpoint 2xx. The body is never read, so a
-        // hostile or broken mirror cannot make us buffer an unbounded
-        // response, and a non-2xx page no longer counts as success.
-        return response.statusCode >= 200 && response.statusCode < 300;
-      } finally {
-        client.close(force: true);
-      }
+      // Headers are enough (same rule as the speed test): a healthy
+      // mirror answers this endpoint 2xx. The body is never read, so a
+      // hostile or broken mirror cannot make us buffer an unbounded
+      // response, and a non-2xx page no longer counts as success.
+      return response.statusCode >= 200 && response.statusCode < 300;
     } catch (e) {
       // Network-layer exception text can carry URLs or response
       // fragments: log the type only.

@@ -40,5 +40,19 @@ void main() {
       expect(coverUrlAtWidth(covers100, 2000),
           contains('/covers800/collections/'));
     });
+
+    test('snaps non-bucket widths UP to the nearest verified bucket', () {
+      // 325（118dp × DPR 2.75）→ 400：同一本书在任何机型上都落到
+      // 同一个 URL，磁盘缓存才能互相命中。
+      expect(coverUrlAtWidth(covers100, 325),
+          contains('/covers400/collections/'));
+      expect(coverUrlAtWidth(covers100, 480),
+          contains('/covers500/collections/'));
+      // 恰好等于档位时保持原档位。
+      expect(coverUrlAtWidth(covers100, 300),
+          contains('/covers300/collections/'));
+      expect(coverBucket(800), 800);
+      expect(coverBucket(801), 800);
+    });
   });
 }

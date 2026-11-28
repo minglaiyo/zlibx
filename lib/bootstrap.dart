@@ -170,8 +170,13 @@ Future<void> runStartupMigrations() async {
 /// `/eapi/info/domains` with a family domain in the list — a host
 /// that fails is dropped from `discovered_hosts`, not retried.
 void warmCaches() {
-  unawaited(InstanceManager().refreshOnStartup());
-  unawaited(DomainProbe.reverifyDiscoveredHosts());
+  // R2: 这两项都不影响首屏，却在启动期与首屏请求抢连接和带宽——
+  // 延迟 10 秒等首屏数据落地后再跑。线路检测失败的 O3 分支（立即
+  // 强制测速换线）不受影响，走的是 splash 自己的触发。
+  Future.delayed(const Duration(seconds: 10), () {
+    unawaited(InstanceManager().refreshOnStartup());
+    unawaited(DomainProbe.reverifyDiscoveredHosts());
+  });
 }
 
 /// Registers the visible challenge-solver fallback: when the headless

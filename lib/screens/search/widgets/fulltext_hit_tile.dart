@@ -6,7 +6,6 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../utils/cover_cache.dart';
 import '../../../widgets/cover_placeholder.dart';
 
-
 /// One full-text search hit: cover + title + author + meta line,
 /// then the matching passage as a [RichText] whose `<em>` runs are
 /// highlighted in the theme color. Mirrors [BookListTile]'s cover
@@ -66,6 +65,7 @@ class FullTextHitTile extends StatelessWidget {
                         child: book.cover != null && book.cover!.isNotEmpty
                             ? CachedNetworkImage(
                                 imageUrl: book.cover!,
+                                cacheManager: coverCacheManager,
                                 fit: BoxFit.cover,
                                 memCacheWidth: coverCacheWidth(48, context),
                                 memCacheHeight: coverCacheHeight(68, context),

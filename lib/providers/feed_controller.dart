@@ -8,6 +8,7 @@ import '../models/display_book.dart';
 import '../services/home_feed_page_cache.dart';
 import '../services/random_feed_cache.dart';
 import '../utils/diagnostics.dart';
+import '../utils/cover_cache.dart';
 import 'auth_provider.dart';
 import 'home_feed_provider.dart';
 import 'settings_provider.dart';
@@ -212,6 +213,8 @@ abstract class PagedFeedController extends Notifier<FeedState> {
           books: [...state.books, ...added],
           isLoadingMore: false,
         );
+        // I6: 新页前 9 张封面预热磁盘缓存（见 cover_cache.dart）。
+        warmCoverDiskCache(added);
       }
     } on Object catch (error) {
       if (token.isCancelled) return; // 被取消的旧轮次：新轮次已接管
@@ -475,6 +478,10 @@ class HomeFeedController extends Notifier<FeedState> {
           for (final book in batch)
             if (seen.add(book.id)) book,
         ];
+      }
+      if (added.isNotEmpty) {
+        // I6: 新一批前 9 张封面预热磁盘缓存。
+        warmCoverDiskCache(added);
       }
       state = added.isEmpty
           ? state.copyWith(isLoadingMore: false, hasMore: false)

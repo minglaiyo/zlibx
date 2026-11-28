@@ -6,9 +6,9 @@ import '../../../models/unified_shelf_item.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_metrics.dart';
 import '../../../theme/motion.dart';
+import '../../../utils/cover_cache.dart';
 import '../../../widgets/cover_placeholder.dart';
 import '../../../widgets/motion/motion.dart';
-
 
 /// 封面 + 书名/作者的网格卡片，与首页、搜索页的卡片语言保持一致。
 class ShelfGridItem extends StatelessWidget {
@@ -348,9 +348,10 @@ class _ShelfCover extends StatelessWidget {
   Widget _coverImage(int cacheWidth) {
     return CachedNetworkImage(
       imageUrl: cover!,
+      cacheManager: coverCacheManager,
       fit: BoxFit.cover,
       memCacheWidth: cacheWidth > 0 ? cacheWidth : null,
-      fadeInDuration: AppMotion.medium,
+      fadeInDuration: AppMotion.fast,
       placeholder: (_, __) => const CoverPlaceholder.static(),
       errorWidget: (_, __, ___) => const CoverPlaceholder.static(),
     );

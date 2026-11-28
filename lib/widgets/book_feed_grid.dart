@@ -87,10 +87,15 @@ class BookFeedGrid extends ConsumerWidget {
           // maxScrollExtent > 0：列表真的可滚才谈得上"接近底部"——
           // 短列表（max=0）连拖拽回弹落回 0 的那一帧都会进这个分支，
           // 会把 loadMore 连环误触。
+          // R3: 提前量按视口高度算（1.5 屏）——封面网格一行约
+          // 220~260dp，固定 600dp 只有 2.5 行的提前量，快速滑动或
+          // 慢网时会滑到底看到转圈。
+          final prefetchThreshold =
+              notification.metrics.viewportDimension * 1.5;
           if (feed.hasMore &&
               notification.metrics.maxScrollExtent > 0 &&
               notification.metrics.pixels >
-                  notification.metrics.maxScrollExtent - 600) {
+                  notification.metrics.maxScrollExtent - prefetchThreshold) {
             onLoadMore();
           }
           return false;

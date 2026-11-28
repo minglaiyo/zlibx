@@ -40,6 +40,7 @@ void main() async {
   await HiveService.init();
   registerRustParsers();
   registerBackgroundDownload();
+  registerWebKeepalive();
   restoreAppLockOnStartup();
   await runStartupMigrations();
   warmCaches();

@@ -24,6 +24,8 @@ import 'services/instance_manager.dart';
 import 'services/mirror_trust.dart';
 import 'services/storage_service.dart';
 import 'services/wall_cookie_bridge.dart';
+import 'services/web_keepalive.dart';
+import 'services/web_service.dart';
 import 'services/webview_challenge_solver.dart';
 import 'utils/app_log.dart';
 import 'utils/diagnostics.dart';
@@ -93,6 +95,23 @@ void registerRustParsers() {
 void registerBackgroundDownload() {
   DownloadForegroundService.register();
   unawaited(DownloadForegroundService.requestNotificationPermission());
+}
+
+/// Registers the web keep-alive bridge and wires the notification's
+/// Stop button. The handler lives here, not in the web service screen:
+/// the button is pressed when the user is NOT looking at the screen
+/// (it is on the lock screen), so the callback must not depend on any
+/// widget being mounted. The native service stops itself first; this
+/// stops the HttpServer, which notifies the screen through its
+/// listener.
+void registerWebKeepalive() {
+  WebKeepalive.register();
+  WebKeepalive.onAction = (action) {
+    if (action != 'stop') return;
+    unawaited(
+      WebService.shared.stop().whenComplete(() => WebKeepalive.stop()),
+    );
+  };
 }
 
 /// Restores the privacy lock from disk before runApp.

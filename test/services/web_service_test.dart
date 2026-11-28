@@ -407,10 +407,13 @@ void main() {
       expect(r.body, contains('href="/book/1"'));
       expect(r.body, isNot(contains('href="/read/1"')));
       expect(r.body, contains('Epub &lt;Book&gt;')); // escaped
-      // The heading row carries a reload link (an empty href reloads
-      // the page), so a reader can pull a re-synced snapshot without
-      // the browser's own menu entry.
-      expect(r.body, contains('class="refresh" href="">Refresh</a>'));
+      // The pack row: pack-all on the left, the reload capsule on the
+      // right (an empty href reloads the page), same capsule style.
+      expect(
+        r.body,
+        contains('<div class="pack-row"><a class="zip-btn" href="/zip/all">'),
+      );
+      expect(r.body, contains('<a class="zip-btn" href="">Refresh</a>'));
       expect(r.body.toLowerCase(), isNot(contains('<script')));
       expect(r.body, contains('(3)')); // downloaded section count
       // Item 8: the app icon is linked in the head.
@@ -851,6 +854,44 @@ void main() {
       expect(service.isRunning, isFalse);
       service.refresh(snapshot: fresh, strings: WebPageStrings.english);
       expect(service.isRunning, isFalse);
+    });
+
+    test('an app palette bakes one resolved scheme into the pages',
+        () async {
+      const palette = WebPalette(
+        bg: '#101010',
+        card: '#202020',
+        text: '#F0F0F0',
+        muted: '#A0A0A0',
+        line: '#303030',
+        brand: '#FF8800',
+        brandStrong: '#FF9900',
+        brandSoft: '#332211',
+        brandSoftStrong: '#553311',
+        onBrand: '#111111',
+        onSoft: '#F0F0F0',
+        tile: '#181818',
+        dark: true,
+      );
+      await service.start(
+        snapshot: snapshot,
+        preferredPort: 0,
+        palette: palette,
+      );
+      final r = await get('/');
+      // The resolved scheme is forced (no prefers-color-scheme guessing)
+      // and the palette colors are baked straight into the stylesheet.
+      expect(r.body, contains('theme-dark'));
+      expect(r.body, contains('background:#101010'));
+      expect(r.body, contains('#FF8800'));
+      expect(r.body, isNot(contains('#2D6A4F')));
+      expect(r.body, isNot(contains('prefers-color-scheme:dark')));
+      // Without a palette the default two-scheme CSS comes back.
+      await service.stop();
+      await service.start(snapshot: snapshot, preferredPort: 0);
+      final plain = await get('/');
+      expect(plain.body, contains('#2D6A4F'));
+      expect(plain.body, contains('prefers-color-scheme:dark'));
     });
 
     test('request-download calls the callback and confirms', () async {

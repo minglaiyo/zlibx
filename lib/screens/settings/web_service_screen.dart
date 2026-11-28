@@ -95,6 +95,9 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
 
   Future<void> _start() async {
     final t = AppLocalizations.of(context)!;
+    // Captured before any await: the palette reads the theme, and the
+    // context must not cross async gaps.
+    final palette = _webPalette(context);
     setState(() => _busy = true);
     try {
       // Detect first: the hotspot address changes when the hotspot is
@@ -108,6 +111,7 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
       await _service.start(
         snapshot: await notifier.buildWebSnapshot(),
         strings: _pageStrings(t),
+        palette: palette,
         onRequestDownload: notifier.webRequestDownload,
       );
       // Live source: engine-side transitions and shelf changes push a
@@ -199,6 +203,42 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     convertFailed: t.webPageConvertFailed,
     refreshLink: t.webPageRefresh,
   );
+
+  /// The app's resolved colors for its current theme (the theme section
+  /// can mean Material You dynamic color), handed to the web pages so
+  /// they follow the app. Web-triggered theme switches while the server
+  /// runs keep the last palette until the screen is opened again.
+  WebPalette _webPalette(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    String hex(Color c) {
+      final argb = c.toARGB32() & 0xFFFFFF;
+      return '#${argb.toRadixString(16).padLeft(6, '0')}';
+    }
+
+    final dark = theme.brightness == Brightness.dark;
+    return WebPalette(
+      bg: hex(theme.scaffoldBackgroundColor),
+      card: hex(cs.surface),
+      text: hex(cs.onSurface),
+      muted: hex(cs.onSurfaceVariant),
+      line: hex(cs.outlineVariant),
+      brand: hex(cs.primary),
+      // Hover goes darker on light schemes and lighter on dark ones,
+      // matching how the app's own press states resolve.
+      brandStrong: hex(
+        Color.lerp(cs.primary, dark ? Colors.white : Colors.black, 0.14)!,
+      ),
+      brandSoft: hex(cs.primaryContainer),
+      brandSoftStrong: hex(
+        Color.lerp(cs.primaryContainer, cs.primary, 0.25)!,
+      ),
+      onBrand: hex(cs.onPrimary),
+      onSoft: hex(cs.onPrimaryContainer),
+      tile: hex(cs.surfaceContainerHighest),
+      dark: dark,
+    );
+  }
 
   Future<void> _copy(String url) async {
     final t = AppLocalizations.of(context)!;

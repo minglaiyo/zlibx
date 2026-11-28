@@ -394,6 +394,47 @@ class WebPageStrings {
   );
 }
 
+/// The app's resolved colors for its current theme, baked into the page
+/// CSS ([start]'s `palette` / [refresh]) so the web UI follows the app
+/// — including Material You dynamic color, whose values only exist on
+/// the app side. Colors are `#RRGGBB` strings, not `dart:ui` Colors:
+/// they are interpolated straight into the stylesheet (the pages ship
+/// no CSS variables — e-reader browsers are old by contract).
+///
+/// [dark] is the resolved brightness: it forces the page's scheme (no
+/// `prefers-color-scheme` guessing) and drops card shadows.
+class WebPalette {
+  final String bg;
+  final String card;
+  final String text;
+  final String muted;
+  final String line;
+  final String brand;
+  final String brandStrong;
+  final String brandSoft;
+  final String brandSoftStrong;
+  final String onBrand;
+  final String onSoft;
+  final String tile;
+  final bool dark;
+
+  const WebPalette({
+    required this.bg,
+    required this.card,
+    required this.text,
+    required this.muted,
+    required this.line,
+    required this.brand,
+    required this.brandStrong,
+    required this.brandSoft,
+    required this.brandSoftStrong,
+    required this.onBrand,
+    required this.onSoft,
+    required this.tile,
+    required this.dark,
+  });
+}
+
 // ───────────────────────── Response ─────────────────────────
 
 /// One HTTP response, as decided by Dart and written by [_dispatch].
@@ -518,6 +559,7 @@ class WebService extends ChangeNotifier {
   HttpServer? _server;
   WebSnapshot _snapshot = const WebSnapshot();
   WebPageStrings _strings = WebPageStrings.english;
+  WebPalette? _palette;
 
   /// Set by [start]: the screen's download trigger (item 3). Null
   /// when the caller did not provide it — that route then degrades.
@@ -541,6 +583,7 @@ class WebService extends ChangeNotifier {
   Future<int> start({
     required WebSnapshot snapshot,
     WebPageStrings strings = WebPageStrings.english,
+    WebPalette? palette,
     int preferredPort = kWebServicePort,
     RequestDownloadHandler? onRequestDownload,
   }) async {
@@ -559,6 +602,7 @@ class WebService extends ChangeNotifier {
     _snapshot = snapshot;
     _pathCache.clear();
     _strings = strings;
+    _palette = palette;
     _onRequestDownload = onRequestDownload;
     HttpServer server;
     try {
@@ -590,6 +634,7 @@ class WebService extends ChangeNotifier {
   void refresh({
     required WebSnapshot snapshot,
     WebPageStrings? strings,
+    WebPalette? palette,
     RequestDownloadHandler? onRequestDownload,
   }) {
     if (_server == null) return;
@@ -597,6 +642,7 @@ class WebService extends ChangeNotifier {
     // Resolved paths belong to the old snapshot's locations.
     _pathCache.clear();
     if (strings != null) _strings = strings;
+    if (palette != null) _palette = palette;
     if (onRequestDownload != null) _onRequestDownload = onRequestDownload;
     notifyListeners();
   }
@@ -1317,19 +1363,18 @@ class WebService extends ChangeNotifier {
   // horizontal card rows. The grid also degrades to a vertical stack
   // on readers that do not understand CSS grid.
 
-  // Theme: the zlibx app's own look — forest green primary, rose-gold
-  // accent, warm-paper background (values from the app's
-  // app_colors.dart / app_theme.dart). Light is the default; dark
-  // follows the system (`prefers-color-scheme`) or `?theme=dark|light`
-  // (body class `theme-dark` / `theme-light`). Only the visual layer
-  // changes; the layout (poem on top, search on the heading row,
-  // horizontal book cards) is unchanged.
+  // Theme: by default the zlibx app's own look — forest green primary,
+  // warm-paper background. When the screen hands over a [WebPalette]
+  // (the app's resolved colorScheme, including Material You dynamic
+  // color), ONE scheme is baked in — the app already decided the
+  // brightness, so nothing is guessed from the browser.
   //
   // E-reader browsers are old: no CSS variables, no min()/clamp(),
   // no flex `gap` for the card internals, no JS. Colours are written
-  // out per rule, and the dark scheme is the same rule set emitted
-  // twice by [_darkRules] (once under the media query, once under the
-  // forced `body.theme-dark`), so nothing depends on newer CSS.
+  // out per rule, and without a palette the dark scheme is the same
+  // rule set emitted twice by [_darkRules] (once under the media
+  // query, once under the forced `body.theme-dark`), so nothing
+  // depends on newer CSS.
   static const String _font =
       '-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",'
       '"Hiragino Sans GB","Microsoft YaHei",Roboto,sans-serif';
@@ -1337,68 +1382,95 @@ class WebService extends ChangeNotifier {
   static const String _ease = 'cubic-bezier(0.215,0.61,0.355,1)';
   static const String _shadow = '0 6px 16px rgba(0,0,0,0.06)';
 
-  static const String _lightCss =
-      'body{margin:0;font-family:$_font;font-size:16px;line-height:1.5;'
-      'color:#1A2421;background:#F8F7F5;color-scheme:light}'
-      '.poem{color:#2D6A4F;letter-spacing:0.1em;margin:4px 0 24px}'
-      '.head-row{display:flex;align-items:center;justify-content:space-between;'
-      'gap:16px;flex-wrap:wrap;margin:8px 0 16px}'
-      '.head-row h1,.head-row h2{margin:0;border-top:none;padding-top:0;'
-      'flex:1 1 auto;min-width:0}'
-      '.head-row .search{flex:0 1 320px;min-width:200px;margin:0}'
-      '.head-row .refresh{flex:0 0 auto;font-size:14px;font-weight:600;text-decoration:none}'
-      '.search input{width:100%;box-sizing:border-box;border:1.5px solid transparent;'
-      'border-radius:30px;padding:16px 24px;font-size:16px;line-height:1.5;'
-      '-webkit-appearance:none;appearance:none;background:#FFFFFF;color:#1A2421;'
-      'box-shadow:$_shadow;transition:border-color 200ms $_ease}'
-      '.search input:focus{outline:none;border-color:#2D6A4F}'
-      '.main{padding:24px 20px 32px}'
-      '.m-main{padding:24px 20px 32px}'
-      'h1,h2{font-size:24px;font-weight:700;line-height:1.3;color:#1A2421}'
-      'h2{margin:32px 0 16px;padding-top:24px;border-top:1px solid #E3E8E5}'
-      // grid with a vertical-stack fallback: readers without CSS grid
-      // see plain block-level cards, which already carry their own
-      // bottom margin.
-      '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));'
-      'grid-column-gap:16px;column-gap:16px}'
-      '.card{display:flex;align-items:flex-start;min-width:0;background:#FFFFFF;'
-      'border:1px solid transparent;border-radius:20px;padding:16px;margin-bottom:16px;'
-      'box-shadow:$_shadow}'
-      '.cover{width:90px;height:120px;flex:0 0 90px;margin-right:16px;'
-      'object-fit:cover;border-radius:8px;background:#EEF2EF}'
-      '.cover-ph{width:90px;height:120px;flex:0 0 90px;margin-right:16px;'
-      'border-radius:8px;background:#E8F5EE;color:#2D6A4F;'
-      'display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700}'
-      '.info{flex:1;min-width:0}'
-      '.name{font-weight:700;color:#1A2421;word-wrap:break-word}'
-      '.meta{color:#5C6B64;font-size:12px;margin-top:2px}'
-      '.desc{color:#5C6B64;font-size:12px;margin-top:4px;max-height:3em;'
-      'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'
-      '.actions{margin-top:12px}'
-      '.actions a{display:inline-block;border-radius:30px;padding:8px 20px;'
-      'margin:0 8px 4px 0;font-size:14px;font-weight:600;line-height:1.4;'
-      'text-decoration:none;color:#FFFFFF;background:#2D6A4F;'
-      'transition:transform 150ms $_ease,background-color 150ms $_ease}'
-      '.actions a+a{background:#E8F5EE;color:#2D6A4F}'
-      '.actions a:hover{background:#245A42}'
-      '.actions a+a:hover{background:#D3EBDD}'
-      '.dim{color:#5C6B64}'
-      '.zip-btn{display:inline-block;margin:0 0 16px;padding:16px 24px;border-radius:30px;'
-      'font-size:16px;font-weight:600;text-decoration:none;color:#FFFFFF;background:#2D6A4F;'
-      'transition:transform 150ms $_ease,background-color 150ms $_ease}'
-      '.zip-btn:hover{background:#245A42}'
-      '.actions a:active,.zip-btn:active{transform:scale(0.96)}'
-      'a{color:#2D6A4F}'
-      // Page margins follow the app: 20 on phones, 32 from 600, 48 from 1240.
-      '@media (min-width:600px){.main{padding:24px 32px 32px}}'
-      '@media (min-width:1240px){.main{padding:24px 48px 32px}}'
-      // Mobile shell overrides (body.layout-mobile): the grid becomes
-      // one stacked column of horizontal card rows with a smaller
-      // cover and thumb-friendly buttons.
-      'body.layout-mobile .grid{display:block}'
-      'body.layout-mobile .cover,body.layout-mobile .cover-ph{width:64px;height:84px;flex-basis:64px}'
-      'body.layout-mobile .cover-ph{font-size:26px}'
-      'body.layout-mobile .actions a{padding:12px 20px;font-size:16px}';
+  /// The page CSS. Without a palette: two full schemes (light, and
+  /// dark via `prefers-color-scheme` or the forced body class). With
+  /// one: a single resolved scheme, still with zero CSS variables.
+  static String _cssFor(WebPalette? p) {
+    final bg = p?.bg ?? '#F8F7F5';
+    final card = p?.card ?? '#FFFFFF';
+    final text = p?.text ?? '#1A2421';
+    final muted = p?.muted ?? '#5C6B64';
+    final line = p?.line ?? '#E3E8E5';
+    final brand = p?.brand ?? '#2D6A4F';
+    final brandStrong = p?.brandStrong ?? '#245A42';
+    final brandSoft = p?.brandSoft ?? '#E8F5EE';
+    final brandSoftStrong = p?.brandSoftStrong ?? '#D3EBDD';
+    final onBrand = p?.onBrand ?? '#FFFFFF';
+    final onSoft = p?.onSoft ?? brand;
+    final tile = p?.tile ?? '#EEF2EF';
+    final dark = p?.dark ?? false;
+    final shadow = dark ? 'none' : _shadow;
+    final cardBorder = dark ? line : 'transparent';
+    final colorScheme = dark ? 'dark' : 'light';
+    final base =
+        'body{margin:0;font-family:$_font;font-size:16px;line-height:1.5;'
+        'color:$text;background:$bg;color-scheme:$colorScheme}'
+        '.poem{color:$brand;letter-spacing:0.1em;margin:4px 0 24px}'
+        '.head-row{display:flex;align-items:center;justify-content:space-between;'
+        'gap:16px;flex-wrap:wrap;margin:8px 0 16px}'
+        '.head-row h1,.head-row h2{margin:0;border-top:none;padding-top:0;'
+        'flex:1 1 auto;min-width:0}'
+        '.head-row .search{flex:0 1 320px;min-width:200px;margin:0}'
+        '.search input{width:100%;box-sizing:border-box;border:1.5px solid transparent;'
+        'border-radius:30px;padding:16px 24px;font-size:16px;line-height:1.5;'
+        '-webkit-appearance:none;appearance:none;background:$card;color:$text;'
+        'box-shadow:$shadow;transition:border-color 200ms $_ease}'
+        '.search input:focus{outline:none;border-color:$brand}'
+        '.pack-row{display:flex;align-items:center;justify-content:space-between;'
+        'flex-wrap:wrap;gap:12px;margin-bottom:16px}'
+        '.pack-row .zip-btn{margin:0}'
+        '.main{padding:24px 20px 32px}'
+        '.m-main{padding:24px 20px 32px}'
+        'h1,h2{font-size:24px;font-weight:700;line-height:1.3;color:$text}'
+        'h2{margin:32px 0 16px;padding-top:24px;border-top:1px solid $line}'
+        // grid with a vertical-stack fallback: readers without CSS grid
+        // see plain block-level cards, which already carry their own
+        // bottom margin.
+        '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));'
+        'grid-column-gap:16px;column-gap:16px}'
+        '.card{display:flex;align-items:flex-start;min-width:0;background:$card;'
+        'border:1px solid $cardBorder;border-radius:20px;padding:16px;margin-bottom:16px;'
+        'box-shadow:$shadow}'
+        '.cover{width:90px;height:120px;flex:0 0 90px;margin-right:16px;'
+        'object-fit:cover;border-radius:8px;background:$tile}'
+        '.cover-ph{width:90px;height:120px;flex:0 0 90px;margin-right:16px;'
+        'border-radius:8px;background:$brandSoft;color:$brand;'
+        'display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700}'
+        '.info{flex:1;min-width:0}'
+        '.name{font-weight:700;color:$text;word-wrap:break-word}'
+        '.meta{color:$muted;font-size:12px;margin-top:2px}'
+        '.desc{color:$muted;font-size:12px;margin-top:4px;max-height:3em;'
+        'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'
+        '.actions{margin-top:12px}'
+        '.actions a{display:inline-block;border-radius:30px;padding:8px 20px;'
+        'margin:0 8px 4px 0;font-size:14px;font-weight:600;line-height:1.4;'
+        'text-decoration:none;color:$onBrand;background:$brand;'
+        'transition:transform 150ms $_ease,background-color 150ms $_ease}'
+        '.actions a+a{background:$brandSoft;color:$onSoft}'
+        '.actions a:hover{background:$brandStrong}'
+        '.actions a+a:hover{background:$brandSoftStrong}'
+        '.dim{color:$muted}'
+        '.zip-btn{display:inline-block;margin:0 0 16px;padding:16px 24px;border-radius:30px;'
+        'font-size:16px;font-weight:600;text-decoration:none;color:$onBrand;background:$brand;'
+        'transition:transform 150ms $_ease,background-color 150ms $_ease}'
+        '.zip-btn:hover{background:$brandStrong}'
+        '.actions a:active,.zip-btn:active{transform:scale(0.96)}'
+        'a{color:$brand}'
+        // Page margins follow the app: 20 on phones, 32 from 600, 48 from 1240.
+        '@media (min-width:600px){.main{padding:24px 32px 32px}}'
+        '@media (min-width:1240px){.main{padding:24px 48px 32px}}'
+        // Mobile shell overrides (body.layout-mobile): the grid becomes
+        // one stacked column of horizontal card rows with a smaller
+        // cover and thumb-friendly buttons.
+        'body.layout-mobile .grid{display:block}'
+        'body.layout-mobile .cover,body.layout-mobile .cover-ph{width:64px;height:84px;flex-basis:64px}'
+        'body.layout-mobile .cover-ph{font-size:26px}'
+        'body.layout-mobile .actions a{padding:12px 20px;font-size:16px}';
+    if (p != null) return base;
+    return '$base'
+        '@media (prefers-color-scheme:dark){${_darkRules('body:not(.theme-light)')}}'
+        '${_darkRules('body.theme-dark')}';
+  }
 
   /// The dark scheme (app dark palette), scoped under [b] — the body
   /// selector that switches it on.
@@ -1419,10 +1491,7 @@ class WebService extends ChangeNotifier {
       '$b .actions a:hover,$b .zip-btn:hover{background:#6BC79B}'
       '$b .actions a+a:hover{background:#2A5340}';
 
-  static final String _css =
-      '$_lightCss'
-      '@media (prefers-color-scheme:dark){${_darkRules('body:not(.theme-light)')}}'
-      '${_darkRules('body.theme-dark')}';
+  static final String _css = _cssFor(null);
 
   /// Every page carries its layout on the `<body>` so tests (and CSS)
   /// can tell the shells apart: `layout-pc` or `layout-mobile`, plus
@@ -1434,19 +1503,27 @@ class WebService extends ChangeNotifier {
     WebLayout layout = WebLayout.pc,
     WebTheme theme = WebTheme.auto,
   }) {
+    final palette = _palette;
+    // With the app palette handed over, the scheme is already resolved:
+    // forcing the body class keeps shadows / color-scheme on the right
+    // side instead of guessing from prefers-color-scheme.
+    final effectiveTheme = palette != null
+        ? (palette.dark ? WebTheme.dark : WebTheme.light)
+        : theme;
     final layoutCls = layout == WebLayout.mobile
         ? 'layout-mobile'
         : 'layout-pc';
-    final cls = theme == WebTheme.light
+    final cls = effectiveTheme == WebTheme.light
         ? '$layoutCls theme-light'
-        : theme == WebTheme.dark
+        : effectiveTheme == WebTheme.dark
         ? '$layoutCls theme-dark'
         : layoutCls;
+    final css = palette == null ? _css : _cssFor(palette);
     return '<!DOCTYPE html><html><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         '<link rel="icon" type="image/png" href="/icon.png">'
         '<link rel="apple-touch-icon" href="/icon.png">'
-        '<title>${escapeHtml(title)}</title><style>$_css</style></head>'
+        '<title>${escapeHtml(title)}</title><style>$css</style></head>'
         '<body class="$cls">$body</body></html>';
   }
 
@@ -1468,15 +1545,10 @@ class WebService extends ChangeNotifier {
     final value = searchValue.isEmpty
         ? ''
         : ' value="${escapeHtml(searchValue)}"';
-    // An empty href navigates to the current URL: a plain reload that
-    // picks up the phone's latest snapshot without breaking anything.
-    final refresh = _strings.refreshLink.isEmpty
-        ? ''
-        : '<a class="refresh" href="">${escapeHtml(_strings.refreshLink)}</a>';
     return '<div class="head-row">$heading'
         '<form class="search" method="get" action="/search">'
         '<input name="q" type="search"$value>'
-        '</form>$refresh</div>';
+        '</form></div>';
   }
 
   String _messagePage(String message) => _page(
@@ -1589,14 +1661,24 @@ class WebService extends ChangeNotifier {
       for (var i = 0; i < _snapshot.files.length; i++) _bookCard(_entryFromFile(i)),
     ];
     final library = _snapshot.library.map(_bookCard);
+    // The pack-all and reload capsules share one row, symmetric: pack
+    // all on the left, reload on the right. An empty href navigates to
+    // the current URL: a plain reload that picks up the phone's latest
+    // snapshot without breaking anything.
     final packAll = downloaded.isEmpty
         ? ''
-        : ' <a class="zip-btn" href="/zip/all">全部打包</a>';
+        : '<a class="zip-btn" href="/zip/all">全部打包</a>';
+    final reload = _strings.refreshLink.isEmpty
+        ? ''
+        : '<a class="zip-btn" href="">${escapeHtml(_strings.refreshLink)}</a>';
+    final packRow = packAll.isEmpty && reload.isEmpty
+        ? ''
+        : '<div class="pack-row">$packAll$reload</div>';
     final main =
         '${_headingRow(
           '<h2 id="downloaded">${escapeHtml(_strings.downloadedSection)} (${downloaded.length})</h2>',
         )}'
-        '$packAll'
+        '$packRow'
         '${_grid(downloaded)}'
         '<h2 id="library">${escapeHtml(_strings.librarySection)} (${library.length})</h2>'
         '${_grid(library)}';

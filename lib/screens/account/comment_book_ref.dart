@@ -6,7 +6,6 @@ import '../../utils/cover_cache.dart';
 import '../../widgets/cover_placeholder.dart';
 import '../../widgets/loading_widget.dart';
 
-
 /// 一条用户评论背后的书。“我的评论”与用户主页的评论接口都只给
 /// bookId + 书名：跳书籍详情要用的 eapi hash 和书名行要显示的
 /// 封面，都要靠标题搜索反查（见 [resolveCommentBookRef]）——搜索
@@ -81,6 +80,7 @@ class CommentBookTile extends StatelessWidget {
                   ? const CoverPlaceholder.static()
                   : CachedNetworkImage(
                       imageUrl: coverUrl!,
+                      cacheManager: coverCacheManager,
                       fit: BoxFit.cover,
                       // 缩略图按显示尺寸解码，避免整图占内存。
                       memCacheWidth: coverCacheWidth(34, context),

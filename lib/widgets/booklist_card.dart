@@ -53,6 +53,7 @@ class BooklistCover extends StatelessWidget {
               ? placeholder
               : CachedNetworkImage(
                   imageUrl: url,
+                  cacheManager: coverCacheManager,
                   fit: BoxFit.cover,
                   // 封面按显示尺寸解码，避免整图占内存。
                   memCacheWidth: coverCacheWidth(width, context),

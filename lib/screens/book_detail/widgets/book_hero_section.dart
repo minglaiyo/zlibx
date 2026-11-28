@@ -17,7 +17,6 @@ import '../../../widgets/loading_widget.dart';
 import '../../../widgets/motion/motion.dart';
 import 'book_3d_cover.dart';
 
-
 class BookHeroSection extends ConsumerStatefulWidget {
   final DisplayBook book;
   final bool isFavorited;
@@ -248,6 +247,7 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
       onLongPress: () => _showHdCoverViewer(cover),
       child: CachedNetworkImage(
         imageUrl: coverUrlAtWidth(cover, cacheWidth),
+        cacheManager: coverCacheManager,
         memCacheWidth: cacheWidth,
         imageBuilder: (context, image) => content(image: image),
         placeholder: (context, url) => content(loading: true),
@@ -270,6 +270,7 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
             child: Center(
               child: CachedNetworkImage(
                 imageUrl: coverUrlAtWidth(cover, 800),
+                cacheManager: coverCacheManager,
                 placeholder: (context, url) => const LoadingWidget.page(),
                 errorWidget: (context, url, error) => const Icon(
                   Icons.broken_image_outlined,

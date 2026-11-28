@@ -133,46 +133,42 @@ class BooklistMasonrySliverList extends StatelessWidget {
   Widget build(BuildContext context) {
     final rowCount = (lists.length + 1) ~/ 2;
     return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (context, row) {
-          final left = lists[row * 2];
-          final rightIndex = row * 2 + 1;
-          final right =
-              rightIndex < lists.length ? lists[rightIndex] : null;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: _masonryCard(
-                    list: left,
-                    globalIndex: row * 2,
-                    aspectRatio: row.isEven ? 1.28 : 1.52,
-                    showFavoriteBadge: showFavoriteBadge,
-                    onOpen: onOpen,
-                    onLongPress: onLongPress,
-                  ),
+      delegate: SliverChildBuilderDelegate((context, row) {
+        final left = lists[row * 2];
+        final rightIndex = row * 2 + 1;
+        final right = rightIndex < lists.length ? lists[rightIndex] : null;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _masonryCard(
+                  list: left,
+                  globalIndex: row * 2,
+                  aspectRatio: row.isEven ? 1.28 : 1.52,
+                  showFavoriteBadge: showFavoriteBadge,
+                  onOpen: onOpen,
+                  onLongPress: onLongPress,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: right == null
-                      ? const SizedBox.shrink()
-                      : _masonryCard(
-                          list: right,
-                          globalIndex: rightIndex,
-                          aspectRatio: row.isEven ? 1.52 : 1.28,
-                          showFavoriteBadge: showFavoriteBadge,
-                          onOpen: onOpen,
-                          onLongPress: onLongPress,
-                        ),
-                ),
-              ],
-            ),
-          );
-        },
-        childCount: rowCount,
-      ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: right == null
+                    ? const SizedBox.shrink()
+                    : _masonryCard(
+                        list: right,
+                        globalIndex: rightIndex,
+                        aspectRatio: row.isEven ? 1.52 : 1.28,
+                        showFavoriteBadge: showFavoriteBadge,
+                        onOpen: onOpen,
+                        onLongPress: onLongPress,
+                      ),
+              ),
+            ],
+          ),
+        );
+      }, childCount: rowCount),
     );
   }
 }
@@ -391,6 +387,7 @@ class _CoverArt extends StatelessWidget {
     if (url.isEmpty) return placeholder;
     return CachedNetworkImage(
       imageUrl: url,
+      cacheManager: coverCacheManager,
       fit: BoxFit.cover,
       memCacheWidth: coverCacheWidth(320, context),
       memCacheHeight: coverCacheHeight(450, context),

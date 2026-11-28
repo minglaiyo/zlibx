@@ -44,6 +44,7 @@ class BookListTile extends StatelessWidget {
                             book.cover!,
                             coverCacheWidth(48, context),
                           ),
+                          cacheManager: coverCacheManager,
                           fit: BoxFit.cover,
                           memCacheWidth: coverCacheWidth(48, context),
                           memCacheHeight: coverCacheHeight(68, context),

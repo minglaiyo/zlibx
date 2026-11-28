@@ -14,7 +14,6 @@ import '../../widgets/empty_state.dart';
 import '../../widgets/gradient_app_bar.dart';
 import '../../widgets/loading_widget.dart';
 
-
 /// Sort order for the cloud download history list. The default
 /// ([dateDesc]) is the server's own order (newest download first —
 /// the `/users/downloads` per-download log is already sorted that way).
@@ -94,8 +93,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             // Date grouping only makes sense in the date sorts; the
             // title/year/size sorts keep the flat list.
             final grouped =
-                _sort == _HistorySort.dateDesc ||
-                _sort == _HistorySort.dateAsc;
+                _sort == _HistorySort.dateDesc || _sort == _HistorySort.dateAsc;
             if (!grouped) {
               return ListView.builder(
                 padding: const EdgeInsets.all(16),
@@ -155,11 +153,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       child: ListTile(
         contentPadding: const EdgeInsets.all(12),
         leading: _HistoryCoverThumb(book: book),
-        title: Text(
-          book.title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(book.title, maxLines: 2, overflow: TextOverflow.ellipsis),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -336,6 +330,7 @@ class _HistoryCoverThumb extends ConsumerWidget {
       borderRadius: BorderRadius.circular(8),
       child: CachedNetworkImage(
         imageUrl: cover,
+        cacheManager: coverCacheManager,
         width: 50,
         height: 70,
         fit: BoxFit.cover,

@@ -43,6 +43,9 @@ dependencies:
 
   # UI & Icons
   cached_network_image: ^3.3.1
+  # Cover disk cache (I2): a dedicated manager — the default one (200
+  # objects / 30 days) evicts covers after a couple of screens.
+  flutter_cache_manager: ^3.3.1
   # Material You dynamic color (Android 12+): ColorScheme from the wallpaper,
   # falls back to the built-in palette where dynamic color is unavailable.
   # 曾 pin 在 <1.9.0：v1.9.0 的 android/build.gradle.kts 用 `kotlin { compilerOptions {} }`

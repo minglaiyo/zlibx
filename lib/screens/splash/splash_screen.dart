@@ -30,6 +30,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   String _statusText = '';
   bool _networkOk = false;
 
+  /// R1: 认证并行启动时的线路快照——对话框里换过线路时，并行期的
+  /// 认证结论不可信，需要重置（见 _initialize）。
+  String? _domainAtStart;
+
   // ── Animation Controllers ──
   late final AnimationController _logoController;
   late final AnimationController _pulseController;
@@ -124,6 +128,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
     // Fire-and-forget: start background speed test for all domains
     Future.microtask(() => ref.read(speedTestProvider.notifier).runTest());
+    // R1: 认证初始化与网络检测并行。此前 authProvider 只在检测完成后
+    // 才被首次读取——登录请求白白等完整个网络探测（弱网下最多
+    // 5+8 秒）才开始。首次读取即触发初始化，_waitForAuth 里 await
+    // 的就是同一个 future。换线的重置保护见 _initialize。
+    ref.read(authProvider.notifier);
+    _domainAtStart = ref.read(domainProvider);
     // Defer to after the first frame: _initialize's first statement reads
     // AppLocalizations.of(context), and dependOnInheritedWidget is illegal
     // until initState completes — the debug assert throws, killing the
@@ -190,6 +200,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
     // Step 2: Wait for auth state
     if (!mounted) return;
+    // R1 保护：认证与网络检测并行后，它可能跑在旧线路上。换过线路、
+    // 或全程没有网络时，认证的失败结论不可信——不重置的话，有效凭据
+    // 会被误判成未登录（表现为"掉登录"，诱导用户重输密码）。与
+    // storageUnavailable 的处理同款：invalidate 一次，重跑有界。
+    final auth = ref.read(authProvider);
+    final lineChanged = ref.read(domainProvider) != _domainAtStart;
+    if (!auth.isAuthenticated &&
+        (auth.lineUnavailable || lineChanged || !_networkOk)) {
+      ref.invalidate(authProvider);
+    }
     setState(() => _statusText = AppLocalizations.of(context)!.loading);
     await _waitForAuth();
   }

@@ -8,7 +8,6 @@ import '../../../utils/cover_cache.dart';
 import '../../../widgets/cover_placeholder.dart';
 import '../../../widgets/motion/motion.dart';
 
-
 /// Open Library trending (ported from OpenlibExtended): a horizontal
 /// cover strip. Tapping a cover searches its title on the current
 /// source, exactly like upstream's trending page does.
@@ -81,6 +80,7 @@ class SearchTrendingSection extends StatelessWidget {
                                     book.thumbnail ?? '',
                                     coverCacheWidth(105, context),
                                   ),
+                                  cacheManager: coverCacheManager,
                                   height: 145,
                                   width: 105,
                                   fit: BoxFit.cover,

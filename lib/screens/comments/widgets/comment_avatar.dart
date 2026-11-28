@@ -1,4 +1,7 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
+import '../../../../utils/cover_cache.dart';
 
 /// 评论区共享的圆形头像：有图显示图，无图或加载失败显示人形图标，
 /// 可点击跳主页。
@@ -36,15 +39,19 @@ class CommentAvatar extends StatelessWidget {
         child: SizedBox(
           width: radius * 2,
           height: radius * 2,
-          child: Image(
-            image: NetworkImage(avatarUrl),
+          // CachedNetworkImage 而非裸 NetworkImage：头像进封面专用
+          // 磁盘缓存（评论列表滚动时不再重复下载），并按直径限制
+          // 解码尺寸（原图头像大得多）。
+          child: CachedNetworkImage(
+            imageUrl: avatarUrl,
             fit: BoxFit.cover,
+            cacheManager: coverCacheManager,
+            memCacheWidth: coverCacheWidth(radius * 2, context),
+            fadeInDuration: const Duration(milliseconds: 120),
             // 加载中先铺底色，避免出现刺眼的透明/黑块。
-            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-              if (wasSynchronouslyLoaded) return child;
-              return ColoredBox(color: cs.primaryContainer, child: child);
-            },
-            errorBuilder: (_, __, ___) => Container(
+            placeholder: (context, url) =>
+                ColoredBox(color: cs.primaryContainer),
+            errorWidget: (_, __, ___) => Container(
               color: cs.primaryContainer,
               alignment: Alignment.center,
               child: Icon(

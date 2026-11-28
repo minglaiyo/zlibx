@@ -6,7 +6,6 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../utils/cover_cache.dart';
 import '../../../widgets/cover_placeholder.dart';
 
-
 /// One article search hit: cover + title + author + meta line. The
 /// layout mirrors [FullTextHitTile] minus the matching-passage
 /// snippet (the `/s/` article page carries none).
@@ -66,6 +65,7 @@ class ArticleTile extends StatelessWidget {
                             article.cover != null && article.cover!.isNotEmpty
                             ? CachedNetworkImage(
                                 imageUrl: article.cover!,
+                                cacheManager: coverCacheManager,
                                 fit: BoxFit.cover,
                                 memCacheWidth: coverCacheWidth(48, context),
                                 memCacheHeight: coverCacheHeight(68, context),

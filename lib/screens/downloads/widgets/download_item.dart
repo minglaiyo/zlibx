@@ -84,6 +84,7 @@ class DownloadItem extends ConsumerWidget {
                     child: task.book.cover?.isNotEmpty == true
                         ? CachedNetworkImage(
                             imageUrl: task.book.cover!,
+                            cacheManager: coverCacheManager,
                             fit: BoxFit.cover,
                             memCacheWidth: coverCacheWidth(64, context),
                             memCacheHeight: coverCacheHeight(92, context),
@@ -451,9 +452,7 @@ class DownloadItem extends ConsumerWidget {
               if (displayPath.isNotEmpty)
                 TextButton(
                   onPressed: () async {
-                    await Clipboard.setData(
-                      ClipboardData(text: displayPath),
-                    );
+                    await Clipboard.setData(ClipboardData(text: displayPath));
                     if (!context.mounted) return;
                     Navigator.pop(context);
                     showAppSnack(context, l.copiedToClipboard);

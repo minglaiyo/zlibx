@@ -21,6 +21,7 @@ import '../../../screens/favorites/category_actions.dart';
 import '../../../services/media_store.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/app_snack.dart';
+import '../../../widgets/cover_placeholder.dart';
 import '../../../utils/cover_cache.dart';
 import '../../../utils/date_text.dart';
 import '../../../utils/error_text.dart';
@@ -86,9 +87,13 @@ class DownloadItem extends ConsumerWidget {
                             fit: BoxFit.cover,
                             memCacheWidth: coverCacheWidth(64, context),
                             memCacheHeight: coverCacheHeight(92, context),
-                            errorWidget: (_, __, ___) => _coverPlaceholder(cs),
+                            // Same placeholder the shelf and search
+                            // grids use: one no-cover visual everywhere
+                            // (external-source thumbnails die often).
+                            errorWidget: (_, __, ___) =>
+                                const CoverPlaceholder.static(),
                           )
-                        : _coverPlaceholder(cs),
+                        : const CoverPlaceholder.static(),
                   ),
                 ),
                 const SizedBox(width: 13),
@@ -269,11 +274,6 @@ class DownloadItem extends ConsumerWidget {
       ),
     );
   }
-
-  Widget _coverPlaceholder(ColorScheme cs) => ColoredBox(
-    color: cs.surfaceContainerHighest,
-    child: Icon(Icons.menu_book_rounded, color: cs.onSurfaceVariant),
-  );
 
   Widget _statusLabel(
     BuildContext context,

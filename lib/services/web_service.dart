@@ -1407,9 +1407,20 @@ class WebService extends ChangeNotifier {
     final b = StringBuffer('<article class="card">');
     final cover = e.coverUrl;
     if (cover != null && cover.isNotEmpty) {
+      // A remote (Z-Library / Anna's Archive) URL can be dead or
+      // hotlink-protected — the browser then shows a broken image with
+      // the alt text, and the card loses its cover box. Swap it, in
+      // place, for the same first-letter tile a no-cover book gets: one
+      // cover box size for every card, nothing stays broken. Inline
+      // attribute handler, not a <script> tag — the page still ships no
+      // script tag.
       b.write(
         '<img class="cover" src="${escapeHtml(cover)}" loading="lazy" '
-        'alt="${escapeHtml(e.title)}">',
+        'alt="${escapeHtml(e.title)}" '
+        'data-ph="${escapeHtml(_firstChar(e.title))}" '
+        "onerror=\"var p=document.createElement('div');"
+        "p.className='cover-ph';p.setAttribute('aria-hidden','true');"
+        "p.textContent=this.dataset.ph||'?';this.replaceWith(p)\">",
       );
     } else {
       b.write(

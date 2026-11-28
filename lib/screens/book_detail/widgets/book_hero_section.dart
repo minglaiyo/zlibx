@@ -243,14 +243,25 @@ class _BookHeroSectionState extends ConsumerState<BookHeroSection> {
             .clamp(400, 900);
     // 长按封面查看高清大图（用户批 2026-11-14 功能 3）：GestureDetector
     // 在 Hero 外层，长按不影响共享元素转场。
+    // I3: 落地垫底——Hero 转场进来时先用列表阶段已缓存的那一档小图
+    // （列表网格 118dp 在常见 DPR 下对齐 400 档），大图到位后零淡入
+    // 直接换，避免加载占位闪一下。低 DPR 设备列表用 300 档时垫底图
+    // 会补一次小下载，之后也有缓存。
+    final listUrl = coverUrlAtWidth(cover, 400);
     return GestureDetector(
       onLongPress: () => _showHdCoverViewer(cover),
       child: CachedNetworkImage(
         imageUrl: coverUrlAtWidth(cover, cacheWidth),
         cacheManager: coverCacheManager,
         memCacheWidth: cacheWidth,
+        fadeInDuration: Duration.zero,
         imageBuilder: (context, image) => content(image: image),
-        placeholder: (context, url) => content(loading: true),
+        placeholder: (context, url) => content(
+          image: CachedNetworkImageProvider(
+            listUrl,
+            cacheManager: coverCacheManager,
+          ),
+        ),
         errorWidget: (context, url, error) => content(),
       ),
     );

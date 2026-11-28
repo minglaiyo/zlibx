@@ -230,11 +230,14 @@ class _HeroBackdrop extends StatelessWidget {
     return ImageFiltered(
       imageFilter: _backdropBlur,
       child: CachedNetworkImage(
-        imageUrl: url,
+        // I4: 模糊背景不需要细节——600 档在 DPR 2.75 下解码约
+        // 1650x1650（约 11 MB 位图）。固定走 200 档并按 200px 解码，
+        // 内存与带宽都降一个数量级，模糊后肉眼无差。
+        imageUrl: coverUrlAtWidth(url, 200),
         cacheManager: coverCacheManager,
         fit: BoxFit.cover,
-        memCacheWidth: coverCacheWidth(600, context),
-        memCacheHeight: coverCacheHeight(600, context),
+        memCacheWidth: 200,
+        memCacheHeight: 200,
         placeholder: (_, __) => fallback,
         errorWidget: (_, __, ___) => fallback,
       ),

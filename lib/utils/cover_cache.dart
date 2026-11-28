@@ -1,5 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+
+import '../models/display_book.dart';
+import 'diagnostics.dart';
 
 /// 封面图的内存解码尺寸：按显示逻辑尺寸 × 设备像素比取整。
 ///
@@ -27,6 +32,27 @@ final CacheManager coverCacheManager = CacheManager(
     maxNrOfCacheObjects: 1500,
   ),
 );
+
+/// I6: 数据到达后立刻预热前 [count] 张封面的磁盘缓存。`downloadFile`
+/// 只下载不解码（不占内存图像缓存），卡片进入视口前图已在盘上。
+/// 预热走 400 档——常见 DPR（2.75/3.0）的网格档位；低 DPR 设备的
+/// 网格用 300 档时会再补一次小下载。
+Future<void> _warmCover(CacheManager manager, String url) async {
+  try {
+    await manager.downloadFile(url);
+  } on Object catch (e) {
+    // 失败只放弃预热：预取是纯优化，不能变成首屏报错源。
+    logIgnored('cover_warm', e);
+  }
+}
+
+void warmCoverDiskCache(Iterable<DisplayBook> books, {int count = 9}) {
+  for (final b in books.take(count)) {
+    final c = b.cover;
+    if (c == null || c.isEmpty) continue;
+    unawaited(_warmCover(coverCacheManager, coverUrlAtWidth(c, 400)));
+  }
+}
 
 /// 实测过的 CDN 档位（见 [coverUrlAtWidth] 的注释）。
 const List<int> _kCoverBuckets = [100, 200, 300, 400, 500, 600, 800];

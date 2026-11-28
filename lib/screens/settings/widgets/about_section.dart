@@ -1,14 +1,19 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../widgets/book_quote_slip.dart';
 import '../../../theme/app_metrics.dart';
 import 'section_header.dart';
 import 'settings_card.dart';
 
+/// 关于区的"版本"行：连点 5 次（2 秒窗口内）翻出一张书语诗签
+/// 彩蛋。整行为点击区（行本身原先没有点击行为，互不影响），每次
+/// 连点带触觉反馈。
 class AboutSection extends StatelessWidget {
   const AboutSection({super.key});
 
@@ -39,17 +44,7 @@ class AboutSection extends StatelessWidget {
                     showLicensePage(context: context, applicationName: 'zlibx'),
               ),
               const SettingsDivider(),
-              ListTile(
-                leading: const Icon(Icons.info_outline),
-                title: Text(AppLocalizations.of(context)!.version),
-                trailing: FutureBuilder<PackageInfo>(
-                  future: PackageInfo.fromPlatform(),
-                  builder: (context, snapshot) {
-                    final version = snapshot.data?.version ?? '...';
-                    return Text(version);
-                  },
-                ),
-              ),
+              const _VersionRow(),
             ],
           ),
         ),
@@ -179,6 +174,54 @@ class AboutSection extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _VersionRow extends StatefulWidget {
+  const _VersionRow();
+
+  @override
+  State<_VersionRow> createState() => _VersionRowState();
+}
+
+class _VersionRowState extends State<_VersionRow> {
+  int _taps = 0;
+  Timer? _tapWindow;
+
+  void _onTap() {
+    HapticFeedback.selectionClick();
+    _taps += 1;
+    _tapWindow?.cancel();
+    _tapWindow = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _taps = 0);
+    });
+    if (_taps >= 5) {
+      _tapWindow?.cancel();
+      setState(() => _taps = 0);
+      unawaited(showBookQuoteSlip(context));
+    }
+  }
+
+  @override
+  void dispose() {
+    _tapWindow?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.info_outline),
+      title: Text(AppLocalizations.of(context)!.version),
+      onTap: _onTap,
+      trailing: FutureBuilder<PackageInfo>(
+        future: PackageInfo.fromPlatform(),
+        builder: (context, snapshot) {
+          final version = snapshot.data?.version ?? '...';
+          return Text(version);
+        },
       ),
     );
   }

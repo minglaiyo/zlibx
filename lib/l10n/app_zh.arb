@@ -877,7 +877,10 @@
   "webPageDownloadToPhone": "下载到手机",
   "webPageSearchHeading": "搜索“{q}”",
   "webPageZipEmpty": "这里还没有已下载的书，打包是空的。",
-  "webPageDownloadStarted": "已开始下载，会占用下载额度。完成后列表会自动同步，刷新页面即可看到这本书。",
+  "webPageDownloadStarted": "已开始下载，会占用下载额度。可以继续浏览或阅读，列表会自动更新，本页稍后自动返回。",
   "webPageAlreadyDownloaded": "这本书已经下载过了。",
-  "webPageAlreadyDownloading": "这本书正在下载中，请稍后再来。"
+  "webPageAlreadyDownloading": "这本书正在下载中，请稍后再来。",
+  "bookQuoteAgain": "再抽一张",
+  "webPageDownloadedTag": "已下载",
+  "webPageDownloading": "正在下载…"
 }

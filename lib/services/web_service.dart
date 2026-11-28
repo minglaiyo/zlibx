@@ -359,6 +359,14 @@ class WebPageStrings {
   final String notFound;
   final String convertFailed;
 
+  /// The chip marking a shelf book whose file is already on this
+  /// phone ("已下载").
+  final String downloadedTag;
+
+  /// The "downloading" line on a card whose round is in flight
+  /// ("正在下载…").
+  final String downloading;
+
   /// The pack-all capsule ("全部打包").
   final String packAll;
 
@@ -373,7 +381,8 @@ class WebPageStrings {
   final String zipEmpty;
 
   /// Message pages after a web-triggered download: started / already
-  /// on the phone / already downloading.
+  /// on the phone / already downloading. Each auto-returns to the page
+  /// the click came from.
   final String downloadStarted;
   final String alreadyDownloaded;
   final String alreadyDownloading;
@@ -394,6 +403,8 @@ class WebPageStrings {
     required this.backHome,
     required this.notFound,
     required this.convertFailed,
+    required this.downloadedTag,
+    required this.downloading,
     required this.packAll,
     required this.downloadToPhone,
     required this.searchHeading,
@@ -418,13 +429,15 @@ class WebPageStrings {
     backHome: 'Back to home',
     notFound: 'Not found',
     convertFailed: 'This text file could not be converted for reading.',
+    downloadedTag: 'Downloaded',
+    downloading: 'Downloading…',
     packAll: 'Pack all',
     downloadToPhone: 'Download to phone',
     searchHeading: _searchHeadingEn,
     zipEmpty: 'No downloaded books yet — the archive is empty.',
     downloadStarted: 'Download started — it counts against your daily '
-        'quota. When it finishes, the lists sync automatically; reload '
-        'to see the book here.',
+        'quota. You can keep browsing; the lists update automatically '
+        'and this page returns you where you were.',
     alreadyDownloaded: 'This book is already on the phone.',
     alreadyDownloading: 'A download for this book is already running — '
         'please wait.',
@@ -874,7 +887,7 @@ class WebService extends ChangeNotifier {
         case 'zip':
           return _zipRoute(segments);
         case 'request-download':
-          return _requestDownloadRoute(segments);
+          return _requestDownloadRoute(segments, lowerHeaders);
         case 'icon.png':
         case 'favicon.ico':
           return _iconRoute();
@@ -1015,7 +1028,9 @@ class WebService extends ChangeNotifier {
   /// confirmation page. The snapshot is frozen at start, so a book
   /// downloaded this way only shows up after the service restarts —
   /// the confirmation says so.
-  Future<WebResponse> _requestDownloadRoute(List<String> s) async {
+  Future<WebResponse> _requestDownloadRoute(List<String> s, Map<String, String> headers) async {
+    final referer = headers["referer"];
+    final host = headers["host"];
     if (s.length != 2 || !RegExp(r'^\d{1,9}$').hasMatch(s[1])) {
       return _notFound();
     }
@@ -1034,22 +1049,42 @@ class WebService extends ChangeNotifier {
       logIgnored('web_service', error);
       return _plain(HttpStatus.internalServerError, 'Internal Server Error');
     }
+    // 确认页只停留 2 秒就 meta refresh 回点击所在的页面：用户点完
+    // "下载到手机"继续浏览/阅读/再点别的下载，下载在手机后台跑，
+    // 首页的 pending 自动刷新（见 _homePage）负责把完成的新书带进
+    // 列表。
+    final backTo = _returnHeadExtra(referer, host);
     switch (outcome) {
       case WebDownloadRequest.started:
-        return _html(HttpStatus.ok, _messagePage(_strings.downloadStarted));
+        return _html(
+          HttpStatus.ok,
+          _messagePage(_strings.downloadStarted, headExtra: backTo),
+        );
       case WebDownloadRequest.alreadyDownloaded:
         return _html(
           HttpStatus.ok,
-          _messagePage(_strings.alreadyDownloaded),
+          _messagePage(_strings.alreadyDownloaded, headExtra: backTo),
         );
       case WebDownloadRequest.alreadyDownloading:
         return _html(
           HttpStatus.ok,
-          _messagePage(_strings.alreadyDownloading),
+          _messagePage(_strings.alreadyDownloading, headExtra: backTo),
         );
       case WebDownloadRequest.notFound:
         return _notFound();
     }
+  }
+
+  /// meta refresh 回到点击来源页：只接受与请求 Host 同源的 Referer
+  /// （防开放跳转），拿不到或不同源就回首页。
+  String _returnHeadExtra(String? referer, String? host) {
+    final ref = (referer ?? "").trim();
+    final origin = host == null || host.isEmpty ? "" : "http://$host/";
+    if (origin.isNotEmpty && ref.startsWith(origin)) {
+      final path = ref.substring(origin.length);
+      return '<meta http-equiv="refresh" content="2; url=/$path">';
+    }
+    return '<meta http-equiv="refresh" content="2; url=/">';
   }
 
   /// The app icon (item 8): /icon.png and /favicon.ico serve the
@@ -1095,7 +1130,7 @@ class WebService extends ChangeNotifier {
       for (final e in _snapshot.library) {
         if ((hit(e.title) || hit(e.author)) &&
             (e.fileIndex == null || !matchedFiles.contains(e.fileIndex))) {
-          cards.add(_bookCard(e));
+          cards.add(_bookCard(e, library: true));
         }
       }
     }
@@ -1476,6 +1511,9 @@ class WebService extends ChangeNotifier {
         'display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700}'
         '.info{flex:1;min-width:0}'
         '.name{font-weight:700;color:$text;word-wrap:break-word}'
+        '.dl-tag{display:inline-block;margin-left:8px;padding:1px 10px;'
+        'border-radius:30px;font-size:11px;font-weight:600;'
+        'background:$brandSoft;color:$brand;vertical-align:1px}'
         '.meta{color:$muted;font-size:12px;margin-top:2px}'
         '.desc{color:$muted;font-size:12px;margin-top:4px;max-height:3em;'
         'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'
@@ -1540,6 +1578,7 @@ class WebService extends ChangeNotifier {
     String body, {
     WebLayout layout = WebLayout.pc,
     WebTheme theme = WebTheme.auto,
+    String headExtra = '',
   }) {
     final palette = _palette;
     // With the app palette handed over, the scheme is already resolved:
@@ -1561,7 +1600,7 @@ class WebService extends ChangeNotifier {
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         '<link rel="icon" type="image/png" href="/icon.png">'
         '<link rel="apple-touch-icon" href="/icon.png">'
-        '<title>${escapeHtml(title)}</title><style>$css</style></head>'
+        '<title>${escapeHtml(title)}</title><style>$css</style>$headExtra</head>'
         '<body class="$cls">$body</body></html>';
   }
 
@@ -1589,12 +1628,13 @@ class WebService extends ChangeNotifier {
         '</form></div>';
   }
 
-  String _messagePage(String message) => _page(
+  String _messagePage(String message, {String headExtra = ''}) => _page(
     message,
     _layout(
       '<p>${escapeHtml(message)}</p>'
       '<p><a href="/">${escapeHtml(_strings.backHome)}</a></p>',
     ),
+    headExtra: headExtra,
   );
 
   /// First character of [title], for the no-cover tile ('?' when empty).
@@ -1612,7 +1652,7 @@ class WebService extends ChangeNotifier {
   /// "downloading". (Legado shows chapter counts and read progress
   /// here; zlibx has no such data, so its lines are title,
   /// author · format · size, description, actions.)
-  String _bookCard(WebEntry e) {
+  String _bookCard(WebEntry e, {bool library = false}) {
     final b = StringBuffer('<article class="card">');
     final cover = e.coverUrl;
     if (cover != null && cover.isNotEmpty) {
@@ -1639,7 +1679,12 @@ class WebService extends ChangeNotifier {
     }
     b.write('<div class="info">');
     final title = escapeHtml(e.title);
-    b.write('<div class="name">$title</div>');
+    // 图书馆区里已在手机上的书：标题旁一枚同风格小胶囊标注（主色
+    // 软底 + 主色文字，与次级按钮同族）。
+    final tag = library && e.fileIndex != null
+        ? '<span class="dl-tag">${escapeHtml(_strings.downloadedTag)}</span>'
+        : '';
+    b.write('<div class="name">$title$tag</div>');
     final meta = [
       if (e.author.isNotEmpty) e.author,
       if (e.extension.isNotEmpty) e.extension.toUpperCase(),
@@ -1672,7 +1717,9 @@ class WebService extends ChangeNotifier {
       b.write('</div>');
     } else if (e.downloadPending) {
       b.write(
-        '<div class="actions"><span class="dim">正在下载…</span></div>',
+        '<div class="actions">'
+        '<span class="dim">${escapeHtml(_strings.downloading)}</span>'
+        '</div>',
       );
     } else if (e.bookId != null) {
       b.write(
@@ -1696,10 +1743,16 @@ class WebService extends ChangeNotifier {
       : '<div class="grid">${cards.join()}</div>';
 
   String _homePage(WebLayout layout, [WebTheme theme = WebTheme.auto]) {
+    // 有下载在途时首页每 8 秒自刷新——完成的那一次刷新正好把新书
+    // 带进列表，任务清空后 meta 消失、刷新自动停止。阅读页（/read）
+    // 永不自动刷新。
+    final headExtra = _snapshot.pendingBookIds.isEmpty
+        ? ""
+        : '<meta http-equiv="refresh" content="8; url=/">';
     final downloaded = [
       for (var i = 0; i < _snapshot.files.length; i++) _bookCard(_entryFromFile(i)),
     ];
-    final library = _snapshot.library.map(_bookCard);
+    final library = _snapshot.library.map((e) => _bookCard(e, library: true));
     // The pack-all and reload capsules share one row, symmetric: pack
     // all on the left, reload on the right. An empty href navigates to
     // the current URL: a plain reload that picks up the phone's latest
@@ -1727,6 +1780,7 @@ class WebService extends ChangeNotifier {
       layout == WebLayout.mobile ? _mobileLayout(main) : _layout(main),
       layout: layout,
       theme: theme,
+      headExtra: headExtra,
     );
   }
 

@@ -383,13 +383,21 @@ void main() {
       expect(r.body, isNot(contains('<ul')));
       expect(r.body, isNot(contains('border:1px solid #ddd')));
       expect(r.body, isNot(contains('class="badge"')));
-      // Covers: the EPUB has one, the PDF falls back to a
-      // first-letter tile ('Pdf Book' -> 'P').
+      // Covers: the EPUB has one (with an inline onerror that swaps a
+      // dead / hotlink-protected remote image for the same
+      // first-letter tile), the PDF has none and shows the tile
+      // directly ('Pdf Book' -> 'P').
       expect(
         r.body,
         contains('<img class="cover" src="https://covers.example/a.jpg"'),
       );
       expect(r.body, contains('src="https://covers.example/shelf.jpg"'));
+      expect(r.body, contains('data-ph="E"'));
+      expect(r.body, contains('data-ph="O"'));
+      // The inline handler reaches the browser with plain single quotes
+      // (a literal backslash-quote would be a JS syntax error).
+      expect(r.body, contains("onerror=\"var p=document.createElement('div')"));
+      expect(r.body, contains("this.replaceWith(p)\">"));
       expect(r.body, contains('class="cover-ph"'));
       expect(r.body, contains('>P</div>'));
       expect(r.body, contains('href="/download/0"'));

@@ -12,6 +12,7 @@ import '../../providers/download_provider.dart';
 import '../../providers/saved_books_notifier.dart';
 import '../../services/lan_share.dart';
 import '../../services/network_state_channel.dart';
+import '../../services/web_keepalive.dart';
 import '../../services/web_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_metrics.dart';
@@ -77,6 +78,18 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
       _selection = selection;
       _clients = clients;
     });
+    // The address may have changed while the server runs (the hotspot
+    // was re-enabled): refresh the keep-alive notification so it shows
+    // an address that actually works. No-op when the server is off.
+    if (_service.isRunning) {
+      final primary = selection.primary;
+      final port = _service.port;
+      if (primary != null && port != null) {
+        unawaited(
+          WebKeepalive.updateText(lanUrl(primary.address, port)),
+        );
+      }
+    }
   }
 
   Future<void> _start() async {
@@ -99,6 +112,29 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
         onRequestDownload: (bookId) =>
             _requestDownload(notifier, bookById, bookId),
       );
+      // Screen-off keep-alive (WebKeepaliveService): the notification
+      // shows the address other devices should open. Best-effort —
+      // failures are logged inside the bridge; the server runs either
+      // way. An empty text keeps just the "zlibx" title (no detected
+      // address is rare, but the CPU/Wi-Fi locks still matter).
+      final primary = _selection?.primary;
+      final port = _service.port;
+      unawaited(
+        WebKeepalive.start(
+          text: primary == null || port == null
+              ? ''
+              : lanUrl(primary.address, port),
+        ),
+      );
+      // Battery optimization: aggressive OEM builds kill even the
+      // foreground service, so the keep-alive is not bulletproof
+      // without the exemption. The moment the user starts serving is
+      // exactly when the dialog is meaningful — asking from a bare
+      // settings entry would be easy to ignore. Exempted devices and
+      // non-Android platforms never see it.
+      if (!await WebKeepalive.isIgnoringBatteryOptimization()) {
+        unawaited(WebKeepalive.requestIgnoreBatteryOptimization());
+      }
     } on LocalNetworkPermissionDenied {
       logIgnored('web_service_screen', 'local network permission denied');
       if (mounted) {
@@ -131,6 +167,9 @@ class _WebServiceScreenState extends ConsumerState<WebServiceScreen> {
     try {
       await _service.stop();
     } finally {
+      // Drop the keep-alive notice and locks even if the stop threw:
+      // a dead server with a live "serving at …" notice is a lie.
+      unawaited(WebKeepalive.stop());
       if (mounted) {
         setState(() {
           _busy = false;

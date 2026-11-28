@@ -30,6 +30,8 @@ import io.flutter.plugin.common.StandardMethodCodec
 // - SafHandler — SAF tree walk / copy / delete / grants
 // - NetworkStateHandler — lanAddressInfo facts
 // - DownloadServiceHandler — foreground-service channel
+// - WebKeepaliveHandler — web keep-alive foreground service + battery
+//   optimization helpers
 // - AppInstallHandler — APK verify + install
 // - AppRestartHandler — process restart after backup import
 // Channel names and method names are unchanged, so no Dart call
@@ -59,6 +61,7 @@ class MainActivity : FlutterFragmentActivity() {
     private val networkStateHandler = NetworkStateHandler(this, runner)
     private val downloadServiceHandler =
         DownloadServiceHandler(this, runner, hashHandler)
+    private val webKeepaliveHandler = WebKeepaliveHandler(this)
     private val appInstallHandler = AppInstallHandler(this, runner)
     private val appRestartHandler = AppRestartHandler(this)
 
@@ -169,6 +172,7 @@ class MainActivity : FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
         downloadServiceHandler.messenger = messenger
+        webKeepaliveHandler.messenger = messenger
 
         val taskQueue = messenger.makeBackgroundTaskQueue()
         mediaStoreTaskQueue = taskQueue
@@ -258,6 +262,16 @@ class MainActivity : FlutterFragmentActivity() {
         MethodChannel(messenger, "zlibx/download_service")
             .setMethodCallHandler { call, result ->
                 if (!downloadServiceHandler.handleMethod(call, result)) {
+                    result.notImplemented()
+                }
+            }
+
+        // Web service keep-alive: Dart starts/stops the specialUse
+        // foreground service with the shown address, and asks for the
+        // battery-optimization state / dialog behind the settings entry.
+        MethodChannel(messenger, "zlibx/web_keepalive")
+            .setMethodCallHandler { call, result ->
+                if (!webKeepaliveHandler.handleMethod(call, result)) {
                     result.notImplemented()
                 }
             }

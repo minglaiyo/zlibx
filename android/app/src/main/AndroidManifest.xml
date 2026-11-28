@@ -24,6 +24,22 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Web service keep-alive: a specialUse foreground service holds a
+         wake lock + Wi-Fi lock while the LAN book server runs, so a
+         browser on another device keeps working after the screen locks
+         (specialUse instead of dataSync: dataSync carries an Android 15+
+         time budget that would end a long reading session). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Web service keep-alive: acquiring a WifiManager.WifiLock needs
+         CHANGE_WIFI_STATE (normal permission). -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- Web service keep-alive: the settings entry fires
+         ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS so the user can
+         exempt zlibx in one tap; aggressive OEM builds kill even
+         foreground services without this. Normal permission, but Play
+         policy restricts its use — zlibx is sideloaded, and the dialog
+         fires only from the user's explicit settings-page tap. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- ISBN barcode scanning (扫码搜书): camera for mobile_scanner.
          uses-feature required=false so camera-less devices can still
          install the app; the scanner simply cannot start there. -->
@@ -101,6 +117,22 @@
             android:name=".DownloadForegroundService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
+        <!-- Web service keep-alive: holds wake + Wi-Fi locks while the
+             LAN book server runs, so other devices keep reading with the
+             screen off. specialUse (declared subtype below) instead of
+             dataSync: dataSync carries an Android 15+ cumulative time
+             budget (~6 h per 24 h) that would cut a long reading
+             session; specialUse has none, and zlibx is sideloaded (no
+             store review of the subtype). Not exported — only this
+             app's Dart layer starts it via a method channel. -->
+        <service
+            android:name=".WebKeepaliveService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="LAN book server: keeps the local HTTP server reachable for other devices while the screen is off" />
+        </service>
         <!-- In-app update install (plan 12–16): the system installer
              (running in another process) reads the downloaded APK through
              this FileProvider URI. Not exported; grantUriPermissions

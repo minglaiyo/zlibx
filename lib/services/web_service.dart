@@ -32,10 +32,14 @@
 //    request path never names a file system path.
 //  * Every response is answered with `Connection: close`: one request
 //    per connection, no keep-alive.
+//  * Large files are never held in memory: downloads and /book stream
+//    from disk (Range / If-Range / ETag so a browser can resume), the
+//    zip is generated on the fly ([StreamingZip]), and TXT -> EPUB
+//    conversion runs in a background isolate and is served from its
+//    cache file, not from a byte buffer.
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
@@ -47,6 +51,7 @@ import 'app_icon.dart';
 import 'media_store.dart';
 import 'reader_formats.dart';
 import 'saf_folder_access.dart';
+import 'streaming_zip.dart';
 import 'txt_to_epub.dart';
 import 'web_reader_page.dart';
 
@@ -387,7 +392,8 @@ class WebPageStrings {
 ///
 /// One answered request: [status], [headers], and exactly one payload
 /// — [body] for small in-memory answers (HTML, plain text, reader
-/// assets, converted EPUBs), or [filePath] for a real file on disk
+/// assets), [bodyStream] for a generated stream (the zip), or
+/// [filePath] for a real file on disk
 /// that [_dispatch] streams, bytes [fileStart]..[fileEnd] inclusive
 /// (null start = 0, null end = end of file). [headers] always carries
 /// Content-Type and Content-Length (and Content-Range for a 206), so
@@ -406,6 +412,12 @@ class WebResponse {
   final int? fileStart;
   final int? fileEnd;
 
+  /// A generated payload of known length (the zip): [_dispatch]
+  /// calls it once per GET and pipes the stream to the socket, so the
+  /// whole thing never sits in memory. [headers] must carry the exact
+  /// Content-Length.
+  final Stream<List<int>> Function()? bodyStream;
+
   const WebResponse({
     required this.status,
     this.headers = const <String, String>{},
@@ -413,6 +425,7 @@ class WebResponse {
     this.filePath,
     this.fileStart,
     this.fileEnd,
+    this.bodyStream,
   });
 }
 
@@ -536,6 +549,7 @@ class WebService extends ChangeNotifier {
     }
 
     _snapshot = snapshot;
+    _pathCache.clear();
     _strings = strings;
     _onRequestDownload = onRequestDownload;
     HttpServer server;
@@ -578,6 +592,7 @@ class WebService extends ChangeNotifier {
     final server = _server;
     if (server == null) return;
     _server = null;
+    _pathCache.clear();
     await server.close(force: true);
     notifyListeners();
   }
@@ -616,6 +631,8 @@ class WebService extends ChangeNotifier {
           await httpResponse.addStream(
             file.openRead(start, end == null ? null : end + 1),
           );
+        } else if (response.bodyStream != null) {
+          await httpResponse.addStream(response.bodyStream!());
         } else if (response.body != null) {
           httpResponse.add(response.body!);
         }
@@ -688,11 +705,19 @@ class WebService extends ChangeNotifier {
         case 'favicon.ico':
           return _iconRoute();
         case 'download':
-          return _downloadRoute(segments, lowerHeaders['range']);
+          return _downloadRoute(
+            segments,
+            lowerHeaders['range'],
+            lowerHeaders['if-range'],
+          );
         case 'read':
           return _readRoute(segments);
         case 'book':
-          return _bookRoute(segments, lowerHeaders['range']);
+          return _bookRoute(
+            segments,
+            lowerHeaders['range'],
+            lowerHeaders['if-range'],
+          );
         case 'reader-assets':
           return _assetRoute(segments);
         case 'search':
@@ -738,8 +763,11 @@ class WebService extends ChangeNotifier {
   }
 
   /// Zip download (item 2): /zip/all packs every downloaded book.
-  /// The zip is built in memory (archive's encoder is an in-memory
-  /// operation) and returned as an attachment.
+  /// The archive is generated on the fly ([StreamingZip]): books are
+  /// read from disk chunk by chunk straight into the socket, stored
+  /// uncompressed (they are already compressed formats), and the exact
+  /// length is known up front so the browser shows real progress.
+  /// Memory use stays flat however big the library is.
   Future<WebResponse> _zipRoute(List<String> s) async {
     List<int> indices;
     String zipName;
@@ -755,13 +783,13 @@ class WebService extends ChangeNotifier {
         _messagePage('这里还没有已下载的书，打包是空的。'),
       );
     }
-    final archive = Archive();
+    final plan = <ZipPlanEntry>[];
     final usedNames = <String>{};
     for (final index in indices) {
       final file = await _fileFor(index);
       if (file == null) continue;
       final entry = _snapshot.files[index];
-      final bytes = await file.readAsBytes();
+      final stat = await file.stat();
       var name = _zipEntryName(entry);
       var n = 2;
       while (usedNames.contains(name)) {
@@ -769,24 +797,30 @@ class WebService extends ChangeNotifier {
         n++;
       }
       usedNames.add(name);
-      archive.addFile(ArchiveFile(name, bytes.length, bytes));
+      plan.add(
+        ZipPlanEntry(
+          name: name,
+          path: file.path,
+          size: stat.size,
+          modified: stat.modified,
+        ),
+      );
     }
-    if (archive.files.isEmpty) {
+    if (plan.isEmpty) {
       return _html(
         HttpStatus.ok,
         _messagePage('这里还没有已下载的书，打包是空的。'),
       );
     }
-    final encoded = ZipEncoder().encode(archive);
-    final body = Uint8List.fromList(encoded);
+    final zip = StreamingZip(plan);
     return WebResponse(
       status: HttpStatus.ok,
       headers: <String, String>{
         'Content-Type': 'application/zip',
-        'Content-Length': body.length.toString(),
+        'Content-Length': zip.length.toString(),
         'Content-Disposition': _contentDisposition(zipName),
       },
-      body: body,
+      bodyStream: zip.stream,
     );
   }
 
@@ -894,16 +928,32 @@ class WebService extends ChangeNotifier {
     return _html(HttpStatus.ok, _searchPage(q, cards, layout, theme));
   }
 
+  /// Resolved real paths by snapshot index. Resolving can be
+  /// expensive — an orphaned file is MATERIALIZED (copied) through the
+  /// SAF grant — and a reader that pages through a big book issues
+  /// hundreds of Range requests, so the answer is remembered for the
+  /// life of the snapshot (and re-checked with a cheap exists()).
+  final Map<int, String> _pathCache = <int, String>{};
+
   Future<File?> _fileFor(int index) async {
+    final cached = _pathCache[index];
+    if (cached != null) {
+      final known = File(cached);
+      if (await known.exists()) return known;
+      _pathCache.remove(index);
+    }
     final path = await _resolvePath(_snapshot.files[index].location);
     if (path == null) return null;
     final file = File(path);
-    return await file.exists() ? file : null;
+    if (!await file.exists()) return null;
+    _pathCache[index] = path;
+    return file;
   }
 
   Future<WebResponse> _downloadRoute(
     List<String> s,
     String? rangeHeader,
+    String? ifRange,
   ) async {
     final index = _fileIndex(s);
     if (index == null) return _notFound();
@@ -914,6 +964,7 @@ class WebService extends ChangeNotifier {
       contentType: _mimeFor(_snapshot.files[index].extension),
       downloadName: p.basename(file.path),
       rangeHeader: rangeHeader,
+      ifRange: ifRange,
     );
   }
 
@@ -929,7 +980,7 @@ class WebService extends ChangeNotifier {
       // Convert up front so a failure becomes a readable page here
       // rather than a broken reader; /book then hits the cache.
       try {
-        await _txt.epubFor(file.path, title: entry.title);
+        await _txt.epubFileFor(file.path, title: entry.title);
       } on TxtConvertException {
         return _html(
           HttpStatus.unprocessableEntity,
@@ -947,7 +998,11 @@ class WebService extends ChangeNotifier {
     );
   }
 
-  Future<WebResponse> _bookRoute(List<String> s, String? rangeHeader) async {
+  Future<WebResponse> _bookRoute(
+    List<String> s,
+    String? rangeHeader,
+    String? ifRange,
+  ) async {
     final index = _fileIndex(s);
     if (index == null) return _notFound();
     final entry = _snapshot.files[index];
@@ -960,20 +1015,22 @@ class WebService extends ChangeNotifier {
 
     final ext = entry.extension.toLowerCase();
     if (ext == 'txt') {
-      final Uint8List epub;
+      // Served from the converter's cache FILE (streamed, Range-able):
+      // a converted novel can be tens of MB and the reader page pages
+      // through it with Range requests.
+      final File epub;
       try {
-        epub = await _txt.epubFor(file.path, title: entry.title);
+        epub = await _txt.epubFileFor(file.path, title: entry.title);
       } on TxtConvertException {
         return _plain(HttpStatus.unprocessableEntity, 'convert failed');
       }
-      return WebResponse(
-        status: HttpStatus.ok,
-        headers: <String, String>{
-          'Content-Type': 'application/epub+zip',
-          'X-Book-Name': 'book.epub',
-          'Content-Length': epub.length.toString(),
-        },
-        body: epub,
+      return _sendFile(
+        epub,
+        contentType: 'application/epub+zip',
+        downloadName: null,
+        rangeHeader: rangeHeader,
+        ifRange: ifRange,
+        extraHeaders: const <String, String>{'X-Book-Name': 'book.epub'},
       );
     }
     return _sendFile(
@@ -981,6 +1038,7 @@ class WebService extends ChangeNotifier {
       contentType: _mimeFor(ext),
       downloadName: null,
       rangeHeader: rangeHeader,
+      ifRange: ifRange,
       extraHeaders: <String, String>{'X-Book-Name': 'book.$ext'},
     );
   }
@@ -995,6 +1053,9 @@ class WebService extends ChangeNotifier {
       headers: <String, String>{
         'Content-Type': 'text/javascript; charset=utf-8',
         'Content-Length': bytes.length.toString(),
+        // ~200 KB of reader JS; no need to re-fetch it (one TCP
+        // connection per file, no keep-alive) on every book open.
+        'Cache-Control': 'public, max-age=600',
       },
       body: Uint8List.fromList(bytes),
     );
@@ -1026,27 +1087,51 @@ class WebService extends ChangeNotifier {
     );
   }
 
-  /// Describe [file] for the native side to stream straight from disk
+  /// Describe [file] for [_dispatch] to stream straight from disk
   /// (never copied to a cache first). Supports a single
   /// `Range: bytes=a-b` so interrupted downloads can resume.
+  ///
+  /// The response carries a strong `ETag` (size + mtime) and
+  /// `Last-Modified`. Browsers (Chrome / Edge / Firefox) only resume
+  /// an interrupted download when the server offers a validator they
+  /// can send back in `If-Range`; without one a half-finished
+  /// multi-hundred-MB download restarts from zero. A request whose
+  /// `If-Range` no longer matches (the file was replaced) gets the
+  /// whole file with 200 instead of a splice of two different files.
+  ///
   /// [extraHeaders] are extra response headers (e.g. X-Book-Name);
-  /// [rangeHeader] is the request's `Range` value, if any.
+  /// [rangeHeader] / [ifRange] are the request's `Range` / `If-Range`.
   Future<WebResponse> _sendFile(
     File file, {
     required String contentType,
     String? downloadName,
     String? rangeHeader,
+    String? ifRange,
     Map<String, String> extraHeaders = const <String, String>{},
   }) async {
-    final length = await file.length();
+    final stat = await file.stat();
+    final length = stat.size;
+    final etag =
+        '"${length.toRadixString(16)}-'
+        '${stat.modified.millisecondsSinceEpoch.toRadixString(16)}"';
+    final lastModified = HttpDate.format(stat.modified.toUtc());
     var start = 0;
     var end = length - 1;
     var status = HttpStatus.ok;
 
-    if (rangeHeader != null) {
+    var rangeAllowed = rangeHeader != null;
+    final validator = ifRange?.trim();
+    if (rangeAllowed && validator != null && validator.isNotEmpty) {
+      // A weak validator (W/"...") never matches for If-Range.
+      rangeAllowed = validator.startsWith('"')
+          ? validator == etag
+          : validator == lastModified;
+    }
+
+    if (rangeAllowed) {
       final match = RegExp(
         r'^bytes=(\d*)-(\d*)$',
-      ).firstMatch(rangeHeader.trim());
+      ).firstMatch(rangeHeader!.trim());
       if (match != null && (match[1]!.isNotEmpty || match[2]!.isNotEmpty)) {
         if (match[1]!.isEmpty) {
           final suffix = int.tryParse(match[2]!) ?? 0;
@@ -1074,6 +1159,8 @@ class WebService extends ChangeNotifier {
       'Content-Type': contentType,
       'Accept-Ranges': 'bytes',
       'Content-Length': count.toString(),
+      'ETag': etag,
+      'Last-Modified': lastModified,
       ...extraHeaders,
     };
     if (status == HttpStatus.partialContent) {

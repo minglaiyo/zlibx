@@ -7,6 +7,15 @@
 // next paging with arrow keys, saved position, font size and a
 // light / dark theme. Position and settings live in the browser's
 // localStorage, keyed per book.
+//
+// Large books: the page does NOT download the whole file before showing
+// anything. A 1-byte Range probe finds the size; big epub / cbz / mobi
+// books are then opened through a file-like object that fetches byte
+// ranges on demand (and falls back to a full download with a progress
+// readout if that fails); everything else is downloaded with progress.
+// The script lives in a raw string ([_readerScript]) so JavaScript needs
+// no Dart escaping; only the per-book values are interpolated, through
+// a small config <script>.
 import 'dart:convert';
 
 /// Minimal HTML escaping for text placed in element content / attributes.
@@ -82,12 +91,44 @@ String buildReaderPage({
   </div>
   <div id="foot"><span id="where"></span><a href="/" style="color:var(--accent)">⌂</a></div>
 </div>
+<script>window.__ZLIBX = { url: ${_jsString('/book/$index')}, key: ${_jsString(bookKey)} };</script>
 <script type="module">
-const BOOK_URL = ${_jsString('/book/$index')};
-const BOOK_KEY = ${_jsString(bookKey)};
+$_readerScript
+</script>
+</body>
+</html>''';
+}
+
+/// The reader page's script (see the file header). A raw string: `$`
+/// and backslashes are JavaScript here, not Dart.
+const String _readerScript = r'''const CFG = window.__ZLIBX;
+const BOOK_URL = CFG.url;
+const BOOK_KEY = CFG.key;
 const POS_KEY = 'zlibx:pos:' + BOOK_KEY;
 const FONT_KEY = 'zlibx:font';
 const THEME_KEY = 'zlibx:theme';
+
+// ── Large-book loading ──
+// Books below LAZY_MIN are fetched whole (one request beats many).
+// Bigger zip/PDB-based books (epub, cbz, mobi, azw3) are NOT
+// downloaded up front: the reader gets a file-like object that pulls
+// byte ranges on demand, so a 300 MB comic opens as soon as its
+// directory has been read and only the pages you turn to are fetched.
+const LAZY_MIN = 8 * 1024 * 1024;
+const BLOCK = 256 * 1024;
+const MAX_BLOCKS = 48; // ~12 MB of cached blocks
+const LAZY_EXT = new Set(['epub', 'cbz', 'mobi', 'azw3', 'azw']);
+
+const zh = /^zh/i.test(navigator.language || '');
+const T = zh ? {
+  loading: '正在加载', opening: '正在打开…', parsing: '正在解析…',
+  noLib: '阅读器组件未安装（assets/web-reader/ 为空），见 VENDORED.md。',
+  loadFail: '无法加载这本书', openFail: '无法打开这本书',
+} : {
+  loading: 'Loading', opening: 'Opening…', parsing: 'Parsing…',
+  noLib: 'Reader library is not installed (assets/web-reader/ is empty). See VENDORED.md.',
+  loadFail: 'Could not load this book', openFail: 'Could not open this book',
+};
 
 // localStorage can be missing or full (private mode): never let that
 // break reading.
@@ -96,9 +137,13 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* noop */ } },
 };
 
-const \$ = (id) => document.getElementById(id);
-const status = \$('status');
+const $ = (id) => document.getElementById(id);
+const status = $('status');
+let fatal = false;
 const say = (msg) => { status.hidden = false; status.textContent = msg; };
+const fail = (msg) => { fatal = true; say(msg); };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const fmtMB = (n) => (n / 1048576).toFixed(n >= 10485760 ? 0 : 1) + ' MB';
 
 // ── Theme ──
 let theme = store.get(THEME_KEY) ||
@@ -107,7 +152,7 @@ const applyTheme = () => {
   document.documentElement.dataset.theme = theme;
   applyStyle();
 };
-\$('btn-theme').onclick = () => {
+$('btn-theme').onclick = () => {
   theme = theme === 'dark' ? 'light' : 'dark';
   store.set(THEME_KEY, theme);
   applyTheme();
@@ -115,8 +160,8 @@ const applyTheme = () => {
 
 // ── Font size ──
 let fontPct = Math.min(250, Math.max(60, parseInt(store.get(FONT_KEY) || '100', 10) || 100));
-\$('btn-font-').onclick = () => { fontPct = Math.max(60, fontPct - 10); store.set(FONT_KEY, String(fontPct)); applyStyle(); };
-\$('btn-font+').onclick = () => { fontPct = Math.min(250, fontPct + 10); store.set(FONT_KEY, String(fontPct)); applyStyle(); };
+$('btn-font-').onclick = () => { fontPct = Math.max(60, fontPct - 10); store.set(FONT_KEY, String(fontPct)); applyStyle(); };
+$('btn-font+').onclick = () => { fontPct = Math.min(250, fontPct + 10); store.set(FONT_KEY, String(fontPct)); applyStyle(); };
 
 let view = null;
 function applyStyle() {
@@ -131,8 +176,8 @@ function applyStyle() {
 // ── Paging ──
 const prev = () => view && view.prev();
 const next = () => view && view.next();
-\$('btn-prev').onclick = prev;
-\$('btn-next').onclick = next;
+$('btn-prev').onclick = prev;
+$('btn-next').onclick = next;
 const onKey = (e) => {
   if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
   else if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); next(); }
@@ -140,9 +185,9 @@ const onKey = (e) => {
 addEventListener('keydown', onKey);
 
 // ── Contents ──
-\$('btn-toc').onclick = () => { \$('toc').hidden = !\$('toc').hidden; };
+$('btn-toc').onclick = () => { $('toc').hidden = !$('toc').hidden; };
 function renderToc(items, depth = 0) {
-  const nav = \$('toc');
+  const nav = $('toc');
   for (const item of items || []) {
     const a = document.createElement('a');
     a.textContent = item.label || '';
@@ -154,45 +199,234 @@ function renderToc(items, depth = 0) {
   }
 }
 
-// ── Boot ──
-try {
-  await import('/reader-assets/view.js');
-} catch (e) {
-  say('Reader library is not installed (assets/web-reader/ is empty). See VENDORED.md.');
-  throw e;
+// ── A file-like object backed by HTTP Range requests ──
+// foliate-js (and the zip.js inside it) only ever call size, name,
+// type, slice(a, b).arrayBuffer() and arrayBuffer() on the book, so
+// this is enough to stand in for a File without holding the book.
+const clampIndex = (v, size, dflt) =>
+  v === undefined ? dflt : v < 0 ? Math.max(0, size + v) : Math.min(v, size);
+
+class RangeSlice {
+  constructor(file, start, end) { this.file = file; this.start = start; this.end = end; }
+  get size() { return this.end - this.start; }
+  get type() { return ''; }
+  slice(a, b) {
+    const s = clampIndex(a, this.size, 0);
+    const e = clampIndex(b, this.size, this.size);
+    return new RangeSlice(this.file, this.start + s, this.start + Math.max(s, e));
+  }
+  arrayBuffer() { return this.file.read(this.start, this.end); }
+  async text() { return new TextDecoder().decode(await this.arrayBuffer()); }
 }
 
-try {
-  const resp = await fetch(BOOK_URL);
-  if (!resp.ok) { say('Could not load this book (' + resp.status + ').'); throw new Error('book ' + resp.status); }
-  const blob = await resp.blob();
-  const name = resp.headers.get('X-Book-Name') || 'book';
-  const file = new File([blob], name, { type: blob.type });
+class RangeFile {
+  constructor(url, size, name, type) {
+    this.url = url; this.size = size; this.name = name; this.type = type;
+    this.blocks = new Map();   // block index -> Uint8Array, in LRU order
+    this.pending = new Map();  // block index -> Promise<Uint8Array>
+  }
+  slice(a, b) {
+    const s = clampIndex(a, this.size, 0);
+    const e = clampIndex(b, this.size, this.size);
+    return new RangeSlice(this, s, Math.max(s, e));
+  }
+  arrayBuffer() { return this.read(0, this.size); }
+  async text() { return new TextDecoder().decode(await this.arrayBuffer()); }
 
-  view = document.createElement('foliate-view');
-  \$('stage').appendChild(view);
-  view.addEventListener('relocate', (e) => {
+  async read(start, end) {
+    if (end <= start) return new ArrayBuffer(0);
+    // A big read goes straight through; only small, repeated reads
+    // (zip headers, directory, 64 KB inflate chunks) use the cache.
+    if (end - start >= BLOCK * 4) return this.fetchRange(start, end);
+    const first = Math.floor(start / BLOCK);
+    const last = Math.floor((end - 1) / BLOCK);
+    const wanted = [];
+    for (let i = first; i <= last; i++) wanted.push(this.block(i));
+    const parts = await Promise.all(wanted);
+    const out = new Uint8Array(end - start);
+    let pos = 0;
+    for (let i = first; i <= last; i++) {
+      const blk = parts[i - first];
+      const base = i * BLOCK;
+      const from = Math.max(start, base) - base;
+      const to = Math.min(end, base + blk.length) - base;
+      out.set(blk.subarray(from, to), pos);
+      pos += to - from;
+    }
+    return out.buffer;
+  }
+
+  block(i) {
+    const hit = this.blocks.get(i);
+    if (hit) { this.blocks.delete(i); this.blocks.set(i, hit); return Promise.resolve(hit); }
+    let p = this.pending.get(i);
+    if (!p) {
+      const s = i * BLOCK;
+      const e = Math.min(this.size, s + BLOCK);
+      p = this.fetchRange(s, e).then((buf) => {
+        const u = new Uint8Array(buf);
+        this.blocks.set(i, u);
+        while (this.blocks.size > MAX_BLOCKS) this.blocks.delete(this.blocks.keys().next().value);
+        this.pending.delete(i);
+        return u;
+      }, (err) => { this.pending.delete(i); throw err; });
+      this.pending.set(i, p);
+    }
+    return p;
+  }
+
+  async fetchRange(start, end) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const r = await fetch(this.url, { headers: { Range: 'bytes=' + start + '-' + (end - 1) } });
+        if (r.status !== 206) throw new Error('range ' + r.status);
+        const buf = await r.arrayBuffer();
+        if (buf.byteLength !== end - start) throw new Error('short read');
+        return buf;
+      } catch (e) {
+        // The phone may be mid-wifi-hiccup: a couple of quick retries.
+        if (attempt >= 2) throw e;
+        await sleep(250 * (attempt + 1));
+      }
+    }
+  }
+}
+
+// ── Whole-book download, with a progress readout ──
+async function readWithProgress(resp, total, type) {
+  if (!resp.body || !resp.body.getReader) return resp.blob();
+  const reader = resp.body.getReader();
+  const chunks = [];
+  let got = 0;
+  let last = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    got += value.length;
+    const now = performance.now();
+    if (now - last > 120) {
+      last = now;
+      say(T.loading + ' ' + (total ? Math.floor(got * 100 / total) + '% (' + fmtMB(got) + ' / ' + fmtMB(total) + ')' : fmtMB(got)));
+    }
+  }
+  return new Blob(chunks, { type });
+}
+
+// A 1-byte Range probe: tells us the size and whether the server can
+// do ranges, without committing to a full download.
+async function probe() {
+  const r = await fetch(BOOK_URL, { headers: { Range: 'bytes=0-0' } });
+  const name = r.headers.get('X-Book-Name') || 'book';
+  const type = r.headers.get('Content-Type') || '';
+  if (r.status === 206) {
+    const m = /\/(\d+)\s*$/.exec(r.headers.get('Content-Range') || '');
+    try { await r.arrayBuffer(); } catch (e) { /* noop */ }
+    return { ranged: !!m, total: m ? parseInt(m[1], 10) : 0, name, type, response: null };
+  }
+  if (r.ok) {
+    // No Range support: this response already IS the whole book.
+    return { ranged: false, total: 0, name, type, response: r };
+  }
+  const err = new Error('book ' + r.status);
+  err.status = r.status;
+  throw err;
+}
+
+async function fetchWhole(info) {
+  const resp = info.response || await fetch(BOOK_URL);
+  if (!resp.ok) { const err = new Error('book ' + resp.status); err.status = resp.status; throw err; }
+  const total = info.total || parseInt(resp.headers.get('Content-Length') || '0', 10) || 0;
+  say(T.loading + ' …');
+  const blob = await readWithProgress(resp, total, info.type);
+  say(T.parsing);
+  return new File([blob], info.name, { type: info.type });
+}
+
+// ── View ──
+function makeView() {
+  const v = document.createElement('foliate-view');
+  $('stage').appendChild(v);
+  v.addEventListener('relocate', (e) => {
     const d = e.detail || {};
     if (d.cfi) store.set(POS_KEY, d.cfi);
-    if (typeof d.fraction === 'number') \$('where').textContent = Math.round(d.fraction * 100) + '%';
+    if (typeof d.fraction === 'number') $('where').textContent = Math.round(d.fraction * 100) + '%';
   });
-  view.addEventListener('load', (e) => {
+  v.addEventListener('load', (e) => {
     // Arrow keys must also work while focus is inside the book iframe.
     const doc = e.detail && e.detail.doc;
     if (doc) doc.addEventListener('keydown', onKey);
   });
+  view = v;
+  return v;
+}
 
-  await view.open(file);
+function dropView() {
+  if (!view) return;
+  try { if (view.close) view.close(); } catch (e) { /* noop */ }
+  try { view.remove(); } catch (e) { /* noop */ }
+  view = null;
+}
+
+async function openBook(file) {
+  const v = makeView();
+  await v.open(file);
+}
+
+async function finishOpen() {
   status.hidden = true;
+  $('toc').textContent = '';
   renderToc(view.book && view.book.toc);
   applyTheme();
   const saved = store.get(POS_KEY);
   if (saved) { try { await view.goTo(saved); } catch (e) { await view.goToFraction(0); } }
   else { await view.goToFraction(0); }
+}
+
+// ── Boot ──
+try {
+  try {
+    await import('/reader-assets/view.js');
+  } catch (e) {
+    fail(T.noLib);
+    throw e;
+  }
+
+  let info;
+  try {
+    info = await probe();
+  } catch (e) {
+    fail(T.loadFail + (e.status ? ' (' + e.status + ')' : ''));
+    throw e;
+  }
+
+  const ext = ((info.name.split('.').pop()) || '').toLowerCase();
+  let opened = false;
+  if (info.ranged && info.total >= LAZY_MIN && LAZY_EXT.has(ext)) {
+    say(T.opening);
+    try {
+      await openBook(new RangeFile(BOOK_URL, info.total, info.name, info.type));
+      opened = true;
+    } catch (e) {
+      // Lazy reading is an optimisation: whatever went wrong, the
+      // plain full download below is the safe path.
+      console.warn('lazy open failed, falling back to a full download', e);
+      dropView();
+    }
+  }
+  if (!opened) {
+    let file;
+    try {
+      file = await fetchWhole(info);
+    } catch (e) {
+      fail(T.loadFail + (e.status ? ' (' + e.status + ')' : ''));
+      throw e;
+    }
+    await openBook(file);
+  }
+  await finishOpen();
 } catch (e) {
-  if (status.hidden) say('Could not open this book.');
+  console.error(e);
+  if (!fatal) fail(T.openFail);
 }
-</script>
-</body>
-</html>''';
-}
+''';

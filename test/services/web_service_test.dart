@@ -7,7 +7,9 @@
 // tested against a fake `zlibx/local_network` channel.
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:olib_api_plugin/olib_api_plugin.dart';
@@ -23,9 +25,25 @@ class Reply {
   final WebResponse response;
   Reply(this.response);
 
+  /// The generated payload ([WebResponse.bodyStream], i.e. the zip),
+  /// collected by [drain].
+  Uint8List? _streamed;
+
+  /// Collect the streamed body, the way the socket would receive it.
+  Future<void> drain() async {
+    final stream = response.bodyStream;
+    if (stream == null) return;
+    final builder = BytesBuilder(copy: false);
+    await for (final chunk in stream()) {
+      builder.add(chunk);
+    }
+    _streamed = builder.takeBytes();
+  }
+
   int get status => response.status;
 
   Uint8List get bytes {
+    if (_streamed != null) return _streamed!;
     if (response.body != null) return response.body!;
     final path = response.filePath;
     if (path == null) return Uint8List(0);
@@ -161,7 +179,9 @@ void main() {
       query: query ?? const <String, String>{},
       headers: headers ?? const <String, String>{},
     );
-    return Reply(response);
+    final reply = Reply(response);
+    await reply.drain();
+    return reply;
   }
 
   group('lifecycle & port', () {
@@ -478,6 +498,44 @@ void main() {
       }
     });
 
+    test('files carry a strong ETag and Last-Modified for resuming', () async {
+      final r = await get('/download/0');
+      final etag = r.header('etag');
+      expect(etag, isNotNull);
+      expect(etag, startsWith('"'));
+      expect(r.header('last-modified'), isNotNull);
+    });
+
+    test('If-Range: a matching validator resumes, a stale one restarts', () async {
+      final etag = (await get('/download/0')).header('etag')!;
+      final last = (await get('/download/0')).header('last-modified')!;
+
+      final etagHit = await get(
+        '/download/0',
+        headers: {'Range': 'bytes=5-9', 'If-Range': etag},
+      );
+      expect(etagHit.status, 206);
+      expect(etagHit.body, 'BYTES');
+
+      final dateHit = await get(
+        '/download/0',
+        headers: {'Range': 'bytes=5-9', 'If-Range': last},
+      );
+      expect(dateHit.status, 206);
+
+      // The file was replaced since the first half was saved: send all
+      // of it with 200 rather than splice two different files.
+      for (final stale in ['"0-0"', 'W/$etag', 'Mon, 01 Jan 2001 00:00:00 GMT']) {
+        final r = await get(
+          '/download/0',
+          headers: {'Range': 'bytes=5-9', 'If-Range': stale},
+        );
+        expect(r.status, 200, reason: stale);
+        expect(r.body, 'EPUB-BYTES-0123456789', reason: stale);
+        expect(r.header('content-range'), isNull, reason: stale);
+      }
+    });
+
     test('HEAD returns the same headers as GET; Kotlin drops the body', () async {
       final getR = await get('/download/0');
       final headR = await get('/download/0', method: 'HEAD');
@@ -559,6 +617,46 @@ void main() {
       expect(r.header('x-book-name'), 'book.epub');
     });
 
+    test('a TXT is served as a cached EPUB file, streamed and Range-able', () async {
+      File('${tmp.path}/d.txt').writeAsStringSync('第一章 开始\n内容\n\n第二章 继续\n更多\n');
+      final withTxt = WebSnapshot(
+        files: [
+          ...snapshot.files,
+          WebFile(
+            bookId: 4,
+            title: 'Novel',
+            author: '',
+            extension: 'txt',
+            location: '${tmp.path}/d.txt',
+          ),
+        ],
+      );
+      await service.stop();
+      await service.start(snapshot: withTxt, preferredPort: 0);
+
+      final whole = await get('/book/3');
+      expect(whole.status, 200);
+      expect(whole.header('content-type'), 'application/epub+zip');
+      expect(whole.header('x-book-name'), 'book.epub');
+      // A file on disk (the cache entry), not a byte buffer.
+      expect(whole.response.filePath, isNotNull);
+      expect(whole.response.body, isNull);
+      expect(ZipDecoder().decodeBytes(whole.bytes).files, isNotEmpty);
+
+      final part = await get('/book/3', headers: {'Range': 'bytes=0-3'});
+      expect(part.status, 206);
+      expect(part.bytes, [0x50, 0x4b, 0x03, 0x04]);
+      expect(part.header('content-range'), startsWith('bytes 0-3/'));
+    });
+
+    test('the reader page loads big books by ranges, with a full fallback', () async {
+      final page = (await get('/read/0')).body;
+      expect(page, contains('window.__ZLIBX'));
+      expect(page, contains('Range: '));
+      expect(page, contains('RangeFile'));
+      expect(page, contains('readWithProgress'));
+    });
+
     test('an unconvertible TXT gives a readable page, not a crash', () async {
       final r = await get('/read/2');
       expect(r.status, 422);
@@ -626,14 +724,41 @@ void main() {
         all.header('content-disposition'),
         contains('attachment; filename="downloaded-books.zip"'),
       );
-      expect(all.response.body, isNotNull);
-      expect(all.response.body!.length, greaterThan(0));
+      // Generated on the fly: a stream, never an in-memory body.
+      expect(all.response.body, isNull);
+      expect(all.response.bodyStream, isNotNull);
+      expect(all.bytes, isNotEmpty);
+      // The length is exact, so the browser can show real progress.
+      expect(all.header('content-length'), '${all.bytes.length}');
       // A zip stores file names in plain text (the entry name is
       // "Title - Author.ext", with unsafe characters replaced).
       expect(all.body, contains('Au.epub'));
       expect(all.body, contains('Pdf Book.pdf'));
       expect(all.body, contains('Blank Text.txt'));
       expect((await get('/zip/other')).status, 404);
+    });
+
+    test('the zip is a valid archive with the exact file contents', () async {
+      await service.start(snapshot: snapshot, preferredPort: 0);
+      final all = await get('/zip/all');
+      final archive = ZipDecoder().decodeBytes(all.bytes);
+      final byName = {
+        for (final f in archive.files) f.name: utf8.decode(f.content as List<int>),
+      };
+      expect(byName.keys, containsAll(<String>[
+        'Epub _Book_ - Au.epub',
+        'Pdf Book.pdf',
+        'Blank Text.txt',
+      ]));
+      expect(byName['Epub _Book_ - Au.epub'], 'EPUB-BYTES-0123456789');
+      expect(byName['Pdf Book.pdf'], 'PDF-BYTES');
+    });
+
+    test('HEAD on the zip reports the length without building it', () async {
+      await service.start(snapshot: snapshot, preferredPort: 0);
+      final getR = await get('/zip/all');
+      final headR = await get('/zip/all', method: 'HEAD');
+      expect(headR.header('content-length'), getR.header('content-length'));
     });
 
     test('request-download calls the callback and confirms', () async {

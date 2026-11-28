@@ -117,7 +117,7 @@ dependencies:
   flutter_inappwebview: ^6.1.5
 
   # ISBN barcode scanning (扫码搜书): ML Kit on-device barcode scan.
-  mobile_scanner: ^6.0.0
+  mobile_scanner: ^7.5.0
 
   # App icon shortcuts (长按图标快捷方式): 扫码 / 搜索 / 书单 /
   # 我的图书馆. Android dynamic shortcuts via ShortcutManager;
